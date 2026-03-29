@@ -1,0 +1,77 @@
+# Daily Dashboard
+
+Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instead of injecting a panel into the workspace chrome.
+
+## What It Does
+
+- tracks repeat daily habits with per-day counts
+- stores mood, energy, Top 3 focus, friction log, food log, sleep log, and daily notes
+- writes a markdown daily log note for every tracked day
+- generates weekly reviews plus weekly and monthly markdown reports from those daily logs
+- reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
+- automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
+- lets you quick-add tasks into project sections, promote project tasks into today focus, search archived work history, sync repeating tasks, and offload project references into project notes
+- lets you pick a hero wallpaper from a vault folder in plugin settings
+
+## Master Todo Workflow
+
+Point the plugin at your `Master Task Hub.md` note in settings. The note works best when each project uses a `##` heading and includes optional metadata such as `Project Note:: [[Note Name]]`, `Status::`, `Focus::`, and `Relationships::`.
+
+1. keep active work as unchecked checklist items in non-reference sections
+2. mark a task complete with `- [x]`
+3. the plugin automatically moves it into that project's `Completed Archive` section and records it in that day's dashboard log
+
+This gives you a work-history trail without deleting finished tasks.
+
+The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
+
+## New Project Flow
+
+Use the `Create project and project note` command or the `New project` button in the dashboard.
+
+That flow will:
+
+1. ask for the project name, category, status, focus, and optional starter tasks
+2. create a new project note in the configured project notes folder
+3. insert a properly formatted project section into the Master Task Hub automatically
+
+For projects that already exist in the Master Task Hub, run `Create missing project notes from master task hub` once inside Obsidian. That creates any missing project note files in your vault's configured project notes folder without duplicating ones that already exist.
+
+## Development
+
+```bash
+npm install
+npm run build
+```
+
+The compiled plugin entrypoint is written to `main.js`.
+
+## Fast Local Updates
+
+The easiest workflow on Windows is to make your vault use this project folder directly instead of copying files after every change.
+
+1. Close Obsidian.
+2. Go to your vault's plugin directory: `.obsidian/plugins/`.
+3. Remove the existing `daily-dashboard` plugin folder there if you already copied one in manually.
+4. Create a junction from the vault plugin folder to this workspace folder:
+
+```powershell
+cmd /c mklink /J "D:\Game Dev\Projects\.obsidian\plugins\obsidian-Dashboard-Plugin" "D:\Game Dev\Projects\Obsidian Dashboard Plugin"
+```
+
+5. Reopen Obsidian and enable the plugin.
+6. While developing, run:
+
+```bash
+npm run watch
+```
+
+That keeps `main.js` updated in place, so Obsidian is always reading the newest build from the same folder.
+
+When you make code changes after that:
+
+1. save the file
+2. let `npm run watch` rebuild
+3. reload the plugin in Obsidian, or restart Obsidian if needed
+
+If you do not want to use a junction, the next best option is a deploy script that copies `main.js`, `manifest.json`, `styles.css`, and the `Wallpapers` folder into your vault automatically. The junction approach is simpler and less fragile.
