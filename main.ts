@@ -1257,20 +1257,26 @@ class DailyDashboardView extends ItemView {
         text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
       });
 
-      const heroMeta = hero.createDiv({ cls: "daily-dashboard-hero-meta" });
+      const actions = hero.createDiv({ cls: "daily-dashboard-actions" });
+      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
+      createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
+      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
+
+      const heroAside = hero.createDiv({ cls: "daily-dashboard-hero-aside" });
+      const heroMeta = heroAside.createDiv({ cls: "daily-dashboard-hero-meta" });
       createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
       createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived today`, "archive", "done");
       createStatPill(heroMeta, `${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"}`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral");
       createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
 
-      const actions = hero.createDiv({ cls: "daily-dashboard-actions" });
-      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
-      createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
-      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
-      createButton(actions, "Weekly review", async () => this.plugin.generateWeeklyReview(), false, "notebook-pen");
-      createButton(actions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
-      createButton(actions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
-      createButton(actions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true), false, "refresh-cw");
+      const heroUtility = heroAside.createDiv({ cls: "daily-dashboard-hero-utility" });
+      const utilityHeader = heroUtility.createDiv({ cls: "daily-dashboard-hero-utility-header" });
+      utilityHeader.createEl("span", { cls: "daily-dashboard-hero-utility-label", text: "Reports And Maintenance" });
+      const utilityActions = heroUtility.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(utilityActions, "Weekly review", async () => this.plugin.generateWeeklyReview(), false, "notebook-pen");
+      createButton(utilityActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+      createButton(utilityActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
+      createButton(utilityActions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true), false, "refresh-cw");
 
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
 

@@ -75,6 +75,7 @@
   flex-direction: column;
   gap: 12px;
   justify-content: center;
+  min-width: 0;
 }
 
 .daily-dashboard-kicker {
@@ -100,12 +101,42 @@
 }
 
 .daily-dashboard-hero-meta {
-  display: flex;
-  flex-direction: column;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: stretch;
-  justify-content: flex-start;
+}
+
+.daily-dashboard-hero-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.daily-dashboard-hero-utility {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+}
+
+.daily-dashboard-hero-utility-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.daily-dashboard-hero-utility-label {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .daily-dashboard-date-pill,
@@ -149,11 +180,10 @@
 }
 
 .daily-dashboard-actions {
-  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: 10px;
 }
 
 .daily-dashboard-primary-button,
@@ -478,6 +508,17 @@
   gap: 10px;
 }
 
+.daily-dashboard-actions-inline--compact {
+  gap: 8px;
+}
+
+.daily-dashboard-actions-inline--compact .daily-dashboard-secondary-button,
+.daily-dashboard-actions-inline--compact .daily-dashboard-primary-button {
+  min-height: 38px;
+  padding: 7px 11px;
+  font-size: 0.88rem;
+}
+
 .daily-dashboard-input,
 .daily-dashboard-textarea {
   box-sizing: border-box;
@@ -596,7 +637,7 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero-meta {
-    flex-direction: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -611,8 +652,7 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero-meta {
-    flex-direction: row;
-    justify-content: flex-start;
+    grid-template-columns: 1fr;
   }
 
   .daily-dashboard-card {
