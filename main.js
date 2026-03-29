@@ -2242,12 +2242,19 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       this.renderDayMetric(aiIndexMetrics, "Notes", `${aiStatus.indexStatus.indexedNotes}`);
       this.renderDayMetric(aiIndexMetrics, "Chunks", `${aiStatus.indexStatus.indexedChunks}`);
       this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
-      this.renderDayMetric(aiIndexMetrics, "Last index", formatSyncTimestamp(aiStatus.indexStatus.indexedAt));
+      const aiIndexDetails = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-index-details" });
+      const aiUpdatedRow = aiIndexDetails.createDiv({ cls: "daily-dashboard-ai-index-detail" });
+      aiUpdatedRow.createEl("span", { cls: "daily-dashboard-habit-meta", text: "Updated" });
+      aiUpdatedRow.createEl("strong", { text: formatSyncTimestamp(aiStatus.indexStatus.indexedAt).replace(" ", " \u2022 ") });
       if (aiStatus.indexStatus.lastIndexedFile) {
-        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last file: ${aiStatus.indexStatus.lastIndexedFile}` });
+        const aiFileRow = aiIndexDetails.createDiv({ cls: "daily-dashboard-ai-index-detail" });
+        aiFileRow.createEl("span", { cls: "daily-dashboard-habit-meta", text: "Last file" });
+        aiFileRow.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.indexStatus.lastIndexedFile });
       }
       if (aiStatus.indexStatus.indexedFolders.length > 0) {
-        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
+        const aiFoldersRow = aiIndexDetails.createDiv({ cls: "daily-dashboard-ai-index-detail" });
+        aiFoldersRow.createEl("span", { cls: "daily-dashboard-habit-meta", text: "Folders" });
+        aiFoldersRow.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.indexStatus.indexedFolders.join(" \u2022 ") });
       }
       const aiLower = aiShell.createDiv({ cls: "daily-dashboard-ai-lower" });
       const aiAskPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });

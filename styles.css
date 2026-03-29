@@ -934,6 +934,27 @@ input.daily-dashboard-input {
   word-break: break-word;
 }
 
+.daily-dashboard-ai-index-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-dashboard-ai-index-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.daily-dashboard-ai-index-detail strong {
+  font-size: 0.98rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .daily-dashboard-ai-panel .daily-dashboard-row-meta {
   overflow-wrap: anywhere;
 }
