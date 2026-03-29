@@ -848,7 +848,7 @@ input.daily-dashboard-input {
 
 .daily-dashboard-ai-overview {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 16px;
 }
 
@@ -918,18 +918,24 @@ input.daily-dashboard-input {
 
 .daily-dashboard-ai-metric-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
 }
 
 .daily-dashboard-ai-metric-grid .daily-dashboard-day-metric {
-  min-height: 112px;
+  min-height: 98px;
   justify-content: space-between;
 }
 
 .daily-dashboard-ai-metric-grid .daily-dashboard-day-metric strong {
-  font-size: 1.45rem;
-  line-height: 1.05;
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.daily-dashboard-ai-panel .daily-dashboard-row-meta {
+  overflow-wrap: anywhere;
 }
 
 .daily-dashboard-ai-question {
@@ -1075,6 +1081,12 @@ input.daily-dashboard-input {
     grid-template-columns: 1fr;
   }
 
+
+@media (max-width: 980px) {
+  .daily-dashboard-ai-overview {
+    grid-template-columns: 1fr;
+  }
+}
   .daily-dashboard-habit-row,
   .daily-dashboard-food-row {
     flex-direction: column;
