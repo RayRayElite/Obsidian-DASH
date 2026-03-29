@@ -406,6 +406,10 @@ export default class DailyDashboardPlugin extends Plugin {
     this.registerInterval(window.setInterval(() => {
       void this.refreshForNewDay();
     }, 60_000));
+
+    this.registerInterval(window.setInterval(() => {
+      void this.refreshFromStorageIfChanged();
+    }, 15_000));
   }
 
   async onunload(): Promise<void> {
@@ -493,6 +497,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async updateSettings(settings: DashboardSettings): Promise<void> {
+    await this.refreshDataFromStorage(false);
     this.data.settings = sanitizeSettings(settings);
     await this.refreshWallpaperOptions();
 
@@ -506,18 +511,21 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async updateMoodScore(value: number): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.moodScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
 
   async updateEnergyScore(value: number): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.energyScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
 
   async updateHabitValue(habitId: string, value: number): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
     if (!definition) {
@@ -530,6 +538,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async addFoodEntry(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
@@ -541,18 +550,21 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async removeFoodEntry(index: number): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
 
   async updateSleepLog(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
     await this.persistEntry(entry);
   }
 
   async beginLogicalDay(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status === "in-progress") {
       new Notice(`Your logical day ${this.data.dayState.activeDate} is already in progress.`);
       return;
@@ -581,8 +593,9 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async endLogicalDay(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
-      new Notice("No logical day is currently in progress.");
+      new Notice("No logical day is currently in progress. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
 
@@ -604,6 +617,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async startWorkSession(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting work tracking.");
       return;
@@ -621,10 +635,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async stopWorkSession(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     const activeSession = [...entry.workSessions].reverse().find((session) => session.end === null);
     if (!activeSession) {
-      new Notice("No work session is currently active.");
+      new Notice("No work session is currently active. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
 
@@ -634,6 +649,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async startNapSession(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting a nap session.");
       return;
@@ -651,10 +667,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async stopNapSession(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     const activeSession = [...entry.napSessions].reverse().find((session) => session.end === null);
     if (!activeSession) {
-      new Notice("No nap session is currently active.");
+      new Notice("No nap session is currently active. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
 
@@ -664,12 +681,14 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async updateDailyNotes(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.notes = value.trim();
     await this.persistEntry(entry);
   }
 
   async resetToday(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const freshEntry = this.createEmptyEntry(this.getTodayKey());
     this.data.entries[freshEntry.date] = freshEntry;
     await this.persistEntry(freshEntry);
@@ -680,6 +699,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async archiveCompletedTasksFromTodoInternal(showNotice: boolean): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       if (showNotice) {
@@ -718,6 +738,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async generateWeeklyReport(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const today = new Date();
     const range = getIsoWeekRange(today);
     const entries = this.getEntriesInRange(range.start, range.end);
@@ -738,6 +759,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async generateMonthlyReport(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const today = new Date();
     const label = `${today.getFullYear()}-${`${today.getMonth() + 1}`.padStart(2, "0")}`;
     const start = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -873,6 +895,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async addTodayFocusItem(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
@@ -888,12 +911,14 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async removeTodayFocusItem(index: number): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
 
   async updateFrictionLog(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.frictionLog = value.trim();
     await this.persistEntry(entry);
@@ -922,6 +947,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async generateWeeklyReview(): Promise<void> {
+    await this.refreshDataFromStorage(false);
     const today = new Date();
     const range = getIsoWeekRange(today);
     const entries = this.getEntriesInRange(range.start, range.end);
@@ -1161,8 +1187,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return nextKey > calendarKey ? nextKey : calendarKey;
   }
 
-  private async loadPluginData(): Promise<void> {
-    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
+  private hydratePluginData(loaded: Partial<DashboardPluginData> | null | undefined): DashboardPluginData {
     const settings = sanitizeSettings({
       ...DEFAULT_SETTINGS,
       ...(loaded?.settings ?? {})
@@ -1176,11 +1201,16 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const dayState = normalizeDayState(loaded?.dayState, entries);
 
-    this.data = {
+    return {
       settings,
       entries,
       dayState
     };
+  }
+
+  private async loadPluginData(): Promise<void> {
+    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
+    this.data = this.hydratePluginData(loaded);
   }
 
   private normalizeEntry(
@@ -1259,6 +1289,47 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private createEmptyEntry(date: string): DailyEntry {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+
+  private getDataSignature(data: DashboardPluginData = this.data): string {
+    const orderedEntries = Object.keys(data.entries)
+      .sort()
+      .reduce<Record<string, DailyEntry>>((result, date) => {
+        result[date] = data.entries[date];
+        return result;
+      }, {});
+
+    return JSON.stringify({
+      settings: data.settings,
+      entries: orderedEntries,
+      dayState: data.dayState
+    });
+  }
+
+  private async refreshDataFromStorage(refreshViews: boolean): Promise<boolean> {
+    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
+    const hydrated = this.hydratePluginData(loaded);
+
+    if (this.getDataSignature(hydrated) === this.getDataSignature(this.data)) {
+      return false;
+    }
+
+    const settingsChanged = JSON.stringify(hydrated.settings) !== JSON.stringify(this.data.settings);
+    this.data = hydrated;
+
+    if (settingsChanged) {
+      await this.refreshWallpaperOptions();
+    }
+
+    if (refreshViews) {
+      this.refreshDashboardViews();
+    }
+
+    return true;
+  }
+
+  private async refreshFromStorageIfChanged(): Promise<void> {
+    await this.refreshDataFromStorage(true);
   }
 
   private async savePluginData(): Promise<void> {

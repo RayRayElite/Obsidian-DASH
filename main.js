@@ -214,6 +214,9 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.registerInterval(window.setInterval(() => {
       void this.refreshForNewDay();
     }, 6e4));
+    this.registerInterval(window.setInterval(() => {
+      void this.refreshFromStorageIfChanged();
+    }, 15e3));
   }
   async onunload() {
     await this.app.workspace.detachLeavesOfType(VIEW_TYPE_DAILY_DASHBOARD);
@@ -280,6 +283,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
   async updateSettings(settings) {
+    await this.refreshDataFromStorage(false);
     this.data.settings = sanitizeSettings(settings);
     await this.refreshWallpaperOptions();
     for (const date of Object.keys(this.data.entries)) {
@@ -290,16 +294,19 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.refreshDashboardViews();
   }
   async updateMoodScore(value) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.moodScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
   async updateEnergyScore(value) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.energyScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
   async updateHabitValue(habitId, value) {
+    await this.refreshDataFromStorage(false);
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
     if (!definition) {
@@ -310,6 +317,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.persistEntry(entry);
   }
   async addFoodEntry(value) {
+    await this.refreshDataFromStorage(false);
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
@@ -319,16 +327,19 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.persistEntry(entry);
   }
   async removeFoodEntry(index) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
   async updateSleepLog(value) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
     await this.persistEntry(entry);
   }
   async beginLogicalDay() {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status === "in-progress") {
       new import_obsidian.Notice(`Your logical day ${this.data.dayState.activeDate} is already in progress.`);
       return;
@@ -354,8 +365,9 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice(`Began logical day ${nextDate}.`);
   }
   async endLogicalDay() {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
-      new import_obsidian.Notice("No logical day is currently in progress.");
+      new import_obsidian.Notice("No logical day is currently in progress. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
@@ -375,6 +387,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice(`Ended logical day ${entry.date}.`);
   }
   async startWorkSession() {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
       new import_obsidian.Notice("Begin your logical day before starting work tracking.");
       return;
@@ -389,10 +402,11 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("Work session started.");
   }
   async stopWorkSession() {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     const activeSession = [...entry.workSessions].reverse().find((session) => session.end === null);
     if (!activeSession) {
-      new import_obsidian.Notice("No work session is currently active.");
+      new import_obsidian.Notice("No work session is currently active. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
     activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
@@ -400,6 +414,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("Work session stopped.");
   }
   async startNapSession() {
+    await this.refreshDataFromStorage(false);
     if (this.data.dayState.status !== "in-progress") {
       new import_obsidian.Notice("Begin your logical day before starting a nap session.");
       return;
@@ -414,10 +429,11 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("Nap started.");
   }
   async stopNapSession() {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     const activeSession = [...entry.napSessions].reverse().find((session) => session.end === null);
     if (!activeSession) {
-      new import_obsidian.Notice("No nap session is currently active.");
+      new import_obsidian.Notice("No nap session is currently active. If you started it on another device, wait for sync to finish and try again.");
       return;
     }
     activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
@@ -425,11 +441,13 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("Nap stopped.");
   }
   async updateDailyNotes(value) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.notes = value.trim();
     await this.persistEntry(entry);
   }
   async resetToday() {
+    await this.refreshDataFromStorage(false);
     const freshEntry = this.createEmptyEntry(this.getTodayKey());
     this.data.entries[freshEntry.date] = freshEntry;
     await this.persistEntry(freshEntry);
@@ -438,6 +456,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.archiveCompletedTasksFromTodoInternal(true);
   }
   async archiveCompletedTasksFromTodoInternal(showNotice) {
+    await this.refreshDataFromStorage(false);
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       if (showNotice) {
@@ -470,6 +489,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     }
   }
   async generateWeeklyReport() {
+    await this.refreshDataFromStorage(false);
     const today = /* @__PURE__ */ new Date();
     const range = getIsoWeekRange(today);
     const entries = this.getEntriesInRange(range.start, range.end);
@@ -487,6 +507,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new import_obsidian.Notice("Weekly dashboard report generated.");
   }
   async generateMonthlyReport() {
+    await this.refreshDataFromStorage(false);
     const today = /* @__PURE__ */ new Date();
     const label = `${today.getFullYear()}-${`${today.getMonth() + 1}`.padStart(2, "0")}`;
     const start = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -599,6 +620,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     }
   }
   async addTodayFocusItem(value) {
+    await this.refreshDataFromStorage(false);
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
@@ -611,11 +633,13 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.persistEntry(entry);
   }
   async removeTodayFocusItem(index) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
   async updateFrictionLog(value) {
+    await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.frictionLog = value.trim();
     await this.persistEntry(entry);
@@ -639,6 +663,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.refreshDashboardViews();
   }
   async generateWeeklyReview() {
+    await this.refreshDataFromStorage(false);
     const today = /* @__PURE__ */ new Date();
     const range = getIsoWeekRange(today);
     const entries = this.getEntriesInRange(range.start, range.end);
@@ -842,9 +867,8 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     const nextKey = formatDateKey(next);
     return nextKey > calendarKey ? nextKey : calendarKey;
   }
-  async loadPluginData() {
+  hydratePluginData(loaded) {
     var _a, _b;
-    const loaded = await this.loadData();
     const settings = sanitizeSettings({
       ...DEFAULT_SETTINGS,
       ...(_a = loaded == null ? void 0 : loaded.settings) != null ? _a : {}
@@ -855,11 +879,15 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       entries[date] = this.normalizeEntry(entry, date, settings);
     });
     const dayState = normalizeDayState(loaded == null ? void 0 : loaded.dayState, entries);
-    this.data = {
+    return {
       settings,
       entries,
       dayState
     };
+  }
+  async loadPluginData() {
+    const loaded = await this.loadData();
+    this.data = this.hydratePluginData(loaded);
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
     var _a, _b;
@@ -912,6 +940,36 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
   }
   createEmptyEntry(date) {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+  getDataSignature(data = this.data) {
+    const orderedEntries = Object.keys(data.entries).sort().reduce((result, date) => {
+      result[date] = data.entries[date];
+      return result;
+    }, {});
+    return JSON.stringify({
+      settings: data.settings,
+      entries: orderedEntries,
+      dayState: data.dayState
+    });
+  }
+  async refreshDataFromStorage(refreshViews) {
+    const loaded = await this.loadData();
+    const hydrated = this.hydratePluginData(loaded);
+    if (this.getDataSignature(hydrated) === this.getDataSignature(this.data)) {
+      return false;
+    }
+    const settingsChanged = JSON.stringify(hydrated.settings) !== JSON.stringify(this.data.settings);
+    this.data = hydrated;
+    if (settingsChanged) {
+      await this.refreshWallpaperOptions();
+    }
+    if (refreshViews) {
+      this.refreshDashboardViews();
+    }
+    return true;
+  }
+  async refreshFromStorageIfChanged() {
+    await this.refreshDataFromStorage(true);
   }
   async savePluginData() {
     await this.saveData({

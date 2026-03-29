@@ -38,6 +38,12 @@ The dashboard now separates your real day from the calendar date.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 
+## Cross-Device Sync Notes
+
+If you use Obsidian Sync across desktop and mobile, the plugin now reloads synced dashboard state before day/session actions and also polls for synced changes in the background. That means actions like starting a nap on your phone and stopping it on desktop should work once sync has landed on the second device.
+
+There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin cannot fully prevent conflicts because its live state is stored in plugin data rather than a merge-friendly markdown note. The safest workflow for day/session controls is to wait a moment for sync to complete before continuing on the second device.
+
 ## New Project Flow
 
 Use the `Create project and project note` command or the `New project` button in the dashboard.
