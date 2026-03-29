@@ -36,11 +36,11 @@
   display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: auto 1fr auto;
-  gap: 14px;
-  padding: 22px;
+  gap: 10px;
+  padding: 18px 18px 14px;
   aspect-ratio: 16 / 9;
   min-height: 0;
-  max-height: 340px;
+  max-height: 300px;
   position: relative;
   overflow: hidden;
 }
@@ -76,15 +76,15 @@
 .daily-dashboard-hero-copy {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   justify-content: flex-start;
   min-width: 0;
-  max-width: min(500px, 50%);
+  max-width: min(460px, 48%);
 }
 
 .daily-dashboard-kicker {
   color: var(--daily-dashboard-accent);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -92,38 +92,31 @@
 
 .daily-dashboard-hero-title {
   margin: 0;
-  font-size: clamp(1.5rem, 2.3vw, 2.2rem);
+  font-size: clamp(1.45rem, 2vw, 2rem);
   line-height: 1.02;
   letter-spacing: -0.04em;
 }
 
-.daily-dashboard-hero-text {
-  margin: 0;
-  max-width: 34ch;
-  font-size: 0.92rem;
-  color: color-mix(in srgb, var(--text-normal) 78%, var(--text-muted));
-  line-height: 1.4;
-}
-
 .daily-dashboard-hero-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   min-width: 0;
   align-self: end;
   grid-row: 3;
-  border-radius: 18px;
-  padding: 10px 12px;
+  align-items: center;
+  border-radius: 16px;
+  padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--background-primary) 68%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 64%, transparent);
   backdrop-filter: blur(10px);
 }
 
-.daily-dashboard-hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  align-items: stretch;
+.daily-dashboard-hero-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
 }
 
 .daily-dashboard-date-pill,
@@ -169,9 +162,9 @@
 .daily-dashboard-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   padding-top: 2px;
-  max-width: 420px;
+  max-width: 360px;
 }
 
 .daily-dashboard-primary-button,
@@ -183,10 +176,10 @@
   justify-content: center;
   gap: 8px;
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: 40px;
   border: 1px solid var(--daily-dashboard-border);
   border-radius: 999px;
-  padding: 9px 14px;
+  padding: 7px 12px;
   background: color-mix(in srgb, var(--background-primary) 88%, transparent);
   color: var(--text-normal);
   line-height: 1.2;
@@ -204,6 +197,31 @@
 
 .daily-dashboard-button-label {
   line-height: 1.1;
+}
+
+.daily-dashboard-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--daily-dashboard-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  color: var(--text-normal);
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.daily-dashboard-icon-button:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 12%, var(--background-primary));
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+}
+
+.daily-dashboard-icon-button:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent-strong) 56%, var(--background-modifier-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--daily-dashboard-accent-soft) 18%, transparent);
 }
 
 .daily-dashboard-primary-button {
@@ -556,7 +574,24 @@
 }
 
 .daily-dashboard-hero-utility-actions {
-  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.daily-dashboard-date-pill.is-compact,
+.daily-dashboard-stat-pill.is-compact {
+  min-height: 28px;
+  padding: 5px 9px;
+  font-size: 0.76rem;
+  gap: 6px;
+}
+
+.daily-dashboard-date-pill.is-compact .daily-dashboard-pill-icon,
+.daily-dashboard-stat-pill.is-compact .daily-dashboard-pill-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .daily-dashboard-hero-metric.is-alert {
@@ -689,15 +724,15 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero-copy {
-    max-width: min(560px, 62%);
+    max-width: min(560px, 60%);
   }
 
   .daily-dashboard-hero-footer {
     grid-template-columns: 1fr;
   }
 
-  .daily-dashboard-hero-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .daily-dashboard-hero-utility-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -714,11 +749,6 @@ input.daily-dashboard-input {
 
   .daily-dashboard-hero-copy {
     max-width: none;
-  }
-
-  .daily-dashboard-hero-metrics,
-  .daily-dashboard-actions-inline--compact {
-    grid-template-columns: 1fr;
   }
 
   .daily-dashboard-card {

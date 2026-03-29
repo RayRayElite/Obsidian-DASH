@@ -915,25 +915,21 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
-      heroCopy.createEl("p", {
-        cls: "daily-dashboard-hero-text",
-        text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
-      });
       const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
-      const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-metrics" });
-      createHeroMetric(heroMeta, "calendar-days", "Date", todayEntry.date, "date");
-      createHeroMetric(heroMeta, "archive", "Archived", `${todayEntry.completedTasks.length} today`, "done");
-      createHeroMetric(heroMeta, "triangle-alert", "Stale", `${staleProjectCount} project${staleProjectCount === 1 ? "" : "s"}`, staleProjectCount > 0 ? "alert" : "neutral");
-      createHeroMetric(heroMeta, "activity", "State", `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "state");
-      const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-hero-utility-actions" });
-      createButton(utilityActions, "Weekly review", async () => this.plugin.generateWeeklyReview(), false, "notebook-pen");
-      createButton(utilityActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
-      createButton(utilityActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
-      createButton(utilityActions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true), false, "refresh-cw");
+      const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
+      createStatPill(heroMeta, todayEntry.date, "calendar-days", "date").addClass("is-compact");
+      createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done").addClass("is-compact");
+      createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral").addClass("is-compact");
+      createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state").addClass("is-compact");
+      const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
+      createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
+      createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
+      createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
+      createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
         icon: "target",
@@ -1600,21 +1596,30 @@ function createButton(parent, text, onClick, isPrimary = false, iconName) {
     void onClick();
   });
 }
+function createIconButton(parent, iconName, label, onClick) {
+  const button = parent.createEl("button", { cls: "daily-dashboard-icon-button" });
+  button.type = "button";
+  button.ariaLabel = label;
+  button.title = label;
+  const iconEl = button.createSpan({ cls: "daily-dashboard-button-icon" });
+  (0, import_obsidian.setIcon)(iconEl, iconName);
+  button.addEventListener("click", () => {
+    void onClick();
+  });
+}
 function createSemanticChip(parent, text, tone) {
   const chip = parent.createSpan({ cls: "daily-dashboard-semantic-chip" });
   chip.addClass(`is-${tone}`);
   chip.setText(text);
   return chip;
 }
-function createHeroMetric(parent, iconName, label, value, tone) {
-  const metric = parent.createDiv({ cls: "daily-dashboard-hero-metric" });
-  metric.addClass(`is-${tone}`);
-  const iconWrap = metric.createDiv({ cls: "daily-dashboard-hero-metric-icon" });
-  (0, import_obsidian.setIcon)(iconWrap, iconName);
-  const copy = metric.createDiv({ cls: "daily-dashboard-hero-metric-copy" });
-  copy.createEl("span", { cls: "daily-dashboard-hero-metric-label", text: label });
-  copy.createEl("strong", { cls: "daily-dashboard-hero-metric-value", text: value });
-  return metric;
+function createStatPill(parent, text, iconName, tone) {
+  const pill = parent.createDiv({ cls: tone === "date" ? "daily-dashboard-date-pill" : "daily-dashboard-stat-pill" });
+  pill.addClass(`is-${tone}`);
+  const iconEl = pill.createSpan({ cls: "daily-dashboard-pill-icon" });
+  (0, import_obsidian.setIcon)(iconEl, iconName);
+  pill.createSpan({ cls: "daily-dashboard-pill-label", text });
+  return pill;
 }
 function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");

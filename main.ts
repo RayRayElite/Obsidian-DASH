@@ -1252,10 +1252,6 @@ class DailyDashboardView extends ItemView {
       const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
-      heroCopy.createEl("p", {
-        cls: "daily-dashboard-hero-text",
-        text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
-      });
 
       const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
@@ -1263,17 +1259,17 @@ class DailyDashboardView extends ItemView {
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
 
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
-      const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-metrics" });
-      createHeroMetric(heroMeta, "calendar-days", "Date", todayEntry.date, "date");
-      createHeroMetric(heroMeta, "archive", "Archived", `${todayEntry.completedTasks.length} today`, "done");
-      createHeroMetric(heroMeta, "triangle-alert", "Stale", `${staleProjectCount} project${staleProjectCount === 1 ? "" : "s"}`, staleProjectCount > 0 ? "alert" : "neutral");
-      createHeroMetric(heroMeta, "activity", "State", `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "state");
+      const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
+      createStatPill(heroMeta, todayEntry.date, "calendar-days", "date").addClass("is-compact");
+      createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done").addClass("is-compact");
+      createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral").addClass("is-compact");
+      createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state").addClass("is-compact");
 
-      const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-hero-utility-actions" });
-      createButton(utilityActions, "Weekly review", async () => this.plugin.generateWeeklyReview(), false, "notebook-pen");
-      createButton(utilityActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
-      createButton(utilityActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
-      createButton(utilityActions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true), false, "refresh-cw");
+      const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
+      createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
+      createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
+      createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
+      createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
 
@@ -2097,6 +2093,18 @@ function createButton(parent: HTMLElement, text: string, onClick: () => Promise<
   }
   button.createSpan({ cls: "daily-dashboard-button-label", text });
   button.type = "button";
+  button.addEventListener("click", () => {
+    void onClick();
+  });
+}
+
+function createIconButton(parent: HTMLElement, iconName: string, label: string, onClick: () => Promise<void>): void {
+  const button = parent.createEl("button", { cls: "daily-dashboard-icon-button" });
+  button.type = "button";
+  button.ariaLabel = label;
+  button.title = label;
+  const iconEl = button.createSpan({ cls: "daily-dashboard-button-icon" });
+  setIcon(iconEl, iconName);
   button.addEventListener("click", () => {
     void onClick();
   });
