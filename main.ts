@@ -2509,6 +2509,15 @@ class DailyDashboardView extends ItemView {
     await this.render();
   }
 
+  private isMobileMode(): boolean {
+    return getDashboardMobileMode();
+  }
+
+  private async toggleMobileMode(): Promise<void> {
+    setDashboardMobileMode(!this.isMobileMode());
+    await this.render();
+  }
+
   private isSectionExpanded(sectionKey: string): boolean {
     return getDashboardExpandedSections().has(sectionKey);
   }
@@ -2540,6 +2549,7 @@ class DailyDashboardView extends ItemView {
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
       contentEl.toggleClass("is-compact", this.isCompactMode());
+      contentEl.toggleClass("is-mobile-layout", this.isMobileMode());
 
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
 
@@ -2558,6 +2568,7 @@ class DailyDashboardView extends ItemView {
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       createButton(actions, this.isCompactMode() ? "Richer mode" : "Compact mode", async () => this.toggleCompactMode(), false, this.isCompactMode() ? "maximize-2" : "minimize-2");
+      createButton(actions, this.isMobileMode() ? "Desktop view" : "Mobile view", async () => this.toggleMobileMode(), false, this.isMobileMode() ? "monitor" : "smartphone");
 
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
@@ -3786,6 +3797,7 @@ class DailyDashboardSettingTab extends PluginSettingTab {
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_COMPACT_MODE_STORAGE_KEY = "daily-dashboard-compact-mode";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
+const DASHBOARD_MOBILE_MODE_STORAGE_KEY = "daily-dashboard-mobile-mode";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -3935,6 +3947,22 @@ function getDashboardCompactMode(): boolean {
 function setDashboardCompactMode(enabled: boolean): void {
   try {
     window.localStorage.setItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY, enabled ? "true" : "false");
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getDashboardMobileMode(): boolean {
+  try {
+    return window.localStorage.getItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function setDashboardMobileMode(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY, enabled ? "true" : "false");
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }

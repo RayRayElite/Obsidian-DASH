@@ -1871,6 +1871,13 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
     setDashboardCompactMode(!this.isCompactMode());
     await this.render();
   }
+  isMobileMode() {
+    return getDashboardMobileMode();
+  }
+  async toggleMobileMode() {
+    setDashboardMobileMode(!this.isMobileMode());
+    await this.render();
+  }
   isSectionExpanded(sectionKey) {
     return getDashboardExpandedSections().has(sectionKey);
   }
@@ -1899,6 +1906,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
       contentEl.toggleClass("is-compact", this.isCompactMode());
+      contentEl.toggleClass("is-mobile-layout", this.isMobileMode());
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
       const hero = page.createDiv({ cls: "daily-dashboard-hero" });
       if (wallpaperUrl) {
@@ -1913,6 +1921,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       createButton(actions, this.isCompactMode() ? "Richer mode" : "Compact mode", async () => this.toggleCompactMode(), false, this.isCompactMode() ? "maximize-2" : "minimize-2");
+      createButton(actions, this.isMobileMode() ? "Desktop view" : "Mobile view", async () => this.toggleMobileMode(), false, this.isMobileMode() ? "monitor" : "smartphone");
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
       const datePill = createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
@@ -2866,6 +2875,7 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
 var DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 var DASHBOARD_COMPACT_MODE_STORAGE_KEY = "daily-dashboard-compact-mode";
 var DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
+var DASHBOARD_MOBILE_MODE_STORAGE_KEY = "daily-dashboard-mobile-mode";
 function createCard(parent, title, description, options) {
   const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
@@ -2986,6 +2996,19 @@ function getDashboardCompactMode() {
 function setDashboardCompactMode(enabled) {
   try {
     window.localStorage.setItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY, enabled ? "true" : "false");
+  } catch (e) {
+  }
+}
+function getDashboardMobileMode() {
+  try {
+    return window.localStorage.getItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY) === "true";
+  } catch (e) {
+    return false;
+  }
+}
+function setDashboardMobileMode(enabled) {
+  try {
+    window.localStorage.setItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY, enabled ? "true" : "false");
   } catch (e) {
   }
 }
