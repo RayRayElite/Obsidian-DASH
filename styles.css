@@ -294,6 +294,10 @@
   grid-column: 1 / -1;
 }
 
+.daily-dashboard-card--ai-workspace {
+  grid-column: span 8;
+}
+
 .daily-dashboard-card-header {
   display: flex;
   flex-direction: column;
@@ -702,24 +706,26 @@ input.daily-dashboard-input {
 .daily-dashboard-ai-shell {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .daily-dashboard-ai-overview {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+  gap: 14px;
 }
 
 .daily-dashboard-ai-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
   border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
-  border-radius: 16px;
+  border-radius: 18px;
   background:
     linear-gradient(160deg, color-mix(in srgb, var(--background-primary-alt) 90%, transparent), color-mix(in srgb, var(--background-secondary) 72%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .daily-dashboard-ai-panel--ask {
@@ -728,19 +734,29 @@ input.daily-dashboard-input {
 
 .daily-dashboard-ai-action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
-.daily-dashboard-ai-action-grid .daily-dashboard-button {
+.daily-dashboard-ai-action-grid .daily-dashboard-secondary-button,
+.daily-dashboard-ai-action-grid .daily-dashboard-primary-button {
   width: 100%;
-  justify-content: center;
+  min-height: 44px;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  border-radius: 16px;
+  text-align: left;
 }
 
 .daily-dashboard-ai-metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.daily-dashboard-ai-metric-grid .daily-dashboard-day-metric {
+  min-height: 112px;
+  justify-content: space-between;
 }
 
 .daily-dashboard-ai-question {
@@ -829,6 +845,10 @@ input.daily-dashboard-input {
   .daily-dashboard-ai-overview,
   .daily-dashboard-ai-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-dashboard-card--ai-workspace {
+    grid-column: 1 / -1;
   }
 
   .daily-dashboard-hero-utility-actions {
