@@ -351,7 +351,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getAllEntries(): DailyEntry[] {
     return Object.values(this.data.entries)
-      .map((entry) => normalizeEntry(entry, this.data.settings))
+      .map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey()))
       .sort((left, right) => left.date.localeCompare(right.date));
   }
 

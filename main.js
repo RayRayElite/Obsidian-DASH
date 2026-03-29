@@ -185,7 +185,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     return this.getOrCreateEntry(this.getTodayKey());
   }
   getAllEntries() {
-    return Object.values(this.data.entries).map((entry) => normalizeEntry(entry, this.data.settings)).sort((left, right) => left.date.localeCompare(right.date));
+    return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));
   }
   getWallpaperFiles() {
     return this.wallpaperOptions;
