@@ -56,6 +56,7 @@ interface DailyEntry {
   sleepLog: string;
   notes: string;
   workSessions: WorkSession[];
+  napSessions: WorkSession[];
   completedTasks: ArchivedTaskSnapshot[];
 }
 
@@ -377,6 +378,22 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "start-nap-session",
+      name: "Start nap",
+      callback: () => {
+        void this.startNapSession();
+      }
+    });
+
+    this.addCommand({
+      id: "stop-nap-session",
+      name: "Stop nap",
+      callback: () => {
+        void this.stopNapSession();
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -421,8 +438,16 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getTodayEntry().workSessions.some((session) => session.end === null);
   }
 
+  isNapSessionActive(): boolean {
+    return this.getTodayEntry().napSessions.some((session) => session.end === null);
+  }
+
   getTrackedWorkMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedWorkMinutes(entry);
+  }
+
+  getTrackedNapMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedMinutes(entry.napSessions);
   }
 
   getAllEntries(): DailyEntry[] {
@@ -568,6 +593,7 @@ export default class DailyDashboardPlugin extends Plugin {
       entry.sleepTime = timestamp;
     }
     closeOpenWorkSessions(entry, timestamp);
+    closeOpenNapSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
       status: "ended"
@@ -605,6 +631,36 @@ export default class DailyDashboardPlugin extends Plugin {
     activeSession.end = formatDateTimeKey(new Date());
     await this.persistEntry(entry);
     new Notice("Work session stopped.");
+  }
+
+  async startNapSession(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before starting a nap session.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.napSessions.some((session) => session.end === null)) {
+      new Notice("A nap session is already active.");
+      return;
+    }
+
+    entry.napSessions = [...entry.napSessions, { start: formatDateTimeKey(new Date()), end: null }];
+    await this.persistEntry(entry);
+    new Notice("Nap started.");
+  }
+
+  async stopNapSession(): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.napSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new Notice("No nap session is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice("Nap stopped.");
   }
 
   async updateDailyNotes(value: string): Promise<void> {
@@ -1170,6 +1226,14 @@ export default class DailyDashboardPlugin extends Plugin {
               end: typeof item.end === "string" ? item.end : null
             }))
         : [],
+      napSessions: Array.isArray(entry.napSessions)
+        ? entry.napSessions
+            .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+            .map((item) => ({
+              start: item.start,
+              end: typeof item.end === "string" ? item.end : null
+            }))
+        : [],
       completedTasks: Array.isArray(entry.completedTasks)
         ? entry.completedTasks
             .filter((item): item is ArchivedTaskSnapshot => Boolean(item && typeof item === "object"))
@@ -1464,7 +1528,9 @@ class DailyDashboardView extends ItemView {
 
       const dayState = this.plugin.getDayState();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
+      const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
+      const activeNapSession = todayEntry.napSessions.find((session) => session.end === null) ?? null;
       const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights do not spill into the wrong log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
@@ -1475,6 +1541,7 @@ class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeWorkSession ? "Working" : "Not working", activeWorkSession ? "capture" : "neutral");
+      createSemanticChip(dayFlowStatus, activeNapSession ? "Napping" : "Awake", activeNapSession ? "alert" : "neutral");
 
       const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
@@ -1482,12 +1549,15 @@ class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
       this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
+      this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date()))) : "Not active");
 
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
       createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
+      createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
         icon: "target",
@@ -2413,6 +2483,7 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
     sleepLog: "",
     notes: "",
     workSessions: [],
+    napSessions: [],
     completedTasks: []
   };
 }
@@ -2495,7 +2566,11 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
   const workSessionLines = entry.workSessions.length > 0
     ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked work sessions"];
+  const napSessionLines = entry.napSessions.length > 0
+    ? entry.napSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- No tracked naps"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
+  const totalNapMinutes = getTrackedMinutes(entry.napSessions);
 
   return [
     "---",
@@ -2505,6 +2580,7 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     `wakeTime: ${entry.wakeTime || ""}`,
     `sleepTime: ${entry.sleepTime || ""}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
+    `trackedNapMinutes: ${totalNapMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `moodScore: ${entry.moodScore}`,
@@ -2519,6 +2595,7 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     `- Day ended: ${entry.dayEndedAt || "Not ended"}`,
     `- Sleep time: ${entry.sleepTime || "Not logged"}`,
     `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
+    `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -2535,6 +2612,9 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     "",
     "## Work Sessions",
     ...workSessionLines,
+    "",
+    "## Nap Sessions",
+    ...napSessionLines,
     "",
     "## Work Completed",
     ...completedTaskLines,
@@ -2559,6 +2639,8 @@ function renderPeriodReport(input: {
   let energyTotal = 0;
   let energyDays = 0;
   let trackedWorkMinutes = 0;
+  let trackedNapMinutes = 0;
+  let daysWithNaps = 0;
 
   input.entries.forEach((entry) => {
     if (entry.foodLog.length > 0) {
@@ -2580,6 +2662,10 @@ function renderPeriodReport(input: {
     }
 
     trackedWorkMinutes += getTrackedWorkMinutes(entry);
+    trackedNapMinutes += getTrackedMinutes(entry.napSessions);
+    if (entry.napSessions.length > 0) {
+      daysWithNaps += 1;
+    }
 
     entry.completedTasks.forEach((task) => {
       workByProject.set(task.project, (workByProject.get(task.project) ?? 0) + 1);
@@ -2599,7 +2685,8 @@ function renderPeriodReport(input: {
 
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
+    const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
   });
 
   return [
@@ -2613,6 +2700,8 @@ function renderPeriodReport(input: {
     `- Days with food logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
+    `- Days with naps tracked: ${daysWithNaps}`,
+    `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     "",
@@ -2634,8 +2723,16 @@ function closeOpenWorkSessions(entry: DailyEntry, timestamp: string): void {
   entry.workSessions = entry.workSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
 
+function closeOpenNapSessions(entry: DailyEntry, timestamp: string): void {
+  entry.napSessions = entry.napSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
 function getTrackedWorkMinutes(entry: DailyEntry): number {
-  return entry.workSessions.reduce((total, session) => {
+  return getTrackedMinutes(entry.workSessions);
+}
+
+function getTrackedMinutes(sessions: WorkSession[]): number {
+  return sessions.reduce((total, session) => {
     const end = session.end ?? formatDateTimeKey(new Date());
     return total + getMinutesBetween(session.start, end);
   }, 0);
