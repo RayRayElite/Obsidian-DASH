@@ -73,6 +73,11 @@ interface DashboardSettings {
   weeklyReportFolder: string;
   monthlyReportFolder: string;
   liveStatePath: string;
+  aiApiKey: string;
+  aiModel: string;
+  aiBaseUrl: string;
+  aiOutputFolder: string;
+  aiContextDays: number;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -216,6 +221,30 @@ interface DashboardSyncStatus {
   liveStateAvailable: boolean;
 }
 
+interface AiStructuredPayload {
+  suggestedFocus: string[];
+  nextActions: string[];
+  keyRisks: string[];
+  followUpQuestions: string[];
+}
+
+interface AiArtifact {
+  kind: string;
+  title: string;
+  generatedAt: string;
+  notePath: string;
+  summary: string;
+  suggestedFocus: string[];
+}
+
+interface AiStatus {
+  configured: boolean;
+  busy: boolean;
+  model: string;
+  outputFolder: string;
+  latestArtifact: AiArtifact | null;
+}
+
 const DEFAULT_SETTINGS: DashboardSettings = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -224,6 +253,11 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
   liveStatePath: "Dashboard Logs/State/Live Day State.md",
+  aiApiKey: "",
+  aiModel: "gpt-4o-mini",
+  aiBaseUrl: "https://api.openai.com/v1/chat/completions",
+  aiOutputFolder: "Dashboard Logs/AI",
+  aiContextDays: 14,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -252,6 +286,8 @@ export default class DailyDashboardPlugin extends Plugin {
   private lastLiveStateWriteAt = "";
   private lastSyncSource = "Startup";
   private liveStateAvailable = false;
+  private latestAiArtifact: AiArtifact | null = null;
+  private isAiBusy = false;
 
   async onload(): Promise<void> {
     await this.loadPluginData();
@@ -425,6 +461,46 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "generate-ai-today-plan",
+      name: "Generate AI today plan",
+      callback: () => {
+        void this.generateAiTodayPlan();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-ai-end-of-day-review",
+      name: "Generate AI end-of-day review",
+      callback: () => {
+        void this.generateAiEndOfDayReview();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-ai-project-triage",
+      name: "Generate AI project triage",
+      callback: () => {
+        void this.generateAiProjectTriage();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-ai-weekly-coach-note",
+      name: "Generate AI weekly coach note",
+      callback: () => {
+        void this.generateAiWeeklyCoachNote();
+      }
+    });
+
+    this.addCommand({
+      id: "ask-ai-about-dashboard",
+      name: "Ask AI about dashboard and vault",
+      callback: () => {
+        void this.openAskAiFlow();
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -533,6 +609,16 @@ export default class DailyDashboardPlugin extends Plugin {
       lastSource: this.lastSyncSource,
       liveStatePath: this.data.settings.liveStatePath,
       liveStateAvailable: this.liveStateAvailable
+    };
+  }
+
+  getAiStatus(): AiStatus {
+    return {
+      configured: this.data.settings.aiApiKey.trim().length > 0,
+      busy: this.isAiBusy,
+      model: this.data.settings.aiModel,
+      outputFolder: this.data.settings.aiOutputFolder,
+      latestArtifact: this.latestAiArtifact
     };
   }
 
@@ -1093,6 +1179,281 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.openFile(file);
   }
 
+  async generateAiTodayPlan(): Promise<void> {
+    await this.runAiWorkflow({
+      kind: "Today Plan",
+      fileLabel: `AI Today Plan ${this.getTodayEntry().date}`,
+      systemPrompt: [
+        "You are an operational planning assistant for a personal Obsidian dashboard.",
+        "Prioritize practical decision support over motivational writing.",
+        "Respond in markdown with these headings: Situation Snapshot, Suggested Top 3, Recommended Sequencing, Risks And Drift, Energy And Recovery, Immediate Next Moves.",
+        "Under Suggested Top 3, provide exactly three concise bullet points that can stand alone as focus items.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: [
+        "Create a sharp plan for today using the dashboard and project context below.",
+        "Favor leverage, unfinished momentum, stale-risk projects, and realistic energy management.",
+        "Do not repeat raw data back unless it matters to the recommendation."
+      ].join(" "),
+      includeMasterTodoRaw: false
+    });
+  }
+
+  async generateAiEndOfDayReview(): Promise<void> {
+    await this.runAiWorkflow({
+      kind: "End Of Day Review",
+      fileLabel: `AI End Of Day Review ${this.getTodayEntry().date}`,
+      systemPrompt: [
+        "You are an analytical daily review assistant for an Obsidian dashboard.",
+        "Respond in markdown with headings: Wins, Drag And Friction, Behavioral Patterns, What To Carry Forward, Shutdown Recommendation.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: [
+        "Review the current logical day.",
+        "Explain where output came from, where time or energy leaked, and what should seed tomorrow without guilt-language or generic coaching."
+      ].join(" "),
+      includeMasterTodoRaw: false
+    });
+  }
+
+  async generateAiProjectTriage(): Promise<void> {
+    await this.runAiWorkflow({
+      kind: "Project Triage",
+      fileLabel: `AI Project Triage ${formatDateKey(new Date())}`,
+      systemPrompt: [
+        "You are a ruthless but useful project triage assistant.",
+        "Respond in markdown with headings: Highest Leverage Projects, Immediate Interventions, Projects To Park Or Reduce, Breakdown Targets, Recommended Decisions.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: [
+        "Analyze the project landscape from the master task hub and recent logs.",
+        "Highlight stale work, overloaded areas, hidden leverage, and what should be deprioritized."
+      ].join(" "),
+      includeMasterTodoRaw: true
+    });
+  }
+
+  async generateAiWeeklyCoachNote(): Promise<void> {
+    await this.runAiWorkflow({
+      kind: "Weekly Coach",
+      fileLabel: `AI Weekly Coach ${formatDateKey(new Date())}`,
+      systemPrompt: [
+        "You are a weekly planning and reflection assistant.",
+        "Respond in markdown with headings: Weekly Pattern Read, Habit And Health Drift, Priority Stack, Scheduling Guidance, Guardrails For The Next 7 Days.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: [
+        "Use the recent dashboard data to coach the next week.",
+        "Prefer concrete prioritization, pacing advice, and risk spotting over abstract encouragement."
+      ].join(" "),
+      includeMasterTodoRaw: false
+    });
+  }
+
+  async askAiQuestion(question: string): Promise<void> {
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) {
+      new Notice("Enter a question for the AI first.");
+      return;
+    }
+
+    await this.runAiWorkflow({
+      kind: "Vault Question",
+      fileLabel: `AI Vault Question ${formatDateKey(new Date())}`,
+      systemPrompt: [
+        "You are an analytical assistant for an Obsidian dashboard and task hub.",
+        "Answer the user's question using only the provided context.",
+        "Respond in markdown with headings: Direct Answer, Supporting Signals, Recommended Actions, Open Questions.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Answer this question about the dashboard and vault context: ${trimmedQuestion}`,
+      includeMasterTodoRaw: true,
+      question: trimmedQuestion
+    });
+  }
+
+  async openAskAiFlow(): Promise<void> {
+    new AskAiModal(this.app, this).open();
+  }
+
+  private async runAiWorkflow(input: {
+    kind: string;
+    fileLabel: string;
+    systemPrompt: string;
+    userPrompt: string;
+    includeMasterTodoRaw: boolean;
+    question?: string;
+  }): Promise<void> {
+    if (!this.data.settings.aiApiKey.trim()) {
+      new Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+      return;
+    }
+
+    if (this.isAiBusy) {
+      new Notice("An AI request is already running.");
+      return;
+    }
+
+    await this.refreshDataFromStorage(false);
+    this.isAiBusy = true;
+    this.refreshDashboardViews();
+
+    try {
+      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question);
+      const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}\n\n${context}`);
+      const payload = extractAiStructuredPayload(rawResponse);
+      const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
+      const file = await this.createAiOutputNote({
+        kind: input.kind,
+        fileLabel: input.fileLabel,
+        question: input.question,
+        markdown: cleanedMarkdown,
+        payload
+      });
+
+      this.latestAiArtifact = {
+        kind: input.kind,
+        title: input.fileLabel,
+        generatedAt: formatDateTimeKey(new Date()),
+        notePath: file.path,
+        summary: extractAiSummary(cleanedMarkdown),
+        suggestedFocus: payload.suggestedFocus.slice(0, 3)
+      };
+
+      this.refreshDashboardViews();
+      await this.openFile(file);
+      new Notice(`${input.kind} note generated.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new Notice(`AI request failed: ${message}`);
+    } finally {
+      this.isAiBusy = false;
+      this.refreshDashboardViews();
+    }
+  }
+
+  private async buildAiContext(includeMasterTodoRaw: boolean, question?: string): Promise<string> {
+    const todayEntry = this.getTodayEntry();
+    const allEntries = this.getAllEntries();
+    const recentEntries = allEntries.slice(-this.data.settings.aiContextDays);
+    const todoSnapshot = await this.getTodoSnapshot();
+    const recentRange = recentEntries.length > 0
+      ? `${recentEntries[0].date} to ${recentEntries[recentEntries.length - 1].date}`
+      : "No recent entries";
+    const recentReport = recentEntries.length > 0
+      ? renderPeriodReport({
+          title: "Recent Dashboard Context",
+          rangeLabel: recentRange,
+          entries: recentEntries,
+          habitDefinitions: this.getHabitDefinitions()
+        })
+      : "No recent dashboard entries available.";
+
+    const masterTodoFile = this.getMasterTodoFile();
+    const masterTodoRaw = includeMasterTodoRaw && masterTodoFile
+      ? truncateText(await this.app.vault.read(masterTodoFile), 12000)
+      : "Master task hub raw content not included for this request.";
+
+    return [
+      `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
+      question ? `User question: ${question}` : "",
+      "## Today Entry",
+      renderDailyLog(todayEntry, this.getHabitDefinitions()),
+      "",
+      "## Recent Report",
+      recentReport,
+      "",
+      "## Master Task Hub Snapshot",
+      renderTodoSnapshotForAi(todoSnapshot),
+      "",
+      "## Master Task Hub Raw Excerpt",
+      masterTodoRaw
+    ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+
+  private async requestAiCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    const response = await fetch(this.data.settings.aiBaseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+      },
+      body: JSON.stringify({
+        model: this.data.settings.aiModel,
+        temperature: 0.4,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json() as {
+      choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+      error?: { message?: string };
+    };
+
+    if (data.error?.message) {
+      throw new Error(data.error.message);
+    }
+
+    const content = data.choices?.[0]?.message?.content;
+    if (typeof content === "string" && content.trim().length > 0) {
+      return content;
+    }
+
+    if (Array.isArray(content)) {
+      const text = content
+        .filter((item) => item.type === "text" && typeof item.text === "string")
+        .map((item) => item.text ?? "")
+        .join("\n")
+        .trim();
+      if (text.length > 0) {
+        return text;
+      }
+    }
+
+    throw new Error("OpenAI returned an empty response.");
+  }
+
+  private async createAiOutputNote(input: {
+    kind: string;
+    fileLabel: string;
+    question?: string;
+    markdown: string;
+    payload: AiStructuredPayload;
+  }): Promise<TFile> {
+    const dateKey = formatDateKey(new Date());
+    const timestamp = formatFileTimestamp(new Date());
+    const folder = normalizeFolderPath(`${this.data.settings.aiOutputFolder}/${dateKey}`);
+    const basePath = `${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`;
+    const filePath = this.getAvailableMarkdownPath(basePath);
+    const content = [
+      `# ${input.fileLabel}`,
+      "",
+      `- Generated: ${formatDateTimeKey(new Date())}`,
+      `- Model: ${this.data.settings.aiModel}`,
+      `- Workflow: ${input.kind}`,
+      input.question ? `- Question: ${input.question}` : "",
+      "",
+      "## Response",
+      input.markdown,
+      "",
+      "## Structured Payload",
+      "```json",
+      JSON.stringify(input.payload, null, 2),
+      "```",
+      ""
+    ].filter((line) => line !== "").join("\n");
+
+    await this.ensureFolder(folder);
+    return await this.app.vault.create(filePath, content);
+  }
+
   async openPromoteTaskFlow(): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
     if (!snapshot || snapshot.projects.length === 0) {
@@ -1124,6 +1485,16 @@ export default class DailyDashboardPlugin extends Plugin {
     const rightLeaf = this.app.workspace.getLeaf("split", "vertical");
     await rightLeaf.openFile(noteFile);
     this.app.workspace.revealLeaf(rightLeaf);
+  }
+
+  async openAiArtifact(artifact: AiArtifact): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(normalizePath(artifact.notePath));
+    if (!(file instanceof TFile)) {
+      new Notice("That AI note could not be found in the vault.");
+      return;
+    }
+
+    await this.openFile(file);
   }
 
   async getProjectReviewOptions(): Promise<ProjectReviewOption[]> {
@@ -1754,6 +2125,7 @@ class DailyDashboardView extends ItemView {
 
       const dayState = this.plugin.getDayState();
       const syncStatus = this.plugin.getSyncStatus();
+      const aiStatus = this.plugin.getAiStatus();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
@@ -1836,6 +2208,57 @@ class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
+
+      const aiCard = createCard(grid, "AI Workspace", "Use your dashboard and vault context for planning, triage, reflection, and direct questions without leaving the dashboard.", {
+        icon: "sparkles",
+        eyebrow: "AI",
+        tone: "capture",
+        tag: aiStatus.busy ? "Running" : "Ready"
+      });
+      const aiChipRow = aiCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(aiChipRow, aiStatus.configured ? "API key configured" : "API key missing", aiStatus.configured ? "done" : "alert");
+      createSemanticChip(aiChipRow, aiStatus.model || "No model", "neutral");
+      createSemanticChip(aiChipRow, aiStatus.busy ? "Request in progress" : "Idle", aiStatus.busy ? "focus" : "neutral");
+
+      const aiActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(aiActions, "Today plan", async () => this.plugin.generateAiTodayPlan(), false, "sunrise");
+      createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
+      createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
+      createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
+
+      aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
+      const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
+      aiQuestion.rows = 4;
+      const aiQuestionActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
+      createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+
+      if (aiStatus.latestArtifact) {
+        const latest = aiCard.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
+        latest.createEl("strong", { text: `${aiStatus.latestArtifact.kind} • ${aiStatus.latestArtifact.generatedAt}` });
+        latest.createEl("span", { text: aiStatus.latestArtifact.summary || "AI note generated." });
+        latest.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.latestArtifact.notePath });
+
+        const latestActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(latestActions, "Open latest AI note", async () => this.plugin.openAiArtifact(aiStatus.latestArtifact), false, "file-text");
+
+        if (aiStatus.latestArtifact.suggestedFocus.length > 0) {
+          aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
+          const suggestionList = aiCard.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+          aiStatus.latestArtifact.suggestedFocus.forEach((item) => {
+            const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
+            row.createEl("span", { text: item });
+            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
+            addButton.type = "button";
+            addButton.addEventListener("click", () => {
+              void this.plugin.addTodayFocusItem(item);
+            });
+          });
+        }
+      } else {
+        aiCard.createEl("p", { cls: "daily-dashboard-empty", text: "No AI notes generated yet. Start with Today plan or ask a question." });
+      }
 
       const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.", {
         icon: "activity",
@@ -2428,6 +2851,58 @@ class ProjectReviewModal extends Modal {
   }
 }
 
+class AskAiModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private question = "";
+
+  constructor(app: App, plugin: DailyDashboardPlugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    this.setTitle("Ask AI About Your Dashboard");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Question")
+      .setDesc("Ask about priorities, stalled projects, habit drift, workload balance, or anything else grounded in the dashboard context.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("What should I focus on next? Which project is costing me the most attention? What pattern am I missing?")
+          .setValue(this.question)
+          .onChange((value) => {
+            this.question = value;
+          });
+        textArea.inputEl.rows = 6;
+        window.setTimeout(() => textArea.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Ask AI").setCta().onClick(async () => {
+          if (!this.question.trim()) {
+            new Notice("Enter a question first.");
+            return;
+          }
+
+          await this.plugin.askAiQuestion(this.question);
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 class DailyDashboardSettingTab extends PluginSettingTab {
   private plugin: DailyDashboardPlugin;
 
@@ -2544,6 +3019,82 @@ class DailyDashboardSettingTab extends PluginSettingTab {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
               liveStatePath: value.trim() || DEFAULT_SETTINGS.liveStatePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("OpenAI API key")
+      .setDesc("Used for AI planning, reflection, triage, and question answering. Stored in plugin settings and will sync with your vault if Obsidian Sync is enabled.")
+      .addText((text) => {
+        text
+          .setPlaceholder("sk-...")
+          .setValue(settings.aiApiKey)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiApiKey: value.trim()
+            });
+          });
+        text.inputEl.type = "password";
+      });
+
+    new Setting(containerEl)
+      .setName("AI model")
+      .setDesc("Recommended default: gpt-4o-mini for strong cost-to-quality balance. You can enter any compatible OpenAI chat-completions model.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiModel)
+          .setValue(settings.aiModel)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiModel: value.trim() || DEFAULT_SETTINGS.aiModel
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("AI API URL")
+      .setDesc("Defaults to OpenAI chat completions. Change this only if you know you need a different compatible endpoint.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiBaseUrl)
+          .setValue(settings.aiBaseUrl)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiBaseUrl: value.trim() || DEFAULT_SETTINGS.aiBaseUrl
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("AI output folder")
+      .setDesc("Generated AI planning and analysis notes are written here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiOutputFolder)
+          .setValue(settings.aiOutputFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiOutputFolder: value.trim() || DEFAULT_SETTINGS.aiOutputFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("AI context days")
+      .setDesc("How many recent daily entries are summarized into AI prompts by default.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.aiContextDays}`)
+          .setValue(`${settings.aiContextDays}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiContextDays: clamp(Number(value.trim() || DEFAULT_SETTINGS.aiContextDays), 3, 60)
             });
           });
       });
@@ -2703,6 +3254,11 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
     weeklyReportFolder: settings.weeklyReportFolder?.trim() || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: settings.monthlyReportFolder?.trim() || DEFAULT_SETTINGS.monthlyReportFolder,
     liveStatePath: settings.liveStatePath?.trim() || DEFAULT_SETTINGS.liveStatePath,
+    aiApiKey: settings.aiApiKey?.trim() || DEFAULT_SETTINGS.aiApiKey,
+    aiModel: settings.aiModel?.trim() || DEFAULT_SETTINGS.aiModel,
+    aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
+    aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
+    aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
@@ -2804,6 +3360,96 @@ function formatDateTimeKey(date: Date): string {
 
 function formatSyncTimestamp(value: string): string {
   return value.trim().length > 0 ? value : "Not yet";
+}
+
+function formatFileTimestamp(date: Date): string {
+  return formatDateTimeKey(date).replace(/[: ]/g, "-");
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, Math.max(0, maxLength - 18)).trimEnd()}\n\n[truncated]`;
+}
+
+function stripJsonCodeBlocks(value: string): string {
+  return value.replace(/```json\s*[\s\S]*?```/gi, "").trim();
+}
+
+function extractAiStructuredPayload(value: string): AiStructuredPayload {
+  const match = value.match(/```json\s*([\s\S]*?)```/i);
+  if (!match) {
+    return {
+      suggestedFocus: [],
+      nextActions: [],
+      keyRisks: [],
+      followUpQuestions: []
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]) as Partial<AiStructuredPayload>;
+    return {
+      suggestedFocus: Array.isArray(parsed.suggestedFocus) ? parsed.suggestedFocus.filter((item): item is string => typeof item === "string").slice(0, 3) : [],
+      nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
+      keyRisks: Array.isArray(parsed.keyRisks) ? parsed.keyRisks.filter((item): item is string => typeof item === "string").slice(0, 8) : [],
+      followUpQuestions: Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions.filter((item): item is string => typeof item === "string").slice(0, 6) : []
+    };
+  } catch {
+    return {
+      suggestedFocus: [],
+      nextActions: [],
+      keyRisks: [],
+      followUpQuestions: []
+    };
+  }
+}
+
+function extractAiSummary(value: string): string {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, "").replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line.length > 0);
+
+  return lines[0] ?? "AI note generated.";
+}
+
+function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
+  if (!snapshot) {
+    return "Master task hub snapshot unavailable.";
+  }
+
+  const topProjects = [...snapshot.projects]
+    .sort((left, right) => right.healthScore - left.healthScore)
+    .slice(0, 8)
+    .map((project) => [
+      `- ${project.name}: health ${project.healthScore}, ${project.openCount} open, ${project.archivedCount} archived, trend ${project.trend}`,
+      project.focus ? `  focus: ${project.focus}` : "",
+      project.staleDays !== null ? `  stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
+      project.nowTasks.length > 0 ? `  now: ${project.nowTasks.slice(0, 3).join(" | ")}` : "",
+      project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
+    ].filter((line) => line.length > 0).join("\n"));
+
+  const staleLines = snapshot.staleProjects.slice(0, 6)
+    .map((project) => `- ${project.name}: ${project.staleDays} stale days`);
+
+  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item}`);
+
+  return [
+    `Open tasks: ${snapshot.totalOpen}`,
+    `Archived tasks: ${snapshot.totalArchived}`,
+    "",
+    "Top projects:",
+    ...(topProjects.length > 0 ? topProjects : ["- No project summaries available."]),
+    "",
+    "Stale projects:",
+    ...(staleLines.length > 0 ? staleLines : ["- None"]),
+    "",
+    "Cleanup suggestions:",
+    ...(cleanupLines.length > 0 ? cleanupLines : ["- None"])
+  ].join("\n");
 }
 
 function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {

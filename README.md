@@ -10,6 +10,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - tracks work sessions and nap sessions inside the active logical day for more accurate sleep and activity history
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
+- can call OpenAI for AI-powered today planning, end-of-day review, weekly coaching, project triage, and freeform questions grounded in dashboard context
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, search archived work history, sync repeating tasks, and offload project references into project notes
@@ -37,6 +38,29 @@ The dashboard now separates your real day from the calendar date.
 4. Use `Start nap session` and `Stop nap session` whenever you sleep during the day so naps are logged separately from your final sleep time.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
+
+## AI Integration
+
+The dashboard now includes an `AI Workspace` card plus command-palette actions for:
+
+1. `Generate AI today plan`
+2. `Generate AI end-of-day review`
+3. `Generate AI project triage`
+4. `Generate AI weekly coach note`
+5. `Ask AI about dashboard and vault`
+
+AI output is written into `Dashboard Logs/AI` by default, grouped by date, so the generated planning and analysis stays searchable in your vault.
+
+Recommended starting model: `gpt-4o-mini`.
+Use that as the default for frequent dashboard actions because it is usually the best cost-to-quality tradeoff for planning, reflection, and triage. If later you want deeper long-form strategic writeups, you can swap the model in settings without changing the rest of the plugin.
+
+Setup notes:
+
+1. Put your OpenAI API key into the plugin settings.
+2. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
+3. Adjust `AI context days` if you want broader or narrower historical context in prompts.
+
+The API key is stored in plugin settings, not a secure vault, so if you sync plugin settings across devices that key will sync too.
 
 ## Cross-Device Sync Notes
 

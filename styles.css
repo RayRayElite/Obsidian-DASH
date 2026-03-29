@@ -693,6 +693,16 @@ input.daily-dashboard-input {
   color: var(--text-muted);
 }
 
+.daily-dashboard-ai-output {
+  margin-top: 8px;
+}
+
+.daily-dashboard-ai-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .daily-dashboard-card--top-3-for-today {
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--daily-dashboard-accent-soft) 13%, transparent), transparent 34%),
