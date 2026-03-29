@@ -34,10 +34,13 @@
 
 .daily-dashboard-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
-  gap: 22px;
-  padding: 28px;
-  min-height: 240px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: 16px;
+  padding: 24px;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  max-height: 360px;
   position: relative;
   overflow: hidden;
 }
@@ -73,9 +76,10 @@
 .daily-dashboard-hero-copy {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   justify-content: flex-start;
   min-width: 0;
+  max-width: min(540px, 52%);
 }
 
 .daily-dashboard-kicker {
@@ -88,16 +92,17 @@
 
 .daily-dashboard-hero-title {
   margin: 0;
-  font-size: clamp(1.8rem, 3vw, 2.8rem);
-  line-height: 1.05;
+  font-size: clamp(1.6rem, 2.6vw, 2.5rem);
+  line-height: 1.02;
   letter-spacing: -0.04em;
 }
 
 .daily-dashboard-hero-text {
   margin: 0;
-  max-width: 48ch;
+  max-width: 40ch;
+  font-size: 0.98rem;
   color: color-mix(in srgb, var(--text-normal) 78%, var(--text-muted));
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 .daily-dashboard-hero-meta {
@@ -108,20 +113,21 @@
 }
 
 .daily-dashboard-hero-aside {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
   gap: 12px;
   min-width: 0;
-  align-self: stretch;
+  align-self: end;
+  grid-row: 3;
 }
 
 .daily-dashboard-hero-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
-  border-radius: 20px;
+  border-radius: 18px;
   background: color-mix(in srgb, var(--background-primary) 74%, transparent);
   backdrop-filter: blur(10px);
 }
@@ -185,9 +191,9 @@
 .daily-dashboard-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding-top: 6px;
-  max-width: 520px;
+  gap: 8px;
+  padding-top: 4px;
+  max-width: 440px;
 }
 
 .daily-dashboard-primary-button,
@@ -520,26 +526,26 @@
 
 .daily-dashboard-actions-inline--compact .daily-dashboard-secondary-button,
 .daily-dashboard-actions-inline--compact .daily-dashboard-primary-button {
-  min-height: 38px;
-  padding: 7px 11px;
-  font-size: 0.88rem;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
   width: 100%;
 }
 
 .daily-dashboard-hero-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
 .daily-dashboard-hero-metric {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  min-height: 74px;
-  padding: 12px;
-  border-radius: 18px;
+  min-height: 60px;
+  padding: 10px 12px;
+  border-radius: 16px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 12%, var(--background-modifier-border));
   background: color-mix(in srgb, var(--background-primary) 78%, transparent);
 }
@@ -548,9 +554,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--daily-dashboard-accent) 18%, var(--background-primary));
   color: color-mix(in srgb, var(--daily-dashboard-accent-soft) 76%, white);
 }
@@ -564,7 +570,7 @@
 
 .daily-dashboard-hero-metric-label {
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -572,8 +578,8 @@
 
 .daily-dashboard-hero-metric-value {
   color: var(--text-normal);
-  font-size: 0.96rem;
-  line-height: 1.25;
+  font-size: 0.9rem;
+  line-height: 1.2;
   letter-spacing: -0.01em;
 }
 
@@ -702,12 +708,20 @@ input.daily-dashboard-input {
     grid-column: span 6;
   }
 
-  .daily-dashboard-hero {
+  .daily-dashboard-actions {
+    max-width: none;
+  }
+
+  .daily-dashboard-hero-copy {
+    max-width: min(560px, 64%);
+  }
+
+  .daily-dashboard-hero-aside {
     grid-template-columns: 1fr;
   }
 
-  .daily-dashboard-actions {
-    max-width: none;
+  .daily-dashboard-hero-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -717,7 +731,13 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero {
+    aspect-ratio: auto;
+    max-height: none;
     padding: 18px;
+  }
+
+  .daily-dashboard-hero-copy {
+    max-width: none;
   }
 
   .daily-dashboard-hero-metrics,
