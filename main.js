@@ -888,310 +888,336 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
     await this.render();
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f;
-    const { contentEl } = this;
-    const todayEntry = this.plugin.getTodayEntry();
-    const todoSnapshot = await this.plugin.getTodoSnapshot();
-    const settings = this.plugin.getSettings();
-    const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
-    const projects = (_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : [];
-    const workLogEntries = this.getFilteredWorkLogEntries();
-    if (!this.quickAddState.projectName && projects.length > 0) {
-      this.quickAddState.projectName = projects[0].name;
+    var _a, _b, _c, _d;
+    try {
+      const { contentEl } = this;
+      const todayEntry = this.plugin.getTodayEntry();
+      const todoSnapshot = await this.plugin.getTodoSnapshot();
+      const settings = this.plugin.getSettings();
+      const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
+      const projects = (_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : [];
+      const staleProjects = (_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _b : [];
+      const breakdownCandidates = (_c = todoSnapshot == null ? void 0 : todoSnapshot.breakdownCandidates) != null ? _c : [];
+      const cleanupSuggestions = (_d = todoSnapshot == null ? void 0 : todoSnapshot.cleanupSuggestions) != null ? _d : [];
+      const workLogEntries = this.getFilteredWorkLogEntries();
+      const staleProjectCount = staleProjects.length;
+      if (!this.quickAddState.projectName && projects.length > 0) {
+        this.quickAddState.projectName = projects[0].name;
+      }
+      contentEl.empty();
+      contentEl.addClass("daily-dashboard-view");
+      const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
+      const hero = page.createDiv({ cls: "daily-dashboard-hero" });
+      if (wallpaperUrl) {
+        hero.addClass("has-wallpaper");
+        hero.style.setProperty("--daily-dashboard-wallpaper", `url("${wallpaperUrl}")`);
+      }
+      const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
+      heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
+      heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
+      heroCopy.createEl("p", {
+        cls: "daily-dashboard-hero-text",
+        text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
+      });
+      const heroMeta = hero.createDiv({ cls: "daily-dashboard-hero-meta" });
+      heroMeta.createEl("span", { cls: "daily-dashboard-date-pill", text: todayEntry.date });
+      heroMeta.createEl("span", {
+        cls: "daily-dashboard-stat-pill",
+        text: `${todayEntry.completedTasks.length} archived today`
+      });
+      heroMeta.createEl("span", {
+        cls: "daily-dashboard-stat-pill",
+        text: `${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"}`
+      });
+      heroMeta.createEl("span", {
+        cls: "daily-dashboard-stat-pill",
+        text: `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`
+      });
+      const actions = hero.createDiv({ cls: "daily-dashboard-actions" });
+      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true);
+      createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow());
+      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow());
+      createButton(actions, "Weekly review", async () => this.plugin.generateWeeklyReview());
+      createButton(actions, "Weekly report", async () => this.plugin.generateWeeklyReport());
+      createButton(actions, "Monthly report", async () => this.plugin.generateMonthlyReport());
+      createButton(actions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
+      const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.");
+      const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
+      if (todayEntry.todayFocus.length === 0) {
+        focusList.createEl("p", { cls: "daily-dashboard-empty", text: "No focus items yet. Add one below or use Promote to today." });
+      } else {
+        todayEntry.todayFocus.forEach((item, index) => {
+          const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
+          row.createEl("span", { text: item });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Done" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeTodayFocusItem(index);
+          });
+        });
+      }
+      const focusAddRow = focusCard.createDiv({ cls: "daily-dashboard-inline-form" });
+      const focusInput = focusAddRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Add a focus item" }
+      });
+      const focusButton = focusAddRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
+      focusButton.type = "button";
+      const submitFocus = async () => {
+        const value = focusInput.value.trim();
+        if (!value) {
+          return;
+        }
+        await this.plugin.addTodayFocusItem(value);
+        focusInput.value = "";
+      };
+      focusInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void submitFocus();
+        }
+      });
+      focusButton.addEventListener("click", () => {
+        void submitFocus();
+      });
+      const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.");
+      this.renderScoreControl(stateCard, "Mood", todayEntry.moodScore, (value) => this.plugin.updateMoodScore(value));
+      this.renderScoreControl(stateCard, "Energy", todayEntry.energyScore, (value) => this.plugin.updateEnergyScore(value));
+      const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
+      missedCard.createEl("strong", { text: "Habit misses so far" });
+      missedCard.createEl("span", {
+        cls: "daily-dashboard-habit-meta",
+        text: todayEntry.missedHabits.length > 0 ? todayEntry.missedHabits.join(", ") : "No misses recorded yet."
+      });
+      stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
+      const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      frictionInput.value = todayEntry.frictionLog;
+      frictionInput.placeholder = "Blockers, pain points, context switching, or anything that made the day harder.";
+      frictionInput.addEventListener("change", () => {
+        void this.plugin.updateFrictionLog(frictionInput.value);
+      });
+      const habitsCard = createCard(grid, "Habits", "Daily repeats with misses explicitly tracked for weekly and monthly analysis.");
+      const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
+      this.plugin.getHabitDefinitions().forEach((habit) => {
+        var _a2;
+        const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
+        const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
+        const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+        copy.createEl("strong", { text: habit.label });
+        copy.createEl("span", {
+          cls: "daily-dashboard-habit-meta",
+          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak`
+        });
+        const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+        for (let index = 1; index <= habit.target; index += 1) {
+          const stepButton = controls.createEl("button", {
+            cls: index <= currentValue ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+            text: `${index}`
+          });
+          stepButton.type = "button";
+          stepButton.addEventListener("click", () => {
+            const nextValue = currentValue === index ? index - 1 : index;
+            void this.plugin.updateHabitValue(habit.id, nextValue);
+          });
+        }
+      });
+      const quickAddCard = createCard(grid, "Quick Add To Project", "Capture new work into Add, Fix, Now, Next, or Later without leaving the dashboard.");
+      const quickAddForm = quickAddCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+      projects.forEach((project) => {
+        const option = projectSelect.createEl("option", { text: project.name });
+        option.value = project.name;
+        option.selected = project.name === this.quickAddState.projectName;
+      });
+      projectSelect.addEventListener("change", () => {
+        this.quickAddState.projectName = projectSelect.value;
+      });
+      const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+      ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
+        const option = sectionSelect.createEl("option", { text: section });
+        option.value = section;
+        option.selected = section === this.quickAddState.sectionName;
+      });
+      sectionSelect.addEventListener("change", () => {
+        this.quickAddState.sectionName = sectionSelect.value;
+      });
+      const taskInput = quickAddForm.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Add a task to the selected project" }
+      });
+      taskInput.value = this.quickAddState.taskText;
+      taskInput.addEventListener("input", () => {
+        this.quickAddState.taskText = taskInput.value;
+      });
+      const quickAddButton = quickAddForm.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add task" });
+      quickAddButton.type = "button";
+      quickAddButton.addEventListener("click", () => {
+        const text = taskInput.value.trim();
+        if (!text || !this.quickAddState.projectName) {
+          return;
+        }
+        this.quickAddState.taskText = "";
+        void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
+      });
+      const foodCard = createCard(grid, "Food Log", "Quick capture of what you ate today so the daily note stays analyzable later.");
+      const foodInputRow = foodCard.createDiv({ cls: "daily-dashboard-inline-form" });
+      const foodInput = foodInputRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Add a meal or snack" }
+      });
+      const foodButton = foodInputRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
+      foodButton.type = "button";
+      const submitFood = async () => {
+        const value = foodInput.value.trim();
+        if (!value) {
+          return;
+        }
+        await this.plugin.addFoodEntry(value);
+        foodInput.value = "";
+      };
+      foodInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void submitFood();
+        }
+      });
+      foodButton.addEventListener("click", () => {
+        void submitFood();
+      });
+      const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
+      if (todayEntry.foodLog.length === 0) {
+        foodList.createEl("p", { cls: "daily-dashboard-empty", text: "No food entries yet today." });
+      } else {
+        todayEntry.foodLog.forEach((item, index) => {
+          const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
+          row.createEl("span", { text: item });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeFoodEntry(index);
+          });
+        });
+      }
+      const notesCard = createCard(grid, "Sleep And Notes", "Use sleep logging and a short daily note so reports can connect context to performance.");
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Sleep log" });
+      const sleepInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      sleepInput.value = todayEntry.sleepLog;
+      sleepInput.placeholder = "Bedtime, wake time, sleep quality, naps, anything worth tracking.";
+      sleepInput.addEventListener("change", () => {
+        void this.plugin.updateSleepLog(sleepInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes for today" });
+      const notesInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      notesInput.value = todayEntry.notes;
+      notesInput.placeholder = "Wins, blockers, symptoms, context, or anything worth remembering later.";
+      notesInput.addEventListener("change", () => {
+        void this.plugin.updateDailyNotes(notesInput.value);
+      });
+      const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword instead of scanning raw history.");
+      const filterGrid = workLogCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const projectFilter = filterGrid.createEl("select", { cls: "daily-dashboard-input" });
+      const allProjectsOption = projectFilter.createEl("option", { text: "All projects" });
+      allProjectsOption.value = "";
+      projects.forEach((project) => {
+        const option = projectFilter.createEl("option", { text: project.name });
+        option.value = project.name;
+        option.selected = project.name === this.workLogFilters.project;
+      });
+      projectFilter.addEventListener("change", () => {
+        this.workLogFilters.project = projectFilter.value;
+        void this.render();
+      });
+      this.createFilterInput(filterGrid, "Keyword", this.workLogFilters.keyword, (value) => {
+        this.workLogFilters.keyword = value;
+        void this.render();
+      });
+      this.createFilterInput(filterGrid, "From date (YYYY-MM-DD)", this.workLogFilters.fromDate, (value) => {
+        this.workLogFilters.fromDate = value;
+        void this.render();
+      });
+      this.createFilterInput(filterGrid, "To date (YYYY-MM-DD)", this.workLogFilters.toDate, (value) => {
+        this.workLogFilters.toDate = value;
+        void this.render();
+      });
+      const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
+      if (workLogEntries.length === 0) {
+        workLogList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived work matches the current filters." });
+      } else {
+        workLogEntries.slice(0, 20).forEach((task) => {
+          const row = workLogList.createDiv({ cls: "daily-dashboard-completed-row" });
+          row.createEl("strong", { text: task.project });
+          row.createEl("span", { text: `${task.section}: ${task.text}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
+        });
+      }
+      const projectsCard = createCard(grid, "Project Health", "Projects are scored by backlog size, stale age, recent output, and momentum so weak areas stay visible.");
+      const projectList = projectsCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (!todoSnapshot || todoSnapshot.projects.length === 0) {
+        projectList.createEl("p", { cls: "daily-dashboard-empty", text: "No project data found in the configured master task hub." });
+      } else {
+        [...todoSnapshot.projects].sort((left, right) => right.healthScore - left.healthScore).slice(0, 10).forEach((project) => {
+          const row = projectList.createDiv({ cls: "daily-dashboard-project-row" });
+          row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
+          row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend}` });
+          if (project.staleDays !== null) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
+          }
+          if (project.focus) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Focus: ${project.focus}` });
+          }
+          if (project.relationships.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Relationships: ${project.relationships.join(", ")}` });
+          }
+        });
+      }
+      const alertsCard = createCard(grid, "Stale Work And Cleanup", "Detect stale projects, vague tasks, duplicates, and empty sections before the hub gets mushy.");
+      const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
+      const alertLines = [
+        ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
+        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
+        ...cleanupSuggestions.slice(0, 5)
+      ];
+      if (alertLines.length === 0) {
+        alertsList.createEl("p", { cls: "daily-dashboard-empty", text: "No stale-work or cleanup issues detected right now." });
+      } else {
+        alertLines.forEach((line) => {
+          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+          row.createEl("span", { text: line });
+        });
+      }
+      const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions());
+      createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true));
+      const completedCard = createCard(grid, "Completed Today", "Recent completions remain visible for quick review and habit-memory reinforcement.");
+      const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
+      if (todayEntry.completedTasks.length === 0) {
+        completedList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived tasks yet today." });
+      } else {
+        todayEntry.completedTasks.slice(0, 10).forEach((task) => {
+          const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
+          row.createEl("strong", { text: task.project });
+          row.createEl("span", { text: `${task.section}: ${task.text}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
+        });
+      }
+    } catch (error) {
+      console.error("Daily dashboard render failed", error);
+      this.renderErrorState(error);
     }
+  }
+  renderErrorState(error) {
+    const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("daily-dashboard-view");
     const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
-    const hero = page.createDiv({ cls: "daily-dashboard-hero" });
-    if (wallpaperUrl) {
-      hero.addClass("has-wallpaper");
-      hero.style.setProperty("--daily-dashboard-wallpaper", `url("${wallpaperUrl}")`);
-    }
-    const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
-    heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
-    heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
-    heroCopy.createEl("p", {
-      cls: "daily-dashboard-hero-text",
-      text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
-    });
-    const heroMeta = hero.createDiv({ cls: "daily-dashboard-hero-meta" });
-    heroMeta.createEl("span", { cls: "daily-dashboard-date-pill", text: todayEntry.date });
-    heroMeta.createEl("span", {
-      cls: "daily-dashboard-stat-pill",
-      text: `${todayEntry.completedTasks.length} archived today`
-    });
-    heroMeta.createEl("span", {
-      cls: "daily-dashboard-stat-pill",
-      text: `${(_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects.length) != null ? _b : 0} stale project${((_c = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects.length) != null ? _c : 0) === 1 ? "" : "s"}`
-    });
-    heroMeta.createEl("span", {
-      cls: "daily-dashboard-stat-pill",
-      text: `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`
-    });
-    const actions = hero.createDiv({ cls: "daily-dashboard-actions" });
-    createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true);
-    createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow());
-    createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow());
-    createButton(actions, "Weekly review", async () => this.plugin.generateWeeklyReview());
+    const card = createCard(page, "Dashboard Failed To Render", "The dashboard hit a runtime error, so this fallback view is shown instead of a blank page.");
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : `${error}`;
+    card.createEl("p", { text: message || "Unknown error" });
+    const actions = card.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(actions, "Open master todo", async () => this.plugin.openMasterTodo(), true);
     createButton(actions, "Weekly report", async () => this.plugin.generateWeeklyReport());
     createButton(actions, "Monthly report", async () => this.plugin.generateMonthlyReport());
-    createButton(actions, "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-    const grid = page.createDiv({ cls: "daily-dashboard-grid" });
-    const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.");
-    const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
-    if (todayEntry.todayFocus.length === 0) {
-      focusList.createEl("p", { cls: "daily-dashboard-empty", text: "No focus items yet. Add one below or use Promote to today." });
-    } else {
-      todayEntry.todayFocus.forEach((item, index) => {
-        const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
-        row.createEl("span", { text: item });
-        const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Done" });
-        removeButton.type = "button";
-        removeButton.addEventListener("click", () => {
-          void this.plugin.removeTodayFocusItem(index);
-        });
-      });
-    }
-    const focusAddRow = focusCard.createDiv({ cls: "daily-dashboard-inline-form" });
-    const focusInput = focusAddRow.createEl("input", {
-      cls: "daily-dashboard-input",
-      attr: { type: "text", placeholder: "Add a focus item" }
-    });
-    const focusButton = focusAddRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
-    focusButton.type = "button";
-    const submitFocus = async () => {
-      const value = focusInput.value.trim();
-      if (!value) {
-        return;
-      }
-      await this.plugin.addTodayFocusItem(value);
-      focusInput.value = "";
-    };
-    focusInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void submitFocus();
-      }
-    });
-    focusButton.addEventListener("click", () => {
-      void submitFocus();
-    });
-    const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.");
-    this.renderScoreControl(stateCard, "Mood", todayEntry.moodScore, (value) => this.plugin.updateMoodScore(value));
-    this.renderScoreControl(stateCard, "Energy", todayEntry.energyScore, (value) => this.plugin.updateEnergyScore(value));
-    const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
-    missedCard.createEl("strong", { text: "Habit misses so far" });
-    missedCard.createEl("span", {
-      cls: "daily-dashboard-habit-meta",
-      text: todayEntry.missedHabits.length > 0 ? todayEntry.missedHabits.join(", ") : "No misses recorded yet."
-    });
-    stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
-    const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
-    frictionInput.value = todayEntry.frictionLog;
-    frictionInput.placeholder = "Blockers, pain points, context switching, or anything that made the day harder.";
-    frictionInput.addEventListener("change", () => {
-      void this.plugin.updateFrictionLog(frictionInput.value);
-    });
-    const habitsCard = createCard(grid, "Habits", "Daily repeats with misses explicitly tracked for weekly and monthly analysis.");
-    const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
-    this.plugin.getHabitDefinitions().forEach((habit) => {
-      var _a2;
-      const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
-      const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
-      const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-      copy.createEl("strong", { text: habit.label });
-      copy.createEl("span", {
-        cls: "daily-dashboard-habit-meta",
-        text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak`
-      });
-      const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
-      for (let index = 1; index <= habit.target; index += 1) {
-        const stepButton = controls.createEl("button", {
-          cls: index <= currentValue ? "daily-dashboard-step is-active" : "daily-dashboard-step",
-          text: `${index}`
-        });
-        stepButton.type = "button";
-        stepButton.addEventListener("click", () => {
-          const nextValue = currentValue === index ? index - 1 : index;
-          void this.plugin.updateHabitValue(habit.id, nextValue);
-        });
-      }
-    });
-    const quickAddCard = createCard(grid, "Quick Add To Project", "Capture new work into Add, Fix, Now, Next, or Later without leaving the dashboard.");
-    const quickAddForm = quickAddCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-    const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-    projects.forEach((project) => {
-      const option = projectSelect.createEl("option", { text: project.name, value: project.name });
-      option.selected = project.name === this.quickAddState.projectName;
-    });
-    projectSelect.addEventListener("change", () => {
-      this.quickAddState.projectName = projectSelect.value;
-    });
-    const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-    ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
-      const option = sectionSelect.createEl("option", { text: section, value: section });
-      option.selected = section === this.quickAddState.sectionName;
-    });
-    sectionSelect.addEventListener("change", () => {
-      this.quickAddState.sectionName = sectionSelect.value;
-    });
-    const taskInput = quickAddForm.createEl("input", {
-      cls: "daily-dashboard-input",
-      attr: { type: "text", placeholder: "Add a task to the selected project" }
-    });
-    taskInput.value = this.quickAddState.taskText;
-    taskInput.addEventListener("input", () => {
-      this.quickAddState.taskText = taskInput.value;
-    });
-    const quickAddButton = quickAddForm.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add task" });
-    quickAddButton.type = "button";
-    quickAddButton.addEventListener("click", () => {
-      const text = taskInput.value.trim();
-      if (!text || !this.quickAddState.projectName) {
-        return;
-      }
-      this.quickAddState.taskText = "";
-      void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
-    });
-    const foodCard = createCard(grid, "Food Log", "Quick capture of what you ate today so the daily note stays analyzable later.");
-    const foodInputRow = foodCard.createDiv({ cls: "daily-dashboard-inline-form" });
-    const foodInput = foodInputRow.createEl("input", {
-      cls: "daily-dashboard-input",
-      attr: { type: "text", placeholder: "Add a meal or snack" }
-    });
-    const foodButton = foodInputRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
-    foodButton.type = "button";
-    const submitFood = async () => {
-      const value = foodInput.value.trim();
-      if (!value) {
-        return;
-      }
-      await this.plugin.addFoodEntry(value);
-      foodInput.value = "";
-    };
-    foodInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        void submitFood();
-      }
-    });
-    foodButton.addEventListener("click", () => {
-      void submitFood();
-    });
-    const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
-    if (todayEntry.foodLog.length === 0) {
-      foodList.createEl("p", { cls: "daily-dashboard-empty", text: "No food entries yet today." });
-    } else {
-      todayEntry.foodLog.forEach((item, index) => {
-        const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
-        row.createEl("span", { text: item });
-        const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
-        removeButton.type = "button";
-        removeButton.addEventListener("click", () => {
-          void this.plugin.removeFoodEntry(index);
-        });
-      });
-    }
-    const notesCard = createCard(grid, "Sleep And Notes", "Use sleep logging and a short daily note so reports can connect context to performance.");
-    notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Sleep log" });
-    const sleepInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
-    sleepInput.value = todayEntry.sleepLog;
-    sleepInput.placeholder = "Bedtime, wake time, sleep quality, naps, anything worth tracking.";
-    sleepInput.addEventListener("change", () => {
-      void this.plugin.updateSleepLog(sleepInput.value);
-    });
-    notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes for today" });
-    const notesInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
-    notesInput.value = todayEntry.notes;
-    notesInput.placeholder = "Wins, blockers, symptoms, context, or anything worth remembering later.";
-    notesInput.addEventListener("change", () => {
-      void this.plugin.updateDailyNotes(notesInput.value);
-    });
-    const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword instead of scanning raw history.");
-    const filterGrid = workLogCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-    const projectFilter = filterGrid.createEl("select", { cls: "daily-dashboard-input" });
-    projectFilter.createEl("option", { text: "All projects", value: "" });
-    projects.forEach((project) => {
-      const option = projectFilter.createEl("option", { text: project.name, value: project.name });
-      option.selected = project.name === this.workLogFilters.project;
-    });
-    projectFilter.addEventListener("change", () => {
-      this.workLogFilters.project = projectFilter.value;
-      void this.render();
-    });
-    this.createFilterInput(filterGrid, "Keyword", this.workLogFilters.keyword, (value) => {
-      this.workLogFilters.keyword = value;
-      void this.render();
-    });
-    this.createFilterInput(filterGrid, "From date (YYYY-MM-DD)", this.workLogFilters.fromDate, (value) => {
-      this.workLogFilters.fromDate = value;
-      void this.render();
-    });
-    this.createFilterInput(filterGrid, "To date (YYYY-MM-DD)", this.workLogFilters.toDate, (value) => {
-      this.workLogFilters.toDate = value;
-      void this.render();
-    });
-    const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
-    if (workLogEntries.length === 0) {
-      workLogList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived work matches the current filters." });
-    } else {
-      workLogEntries.slice(0, 20).forEach((task) => {
-        const row = workLogList.createDiv({ cls: "daily-dashboard-completed-row" });
-        row.createEl("strong", { text: task.project });
-        row.createEl("span", { text: `${task.section}: ${task.text}` });
-        row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-      });
-    }
-    const projectsCard = createCard(grid, "Project Health", "Projects are scored by backlog size, stale age, recent output, and momentum so weak areas stay visible.");
-    const projectList = projectsCard.createDiv({ cls: "daily-dashboard-project-list" });
-    if (!todoSnapshot || todoSnapshot.projects.length === 0) {
-      projectList.createEl("p", { cls: "daily-dashboard-empty", text: "No project data found in the configured master task hub." });
-    } else {
-      todoSnapshot.projects.sort((left, right) => right.healthScore - left.healthScore).slice(0, 10).forEach((project) => {
-        const row = projectList.createDiv({ cls: "daily-dashboard-project-row" });
-        row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
-        row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend}` });
-        if (project.staleDays !== null) {
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
-        }
-        if (project.focus) {
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Focus: ${project.focus}` });
-        }
-        if (project.relationships.length > 0) {
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Relationships: ${project.relationships.join(", ")}` });
-        }
-      });
-    }
-    const alertsCard = createCard(grid, "Stale Work And Cleanup", "Detect stale projects, vague tasks, duplicates, and empty sections before the hub gets mushy.");
-    const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
-    const alertLines = [
-      ...(_d = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`)) != null ? _d : [],
-      ...(_e = todoSnapshot == null ? void 0 : todoSnapshot.breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`)) != null ? _e : [],
-      ...(_f = todoSnapshot == null ? void 0 : todoSnapshot.cleanupSuggestions.slice(0, 5)) != null ? _f : []
-    ];
-    if (alertLines.length === 0) {
-      alertsList.createEl("p", { cls: "daily-dashboard-empty", text: "No stale-work or cleanup issues detected right now." });
-    } else {
-      alertLines.forEach((line) => {
-        const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
-        row.createEl("span", { text: line });
-      });
-    }
-    const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
-    createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions());
-    createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true));
-    const completedCard = createCard(grid, "Completed Today", "Recent completions remain visible for quick review and habit-memory reinforcement.");
-    const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
-    if (todayEntry.completedTasks.length === 0) {
-      completedList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived tasks yet today." });
-    } else {
-      todayEntry.completedTasks.slice(0, 10).forEach((task) => {
-        const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
-        row.createEl("strong", { text: task.project });
-        row.createEl("span", { text: `${task.section}: ${task.text}` });
-        row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-      });
-    }
   }
   createFilterInput(parent, placeholder, value, onChange) {
     const input = parent.createEl("input", {
@@ -1485,7 +1511,8 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
   }
 };
 function createCard(parent, title, description) {
-  const card = parent.createDiv({ cls: `daily-dashboard-card daily-dashboard-card--${toClassSlug(title)}` });
+  const card = parent.createDiv({ cls: "daily-dashboard-card" });
+  card.addClass(`daily-dashboard-card--${toClassSlug(title)}`);
   const header = card.createDiv({ cls: "daily-dashboard-card-header" });
   header.createEl("h2", { text: title });
   header.createEl("p", { text: description });
