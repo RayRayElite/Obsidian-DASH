@@ -2643,85 +2643,6 @@ class DailyDashboardView extends ItemView {
         void submitFocus();
       });
 
-      const aiCard = createCard(grid, "AI Workspace", "Use your dashboard and vault context for planning, triage, reflection, and direct questions without leaving the dashboard.", {
-        icon: "sparkles",
-        eyebrow: "AI",
-        tone: "capture",
-        tag: aiStatus.busy ? "Running" : "Ready"
-      });
-      const aiShell = aiCard.createDiv({ cls: "daily-dashboard-ai-shell" });
-      const aiChipRow = aiShell.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(aiChipRow, aiStatus.configured ? "API key configured" : "API key missing", aiStatus.configured ? "done" : "alert");
-      createSemanticChip(aiChipRow, aiStatus.model || "No model", "neutral");
-      createSemanticChip(aiChipRow, aiStatus.busy ? "Request in progress" : "Idle", aiStatus.busy ? "focus" : "neutral");
-      createSemanticChip(aiChipRow, aiStatus.indexStatus.embeddingsEnabled ? `Embeddings ${aiStatus.indexStatus.embeddingModel}` : "Keyword retrieval", aiStatus.indexStatus.embeddingsEnabled ? "focus" : "neutral");
-
-      const aiOverview = aiShell.createDiv({ cls: "daily-dashboard-ai-overview" });
-      const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
-      aiActionsPanel.createEl("strong", { text: "Workflows" });
-      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Use presets for planning, review, triage, weekly coaching, or active-note analysis." });
-      const aiActions = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-action-grid" });
-      createButton(aiActions, "Today plan", async () => this.plugin.generateAiTodayPlan(), false, "sunrise");
-      createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
-      createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
-      createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
-      createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
-
-      const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
-      aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
-      aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Scoped cached notes used to ground AI answers without rescanning the vault each time." });
-      const aiIndexMetrics = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-metric-grid" });
-      this.renderDayMetric(aiIndexMetrics, "Notes", `${aiStatus.indexStatus.indexedNotes}`);
-      this.renderDayMetric(aiIndexMetrics, "Chunks", `${aiStatus.indexStatus.indexedChunks}`);
-      this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
-      this.renderDayMetric(aiIndexMetrics, "Last index", formatSyncTimestamp(aiStatus.indexStatus.indexedAt));
-      if (aiStatus.indexStatus.lastIndexedFile) {
-        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last file: ${aiStatus.indexStatus.lastIndexedFile}` });
-      }
-      if (aiStatus.indexStatus.indexedFolders.length > 0) {
-        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
-      }
-
-      const aiAskPanel = aiShell.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
-      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
-      const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
-      aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
-      aiQuestion.rows = 4;
-      const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
-      createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
-      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
-
-      if (aiStatus.latestArtifact) {
-        const latestPanel = aiShell.createDiv({ cls: "daily-dashboard-ai-panel" });
-        latestPanel.createEl("strong", { text: "Latest output" });
-        const latest = latestPanel.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
-        latest.createEl("strong", { text: `${aiStatus.latestArtifact.kind} • ${aiStatus.latestArtifact.generatedAt}` });
-        latest.createEl("span", { text: aiStatus.latestArtifact.summary || "AI note generated." });
-        latest.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.latestArtifact.notePath });
-
-        const latestActions = latestPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(latestActions, "Open latest AI note", async () => this.plugin.openAiArtifact(aiStatus.latestArtifact), false, "file-text");
-
-        if (aiStatus.latestArtifact.suggestedFocus.length > 0) {
-          latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
-          const suggestionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
-          aiStatus.latestArtifact.suggestedFocus.forEach((item) => {
-            const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
-            row.createEl("span", { text: item });
-            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
-            addButton.type = "button";
-            addButton.addEventListener("click", () => {
-              void this.plugin.addTodayFocusItem(item);
-            });
-          });
-        }
-      } else {
-        const latestEmpty = aiShell.createDiv({ cls: "daily-dashboard-ai-panel" });
-        latestEmpty.createEl("strong", { text: "Latest output" });
-        latestEmpty.createEl("p", { cls: "daily-dashboard-empty", text: "No AI notes generated yet. Start with Today plan or ask a question." });
-      }
-
       const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.", {
         icon: "activity",
         eyebrow: "State",
@@ -2944,6 +2865,84 @@ class DailyDashboardView extends ItemView {
           row.createEl("span", { text: task.text });
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
         });
+      }
+
+      const aiCard = createCard(grid, "AI Workspace", "Plan, review, and ask grounded questions against your dashboard and vault without leaving the page.", {
+        icon: "sparkles",
+        eyebrow: "AI",
+        tone: "capture",
+        tag: aiStatus.busy ? "Running" : "Ready"
+      });
+      const aiShell = aiCard.createDiv({ cls: "daily-dashboard-ai-shell" });
+      const aiChipRow = aiShell.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(aiChipRow, aiStatus.configured ? "API key configured" : "API key missing", aiStatus.configured ? "done" : "alert");
+      createSemanticChip(aiChipRow, aiStatus.model || "No model", "neutral");
+      createSemanticChip(aiChipRow, aiStatus.busy ? "Request in progress" : "Idle", aiStatus.busy ? "focus" : "neutral");
+      createSemanticChip(aiChipRow, aiStatus.indexStatus.embeddingsEnabled ? `Embeddings ${aiStatus.indexStatus.embeddingModel}` : "Keyword retrieval", aiStatus.indexStatus.embeddingsEnabled ? "focus" : "neutral");
+
+      const aiOverview = aiShell.createDiv({ cls: "daily-dashboard-ai-overview" });
+      const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiActionsPanel.createEl("strong", { text: "Workflows" });
+      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run a focused workflow for planning, review, project triage, coaching, or active-note analysis." });
+      const aiActions = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-action-grid" });
+      createButton(aiActions, "Today plan", async () => this.plugin.generateAiTodayPlan(), false, "sunrise");
+      createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
+      createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
+      createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
+      createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
+
+      const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
+      aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Cached note chunks that keep answers grounded without rescanning the vault on every request." });
+      const aiIndexMetrics = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-metric-grid" });
+      this.renderDayMetric(aiIndexMetrics, "Notes", `${aiStatus.indexStatus.indexedNotes}`);
+      this.renderDayMetric(aiIndexMetrics, "Chunks", `${aiStatus.indexStatus.indexedChunks}`);
+      this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
+      this.renderDayMetric(aiIndexMetrics, "Last index", formatSyncTimestamp(aiStatus.indexStatus.indexedAt));
+      if (aiStatus.indexStatus.lastIndexedFile) {
+        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last file: ${aiStatus.indexStatus.lastIndexedFile}` });
+      }
+      if (aiStatus.indexStatus.indexedFolders.length > 0) {
+        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
+      }
+
+      const aiLower = aiShell.createDiv({ cls: "daily-dashboard-ai-lower" });
+      const aiAskPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
+      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
+      const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
+      aiQuestion.placeholder = "What needs attention first? Which project is dragging hardest? What am I underestimating right now?";
+      aiQuestion.rows = 4;
+      const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
+      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
+      createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
+
+      const latestPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--latest" });
+      latestPanel.createEl("strong", { text: "Latest output" });
+      if (aiStatus.latestArtifact) {
+        const latest = latestPanel.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
+        latest.createEl("strong", { text: `${aiStatus.latestArtifact.kind} • ${aiStatus.latestArtifact.generatedAt}` });
+        latest.createEl("span", { text: aiStatus.latestArtifact.summary || "AI note generated." });
+        latest.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.latestArtifact.notePath });
+
+        const latestActions = latestPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
+        createButton(latestActions, "Open latest AI note", async () => this.plugin.openAiArtifact(aiStatus.latestArtifact), false, "file-text");
+
+        if (aiStatus.latestArtifact.suggestedFocus.length > 0) {
+          latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
+          const suggestionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+          aiStatus.latestArtifact.suggestedFocus.forEach((item) => {
+            const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
+            row.createEl("span", { text: item });
+            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
+            addButton.type = "button";
+            addButton.addEventListener("click", () => {
+              void this.plugin.addTodayFocusItem(item);
+            });
+          });
+        }
+      } else {
+        latestPanel.createDiv({ cls: "daily-dashboard-ai-empty-state", text: "No AI notes yet. Run a workflow or ask a question to create the first output." });
       }
 
     const projectsCard = createCard(grid, "Project Health", "Projects are scored by backlog size, stale age, recent output, and momentum so weak areas stay visible.", {
