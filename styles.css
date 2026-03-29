@@ -26,8 +26,6 @@
 .daily-dashboard-card {
   border: 1px solid var(--daily-dashboard-border);
   border-radius: 24px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--daily-dashboard-panel) 92%, transparent), color-mix(in srgb, var(--daily-dashboard-panel-strong) 88%, transparent));
   box-shadow: var(--daily-dashboard-shadow);
   backdrop-filter: blur(14px);
 }
@@ -257,6 +255,7 @@
 }
 
 .daily-dashboard-card {
+  --daily-dashboard-card-accent: var(--daily-dashboard-accent);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -264,6 +263,9 @@
   grid-column: span 4;
   position: relative;
   overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--daily-dashboard-card-accent) 11%, transparent), transparent 38%),
+    linear-gradient(145deg, color-mix(in srgb, var(--daily-dashboard-panel) 92%, transparent), color-mix(in srgb, var(--daily-dashboard-panel-strong) 88%, transparent));
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -277,25 +279,99 @@
 
 .daily-dashboard-card:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 28%, var(--background-modifier-border));
+  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent) 30%, var(--background-modifier-border));
   box-shadow: var(--daily-dashboard-shadow-strong);
 }
 
-.daily-dashboard-card:nth-child(4),
-.daily-dashboard-card:nth-child(5),
-.daily-dashboard-card:nth-child(6),
-.daily-dashboard-card:nth-child(7),
-.daily-dashboard-card:nth-child(8),
-.daily-dashboard-card:nth-child(9) {
+.daily-dashboard-card.is-tone-focus {
+  --daily-dashboard-card-accent: #d9be6a;
+}
+
+.daily-dashboard-card.is-tone-state {
+  --daily-dashboard-card-accent: #e59572;
+}
+
+.daily-dashboard-card.is-tone-capture {
+  --daily-dashboard-card-accent: #7db7e8;
+}
+
+.daily-dashboard-card.is-tone-log {
+  --daily-dashboard-card-accent: #8ea8ff;
+}
+
+.daily-dashboard-card.is-tone-health {
+  --daily-dashboard-card-accent: #73d0c3;
+}
+
+.daily-dashboard-card.is-tone-alert {
+  --daily-dashboard-card-accent: #e78f72;
+}
+
+.daily-dashboard-card.is-tone-done {
+  --daily-dashboard-card-accent: #7ace89;
+}
+
+.daily-dashboard-card--top-3-for-today,
+.daily-dashboard-card--state-and-friction,
+.daily-dashboard-card--habits,
+.daily-dashboard-card--food-log,
+.daily-dashboard-card--sleep-and-notes,
+.daily-dashboard-card--quick-add-to-project,
+.daily-dashboard-card--completed-today,
+.daily-dashboard-card--searchable-work-log,
+.daily-dashboard-card--project-health,
+.daily-dashboard-card--stale-work-and-cleanup {
   grid-column: span 6;
 }
 
 .daily-dashboard-card--day-flow {
   grid-column: 1 / -1;
+  order: 1;
+}
+
+.daily-dashboard-card--top-3-for-today {
+  order: 2;
+}
+
+.daily-dashboard-card--state-and-friction {
+  order: 3;
+}
+
+.daily-dashboard-card--habits {
+  order: 4;
+}
+
+.daily-dashboard-card--food-log {
+  order: 5;
+}
+
+.daily-dashboard-card--sleep-and-notes {
+  order: 6;
+}
+
+.daily-dashboard-card--quick-add-to-project {
+  order: 7;
+}
+
+.daily-dashboard-card--completed-today {
+  order: 8;
+}
+
+.daily-dashboard-card--searchable-work-log {
+  order: 9;
 }
 
 .daily-dashboard-card--ai-workspace {
   grid-column: 1 / -1;
+  order: 10;
+}
+
+.daily-dashboard-card--project-health {
+  order: 11;
+}
+
+.daily-dashboard-card--stale-work-and-cleanup {
+  order: 12;
 }
 
 .daily-dashboard-card-header {
@@ -304,6 +380,13 @@
   gap: 6px;
   position: relative;
   padding-bottom: 10px;
+  cursor: pointer;
+}
+
+.daily-dashboard-card-header:focus-visible {
+  outline: none;
+  border-radius: 16px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--daily-dashboard-card-accent) 18%, transparent);
 }
 
 .daily-dashboard-card-header-top {
@@ -311,6 +394,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.daily-dashboard-card-header-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .daily-dashboard-card-lead {
@@ -327,9 +416,26 @@
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--daily-dashboard-accent) 18%, var(--background-primary));
-  color: var(--daily-dashboard-accent-soft);
+  background: color-mix(in srgb, var(--daily-dashboard-card-accent) 18%, var(--background-primary));
+  color: color-mix(in srgb, var(--daily-dashboard-card-accent) 70%, white);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.daily-dashboard-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent) 18%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+  color: color-mix(in srgb, var(--daily-dashboard-card-accent) 68%, white);
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.daily-dashboard-card.is-collapsed .daily-dashboard-card-toggle {
+  transform: rotate(-90deg);
 }
 
 .daily-dashboard-card-eyebrow {
@@ -389,19 +495,38 @@
   width: 58px;
   height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--daily-dashboard-accent), transparent);
+  background: linear-gradient(90deg, var(--daily-dashboard-card-accent), transparent);
 }
 
 .daily-dashboard-card-header h2 {
   margin: 0;
   font-size: 1.08rem;
   letter-spacing: -0.02em;
+  color: color-mix(in srgb, var(--daily-dashboard-card-accent) 76%, var(--text-normal));
 }
 
 .daily-dashboard-card-header p {
   margin: 0;
   color: var(--text-muted);
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.daily-dashboard-card.is-collapsed {
+  gap: 0;
+}
+
+.daily-dashboard-card.is-collapsed .daily-dashboard-card-header {
+  padding-bottom: 0;
+}
+
+.daily-dashboard-card.is-collapsed .daily-dashboard-card-header::after,
+.daily-dashboard-card.is-collapsed .daily-dashboard-card-header p,
+.daily-dashboard-card.is-collapsed > :not(.daily-dashboard-card-header) {
+  display: none;
 }
 
 .daily-dashboard-habit-list,
@@ -425,8 +550,8 @@
   padding: 12px 14px;
   line-height: 1.4;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-accent) 6%);
-  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 10%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 6%);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
 }
 
 .daily-dashboard-project-row strong,
@@ -484,8 +609,8 @@
   gap: 10px;
   padding: 14px;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-accent) 7%);
-  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 10%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 7%);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
 }
 
 .daily-dashboard-dayflow-grid {
@@ -501,8 +626,8 @@
   min-width: 0;
   padding: 12px 14px;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-accent) 6%);
-  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 10%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 6%);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
 }
 
 .daily-dashboard-day-metric strong {
@@ -523,8 +648,8 @@
 }
 
 .daily-dashboard-step.is-active {
-  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 52%, var(--background-modifier-border));
-  background: linear-gradient(135deg, color-mix(in srgb, var(--daily-dashboard-accent) 30%, var(--background-primary)), color-mix(in srgb, var(--daily-dashboard-accent-strong) 18%, var(--background-primary)));
+  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 52%, var(--background-modifier-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 30%, var(--background-primary)), color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent-strong)) 18%, var(--background-primary)));
 }
 
 .daily-dashboard-inline-form {
@@ -695,6 +820,18 @@ input.daily-dashboard-input {
 .daily-dashboard-empty {
   margin: 0;
   color: var(--text-muted);
+}
+
+.daily-dashboard-empty-state {
+  display: flex;
+  align-items: center;
+  min-height: 118px;
+  padding: 16px;
+  border-radius: 16px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  background: color-mix(in srgb, var(--background-primary) 72%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 5%);
+  border: 1px dashed color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 18%, var(--background-modifier-border));
 }
 
 .daily-dashboard-ai-suggestions {

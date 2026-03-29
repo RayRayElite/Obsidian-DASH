@@ -1919,7 +1919,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
       const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
-      const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights do not spill into the wrong log date.", {
+      const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
         tone: "focus",
@@ -1950,7 +1950,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
       createButton(dayFlowActions, "Refresh sync", async () => this.plugin.refreshSyncedStateManually(), false, "refresh-cw");
-      const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
+      const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
         tone: "focus",
@@ -1958,7 +1958,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
       if (todayEntry.todayFocus.length === 0) {
-        focusList.createEl("p", { cls: "daily-dashboard-empty", text: "No focus items yet. Add one below or use Promote to today." });
+        focusList.createDiv({ cls: "daily-dashboard-empty-state", text: "No focus items yet. Add one below or use Promote to today." });
       } else {
         todayEntry.todayFocus.forEach((item, index) => {
           const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
@@ -1994,7 +1994,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
-      const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.", {
+      const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
         eyebrow: "State",
         tone: "state",
@@ -2015,7 +2015,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       frictionInput.addEventListener("change", () => {
         void this.plugin.updateFrictionLog(frictionInput.value);
       });
-      const habitsCard = createCard(grid, "Habits", "Daily repeats with misses explicitly tracked for weekly and monthly analysis.", {
+      const habitsCard = createCard(grid, "Habits", "Repeatables with misses and timing kept visible.", {
         icon: "check-square",
         eyebrow: "Routines",
         tone: "state",
@@ -2052,7 +2052,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
           });
         }
       });
-      const quickAddCard = createCard(grid, "Quick Add To Project", "Capture new work into Add, Fix, Now, Next, or Later without leaving the dashboard.", {
+      const quickAddCard = createCard(grid, "Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
         icon: "plus-circle",
         eyebrow: "Capture",
         tone: "capture",
@@ -2095,7 +2095,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
         this.quickAddState.taskText = "";
         void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
       });
-      const foodCard = createCard(grid, "Food Log", "Quick capture of what you ate today so the daily note stays analyzable later.", {
+      const foodCard = createCard(grid, "Food Log", "Quick meal capture so routine and energy stay analyzable.", {
         icon: "utensils-crossed",
         eyebrow: "Body",
         tone: "log",
@@ -2127,7 +2127,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       if (todayEntry.foodLog.length === 0) {
-        foodList.createEl("p", { cls: "daily-dashboard-empty", text: "No food entries yet today." });
+        foodList.createDiv({ cls: "daily-dashboard-empty-state", text: "No food entries yet today." });
       } else {
         todayEntry.foodLog.forEach((item, index) => {
           const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
@@ -2140,7 +2140,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
           });
         });
       }
-      const notesCard = createCard(grid, "Sleep And Notes", "Use sleep logging and a short daily note so reports can connect context to performance.", {
+      const notesCard = createCard(grid, "Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
         icon: "moon-star",
         eyebrow: "Recovery",
         tone: "log",
@@ -2167,7 +2167,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
       });
-      const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword instead of scanning raw history.", {
+      const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
         icon: "search",
         eyebrow: "History",
         tone: "log",
@@ -2200,7 +2200,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (workLogEntries.length === 0) {
-        workLogList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived work matches the current filters." });
+        workLogList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived work matches the current filters." });
       } else {
         workLogEntries.slice(0, 20).forEach((task) => {
           const row = workLogList.createDiv({ cls: "daily-dashboard-completed-row" });
@@ -2284,7 +2284,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       } else {
         latestPanel.createDiv({ cls: "daily-dashboard-ai-empty-state", text: "No AI notes yet. Run a workflow or ask a question to create the first output." });
       }
-      const projectsCard = createCard(grid, "Project Health", "Projects are scored by backlog size, stale age, recent output, and momentum so weak areas stay visible.", {
+      const projectsCard = createCard(grid, "Project Health", "Score projects by backlog, staleness, output, and momentum.", {
         icon: "shield-check",
         eyebrow: "Portfolio",
         tone: "health",
@@ -2292,7 +2292,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const projectList = projectsCard.createDiv({ cls: "daily-dashboard-project-list" });
       if (!todoSnapshot || todoSnapshot.projects.length === 0) {
-        projectList.createEl("p", { cls: "daily-dashboard-empty", text: "No project data found in the configured master task hub." });
+        projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured master task hub." });
       } else {
         [...todoSnapshot.projects].sort((left, right) => right.healthScore - left.healthScore).slice(0, 10).forEach((project) => {
           const row = projectList.createDiv({ cls: "daily-dashboard-project-row" });
@@ -2312,7 +2312,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
           }
         });
       }
-      const alertsCard = createCard(grid, "Stale Work And Cleanup", "Detect stale projects, vague tasks, duplicates, and empty sections before the hub gets mushy.", {
+      const alertsCard = createCard(grid, "Stale Work And Cleanup", "Catch stale projects, vague tasks, duplicates, and empty sections.", {
         icon: "triangle-alert",
         eyebrow: "Triage",
         tone: "alert",
@@ -2325,7 +2325,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
         ...cleanupSuggestions.slice(0, 5)
       ];
       if (alertLines.length === 0) {
-        alertsList.createEl("p", { cls: "daily-dashboard-empty", text: "No stale-work or cleanup issues detected right now." });
+        alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
       } else {
         alertLines.forEach((line) => {
           const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
@@ -2335,7 +2335,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
-      const completedCard = createCard(grid, "Completed Today", "Recent completions remain visible for quick review and habit-memory reinforcement.", {
+      const completedCard = createCard(grid, "Completed Today", "Keep today's completed work visible for review and reinforcement.", {
         icon: "badge-check",
         eyebrow: "Done",
         tone: "done",
@@ -2343,7 +2343,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (todayEntry.completedTasks.length === 0) {
-        completedList.createEl("p", { cls: "daily-dashboard-empty", text: "No archived tasks yet today." });
+        completedList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived tasks yet today." });
       } else {
         todayEntry.completedTasks.slice(0, 10).forEach((task) => {
           const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
@@ -2816,23 +2816,52 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
     });
   }
 };
+var DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 function createCard(parent, title, description, options) {
+  const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
-  card.addClass(`daily-dashboard-card--${toClassSlug(title)}`);
+  card.addClass(`daily-dashboard-card--${cardKey}`);
+  const startCollapsed = getCollapsedCardState().has(cardKey);
+  if (startCollapsed) {
+    card.addClass("is-collapsed");
+  }
   const header = card.createDiv({ cls: "daily-dashboard-card-header" });
+  header.role = "button";
+  header.tabIndex = 0;
+  header.ariaExpanded = startCollapsed ? "false" : "true";
   if (options) {
+    card.addClass(`is-tone-${options.tone}`);
     header.addClass(`is-${options.tone}`);
     const top = header.createDiv({ cls: "daily-dashboard-card-header-top" });
     const lead = top.createDiv({ cls: "daily-dashboard-card-lead" });
     const iconEl = lead.createSpan({ cls: "daily-dashboard-card-icon" });
     (0, import_obsidian.setIcon)(iconEl, options.icon);
     lead.createEl("span", { cls: "daily-dashboard-card-eyebrow", text: options.eyebrow });
+    const controls = top.createDiv({ cls: "daily-dashboard-card-header-controls" });
     if (options.tag) {
-      createSemanticChip(top, options.tag, options.tone);
+      createSemanticChip(controls, options.tag, options.tone);
     }
+    const toggle = controls.createSpan({ cls: "daily-dashboard-card-toggle" });
+    toggle.ariaHidden = "true";
+    (0, import_obsidian.setIcon)(toggle, "chevron-down");
   }
   header.createEl("h2", { text: title });
   header.createEl("p", { text: description });
+  const toggleCollapsed = () => {
+    const nextCollapsed = !card.hasClass("is-collapsed");
+    card.toggleClass("is-collapsed", nextCollapsed);
+    header.ariaExpanded = nextCollapsed ? "false" : "true";
+    setCollapsedCardState(cardKey, nextCollapsed);
+  };
+  header.addEventListener("click", () => {
+    toggleCollapsed();
+  });
+  header.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleCollapsed();
+    }
+  });
   return card;
 }
 function createButton(parent, text, onClick, isPrimary = false, iconName) {
@@ -2873,6 +2902,30 @@ function createStatPill(parent, text, iconName, tone) {
   (0, import_obsidian.setIcon)(iconEl, iconName);
   pill.createSpan({ cls: "daily-dashboard-pill-label", text });
   return pill;
+}
+function getCollapsedCardState() {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_CARD_COLLAPSE_STORAGE_KEY);
+    if (!stored) {
+      return /* @__PURE__ */ new Set();
+    }
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? new Set(parsed.filter((item) => typeof item === "string")) : /* @__PURE__ */ new Set();
+  } catch (e) {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function setCollapsedCardState(cardKey, collapsed) {
+  try {
+    const current = getCollapsedCardState();
+    if (collapsed) {
+      current.add(cardKey);
+    } else {
+      current.delete(cardKey);
+    }
+    window.localStorage.setItem(DASHBOARD_CARD_COLLAPSE_STORAGE_KEY, JSON.stringify(Array.from(current)));
+  } catch (e) {
+  }
 }
 function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
