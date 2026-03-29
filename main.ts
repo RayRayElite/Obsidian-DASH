@@ -35,8 +35,17 @@ interface ArchivedTaskSnapshot {
   note?: string;
 }
 
+interface WorkSession {
+  start: string;
+  end: string | null;
+}
+
 interface DailyEntry {
   date: string;
+  dayStartedAt: string;
+  dayEndedAt: string;
+  wakeTime: string;
+  sleepTime: string;
   habits: Record<string, number>;
   moodScore: number;
   energyScore: number;
@@ -46,7 +55,13 @@ interface DailyEntry {
   foodLog: string[];
   sleepLog: string;
   notes: string;
+  workSessions: WorkSession[];
   completedTasks: ArchivedTaskSnapshot[];
+}
+
+interface DayLifecycleState {
+  activeDate: string;
+  status: "not-started" | "in-progress" | "ended";
 }
 
 interface DashboardSettings {
@@ -83,6 +98,7 @@ interface ExistingProjectDefinition {
 interface DashboardPluginData {
   settings: DashboardSettings;
   entries: Record<string, DailyEntry>;
+  dayState: DayLifecycleState;
 }
 
 interface WallpaperOption {
@@ -204,7 +220,11 @@ const DEFAULT_SETTINGS: DashboardSettings = {
 export default class DailyDashboardPlugin extends Plugin {
   private data: DashboardPluginData = {
     settings: { ...DEFAULT_SETTINGS },
-    entries: {}
+    entries: {},
+    dayState: {
+      activeDate: formatDateKey(new Date()),
+      status: "not-started"
+    }
   };
   private wallpaperOptions: WallpaperOption[] = [];
   private autoArchiveDebounceId: number | null = null;
@@ -325,6 +345,38 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "begin-logical-day",
+      name: "Begin logical day",
+      callback: () => {
+        void this.beginLogicalDay();
+      }
+    });
+
+    this.addCommand({
+      id: "end-logical-day",
+      name: "End logical day",
+      callback: () => {
+        void this.endLogicalDay();
+      }
+    });
+
+    this.addCommand({
+      id: "start-work-session",
+      name: "Start work session",
+      callback: () => {
+        void this.startWorkSession();
+      }
+    });
+
+    this.addCommand({
+      id: "stop-work-session",
+      name: "Stop work session",
+      callback: () => {
+        void this.stopWorkSession();
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -352,11 +404,25 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getTodayKey(): string {
-    return formatDateKey(new Date());
+    return this.data.dayState.status === "not-started"
+      ? formatDateKey(new Date())
+      : this.data.dayState.activeDate || formatDateKey(new Date());
   }
 
   getTodayEntry(): DailyEntry {
     return this.getOrCreateEntry(this.getTodayKey());
+  }
+
+  getDayState(): DayLifecycleState {
+    return this.data.dayState;
+  }
+
+  isWorkSessionActive(): boolean {
+    return this.getTodayEntry().workSessions.some((session) => session.end === null);
+  }
+
+  getTrackedWorkMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedWorkMinutes(entry);
   }
 
   getAllEntries(): DailyEntry[] {
@@ -459,6 +525,86 @@ export default class DailyDashboardPlugin extends Plugin {
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
     await this.persistEntry(entry);
+  }
+
+  async beginLogicalDay(): Promise<void> {
+    if (this.data.dayState.status === "in-progress") {
+      new Notice(`Your logical day ${this.data.dayState.activeDate} is already in progress.`);
+      return;
+    }
+
+    const now = new Date();
+    const nextDate = this.getNextLogicalDayKey(now);
+    const timestamp = formatDateTimeKey(now);
+    this.data.dayState = {
+      activeDate: nextDate,
+      status: "in-progress"
+    };
+
+    const entry = this.getOrCreateEntry(nextDate);
+    if (!entry.dayStartedAt) {
+      entry.dayStartedAt = timestamp;
+    }
+    if (!entry.wakeTime) {
+      entry.wakeTime = timestamp;
+    }
+    entry.dayEndedAt = "";
+    entry.sleepTime = "";
+    await this.persistEntry(entry);
+    await this.savePluginData();
+    new Notice(`Began logical day ${nextDate}.`);
+  }
+
+  async endLogicalDay(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("No logical day is currently in progress.");
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    const entry = this.getTodayEntry();
+    entry.dayEndedAt = timestamp;
+    if (!entry.sleepTime) {
+      entry.sleepTime = timestamp;
+    }
+    closeOpenWorkSessions(entry, timestamp);
+    this.data.dayState = {
+      activeDate: entry.date,
+      status: "ended"
+    };
+    await this.persistEntry(entry);
+    await this.savePluginData();
+    new Notice(`Ended logical day ${entry.date}.`);
+  }
+
+  async startWorkSession(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before starting work tracking.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.workSessions.some((session) => session.end === null)) {
+      new Notice("A work session is already active.");
+      return;
+    }
+
+    entry.workSessions = [...entry.workSessions, { start: formatDateTimeKey(new Date()), end: null }];
+    await this.persistEntry(entry);
+    new Notice("Work session started.");
+  }
+
+  async stopWorkSession(): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.workSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new Notice("No work session is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice("Work session stopped.");
   }
 
   async updateDailyNotes(value: string): Promise<void> {
@@ -946,6 +1092,19 @@ export default class DailyDashboardPlugin extends Plugin {
     return `${prefix} ${counter}.md`;
   }
 
+  private getNextLogicalDayKey(referenceDate: Date): string {
+    const calendarKey = formatDateKey(referenceDate);
+    if (this.data.dayState.status === "not-started") {
+      return calendarKey;
+    }
+
+    const current = this.data.dayState.activeDate || calendarKey;
+    const next = new Date(`${current}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    const nextKey = formatDateKey(next);
+    return nextKey > calendarKey ? nextKey : calendarKey;
+  }
+
   private async loadPluginData(): Promise<void> {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
     const settings = sanitizeSettings({
@@ -959,9 +1118,12 @@ export default class DailyDashboardPlugin extends Plugin {
       entries[date] = this.normalizeEntry(entry as Partial<DailyEntry>, date, settings);
     });
 
+    const dayState = normalizeDayState(loaded?.dayState, entries);
+
     this.data = {
       settings,
-      entries
+      entries,
+      dayState
     };
   }
 
@@ -983,6 +1145,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
     return {
       date,
+      dayStartedAt: typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
+      dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
+      wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+      sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
       habits: normalizedHabits,
       moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
       energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
@@ -996,6 +1162,14 @@ export default class DailyDashboardPlugin extends Plugin {
         : [],
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
+      workSessions: Array.isArray(entry.workSessions)
+        ? entry.workSessions
+            .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+            .map((item) => ({
+              start: item.start,
+              end: typeof item.end === "string" ? item.end : null
+            }))
+        : [],
       completedTasks: Array.isArray(entry.completedTasks)
         ? entry.completedTasks
             .filter((item): item is ArchivedTaskSnapshot => Boolean(item && typeof item === "object"))
@@ -1024,7 +1198,10 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async savePluginData(): Promise<void> {
-    await this.saveData(this.data);
+    await this.saveData({
+      ...this.data,
+      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+    });
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
@@ -1048,13 +1225,21 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async refreshForNewDay(): Promise<void> {
-    const todayKey = this.getTodayKey();
-    const existed = Boolean(this.data.entries[todayKey]);
+    if (this.data.dayState.status === "not-started") {
+      const calendarKey = formatDateKey(new Date());
+      if (calendarKey !== this.data.dayState.activeDate) {
+        this.data.dayState.activeDate = calendarKey;
+        await this.savePluginData();
+      }
+    }
+
     await this.ensureTodayEntry();
 
-    if (!existed) {
-      this.refreshDashboardViews();
-      new Notice("Daily dashboard advanced to a new day.");
+    if (this.data.dayState.status === "in-progress") {
+      const calendarKey = formatDateKey(new Date());
+      if (calendarKey !== this.data.dayState.activeDate) {
+        this.refreshDashboardViews();
+      }
     }
   }
 
@@ -1260,10 +1445,14 @@ class DailyDashboardView extends ItemView {
 
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
-      createStatPill(heroMeta, todayEntry.date, "calendar-days", "date").addClass("is-compact");
-      createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done").addClass("is-compact");
-      createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral").addClass("is-compact");
-      createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state").addClass("is-compact");
+      const datePill = createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
+      datePill.addClass("is-compact");
+      const archivedPill = createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done");
+      archivedPill.addClass("is-compact");
+      const stalePill = createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral");
+      stalePill.addClass("is-compact");
+      const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
+      statePill.addClass("is-compact");
 
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
@@ -1272,6 +1461,33 @@ class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+
+      const dayState = this.plugin.getDayState();
+      const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
+      const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
+      const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights do not spill into the wrong log date.", {
+        icon: "sun-moon",
+        eyebrow: "Cycle",
+        tone: "focus",
+        tag: dayState.status === "in-progress" ? "In Progress" : dayState.status === "ended" ? "Ended" : "Idle"
+      });
+      const dayFlowStatus = dayFlowCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
+      createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
+      createSemanticChip(dayFlowStatus, activeWorkSession ? "Working" : "Not working", activeWorkSession ? "capture" : "neutral");
+
+      const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
+      this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
+      this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
+      this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
+      this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
+      this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
+      this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date()))) : "Not active");
+
+      const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
+      createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
         icon: "target",
@@ -1638,6 +1854,12 @@ class DailyDashboardView extends ItemView {
     input.addEventListener("change", () => {
       onChange(input.value.trim());
     });
+  }
+
+  private renderDayMetric(parent: HTMLElement, label: string, value: string): void {
+    const metric = parent.createDiv({ cls: "daily-dashboard-day-metric" });
+    metric.createEl("span", { cls: "daily-dashboard-habit-meta", text: label });
+    metric.createEl("strong", { text: value });
   }
 
   private getFilteredWorkLogEntries(): ArchivedTaskSnapshot[] {
@@ -2177,6 +2399,10 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
   const habitValues = Object.fromEntries(habits.map((habit) => [habit.id, 0]));
   return {
     date,
+    dayStartedAt: "",
+    dayEndedAt: "",
+    wakeTime: "",
+    sleepTime: "",
     habits: habitValues,
     moodScore: 0,
     energyScore: 0,
@@ -2186,7 +2412,23 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
     foodLog: [],
     sleepLog: "",
     notes: "",
+    workSessions: [],
     completedTasks: []
+  };
+}
+
+function normalizeDayState(dayState: Partial<DayLifecycleState> | undefined, entries: Record<string, DailyEntry>): DayLifecycleState {
+  const fallbackDate = Object.keys(entries).sort().slice(-1)[0] ?? formatDateKey(new Date());
+  const activeDate = typeof dayState?.activeDate === "string" && dayState.activeDate.trim().length > 0
+    ? dayState.activeDate
+    : fallbackDate;
+  const status = dayState?.status === "in-progress" || dayState?.status === "ended"
+    ? dayState.status
+    : "not-started";
+
+  return {
+    activeDate,
+    status
   };
 }
 
@@ -2250,10 +2492,19 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
   const completedTaskLines = entry.completedTasks.length > 0
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
     : ["- No archived tasks today"];
+  const workSessionLines = entry.workSessions.length > 0
+    ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- No tracked work sessions"];
+  const totalWorkMinutes = getTrackedWorkMinutes(entry);
 
   return [
     "---",
     `date: ${entry.date}`,
+    `dayStartedAt: ${entry.dayStartedAt || ""}`,
+    `dayEndedAt: ${entry.dayEndedAt || ""}`,
+    `wakeTime: ${entry.wakeTime || ""}`,
+    `sleepTime: ${entry.sleepTime || ""}`,
+    `trackedWorkMinutes: ${totalWorkMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `moodScore: ${entry.moodScore}`,
@@ -2261,6 +2512,13 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     "---",
     "",
     `# Daily Dashboard Log - ${entry.date}`,
+    "",
+    "## Day Flow",
+    `- Day started: ${entry.dayStartedAt || "Not started"}`,
+    `- Wake time: ${entry.wakeTime || "Not logged"}`,
+    `- Day ended: ${entry.dayEndedAt || "Not ended"}`,
+    `- Sleep time: ${entry.sleepTime || "Not logged"}`,
+    `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -2274,6 +2532,9 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     "",
     "## Sleep Log",
     entry.sleepLog || "No sleep log yet.",
+    "",
+    "## Work Sessions",
+    ...workSessionLines,
     "",
     "## Work Completed",
     ...completedTaskLines,
@@ -2297,6 +2558,7 @@ function renderPeriodReport(input: {
   let moodDays = 0;
   let energyTotal = 0;
   let energyDays = 0;
+  let trackedWorkMinutes = 0;
 
   input.entries.forEach((entry) => {
     if (entry.foodLog.length > 0) {
@@ -2316,6 +2578,8 @@ function renderPeriodReport(input: {
       energyTotal += entry.energyScore;
       energyDays += 1;
     }
+
+    trackedWorkMinutes += getTrackedWorkMinutes(entry);
 
     entry.completedTasks.forEach((task) => {
       workByProject.set(task.project, (workByProject.get(task.project) ?? 0) + 1);
@@ -2348,6 +2612,7 @@ function renderPeriodReport(input: {
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
     `- Days with food logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
+    `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     "",
@@ -2363,6 +2628,40 @@ function renderPeriodReport(input: {
     ...(dayLines.length > 0 ? dayLines : ["- No daily entries recorded in this period"]),
     ""
   ].join("\n");
+}
+
+function closeOpenWorkSessions(entry: DailyEntry, timestamp: string): void {
+  entry.workSessions = entry.workSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
+function getTrackedWorkMinutes(entry: DailyEntry): number {
+  return entry.workSessions.reduce((total, session) => {
+    const end = session.end ?? formatDateTimeKey(new Date());
+    return total + getMinutesBetween(session.start, end);
+  }, 0);
+}
+
+function getMinutesBetween(startValue: string, endValue: string): number {
+  const start = parseDateTimeKey(startValue);
+  const end = parseDateTimeKey(endValue);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
+function parseDateTimeKey(value: string): Date | null {
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatMinutesAsHours(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  return `${hours}h ${minutes}m`;
 }
 
 function parseTodoSnapshot(content: string): TodoSnapshot {

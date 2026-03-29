@@ -6,6 +6,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 
 - tracks repeat daily habits with per-day counts
 - stores mood, energy, Top 3 focus, friction log, food log, sleep log, and daily notes
+- supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
@@ -24,6 +25,16 @@ Point the plugin at your `Master Task Hub.md` note in settings. The note works b
 This gives you a work-history trail without deleting finished tasks.
 
 The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
+
+## Logical Day Tracking
+
+The dashboard now separates your real day from the calendar date.
+
+1. Use `Begin logical day` when you are actually up and starting the day.
+2. Use `End logical day` when you are done and heading to bed, even if the clock has passed midnight.
+3. Use `Start work session` and `Stop work session` to track actual focused work time inside that logical day.
+
+The dashboard records wake time, sleep time, day start/end, and tracked work sessions into the daily log note.
 
 ## New Project Flow
 

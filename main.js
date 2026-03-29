@@ -53,7 +53,11 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     super(...arguments);
     this.data = {
       settings: { ...DEFAULT_SETTINGS },
-      entries: {}
+      entries: {},
+      dayState: {
+        activeDate: formatDateKey(/* @__PURE__ */ new Date()),
+        status: "not-started"
+      }
     };
     this.wallpaperOptions = [];
     this.autoArchiveDebounceId = null;
@@ -158,6 +162,34 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.openProjectReviewModeFlow();
       }
     });
+    this.addCommand({
+      id: "begin-logical-day",
+      name: "Begin logical day",
+      callback: () => {
+        void this.beginLogicalDay();
+      }
+    });
+    this.addCommand({
+      id: "end-logical-day",
+      name: "End logical day",
+      callback: () => {
+        void this.endLogicalDay();
+      }
+    });
+    this.addCommand({
+      id: "start-work-session",
+      name: "Start work session",
+      callback: () => {
+        void this.startWorkSession();
+      }
+    });
+    this.addCommand({
+      id: "stop-work-session",
+      name: "Stop work session",
+      callback: () => {
+        void this.stopWorkSession();
+      }
+    });
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (file instanceof import_obsidian.TFile && (0, import_obsidian.normalizePath)(file.path) === (0, import_obsidian.normalizePath)(this.data.settings.masterTodoPath)) {
@@ -179,10 +211,19 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     return this.data.settings.habitDefinitions;
   }
   getTodayKey() {
-    return formatDateKey(/* @__PURE__ */ new Date());
+    return this.data.dayState.status === "not-started" ? formatDateKey(/* @__PURE__ */ new Date()) : this.data.dayState.activeDate || formatDateKey(/* @__PURE__ */ new Date());
   }
   getTodayEntry() {
     return this.getOrCreateEntry(this.getTodayKey());
+  }
+  getDayState() {
+    return this.data.dayState;
+  }
+  isWorkSessionActive() {
+    return this.getTodayEntry().workSessions.some((session) => session.end === null);
+  }
+  getTrackedWorkMinutes(entry = this.getTodayEntry()) {
+    return getTrackedWorkMinutes(entry);
   }
   getAllEntries() {
     return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));
@@ -266,6 +307,76 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
     await this.persistEntry(entry);
+  }
+  async beginLogicalDay() {
+    if (this.data.dayState.status === "in-progress") {
+      new import_obsidian.Notice(`Your logical day ${this.data.dayState.activeDate} is already in progress.`);
+      return;
+    }
+    const now = /* @__PURE__ */ new Date();
+    const nextDate = this.getNextLogicalDayKey(now);
+    const timestamp = formatDateTimeKey(now);
+    this.data.dayState = {
+      activeDate: nextDate,
+      status: "in-progress"
+    };
+    const entry = this.getOrCreateEntry(nextDate);
+    if (!entry.dayStartedAt) {
+      entry.dayStartedAt = timestamp;
+    }
+    if (!entry.wakeTime) {
+      entry.wakeTime = timestamp;
+    }
+    entry.dayEndedAt = "";
+    entry.sleepTime = "";
+    await this.persistEntry(entry);
+    await this.savePluginData();
+    new import_obsidian.Notice(`Began logical day ${nextDate}.`);
+  }
+  async endLogicalDay() {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian.Notice("No logical day is currently in progress.");
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const entry = this.getTodayEntry();
+    entry.dayEndedAt = timestamp;
+    if (!entry.sleepTime) {
+      entry.sleepTime = timestamp;
+    }
+    closeOpenWorkSessions(entry, timestamp);
+    this.data.dayState = {
+      activeDate: entry.date,
+      status: "ended"
+    };
+    await this.persistEntry(entry);
+    await this.savePluginData();
+    new import_obsidian.Notice(`Ended logical day ${entry.date}.`);
+  }
+  async startWorkSession() {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian.Notice("Begin your logical day before starting work tracking.");
+      return;
+    }
+    const entry = this.getTodayEntry();
+    if (entry.workSessions.some((session) => session.end === null)) {
+      new import_obsidian.Notice("A work session is already active.");
+      return;
+    }
+    entry.workSessions = [...entry.workSessions, { start: formatDateTimeKey(/* @__PURE__ */ new Date()), end: null }];
+    await this.persistEntry(entry);
+    new import_obsidian.Notice("Work session started.");
+  }
+  async stopWorkSession() {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.workSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new import_obsidian.Notice("No work session is currently active.");
+      return;
+    }
+    activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
+    await this.persistEntry(entry);
+    new import_obsidian.Notice("Work session stopped.");
   }
   async updateDailyNotes(value) {
     const entry = this.getTodayEntry();
@@ -674,6 +785,17 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     }
     return `${prefix} ${counter}.md`;
   }
+  getNextLogicalDayKey(referenceDate) {
+    const calendarKey = formatDateKey(referenceDate);
+    if (this.data.dayState.status === "not-started") {
+      return calendarKey;
+    }
+    const current = this.data.dayState.activeDate || calendarKey;
+    const next = /* @__PURE__ */ new Date(`${current}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    const nextKey = formatDateKey(next);
+    return nextKey > calendarKey ? nextKey : calendarKey;
+  }
   async loadPluginData() {
     var _a, _b;
     const loaded = await this.loadData();
@@ -686,9 +808,11 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     Object.entries(rawEntries).forEach(([date, entry]) => {
       entries[date] = this.normalizeEntry(entry, date, settings);
     });
+    const dayState = normalizeDayState(loaded == null ? void 0 : loaded.dayState, entries);
     this.data = {
       settings,
-      entries
+      entries,
+      dayState
     };
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
@@ -704,6 +828,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     });
     return {
       date,
+      dayStartedAt: typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
+      dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
+      wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+      sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
       habits: normalizedHabits,
       moodScore: clamp(Number((_a = entry.moodScore) != null ? _a : 0), 0, 5),
       energyScore: clamp(Number((_b = entry.energyScore) != null ? _b : 0), 0, 5),
@@ -713,6 +841,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.filter((item) => typeof item === "string" && item.trim().length > 0) : [],
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
+      workSessions: Array.isArray(entry.workSessions) ? entry.workSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null
+      })) : [],
       completedTasks: Array.isArray(entry.completedTasks) ? entry.completedTasks.filter((item) => Boolean(item && typeof item === "object")).map((item) => ({
         project: typeof item.project === "string" ? item.project : "Unknown Project",
         section: typeof item.section === "string" ? item.section : "General",
@@ -732,7 +864,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     return createEmptyEntry(date, this.getHabitDefinitions());
   }
   async savePluginData() {
-    await this.saveData(this.data);
+    await this.saveData({
+      ...this.data,
+      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+    });
   }
   async persistEntry(entry) {
     this.data.entries[entry.date] = this.normalizeEntry(entry, entry.date);
@@ -751,12 +886,19 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.syncDailyLog(entry);
   }
   async refreshForNewDay() {
-    const todayKey = this.getTodayKey();
-    const existed = Boolean(this.data.entries[todayKey]);
+    if (this.data.dayState.status === "not-started") {
+      const calendarKey = formatDateKey(/* @__PURE__ */ new Date());
+      if (calendarKey !== this.data.dayState.activeDate) {
+        this.data.dayState.activeDate = calendarKey;
+        await this.savePluginData();
+      }
+    }
     await this.ensureTodayEntry();
-    if (!existed) {
-      this.refreshDashboardViews();
-      new import_obsidian.Notice("Daily dashboard advanced to a new day.");
+    if (this.data.dayState.status === "in-progress") {
+      const calendarKey = formatDateKey(/* @__PURE__ */ new Date());
+      if (calendarKey !== this.data.dayState.activeDate) {
+        this.refreshDashboardViews();
+      }
     }
   }
   scheduleAutomaticTodoArchive() {
@@ -888,7 +1030,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
     await this.render();
   }
   async render() {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -921,16 +1063,44 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
-      createStatPill(heroMeta, todayEntry.date, "calendar-days", "date").addClass("is-compact");
-      createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done").addClass("is-compact");
-      createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral").addClass("is-compact");
-      createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state").addClass("is-compact");
+      const datePill = createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
+      datePill.addClass("is-compact");
+      const archivedPill = createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived`, "archive", "done");
+      archivedPill.addClass("is-compact");
+      const stalePill = createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral");
+      stalePill.addClass("is-compact");
+      const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
+      statePill.addClass("is-compact");
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const dayState = this.plugin.getDayState();
+      const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
+      const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
+      const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights do not spill into the wrong log date.", {
+        icon: "sun-moon",
+        eyebrow: "Cycle",
+        tone: "focus",
+        tag: dayState.status === "in-progress" ? "In Progress" : dayState.status === "ended" ? "Ended" : "Idle"
+      });
+      const dayFlowStatus = dayFlowCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
+      createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
+      createSemanticChip(dayFlowStatus, activeWorkSession ? "Working" : "Not working", activeWorkSession ? "capture" : "neutral");
+      const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
+      this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
+      this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
+      this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
+      this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
+      this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
+      this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
+      const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
+      createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
         icon: "target",
         eyebrow: "Execution",
@@ -1281,6 +1451,11 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
     input.addEventListener("change", () => {
       onChange(input.value.trim());
     });
+  }
+  renderDayMetric(parent, label, value) {
+    const metric = parent.createDiv({ cls: "daily-dashboard-day-metric" });
+    metric.createEl("span", { cls: "daily-dashboard-habit-meta", text: label });
+    metric.createEl("strong", { text: value });
   }
   getFilteredWorkLogEntries() {
     const entries = this.plugin.getAllEntries().flatMap((entry) => entry.completedTasks).sort((left, right) => right.archivedAt.localeCompare(left.archivedAt));
@@ -1654,6 +1829,10 @@ function createEmptyEntry(date, habits) {
   const habitValues = Object.fromEntries(habits.map((habit) => [habit.id, 0]));
   return {
     date,
+    dayStartedAt: "",
+    dayEndedAt: "",
+    wakeTime: "",
+    sleepTime: "",
     habits: habitValues,
     moodScore: 0,
     energyScore: 0,
@@ -1663,7 +1842,18 @@ function createEmptyEntry(date, habits) {
     foodLog: [],
     sleepLog: "",
     notes: "",
+    workSessions: [],
     completedTasks: []
+  };
+}
+function normalizeDayState(dayState, entries) {
+  var _a;
+  const fallbackDate = (_a = Object.keys(entries).sort().slice(-1)[0]) != null ? _a : formatDateKey(/* @__PURE__ */ new Date());
+  const activeDate = typeof (dayState == null ? void 0 : dayState.activeDate) === "string" && dayState.activeDate.trim().length > 0 ? dayState.activeDate : fallbackDate;
+  const status = (dayState == null ? void 0 : dayState.status) === "in-progress" || (dayState == null ? void 0 : dayState.status) === "ended" ? dayState.status : "not-started";
+  return {
+    activeDate,
+    status
   };
 }
 function parseHabitDefinitions(value) {
@@ -1712,9 +1902,19 @@ function renderDailyLog(entry, habits) {
   });
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
+  const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
+    var _a;
+    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+  }) : ["- No tracked work sessions"];
+  const totalWorkMinutes = getTrackedWorkMinutes(entry);
   return [
     "---",
     `date: ${entry.date}`,
+    `dayStartedAt: ${entry.dayStartedAt || ""}`,
+    `dayEndedAt: ${entry.dayEndedAt || ""}`,
+    `wakeTime: ${entry.wakeTime || ""}`,
+    `sleepTime: ${entry.sleepTime || ""}`,
+    `trackedWorkMinutes: ${totalWorkMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `moodScore: ${entry.moodScore}`,
@@ -1722,6 +1922,13 @@ function renderDailyLog(entry, habits) {
     "---",
     "",
     `# Daily Dashboard Log - ${entry.date}`,
+    "",
+    "## Day Flow",
+    `- Day started: ${entry.dayStartedAt || "Not started"}`,
+    `- Wake time: ${entry.wakeTime || "Not logged"}`,
+    `- Day ended: ${entry.dayEndedAt || "Not ended"}`,
+    `- Sleep time: ${entry.sleepTime || "Not logged"}`,
+    `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -1735,6 +1942,9 @@ function renderDailyLog(entry, habits) {
     "",
     "## Sleep Log",
     entry.sleepLog || "No sleep log yet.",
+    "",
+    "## Work Sessions",
+    ...workSessionLines,
     "",
     "## Work Completed",
     ...completedTaskLines,
@@ -1752,6 +1962,7 @@ function renderPeriodReport(input) {
   let moodDays = 0;
   let energyTotal = 0;
   let energyDays = 0;
+  let trackedWorkMinutes = 0;
   input.entries.forEach((entry) => {
     if (entry.foodLog.length > 0) {
       daysWithFood += 1;
@@ -1767,6 +1978,7 @@ function renderPeriodReport(input) {
       energyTotal += entry.energyScore;
       energyDays += 1;
     }
+    trackedWorkMinutes += getTrackedWorkMinutes(entry);
     entry.completedTasks.forEach((task) => {
       var _a;
       workByProject.set(task.project, ((_a = workByProject.get(task.project)) != null ? _a : 0) + 1);
@@ -1796,6 +2008,7 @@ function renderPeriodReport(input) {
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
     `- Days with food logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
+    `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     "",
@@ -1811,6 +2024,36 @@ function renderPeriodReport(input) {
     ...dayLines.length > 0 ? dayLines : ["- No daily entries recorded in this period"],
     ""
   ].join("\n");
+}
+function closeOpenWorkSessions(entry, timestamp) {
+  entry.workSessions = entry.workSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+function getTrackedWorkMinutes(entry) {
+  return entry.workSessions.reduce((total, session) => {
+    var _a;
+    const end = (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date());
+    return total + getMinutesBetween(session.start, end);
+  }, 0);
+}
+function getMinutesBetween(startValue, endValue) {
+  const start = parseDateTimeKey(startValue);
+  const end = parseDateTimeKey(endValue);
+  if (!start || !end) {
+    return 0;
+  }
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 6e4));
+}
+function parseDateTimeKey(value) {
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function formatMinutesAsHours(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+  return `${hours}h ${minutes}m`;
 }
 function parseTodoSnapshot(content) {
   const lines = content.split(/\r?\n/);
