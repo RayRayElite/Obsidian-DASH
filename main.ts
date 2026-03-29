@@ -86,6 +86,9 @@ interface DashboardSettings {
   aiOutputFolder: string;
   aiContextDays: number;
   aiRelatedNotesLimit: number;
+  aiIndexEnabled: boolean;
+  aiIndexedFolders: string;
+  aiChunkCharLimit: number;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -114,6 +117,30 @@ interface DashboardPluginData {
   settings: DashboardSettings;
   entries: Record<string, DailyEntry>;
   dayState: DayLifecycleState;
+  noteIndex: NoteIndexCache;
+}
+
+interface NoteIndexChunk {
+  id: string;
+  heading: string;
+  text: string;
+  keywords: string[];
+}
+
+interface NoteIndexEntry {
+  path: string;
+  mtime: number;
+  size: number;
+  title: string;
+  keywords: string[];
+  chunks: NoteIndexChunk[];
+}
+
+interface NoteIndexCache {
+  version: number;
+  indexedAt: string;
+  lastIndexedFile: string;
+  entries: Record<string, NoteIndexEntry>;
 }
 
 interface WallpaperOption {
@@ -251,6 +278,17 @@ interface AiStatus {
   model: string;
   outputFolder: string;
   latestArtifact: AiArtifact | null;
+  indexStatus: RetrievalIndexStatus;
+}
+
+interface RetrievalIndexStatus {
+  enabled: boolean;
+  indexing: boolean;
+  indexedNotes: number;
+  indexedChunks: number;
+  indexedAt: string;
+  lastIndexedFile: string;
+  indexedFolders: string[];
 }
 
 interface AiRelevantNote {
@@ -274,6 +312,9 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   aiOutputFolder: "Dashboard Logs/AI",
   aiContextDays: 14,
   aiRelatedNotesLimit: 6,
+  aiIndexEnabled: true,
+  aiIndexedFolders: "Project Notes",
+  aiChunkCharLimit: 1200,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -292,7 +333,8 @@ export default class DailyDashboardPlugin extends Plugin {
     dayState: {
       activeDate: formatDateKey(new Date()),
       status: "not-started"
-    }
+    },
+    noteIndex: createEmptyNoteIndexCache()
   };
   private wallpaperOptions: WallpaperOption[] = [];
   private autoArchiveDebounceId: number | null = null;
@@ -304,6 +346,8 @@ export default class DailyDashboardPlugin extends Plugin {
   private liveStateAvailable = false;
   private latestAiArtifact: AiArtifact | null = null;
   private isAiBusy = false;
+  private isIndexingNotes = false;
+  private noteIndexDebounceId: number | null = null;
 
   async onload(): Promise<void> {
     await this.loadPluginData();
@@ -525,6 +569,14 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "rebuild-ai-note-index",
+      name: "Rebuild AI note index",
+      callback: () => {
+        void this.rebuildAiNoteIndex(true);
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -541,7 +593,34 @@ export default class DailyDashboardPlugin extends Plugin {
 
       if (normalizedPath === normalizePath(this.data.settings.liveStatePath)) {
         void this.refreshFromStorageIfChanged();
+        return;
       }
+
+      if (file.extension === "md") {
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+
+    this.registerEvent(this.app.vault.on("create", (file) => {
+      if (file instanceof TFile && file.extension === "md") {
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      if (file instanceof TFile && file.extension === "md") {
+        delete this.data.noteIndex.entries[normalizePath(file.path)];
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (!(file instanceof TFile) || file.extension !== "md") {
+        return;
+      }
+
+      delete this.data.noteIndex.entries[normalizePath(oldPath)];
+      this.scheduleNoteIndexRefresh();
     }));
 
     this.registerInterval(window.setInterval(() => {
@@ -551,6 +630,10 @@ export default class DailyDashboardPlugin extends Plugin {
     this.registerInterval(window.setInterval(() => {
       void this.refreshFromStorageIfChanged();
     }, 15_000));
+
+    window.setTimeout(() => {
+      void this.rebuildAiNoteIndex(false);
+    }, 2500);
   }
 
   async onunload(): Promise<void> {
@@ -642,7 +725,21 @@ export default class DailyDashboardPlugin extends Plugin {
       busy: this.isAiBusy,
       model: this.data.settings.aiModel,
       outputFolder: this.data.settings.aiOutputFolder,
-      latestArtifact: this.latestAiArtifact
+      latestArtifact: this.latestAiArtifact,
+      indexStatus: this.getRetrievalIndexStatus()
+    };
+  }
+
+  getRetrievalIndexStatus(): RetrievalIndexStatus {
+    const entries = Object.values(this.data.noteIndex.entries);
+    return {
+      enabled: this.data.settings.aiIndexEnabled,
+      indexing: this.isIndexingNotes,
+      indexedNotes: entries.length,
+      indexedChunks: entries.reduce((sum, entry) => sum + entry.chunks.length, 0),
+      indexedAt: this.data.noteIndex.indexedAt,
+      lastIndexedFile: this.data.noteIndex.lastIndexedFile,
+      indexedFolders: getIndexedFolderList(this.data.settings)
     };
   }
 
@@ -660,6 +757,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async updateSettings(settings: DashboardSettings): Promise<void> {
     await this.refreshDataFromStorage(false);
+    const previousSettings = this.data.settings;
     this.data.settings = sanitizeSettings(settings);
     await this.refreshWallpaperOptions();
 
@@ -669,6 +767,9 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     await this.savePluginData();
+    if (shouldRebuildAiIndex(previousSettings, this.data.settings)) {
+      this.scheduleNoteIndexRefresh();
+    }
     this.refreshDashboardViews();
   }
 
@@ -1364,6 +1465,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
 
     try {
+      await this.ensureAiNoteIndexReady();
       const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, input.includeActiveNote ?? false);
       const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}\n\n${context}`);
       const payload = extractAiStructuredPayload(rawResponse);
@@ -1450,39 +1552,22 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async collectAiRelevantNotes(question: string | undefined, todoSnapshot: TodoSnapshot | null, includeActiveNote: boolean): Promise<AiRelevantNote[]> {
-    const allFiles = this.app.vault.getMarkdownFiles();
-    const activeFile = this.app.workspace.getActiveFile();
-    const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
-    const candidateLimit = Math.max(this.data.settings.aiRelatedNotesLimit * 4, 20);
-
-    const rankedCandidates = allFiles
-      .filter((file) => !shouldExcludeAiContextFile(file.path, this.data.settings))
-      .map((file) => ({
-        file,
-        score: scoreNotePathForAi(file, terms, this.data.settings, includeActiveNote && activeFile instanceof TFile ? activeFile.path : "")
-      }))
-      .sort((left, right) => right.score - left.score)
-      .slice(0, candidateLimit);
-
-    const resolved: AiRelevantNote[] = [];
-    for (const candidate of rankedCandidates) {
-      const content = truncateText(await this.app.vault.read(candidate.file), 5000);
-      const combinedScore = candidate.score + scoreTextForAi(content, terms);
-      if (combinedScore <= 0) {
-        continue;
-      }
-
-      resolved.push({
-        path: candidate.file.path,
-        reason: deriveAiNoteReason(candidate.file.path, this.data.settings, activeFile instanceof TFile ? activeFile.path : "", includeActiveNote, terms),
-        excerpt: truncateText(content, 1200),
-        score: combinedScore
-      });
+    if (!this.data.settings.aiIndexEnabled) {
+      return [];
     }
 
-    return resolved
-      .sort((left, right) => right.score - left.score)
-      .slice(0, this.data.settings.aiRelatedNotesLimit);
+    const activeFile = this.app.workspace.getActiveFile();
+    const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
+    const activeFilePath = activeFile instanceof TFile ? activeFile.path : "";
+
+    return getRelevantIndexedNotes(
+      this.data.noteIndex,
+      terms,
+      this.data.settings,
+      activeFilePath,
+      includeActiveNote,
+      this.data.settings.aiRelatedNotesLimit
+    );
   }
 
   private async requestAiCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -1741,7 +1826,8 @@ export default class DailyDashboardPlugin extends Plugin {
     return {
       settings,
       entries,
-      dayState
+      dayState,
+      noteIndex: normalizeNoteIndexCache(loaded?.noteIndex)
     };
   }
 
@@ -1974,6 +2060,83 @@ export default class DailyDashboardPlugin extends Plugin {
       : `Dashboard state is already current. Last check: ${this.lastSyncCheckAt || "just now"}.`);
   }
 
+  private scheduleNoteIndexRefresh(): void {
+    if (!this.data.settings.aiIndexEnabled) {
+      return;
+    }
+
+    if (this.noteIndexDebounceId !== null) {
+      window.clearTimeout(this.noteIndexDebounceId);
+    }
+
+    this.noteIndexDebounceId = window.setTimeout(() => {
+      this.noteIndexDebounceId = null;
+      void this.rebuildAiNoteIndex(false);
+    }, 2000);
+  }
+
+  async rebuildAiNoteIndex(showNotice: boolean): Promise<void> {
+    if (!this.data.settings.aiIndexEnabled) {
+      if (showNotice) {
+        new Notice("AI note indexing is disabled in settings.");
+      }
+      return;
+    }
+
+    if (this.isIndexingNotes) {
+      if (showNotice) {
+        new Notice("AI note indexing is already in progress.");
+      }
+      return;
+    }
+
+    this.isIndexingNotes = true;
+    this.refreshDashboardViews();
+
+    try {
+      const allFiles = this.app.vault.getMarkdownFiles();
+      const nextEntries: Record<string, NoteIndexEntry> = {};
+
+      for (const file of allFiles) {
+        if (!shouldIndexFilePath(file.path, this.data.settings)) {
+          continue;
+        }
+
+        const content = await this.app.vault.read(file);
+        nextEntries[normalizePath(file.path)] = buildNoteIndexEntry(file, content, this.data.settings.aiChunkCharLimit);
+      }
+
+      this.data.noteIndex = {
+        version: 1,
+        indexedAt: formatDateTimeKey(new Date()),
+        lastIndexedFile: Object.keys(nextEntries).sort().slice(-1)[0] ?? "",
+        entries: nextEntries
+      };
+
+      await this.persistNoteIndex();
+      this.refreshDashboardViews();
+
+      if (showNotice) {
+        new Notice(`Indexed ${Object.keys(nextEntries).length} markdown note${Object.keys(nextEntries).length === 1 ? "" : "s"} for AI retrieval.`);
+      }
+    } finally {
+      this.isIndexingNotes = false;
+      this.refreshDashboardViews();
+    }
+  }
+
+  private async ensureAiNoteIndexReady(): Promise<void> {
+    if (!this.data.settings.aiIndexEnabled) {
+      return;
+    }
+
+    if (Object.keys(this.data.noteIndex.entries).length > 0) {
+      return;
+    }
+
+    await this.rebuildAiNoteIndex(false);
+  }
+
   private async syncLiveStateNote(): Promise<void> {
     const content = renderLiveDayStateNote(this.createLiveStateSnapshot());
     await this.upsertMarkdownFile(this.data.settings.liveStatePath, content);
@@ -1987,6 +2150,13 @@ export default class DailyDashboardPlugin extends Plugin {
       dayState: normalizeDayState(this.data.dayState, this.data.entries)
     });
     await this.syncLiveStateNote();
+  }
+
+  private async persistNoteIndex(): Promise<void> {
+    await this.saveData({
+      ...this.data,
+      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+    });
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
@@ -2351,6 +2521,19 @@ class DailyDashboardView extends ItemView {
       createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
 
+      const indexStatus = aiCard.createDiv({ cls: "daily-dashboard-stat-list" });
+      createSemanticChip(indexStatus, aiStatus.indexStatus.enabled ? `Indexed ${aiStatus.indexStatus.indexedNotes} notes` : "Index disabled", aiStatus.indexStatus.enabled ? "done" : "neutral");
+      createSemanticChip(indexStatus, `${aiStatus.indexStatus.indexedChunks} chunks`, "neutral");
+      createSemanticChip(indexStatus, aiStatus.indexStatus.indexing ? "Indexing now" : `Indexed ${formatSyncTimestamp(aiStatus.indexStatus.indexedAt)}`, aiStatus.indexStatus.indexing ? "focus" : "neutral");
+
+      if (aiStatus.indexStatus.lastIndexedFile) {
+        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Last indexed file: ${aiStatus.indexStatus.lastIndexedFile}` });
+      }
+
+      if (aiStatus.indexStatus.indexedFolders.length > 0) {
+        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Indexed folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
+      }
+
       aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
       const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
@@ -2358,6 +2541,7 @@ class DailyDashboardView extends ItemView {
       const aiQuestionActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
 
       if (aiStatus.latestArtifact) {
         const latest = aiCard.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
@@ -3255,6 +3439,51 @@ class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Enable AI note index")
+      .setDesc("Cache scoped markdown notes so AI retrieval does not rescan the whole vault on every request.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.aiIndexEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            aiIndexEnabled: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("AI indexed folders")
+      .setDesc("One folder per line. Only these folders are cached for AI retrieval, plus the master task hub and active note when applicable.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Project Notes\nReference\nJournal")
+          .setValue(settings.aiIndexedFolders)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiIndexedFolders: value
+            });
+          });
+
+        textArea.inputEl.rows = 4;
+        textArea.inputEl.cols = 36;
+      });
+
+    new Setting(containerEl)
+      .setName("AI chunk character limit")
+      .setDesc("Approximate maximum size for cached note chunks used during retrieval.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.aiChunkCharLimit}`)
+          .setValue(`${settings.aiChunkCharLimit}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiChunkCharLimit: clamp(Number(value.trim() || DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3000)
+            });
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Wallpaper folder")
       .setDesc("Image folder used for dashboard hero wallpapers.")
       .addText((text) => {
@@ -3415,6 +3644,9 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
     aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
     aiRelatedNotesLimit: clamp(Number(settings.aiRelatedNotesLimit ?? DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: settings.aiIndexEnabled ?? DEFAULT_SETTINGS.aiIndexEnabled,
+    aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
+    aiChunkCharLimit: clamp(Number(settings.aiChunkCharLimit ?? DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3000),
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
@@ -3424,6 +3656,230 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
 function normalizeFolderPath(value: string): string {
   const normalized = normalizePath(value.trim());
   return normalized.replace(/\/+$/g, "");
+}
+
+function createEmptyNoteIndexCache(): NoteIndexCache {
+  return {
+    version: 1,
+    indexedAt: "",
+    lastIndexedFile: "",
+    entries: {}
+  };
+}
+
+function normalizeNoteIndexCache(cache: Partial<NoteIndexCache> | undefined): NoteIndexCache {
+  const entries = Object.fromEntries(
+    Object.entries(cache?.entries ?? {})
+      .map(([path, entry]) => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+
+        const normalizedChunks = Array.isArray(entry.chunks)
+          ? entry.chunks
+              .filter((chunk): chunk is NoteIndexChunk => Boolean(chunk && typeof chunk === "object" && typeof chunk.text === "string"))
+              .map((chunk, index) => ({
+                id: typeof chunk.id === "string" ? chunk.id : `${normalizePath(path)}#${index + 1}`,
+                heading: typeof chunk.heading === "string" ? chunk.heading : "",
+                text: chunk.text,
+                keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item): item is string => typeof item === "string") : extractKeywords(chunk.text)
+              }))
+          : [];
+
+        return [normalizePath(path), {
+          path: normalizePath(path),
+          mtime: Number(entry.mtime ?? 0),
+          size: Number(entry.size ?? 0),
+          title: typeof entry.title === "string" ? entry.title : normalizePath(path).split("/").pop() ?? normalizePath(path),
+          keywords: Array.isArray(entry.keywords) ? entry.keywords.filter((item): item is string => typeof item === "string") : [],
+          chunks: normalizedChunks
+        } satisfies NoteIndexEntry];
+      })
+      .filter((item): item is [string, NoteIndexEntry] => Boolean(item))
+  );
+
+  return {
+    version: 1,
+    indexedAt: typeof cache?.indexedAt === "string" ? cache.indexedAt : "",
+    lastIndexedFile: typeof cache?.lastIndexedFile === "string" ? cache.lastIndexedFile : "",
+    entries
+  };
+}
+
+function getIndexedFolderList(settings: DashboardSettings): string[] {
+  return settings.aiIndexedFolders
+    .split(/\r?\n/)
+    .map((item) => normalizeFolderPath(item))
+    .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+}
+
+function shouldRebuildAiIndex(previous: DashboardSettings, next: DashboardSettings): boolean {
+  return previous.aiIndexEnabled !== next.aiIndexEnabled
+    || previous.aiIndexedFolders !== next.aiIndexedFolders
+    || previous.aiChunkCharLimit !== next.aiChunkCharLimit
+    || previous.masterTodoPath !== next.masterTodoPath;
+}
+
+function shouldIndexFilePath(path: string, settings: DashboardSettings): boolean {
+  const normalizedPath = normalizePath(path);
+  if (!normalizedPath.endsWith(".md")) {
+    return false;
+  }
+
+  if (shouldExcludeAiContextFile(normalizedPath, settings)) {
+    return false;
+  }
+
+  if (normalizedPath === normalizePath(settings.masterTodoPath)) {
+    return true;
+  }
+
+  const folders = getIndexedFolderList(settings);
+  return folders.some((folder) => normalizedPath === folder || normalizedPath.startsWith(`${folder}/`));
+}
+
+function buildNoteIndexEntry(file: TFile, content: string, chunkCharLimit: number): NoteIndexEntry {
+  const normalizedPath = normalizePath(file.path);
+  const chunks = chunkMarkdownForIndex(content, chunkCharLimit).map((chunk, index) => ({
+    id: `${normalizedPath}#${index + 1}`,
+    heading: chunk.heading,
+    text: chunk.text,
+    keywords: extractKeywords(`${chunk.heading}\n${chunk.text}`)
+  }));
+
+  return {
+    path: normalizedPath,
+    mtime: file.stat.mtime,
+    size: file.stat.size,
+    title: file.basename,
+    keywords: extractKeywords(`${file.basename}\n${content.slice(0, 2000)}`),
+    chunks
+  };
+}
+
+function chunkMarkdownForIndex(content: string, chunkCharLimit: number): Array<{ heading: string; text: string }> {
+  const lines = content.split(/\r?\n/);
+  const chunks: Array<{ heading: string; text: string }> = [];
+  let heading = "";
+  let buffer: string[] = [];
+
+  const flush = (): void => {
+    const text = buffer.join("\n").trim();
+    if (!text) {
+      buffer = [];
+      return;
+    }
+
+    if (text.length <= chunkCharLimit) {
+      chunks.push({ heading, text });
+    } else {
+      for (let start = 0; start < text.length; start += chunkCharLimit) {
+        chunks.push({ heading, text: text.slice(start, start + chunkCharLimit).trim() });
+      }
+    }
+
+    buffer = [];
+  };
+
+  lines.forEach((line) => {
+    if (/^#{1,6}\s+/.test(line)) {
+      flush();
+      heading = line.replace(/^#{1,6}\s+/, "").trim();
+      return;
+    }
+
+    buffer.push(line);
+    if (buffer.join("\n").length >= chunkCharLimit) {
+      flush();
+    }
+  });
+
+  flush();
+  return chunks;
+}
+
+function extractKeywords(value: string): string[] {
+  const stopWords = new Set(["the", "and", "for", "that", "with", "this", "from", "have", "your", "into", "about", "were", "when", "what", "will", "then", "them", "they", "been", "there", "their", "just", "over", "more", "than", "also", "note", "notes"]);
+  const tokens = value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !stopWords.has(token));
+  return Array.from(new Set(tokens)).slice(0, 80);
+}
+
+function getRelevantIndexedNotes(
+  noteIndex: NoteIndexCache,
+  terms: string[],
+  settings: DashboardSettings,
+  activeFilePath: string,
+  includeActiveNote: boolean,
+  limit: number
+): AiRelevantNote[] {
+  const candidates: AiRelevantNote[] = [];
+
+  Object.values(noteIndex.entries).forEach((entry) => {
+    const baseScore = scoreIndexedEntry(entry, terms, settings, activeFilePath, includeActiveNote);
+    if (baseScore <= 0) {
+      return;
+    }
+
+    entry.chunks.forEach((chunk) => {
+      const chunkScore = baseScore + scoreIndexedChunk(chunk, terms);
+      if (chunkScore <= 0) {
+        return;
+      }
+
+      candidates.push({
+        path: entry.path,
+        reason: deriveAiNoteReason(entry.path, settings, activeFilePath, includeActiveNote, terms),
+        excerpt: truncateText(`${chunk.heading ? `${chunk.heading}\n` : ""}${chunk.text}`, 1200),
+        score: chunkScore
+      });
+    });
+  });
+
+  const bestByPath = new Map<string, AiRelevantNote>();
+  candidates
+    .sort((left, right) => right.score - left.score)
+    .forEach((candidate) => {
+      if (!bestByPath.has(candidate.path)) {
+        bestByPath.set(candidate.path, candidate);
+      }
+    });
+
+  return Array.from(bestByPath.values()).slice(0, limit);
+}
+
+function scoreIndexedEntry(entry: NoteIndexEntry, terms: string[], settings: DashboardSettings, activeFilePath: string, includeActiveNote: boolean): number {
+  let score = 0;
+  const path = entry.path.toLowerCase();
+  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
+  if (includeActiveNote && entry.path === normalizePath(activeFilePath)) {
+    score += 80;
+  }
+  if (entry.path === normalizePath(settings.masterTodoPath)) {
+    score += 30;
+  }
+  if (projectNotesFolder && path.startsWith(projectNotesFolder)) {
+    score += 16;
+  }
+  score += terms.reduce((sum, term) => sum + (path.includes(term) ? 4 : 0), 0);
+  score += terms.reduce((sum, term) => sum + (entry.keywords.includes(term) ? 3 : 0), 0);
+  return score;
+}
+
+function scoreIndexedChunk(chunk: NoteIndexChunk, terms: string[]): number {
+  const haystack = `${chunk.heading}\n${chunk.text}`.toLowerCase();
+  return terms.reduce((score, term) => {
+    let next = score;
+    if (chunk.keywords.includes(term)) {
+      next += 4;
+    }
+    if (haystack.includes(term)) {
+      next += 2;
+    }
+    return next;
+  }, 0);
 }
 
 function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {

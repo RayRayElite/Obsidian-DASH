@@ -67,6 +67,16 @@ The API key is stored in plugin settings, not a secure vault, so if you sync plu
 
 The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, and the active note you are currently reading. `AI related note limit` controls how many retrieved notes are included in each request.
 
+The plugin now also includes a cached AI note index. Instead of rescanning all eligible notes for every AI request, it builds and stores chunked note excerpts for the folders you choose in `AI indexed folders`. That makes retrieval faster and more stable while keeping the scope explicit.
+
+Cached retrieval setup:
+
+1. Leave `Enable AI note index` on.
+2. Put one folder per line in `AI indexed folders`.
+3. Use `Rebuild AI note index` from the command palette or the `Rebuild index` button in the AI Workspace card after large vault changes.
+
+This is a cached retrieval layer, not embeddings yet. It uses chunked note indexing, scoped folder caching, and keyword-weighted ranking so the plugin can search your vault more intelligently without the added cost and complexity of embedding every note.
+
 ## Cross-Device Sync Notes
 
 If you use Obsidian Sync across desktop and mobile, the plugin now reloads synced dashboard state before day/session actions and also polls for synced changes in the background. That means actions like starting a nap on your phone and stopping it on desktop should work once sync has landed on the second device.

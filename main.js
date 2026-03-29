@@ -45,6 +45,9 @@ var DEFAULT_SETTINGS = {
   aiOutputFolder: "Dashboard Logs/AI",
   aiContextDays: 14,
   aiRelatedNotesLimit: 6,
+  aiIndexEnabled: true,
+  aiIndexedFolders: "Project Notes",
+  aiChunkCharLimit: 1200,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -64,7 +67,8 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       dayState: {
         activeDate: formatDateKey(/* @__PURE__ */ new Date()),
         status: "not-started"
-      }
+      },
+      noteIndex: createEmptyNoteIndexCache()
     };
     this.wallpaperOptions = [];
     this.autoArchiveDebounceId = null;
@@ -76,6 +80,8 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.liveStateAvailable = false;
     this.latestAiArtifact = null;
     this.isAiBusy = false;
+    this.isIndexingNotes = false;
+    this.noteIndexDebounceId = null;
   }
   async onload() {
     await this.loadPluginData();
@@ -268,6 +274,13 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.generateAiActiveNoteAnalysis();
       }
     });
+    this.addCommand({
+      id: "rebuild-ai-note-index",
+      name: "Rebuild AI note index",
+      callback: () => {
+        void this.rebuildAiNoteIndex(true);
+      }
+    });
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (!(file instanceof import_obsidian.TFile)) {
@@ -281,7 +294,29 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       }
       if (normalizedPath === (0, import_obsidian.normalizePath)(this.data.settings.liveStatePath)) {
         void this.refreshFromStorageIfChanged();
+        return;
       }
+      if (file.extension === "md") {
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+    this.registerEvent(this.app.vault.on("create", (file) => {
+      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      if (file instanceof import_obsidian.TFile && file.extension === "md") {
+        delete this.data.noteIndex.entries[(0, import_obsidian.normalizePath)(file.path)];
+        this.scheduleNoteIndexRefresh();
+      }
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") {
+        return;
+      }
+      delete this.data.noteIndex.entries[(0, import_obsidian.normalizePath)(oldPath)];
+      this.scheduleNoteIndexRefresh();
     }));
     this.registerInterval(window.setInterval(() => {
       void this.refreshForNewDay();
@@ -289,6 +324,9 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.registerInterval(window.setInterval(() => {
       void this.refreshFromStorageIfChanged();
     }, 15e3));
+    window.setTimeout(() => {
+      void this.rebuildAiNoteIndex(false);
+    }, 2500);
   }
   async onunload() {
     await this.app.workspace.detachLeavesOfType(VIEW_TYPE_DAILY_DASHBOARD);
@@ -360,7 +398,20 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       busy: this.isAiBusy,
       model: this.data.settings.aiModel,
       outputFolder: this.data.settings.aiOutputFolder,
-      latestArtifact: this.latestAiArtifact
+      latestArtifact: this.latestAiArtifact,
+      indexStatus: this.getRetrievalIndexStatus()
+    };
+  }
+  getRetrievalIndexStatus() {
+    const entries = Object.values(this.data.noteIndex.entries);
+    return {
+      enabled: this.data.settings.aiIndexEnabled,
+      indexing: this.isIndexingNotes,
+      indexedNotes: entries.length,
+      indexedChunks: entries.reduce((sum, entry) => sum + entry.chunks.length, 0),
+      indexedAt: this.data.noteIndex.indexedAt,
+      lastIndexedFile: this.data.noteIndex.lastIndexedFile,
+      indexedFolders: getIndexedFolderList(this.data.settings)
     };
   }
   async activateDashboardView() {
@@ -375,6 +426,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
   }
   async updateSettings(settings) {
     await this.refreshDataFromStorage(false);
+    const previousSettings = this.data.settings;
     this.data.settings = sanitizeSettings(settings);
     await this.refreshWallpaperOptions();
     for (const date of Object.keys(this.data.entries)) {
@@ -382,6 +434,9 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       await this.syncDailyLog(this.data.entries[date]);
     }
     await this.savePluginData();
+    if (shouldRebuildAiIndex(previousSettings, this.data.settings)) {
+      this.scheduleNoteIndexRefresh();
+    }
     this.refreshDashboardViews();
   }
   async updateMoodScore(value) {
@@ -977,6 +1032,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.isAiBusy = true;
     this.refreshDashboardViews();
     try {
+      await this.ensureAiNoteIndexReady();
       const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, (_a = input.includeActiveNote) != null ? _a : false);
       const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}
 
@@ -1054,29 +1110,20 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     ].filter((section) => section.trim().length > 0).join("\n\n");
   }
   async collectAiRelevantNotes(question, todoSnapshot, includeActiveNote) {
-    const allFiles = this.app.vault.getMarkdownFiles();
+    if (!this.data.settings.aiIndexEnabled) {
+      return [];
+    }
     const activeFile = this.app.workspace.getActiveFile();
     const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
-    const candidateLimit = Math.max(this.data.settings.aiRelatedNotesLimit * 4, 20);
-    const rankedCandidates = allFiles.filter((file) => !shouldExcludeAiContextFile(file.path, this.data.settings)).map((file) => ({
-      file,
-      score: scoreNotePathForAi(file, terms, this.data.settings, includeActiveNote && activeFile instanceof import_obsidian.TFile ? activeFile.path : "")
-    })).sort((left, right) => right.score - left.score).slice(0, candidateLimit);
-    const resolved = [];
-    for (const candidate of rankedCandidates) {
-      const content = truncateText(await this.app.vault.read(candidate.file), 5e3);
-      const combinedScore = candidate.score + scoreTextForAi(content, terms);
-      if (combinedScore <= 0) {
-        continue;
-      }
-      resolved.push({
-        path: candidate.file.path,
-        reason: deriveAiNoteReason(candidate.file.path, this.data.settings, activeFile instanceof import_obsidian.TFile ? activeFile.path : "", includeActiveNote, terms),
-        excerpt: truncateText(content, 1200),
-        score: combinedScore
-      });
-    }
-    return resolved.sort((left, right) => right.score - left.score).slice(0, this.data.settings.aiRelatedNotesLimit);
+    const activeFilePath = activeFile instanceof import_obsidian.TFile ? activeFile.path : "";
+    return getRelevantIndexedNotes(
+      this.data.noteIndex,
+      terms,
+      this.data.settings,
+      activeFilePath,
+      includeActiveNote,
+      this.data.settings.aiRelatedNotesLimit
+    );
   }
   async requestAiCompletion(systemPrompt, userPrompt) {
     var _a, _b, _c, _d;
@@ -1288,7 +1335,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return {
       settings,
       entries,
-      dayState
+      dayState,
+      noteIndex: normalizeNoteIndexCache(loaded == null ? void 0 : loaded.noteIndex)
     };
   }
   async loadPluginData() {
@@ -1465,6 +1513,69 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const changed = await this.refreshDataFromStorage(true);
     new import_obsidian.Notice(changed ? `Refreshed dashboard state from ${this.lastSyncSource.toLowerCase()}.` : `Dashboard state is already current. Last check: ${this.lastSyncCheckAt || "just now"}.`);
   }
+  scheduleNoteIndexRefresh() {
+    if (!this.data.settings.aiIndexEnabled) {
+      return;
+    }
+    if (this.noteIndexDebounceId !== null) {
+      window.clearTimeout(this.noteIndexDebounceId);
+    }
+    this.noteIndexDebounceId = window.setTimeout(() => {
+      this.noteIndexDebounceId = null;
+      void this.rebuildAiNoteIndex(false);
+    }, 2e3);
+  }
+  async rebuildAiNoteIndex(showNotice) {
+    var _a;
+    if (!this.data.settings.aiIndexEnabled) {
+      if (showNotice) {
+        new import_obsidian.Notice("AI note indexing is disabled in settings.");
+      }
+      return;
+    }
+    if (this.isIndexingNotes) {
+      if (showNotice) {
+        new import_obsidian.Notice("AI note indexing is already in progress.");
+      }
+      return;
+    }
+    this.isIndexingNotes = true;
+    this.refreshDashboardViews();
+    try {
+      const allFiles = this.app.vault.getMarkdownFiles();
+      const nextEntries = {};
+      for (const file of allFiles) {
+        if (!shouldIndexFilePath(file.path, this.data.settings)) {
+          continue;
+        }
+        const content = await this.app.vault.read(file);
+        nextEntries[(0, import_obsidian.normalizePath)(file.path)] = buildNoteIndexEntry(file, content, this.data.settings.aiChunkCharLimit);
+      }
+      this.data.noteIndex = {
+        version: 1,
+        indexedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
+        lastIndexedFile: (_a = Object.keys(nextEntries).sort().slice(-1)[0]) != null ? _a : "",
+        entries: nextEntries
+      };
+      await this.persistNoteIndex();
+      this.refreshDashboardViews();
+      if (showNotice) {
+        new import_obsidian.Notice(`Indexed ${Object.keys(nextEntries).length} markdown note${Object.keys(nextEntries).length === 1 ? "" : "s"} for AI retrieval.`);
+      }
+    } finally {
+      this.isIndexingNotes = false;
+      this.refreshDashboardViews();
+    }
+  }
+  async ensureAiNoteIndexReady() {
+    if (!this.data.settings.aiIndexEnabled) {
+      return;
+    }
+    if (Object.keys(this.data.noteIndex.entries).length > 0) {
+      return;
+    }
+    await this.rebuildAiNoteIndex(false);
+  }
   async syncLiveStateNote() {
     const content = renderLiveDayStateNote(this.createLiveStateSnapshot());
     await this.upsertMarkdownFile(this.data.settings.liveStatePath, content);
@@ -1477,6 +1588,12 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       dayState: normalizeDayState(this.data.dayState, this.data.entries)
     });
     await this.syncLiveStateNote();
+  }
+  async persistNoteIndex() {
+    await this.saveData({
+      ...this.data,
+      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+    });
   }
   async persistEntry(entry) {
     this.data.entries[entry.date] = this.normalizeEntry(entry, entry.date);
@@ -1784,6 +1901,16 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
       createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
+      const indexStatus = aiCard.createDiv({ cls: "daily-dashboard-stat-list" });
+      createSemanticChip(indexStatus, aiStatus.indexStatus.enabled ? `Indexed ${aiStatus.indexStatus.indexedNotes} notes` : "Index disabled", aiStatus.indexStatus.enabled ? "done" : "neutral");
+      createSemanticChip(indexStatus, `${aiStatus.indexStatus.indexedChunks} chunks`, "neutral");
+      createSemanticChip(indexStatus, aiStatus.indexStatus.indexing ? "Indexing now" : `Indexed ${formatSyncTimestamp(aiStatus.indexStatus.indexedAt)}`, aiStatus.indexStatus.indexing ? "focus" : "neutral");
+      if (aiStatus.indexStatus.lastIndexedFile) {
+        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Last indexed file: ${aiStatus.indexStatus.lastIndexedFile}` });
+      }
+      if (aiStatus.indexStatus.indexedFolders.length > 0) {
+        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Indexed folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
+      }
       aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
       const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
@@ -1791,6 +1918,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       const aiQuestionActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
       if (aiStatus.latestArtifact) {
         const latest = aiCard.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
         latest.createEl("strong", { text: `${aiStatus.latestArtifact.kind} \u2022 ${aiStatus.latestArtifact.generatedAt}` });
@@ -2479,6 +2607,32 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
         });
       });
     });
+    new import_obsidian.Setting(containerEl).setName("Enable AI note index").setDesc("Cache scoped markdown notes so AI retrieval does not rescan the whole vault on every request.").addToggle((toggle) => {
+      toggle.setValue(settings.aiIndexEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiIndexEnabled: value
+        });
+      });
+    });
+    new import_obsidian.Setting(containerEl).setName("AI indexed folders").setDesc("One folder per line. Only these folders are cached for AI retrieval, plus the master task hub and active note when applicable.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Project Notes\nReference\nJournal").setValue(settings.aiIndexedFolders).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiIndexedFolders: value
+        });
+      });
+      textArea.inputEl.rows = 4;
+      textArea.inputEl.cols = 36;
+    });
+    new import_obsidian.Setting(containerEl).setName("AI chunk character limit").setDesc("Approximate maximum size for cached note chunks used during retrieval.").addText((text) => {
+      text.setPlaceholder(`${DEFAULT_SETTINGS.aiChunkCharLimit}`).setValue(`${settings.aiChunkCharLimit}`).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiChunkCharLimit: clamp(Number(value.trim() || DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3)
+        });
+      });
+    });
     new import_obsidian.Setting(containerEl).setName("Wallpaper folder").setDesc("Image folder used for dashboard hero wallpapers.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.wallpaperFolder).setValue(settings.wallpaperFolder).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -2577,7 +2731,7 @@ function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2;
     return {
@@ -2600,14 +2754,194 @@ function sanitizeSettings(settings) {
     aiOutputFolder: normalizeFolderPath(((_k = settings.aiOutputFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     aiContextDays: clamp(Number((_l = settings.aiContextDays) != null ? _l : DEFAULT_SETTINGS.aiContextDays), 3, 60),
     aiRelatedNotesLimit: clamp(Number((_m = settings.aiRelatedNotesLimit) != null ? _m : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    wallpaperFolder: normalizeFolderPath(((_n = settings.wallpaperFolder) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_o = settings.selectedWallpaper) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    aiIndexEnabled: (_n = settings.aiIndexEnabled) != null ? _n : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
+    aiChunkCharLimit: clamp(Number((_o = settings.aiChunkCharLimit) != null ? _o : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    wallpaperFolder: normalizeFolderPath(((_p = settings.wallpaperFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_q = settings.selectedWallpaper) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
   };
 }
 function normalizeFolderPath(value) {
   const normalized = (0, import_obsidian.normalizePath)(value.trim());
   return normalized.replace(/\/+$/g, "");
+}
+function createEmptyNoteIndexCache() {
+  return {
+    version: 1,
+    indexedAt: "",
+    lastIndexedFile: "",
+    entries: {}
+  };
+}
+function normalizeNoteIndexCache(cache) {
+  var _a;
+  const entries = Object.fromEntries(
+    Object.entries((_a = cache == null ? void 0 : cache.entries) != null ? _a : {}).map(([path, entry]) => {
+      var _a2, _b, _c;
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+      const normalizedChunks = Array.isArray(entry.chunks) ? entry.chunks.filter((chunk) => Boolean(chunk && typeof chunk === "object" && typeof chunk.text === "string")).map((chunk, index) => ({
+        id: typeof chunk.id === "string" ? chunk.id : `${(0, import_obsidian.normalizePath)(path)}#${index + 1}`,
+        heading: typeof chunk.heading === "string" ? chunk.heading : "",
+        text: chunk.text,
+        keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item) => typeof item === "string") : extractKeywords(chunk.text)
+      })) : [];
+      return [(0, import_obsidian.normalizePath)(path), {
+        path: (0, import_obsidian.normalizePath)(path),
+        mtime: Number((_a2 = entry.mtime) != null ? _a2 : 0),
+        size: Number((_b = entry.size) != null ? _b : 0),
+        title: typeof entry.title === "string" ? entry.title : (_c = (0, import_obsidian.normalizePath)(path).split("/").pop()) != null ? _c : (0, import_obsidian.normalizePath)(path),
+        keywords: Array.isArray(entry.keywords) ? entry.keywords.filter((item) => typeof item === "string") : [],
+        chunks: normalizedChunks
+      }];
+    }).filter((item) => Boolean(item))
+  );
+  return {
+    version: 1,
+    indexedAt: typeof (cache == null ? void 0 : cache.indexedAt) === "string" ? cache.indexedAt : "",
+    lastIndexedFile: typeof (cache == null ? void 0 : cache.lastIndexedFile) === "string" ? cache.lastIndexedFile : "",
+    entries
+  };
+}
+function getIndexedFolderList(settings) {
+  return settings.aiIndexedFolders.split(/\r?\n/).map((item) => normalizeFolderPath(item)).filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+}
+function shouldRebuildAiIndex(previous, next) {
+  return previous.aiIndexEnabled !== next.aiIndexEnabled || previous.aiIndexedFolders !== next.aiIndexedFolders || previous.aiChunkCharLimit !== next.aiChunkCharLimit || previous.masterTodoPath !== next.masterTodoPath;
+}
+function shouldIndexFilePath(path, settings) {
+  const normalizedPath = (0, import_obsidian.normalizePath)(path);
+  if (!normalizedPath.endsWith(".md")) {
+    return false;
+  }
+  if (shouldExcludeAiContextFile(normalizedPath, settings)) {
+    return false;
+  }
+  if (normalizedPath === (0, import_obsidian.normalizePath)(settings.masterTodoPath)) {
+    return true;
+  }
+  const folders = getIndexedFolderList(settings);
+  return folders.some((folder) => normalizedPath === folder || normalizedPath.startsWith(`${folder}/`));
+}
+function buildNoteIndexEntry(file, content, chunkCharLimit) {
+  const normalizedPath = (0, import_obsidian.normalizePath)(file.path);
+  const chunks = chunkMarkdownForIndex(content, chunkCharLimit).map((chunk, index) => ({
+    id: `${normalizedPath}#${index + 1}`,
+    heading: chunk.heading,
+    text: chunk.text,
+    keywords: extractKeywords(`${chunk.heading}
+${chunk.text}`)
+  }));
+  return {
+    path: normalizedPath,
+    mtime: file.stat.mtime,
+    size: file.stat.size,
+    title: file.basename,
+    keywords: extractKeywords(`${file.basename}
+${content.slice(0, 2e3)}`),
+    chunks
+  };
+}
+function chunkMarkdownForIndex(content, chunkCharLimit) {
+  const lines = content.split(/\r?\n/);
+  const chunks = [];
+  let heading = "";
+  let buffer = [];
+  const flush = () => {
+    const text = buffer.join("\n").trim();
+    if (!text) {
+      buffer = [];
+      return;
+    }
+    if (text.length <= chunkCharLimit) {
+      chunks.push({ heading, text });
+    } else {
+      for (let start = 0; start < text.length; start += chunkCharLimit) {
+        chunks.push({ heading, text: text.slice(start, start + chunkCharLimit).trim() });
+      }
+    }
+    buffer = [];
+  };
+  lines.forEach((line) => {
+    if (/^#{1,6}\s+/.test(line)) {
+      flush();
+      heading = line.replace(/^#{1,6}\s+/, "").trim();
+      return;
+    }
+    buffer.push(line);
+    if (buffer.join("\n").length >= chunkCharLimit) {
+      flush();
+    }
+  });
+  flush();
+  return chunks;
+}
+function extractKeywords(value) {
+  const stopWords = /* @__PURE__ */ new Set(["the", "and", "for", "that", "with", "this", "from", "have", "your", "into", "about", "were", "when", "what", "will", "then", "them", "they", "been", "there", "their", "just", "over", "more", "than", "also", "note", "notes"]);
+  const tokens = value.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !stopWords.has(token));
+  return Array.from(new Set(tokens)).slice(0, 80);
+}
+function getRelevantIndexedNotes(noteIndex, terms, settings, activeFilePath, includeActiveNote, limit) {
+  const candidates = [];
+  Object.values(noteIndex.entries).forEach((entry) => {
+    const baseScore = scoreIndexedEntry(entry, terms, settings, activeFilePath, includeActiveNote);
+    if (baseScore <= 0) {
+      return;
+    }
+    entry.chunks.forEach((chunk) => {
+      const chunkScore = baseScore + scoreIndexedChunk(chunk, terms);
+      if (chunkScore <= 0) {
+        return;
+      }
+      candidates.push({
+        path: entry.path,
+        reason: deriveAiNoteReason(entry.path, settings, activeFilePath, includeActiveNote, terms),
+        excerpt: truncateText(`${chunk.heading ? `${chunk.heading}
+` : ""}${chunk.text}`, 1200),
+        score: chunkScore
+      });
+    });
+  });
+  const bestByPath = /* @__PURE__ */ new Map();
+  candidates.sort((left, right) => right.score - left.score).forEach((candidate) => {
+    if (!bestByPath.has(candidate.path)) {
+      bestByPath.set(candidate.path, candidate);
+    }
+  });
+  return Array.from(bestByPath.values()).slice(0, limit);
+}
+function scoreIndexedEntry(entry, terms, settings, activeFilePath, includeActiveNote) {
+  let score = 0;
+  const path = entry.path.toLowerCase();
+  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
+  if (includeActiveNote && entry.path === (0, import_obsidian.normalizePath)(activeFilePath)) {
+    score += 80;
+  }
+  if (entry.path === (0, import_obsidian.normalizePath)(settings.masterTodoPath)) {
+    score += 30;
+  }
+  if (projectNotesFolder && path.startsWith(projectNotesFolder)) {
+    score += 16;
+  }
+  score += terms.reduce((sum, term) => sum + (path.includes(term) ? 4 : 0), 0);
+  score += terms.reduce((sum, term) => sum + (entry.keywords.includes(term) ? 3 : 0), 0);
+  return score;
+}
+function scoreIndexedChunk(chunk, terms) {
+  const haystack = `${chunk.heading}
+${chunk.text}`.toLowerCase();
+  return terms.reduce((score, term) => {
+    let next = score;
+    if (chunk.keywords.includes(term)) {
+      next += 4;
+    }
+    if (haystack.includes(term)) {
+      next += 2;
+    }
+    return next;
+  }, 0);
 }
 function createEmptyEntry(date, habits) {
   const habitValues = Object.fromEntries(habits.map((habit) => [habit.id, 0]));
@@ -2809,27 +3143,6 @@ function shouldExcludeAiContextFile(path, settings) {
     normalizeFolderPath(settings.monthlyReportFolder)
   ].filter((prefix) => prefix.length > 0);
   return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix) || normalizedPath === (0, import_obsidian.normalizePath)(settings.liveStatePath);
-}
-function scoreNotePathForAi(file, terms, settings, activeFilePath) {
-  let score = 0;
-  const path = (0, import_obsidian.normalizePath)(file.path).toLowerCase();
-  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
-  if ((0, import_obsidian.normalizePath)(file.path) === (0, import_obsidian.normalizePath)(activeFilePath)) {
-    score += 80;
-  }
-  if (projectNotesFolder && path.startsWith(projectNotesFolder)) {
-    score += 18;
-  }
-  if (path === (0, import_obsidian.normalizePath)(settings.masterTodoPath).toLowerCase()) {
-    score += 28;
-  }
-  score += scoreTextForAi(path, terms) * 3;
-  score += Math.max(0, 10 - Math.floor((Date.now() - file.stat.mtime) / 864e5));
-  return score;
-}
-function scoreTextForAi(value, terms) {
-  const normalized = value.toLowerCase();
-  return terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0);
 }
 function deriveAiNoteReason(path, settings, activeFilePath, includeActiveNote, terms) {
   const normalizedPath = (0, import_obsidian.normalizePath)(path);
