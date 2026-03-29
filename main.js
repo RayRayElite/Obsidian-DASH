@@ -1771,7 +1771,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     for (const part of parts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       const existing = this.app.vault.getAbstractFileByPath(currentPath);
-      if (existing && !(existing instanceof TFolder)) {
+      if (existing && !(existing instanceof import_obsidian.TFolder)) {
         throw new Error(`Path conflict at ${currentPath}: a file exists where the plugin expects a folder.`);
       }
       if (!existing) {

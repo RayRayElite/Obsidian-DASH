@@ -8,6 +8,7 @@ import {
   Setting,
   setIcon,
   TFile,
+  TFolder,
   Vault,
   WorkspaceLeaf,
   normalizePath
