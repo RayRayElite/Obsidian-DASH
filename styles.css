@@ -34,10 +34,10 @@
 
 .daily-dashboard-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  gap: 22px;
   padding: 28px;
-  min-height: 280px;
+  min-height: 240px;
   position: relative;
   overflow: hidden;
 }
@@ -73,8 +73,8 @@
 .daily-dashboard-hero-copy {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  justify-content: center;
+  gap: 14px;
+  justify-content: flex-start;
   min-width: 0;
 }
 
@@ -95,7 +95,7 @@
 
 .daily-dashboard-hero-text {
   margin: 0;
-  max-width: 60ch;
+  max-width: 48ch;
   color: color-mix(in srgb, var(--text-normal) 78%, var(--text-muted));
   line-height: 1.55;
 }
@@ -110,20 +110,23 @@
 .daily-dashboard-hero-aside {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
+  align-self: stretch;
 }
 
-.daily-dashboard-hero-utility {
+.daily-dashboard-hero-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px;
+  padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
   border-radius: 20px;
-  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+  backdrop-filter: blur(10px);
 }
 
+.daily-dashboard-hero-panel-header,
 .daily-dashboard-hero-utility-header {
   display: flex;
   align-items: center;
@@ -183,7 +186,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding-top: 10px;
+  padding-top: 6px;
+  max-width: 520px;
 }
 
 .daily-dashboard-primary-button,
@@ -509,6 +513,8 @@
 }
 
 .daily-dashboard-actions-inline--compact {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -517,6 +523,66 @@
   min-height: 38px;
   padding: 7px 11px;
   font-size: 0.88rem;
+  width: 100%;
+}
+
+.daily-dashboard-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daily-dashboard-hero-metric {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 74px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 12%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 78%, transparent);
+}
+
+.daily-dashboard-hero-metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 18%, var(--background-primary));
+  color: color-mix(in srgb, var(--daily-dashboard-accent-soft) 76%, white);
+}
+
+.daily-dashboard-hero-metric-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.daily-dashboard-hero-metric-label {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daily-dashboard-hero-metric-value {
+  color: var(--text-normal);
+  font-size: 0.96rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.daily-dashboard-hero-metric.is-alert {
+  border-color: color-mix(in srgb, #ff8b7d 28%, var(--background-modifier-border));
+}
+
+.daily-dashboard-hero-metric.is-done {
+  border-color: color-mix(in srgb, #78dca0 28%, var(--background-modifier-border));
 }
 
 .daily-dashboard-input,
@@ -636,8 +702,12 @@ input.daily-dashboard-input {
     grid-column: span 6;
   }
 
-  .daily-dashboard-hero-meta {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .daily-dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-dashboard-actions {
+    max-width: none;
   }
 }
 
@@ -647,11 +717,11 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero {
-    grid-template-columns: 1fr;
     padding: 18px;
   }
 
-  .daily-dashboard-hero-meta {
+  .daily-dashboard-hero-metrics,
+  .daily-dashboard-actions-inline--compact {
     grid-template-columns: 1fr;
   }
 

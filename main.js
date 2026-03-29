@@ -919,17 +919,20 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
         cls: "daily-dashboard-hero-text",
         text: "Drive the day with a clear Top 3, surface stale projects before they rot, and keep work, habits, friction, and reviews tied together."
       });
-      const actions = hero.createDiv({ cls: "daily-dashboard-actions" });
+      const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       const heroAside = hero.createDiv({ cls: "daily-dashboard-hero-aside" });
-      const heroMeta = heroAside.createDiv({ cls: "daily-dashboard-hero-meta" });
-      createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
-      createStatPill(heroMeta, `${todayEntry.completedTasks.length} archived today`, "archive", "done");
-      createStatPill(heroMeta, `${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"}`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral");
-      createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
-      const heroUtility = heroAside.createDiv({ cls: "daily-dashboard-hero-utility" });
+      const heroSnapshot = heroAside.createDiv({ cls: "daily-dashboard-hero-panel" });
+      const snapshotHeader = heroSnapshot.createDiv({ cls: "daily-dashboard-hero-panel-header" });
+      snapshotHeader.createEl("span", { cls: "daily-dashboard-hero-utility-label", text: "Today Snapshot" });
+      const heroMeta = heroSnapshot.createDiv({ cls: "daily-dashboard-hero-metrics" });
+      createHeroMetric(heroMeta, "calendar-days", "Date", todayEntry.date, "date");
+      createHeroMetric(heroMeta, "archive", "Archived", `${todayEntry.completedTasks.length} today`, "done");
+      createHeroMetric(heroMeta, "triangle-alert", "Stale", `${staleProjectCount} project${staleProjectCount === 1 ? "" : "s"}`, staleProjectCount > 0 ? "alert" : "neutral");
+      createHeroMetric(heroMeta, "activity", "State", `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "state");
+      const heroUtility = heroAside.createDiv({ cls: "daily-dashboard-hero-panel daily-dashboard-hero-utility" });
       const utilityHeader = heroUtility.createDiv({ cls: "daily-dashboard-hero-utility-header" });
       utilityHeader.createEl("span", { cls: "daily-dashboard-hero-utility-label", text: "Reports And Maintenance" });
       const utilityActions = heroUtility.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
@@ -1609,13 +1612,15 @@ function createSemanticChip(parent, text, tone) {
   chip.setText(text);
   return chip;
 }
-function createStatPill(parent, text, iconName, tone) {
-  const pill = parent.createDiv({ cls: tone === "date" ? "daily-dashboard-date-pill" : "daily-dashboard-stat-pill" });
-  pill.addClass(`is-${tone}`);
-  const iconEl = pill.createSpan({ cls: "daily-dashboard-pill-icon" });
-  (0, import_obsidian.setIcon)(iconEl, iconName);
-  pill.createSpan({ cls: "daily-dashboard-pill-label", text });
-  return pill;
+function createHeroMetric(parent, iconName, label, value, tone) {
+  const metric = parent.createDiv({ cls: "daily-dashboard-hero-metric" });
+  metric.addClass(`is-${tone}`);
+  const iconWrap = metric.createDiv({ cls: "daily-dashboard-hero-metric-icon" });
+  (0, import_obsidian.setIcon)(iconWrap, iconName);
+  const copy = metric.createDiv({ cls: "daily-dashboard-hero-metric-copy" });
+  copy.createEl("span", { cls: "daily-dashboard-hero-metric-label", text: label });
+  copy.createEl("strong", { cls: "daily-dashboard-hero-metric-value", text: value });
+  return metric;
 }
 function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
