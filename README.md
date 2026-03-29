@@ -119,6 +119,8 @@ The compiled plugin entrypoint is written to `main.js`.
 
 The easiest workflow on Windows is to make your vault use this project folder directly instead of copying files after every change.
 
+That is good for desktop iteration, but it is not a good sync strategy for mobile. Obsidian Sync needs a real plugin folder with real files inside the vault. A desktop junction or symlink can work locally and still fail to restore the plugin on phone.
+
 1. Close Obsidian.
 2. Go to your vault's plugin directory: `.obsidian/plugins/`.
 3. Remove the existing `daily-dashboard` plugin folder there if you already copied one in manually.
@@ -143,4 +145,24 @@ When you make code changes after that:
 2. let `npm run watch` rebuild
 3. reload the plugin in Obsidian, or restart Obsidian if needed
 
-If you do not want to use a junction, the next best option is a deploy script that copies `main.js`, `manifest.json`, `styles.css`, and the `Wallpapers` folder into your vault automatically. The junction approach is simpler and less fragile.
+## Sync-Friendly Deploy
+
+If you want the plugin to sync to mobile reliably, deploy a real copy into your vault plugin folder instead of relying only on the junction.
+
+1. Build the plugin.
+2. Copy the built plugin files into your vault's real plugin folder.
+3. Let Obsidian Sync propagate that real folder to mobile.
+
+You can do that with:
+
+```bash
+npm run deploy -- "D:/YourVault/.obsidian/plugins/daily-dashboard"
+```
+
+Or set `OBSIDIAN_PLUGIN_DIR` and run:
+
+```bash
+npm run build:deploy
+```
+
+That copies `main.js`, `manifest.json`, `styles.css`, and the `Wallpapers` folder into a normal vault plugin directory that Sync can actually send to mobile.
