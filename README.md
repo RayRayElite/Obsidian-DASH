@@ -54,6 +54,8 @@ The dashboard now includes an `AI Workspace` card plus command-palette actions f
 
 AI output is written into `Dashboard Logs/AI` by default, grouped by date, so the generated planning and analysis stays searchable in your vault.
 
+The `AI Workspace` card is organized into separate workflow, retrieval, ask, and latest-output sections so the dashboard keeps the same functionality without turning into a single long stack of controls.
+
 Recommended starting model: `gpt-4o-mini`.
 Use that as the default for frequent dashboard actions because it is usually the best cost-to-quality tradeoff for planning, reflection, and triage. If later you want deeper long-form strategic writeups, you can swap the model in settings without changing the rest of the plugin.
 
@@ -74,8 +76,13 @@ Cached retrieval setup:
 1. Leave `Enable AI note index` on.
 2. Put one folder per line in `AI indexed folders`.
 3. Use `Rebuild AI note index` from the command palette or the `Rebuild index` button in the AI Workspace card after large vault changes.
+4. Optional: turn on `Enable AI embeddings` if you want semantic matching layered on top of the cached chunk index.
+5. Leave `AI embedding API URL` at the default unless you intentionally use a compatible alternative endpoint.
 
-This is a cached retrieval layer, not embeddings yet. It uses chunked note indexing, scoped folder caching, and keyword-weighted ranking so the plugin can search your vault more intelligently without the added cost and complexity of embedding every note.
+By default, retrieval stays keyword-weighted and cheap. If you enable embeddings, the plugin uses the same cached chunk index but also stores vector embeddings for indexed chunks and compares them against a query embedding at request time. That means you get semantic retrieval without abandoning the explicit folder-scoped cache.
+
+Recommended embeddings model: `text-embedding-3-small`.
+Use that when you want better semantic note retrieval at relatively low cost.
 
 ## Cross-Device Sync Notes
 

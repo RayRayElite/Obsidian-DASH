@@ -89,6 +89,9 @@ interface DashboardSettings {
   aiIndexEnabled: boolean;
   aiIndexedFolders: string;
   aiChunkCharLimit: number;
+  aiEmbeddingsEnabled: boolean;
+  aiEmbeddingModel: string;
+  aiEmbeddingApiUrl: string;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -125,6 +128,7 @@ interface NoteIndexChunk {
   heading: string;
   text: string;
   keywords: string[];
+  embedding?: number[];
 }
 
 interface NoteIndexEntry {
@@ -286,9 +290,12 @@ interface RetrievalIndexStatus {
   indexing: boolean;
   indexedNotes: number;
   indexedChunks: number;
+  embeddedChunks: number;
   indexedAt: string;
   lastIndexedFile: string;
   indexedFolders: string[];
+  embeddingsEnabled: boolean;
+  embeddingModel: string;
 }
 
 interface AiRelevantNote {
@@ -315,6 +322,9 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   aiIndexEnabled: true,
   aiIndexedFolders: "Project Notes",
   aiChunkCharLimit: 1200,
+  aiEmbeddingsEnabled: false,
+  aiEmbeddingModel: "text-embedding-3-small",
+  aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -732,14 +742,18 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getRetrievalIndexStatus(): RetrievalIndexStatus {
     const entries = Object.values(this.data.noteIndex.entries);
+    const embeddedChunks = entries.reduce((sum, entry) => sum + entry.chunks.filter((chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0).length, 0);
     return {
       enabled: this.data.settings.aiIndexEnabled,
       indexing: this.isIndexingNotes,
       indexedNotes: entries.length,
       indexedChunks: entries.reduce((sum, entry) => sum + entry.chunks.length, 0),
+      embeddedChunks,
       indexedAt: this.data.noteIndex.indexedAt,
       lastIndexedFile: this.data.noteIndex.lastIndexedFile,
-      indexedFolders: getIndexedFolderList(this.data.settings)
+      indexedFolders: getIndexedFolderList(this.data.settings),
+      embeddingsEnabled: this.data.settings.aiEmbeddingsEnabled,
+      embeddingModel: this.data.settings.aiEmbeddingModel
     };
   }
 
@@ -1466,7 +1480,8 @@ export default class DailyDashboardPlugin extends Plugin {
 
     try {
       await this.ensureAiNoteIndexReady();
-      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, input.includeActiveNote ?? false);
+      const retrievalQuery = [input.kind, input.userPrompt, input.question ?? ""].filter((item) => item.trim().length > 0).join("\n\n");
+      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, input.includeActiveNote ?? false, retrievalQuery);
       const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}\n\n${context}`);
       const payload = extractAiStructuredPayload(rawResponse);
       const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
@@ -1499,12 +1514,12 @@ export default class DailyDashboardPlugin extends Plugin {
     }
   }
 
-  private async buildAiContext(includeMasterTodoRaw: boolean, question?: string, includeActiveNote = false): Promise<string> {
+  private async buildAiContext(includeMasterTodoRaw: boolean, question = "", includeActiveNote = false, retrievalQuery = question): Promise<string> {
     const todayEntry = this.getTodayEntry();
     const allEntries = this.getAllEntries();
     const recentEntries = allEntries.slice(-this.data.settings.aiContextDays);
     const todoSnapshot = await this.getTodoSnapshot();
-    const relevantNotes = await this.collectAiRelevantNotes(question, todoSnapshot, includeActiveNote);
+    const relevantNotes = await this.collectAiRelevantNotes(question, todoSnapshot, includeActiveNote, retrievalQuery);
     const recentRange = recentEntries.length > 0
       ? `${recentEntries[0].date} to ${recentEntries[recentEntries.length - 1].date}`
       : "No recent entries";
@@ -1551,7 +1566,7 @@ export default class DailyDashboardPlugin extends Plugin {
     ].filter((section) => section.trim().length > 0).join("\n\n");
   }
 
-  private async collectAiRelevantNotes(question: string | undefined, todoSnapshot: TodoSnapshot | null, includeActiveNote: boolean): Promise<AiRelevantNote[]> {
+  private async collectAiRelevantNotes(question: string | undefined, todoSnapshot: TodoSnapshot | null, includeActiveNote: boolean, retrievalQuery: string): Promise<AiRelevantNote[]> {
     if (!this.data.settings.aiIndexEnabled) {
       return [];
     }
@@ -1559,10 +1574,14 @@ export default class DailyDashboardPlugin extends Plugin {
     const activeFile = this.app.workspace.getActiveFile();
     const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
     const activeFilePath = activeFile instanceof TFile ? activeFile.path : "";
+    const queryEmbedding = this.data.settings.aiEmbeddingsEnabled && retrievalQuery.trim().length > 0
+      ? await this.requestQueryEmbedding(retrievalQuery)
+      : null;
 
     return getRelevantIndexedNotes(
       this.data.noteIndex,
       terms,
+      queryEmbedding,
       this.data.settings,
       activeFilePath,
       includeActiveNote,
@@ -1617,6 +1636,69 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     throw new Error("OpenAI returned an empty response.");
+  }
+
+  private async requestQueryEmbedding(text: string): Promise<number[] | null> {
+    if (!this.data.settings.aiEmbeddingsEnabled || !this.data.settings.aiApiKey.trim()) {
+      return null;
+    }
+
+    const embeddings = await this.requestChunkEmbeddings([{ id: "query", text }]);
+    return embeddings.get("query") ?? null;
+  }
+
+  private async requestChunkEmbeddings(chunks: Array<{ id: string; text: string }>): Promise<Map<string, number[]>> {
+    if (!this.data.settings.aiEmbeddingsEnabled) {
+      return new Map();
+    }
+
+    if (!this.data.settings.aiApiKey.trim()) {
+      throw new Error("Add your OpenAI API key before building embeddings.");
+    }
+
+    if (chunks.length === 0) {
+      return new Map();
+    }
+
+    const response = await fetch(this.data.settings.aiEmbeddingApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+      },
+      body: JSON.stringify({
+        model: this.data.settings.aiEmbeddingModel,
+        input: chunks.map((chunk) => chunk.text)
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json() as {
+      data?: Array<{ embedding?: number[]; index?: number }>;
+      error?: { message?: string };
+    };
+
+    if (data.error?.message) {
+      throw new Error(data.error.message);
+    }
+
+    const result = new Map<string, number[]>();
+    data.data?.forEach((item, index) => {
+      const vector = Array.isArray(item.embedding)
+        ? item.embedding.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+        : [];
+      if (vector.length > 0) {
+        const chunk = chunks[item.index ?? index];
+        if (chunk) {
+          result.set(chunk.id, vector);
+        }
+      }
+    });
+
+    return result;
   }
 
   private async createAiOutputNote(input: {
@@ -2096,6 +2178,7 @@ export default class DailyDashboardPlugin extends Plugin {
     try {
       const allFiles = this.app.vault.getMarkdownFiles();
       const nextEntries: Record<string, NoteIndexEntry> = {};
+      const chunksForEmbedding: Array<{ path: string; chunkId: string; text: string }> = [];
 
       for (const file of allFiles) {
         if (!shouldIndexFilePath(file.path, this.data.settings)) {
@@ -2103,7 +2186,29 @@ export default class DailyDashboardPlugin extends Plugin {
         }
 
         const content = await this.app.vault.read(file);
-        nextEntries[normalizePath(file.path)] = buildNoteIndexEntry(file, content, this.data.settings.aiChunkCharLimit);
+        const entry = buildNoteIndexEntry(file, content, this.data.settings.aiChunkCharLimit);
+        nextEntries[normalizePath(file.path)] = entry;
+        entry.chunks.forEach((chunk) => {
+          chunksForEmbedding.push({
+            path: entry.path,
+            chunkId: chunk.id,
+            text: `${chunk.heading ? `${chunk.heading}\n` : ""}${chunk.text}`
+          });
+        });
+      }
+
+      if (this.data.settings.aiEmbeddingsEnabled && chunksForEmbedding.length > 0) {
+        const embeddingMap = await this.requestChunkEmbeddings(chunksForEmbedding.map((chunk) => ({
+          id: chunk.chunkId,
+          text: chunk.text
+        })));
+
+        Object.values(nextEntries).forEach((entry) => {
+          entry.chunks = entry.chunks.map((chunk) => ({
+            ...chunk,
+            embedding: embeddingMap.get(chunk.id)
+          }));
+        });
       }
 
       this.data.noteIndex = {
@@ -2117,7 +2222,8 @@ export default class DailyDashboardPlugin extends Plugin {
       this.refreshDashboardViews();
 
       if (showNotice) {
-        new Notice(`Indexed ${Object.keys(nextEntries).length} markdown note${Object.keys(nextEntries).length === 1 ? "" : "s"} for AI retrieval.`);
+        const embeddedChunkCount = Object.values(nextEntries).reduce((sum, entry) => sum + entry.chunks.filter((chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0).length, 0);
+        new Notice(`Indexed ${Object.keys(nextEntries).length} markdown note${Object.keys(nextEntries).length === 1 ? "" : "s"} for AI retrieval${this.data.settings.aiEmbeddingsEnabled ? ` with ${embeddedChunkCount} embedded chunk${embeddedChunkCount === 1 ? "" : "s"}` : ""}.`);
       }
     } finally {
       this.isIndexingNotes = false;
@@ -2509,52 +2615,63 @@ class DailyDashboardView extends ItemView {
         tone: "capture",
         tag: aiStatus.busy ? "Running" : "Ready"
       });
-      const aiChipRow = aiCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      const aiShell = aiCard.createDiv({ cls: "daily-dashboard-ai-shell" });
+      const aiChipRow = aiShell.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(aiChipRow, aiStatus.configured ? "API key configured" : "API key missing", aiStatus.configured ? "done" : "alert");
       createSemanticChip(aiChipRow, aiStatus.model || "No model", "neutral");
       createSemanticChip(aiChipRow, aiStatus.busy ? "Request in progress" : "Idle", aiStatus.busy ? "focus" : "neutral");
+      createSemanticChip(aiChipRow, aiStatus.indexStatus.embeddingsEnabled ? `Embeddings ${aiStatus.indexStatus.embeddingModel}` : "Keyword retrieval", aiStatus.indexStatus.embeddingsEnabled ? "focus" : "neutral");
 
-      const aiActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      const aiOverview = aiShell.createDiv({ cls: "daily-dashboard-ai-overview" });
+      const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiActionsPanel.createEl("strong", { text: "Workflows" });
+      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Use presets for planning, review, triage, weekly coaching, or active-note analysis." });
+      const aiActions = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-action-grid" });
       createButton(aiActions, "Today plan", async () => this.plugin.generateAiTodayPlan(), false, "sunrise");
       createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
       createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
       createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
 
-      const indexStatus = aiCard.createDiv({ cls: "daily-dashboard-stat-list" });
-      createSemanticChip(indexStatus, aiStatus.indexStatus.enabled ? `Indexed ${aiStatus.indexStatus.indexedNotes} notes` : "Index disabled", aiStatus.indexStatus.enabled ? "done" : "neutral");
-      createSemanticChip(indexStatus, `${aiStatus.indexStatus.indexedChunks} chunks`, "neutral");
-      createSemanticChip(indexStatus, aiStatus.indexStatus.indexing ? "Indexing now" : `Indexed ${formatSyncTimestamp(aiStatus.indexStatus.indexedAt)}`, aiStatus.indexStatus.indexing ? "focus" : "neutral");
-
+      const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
+      aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Scoped cached notes used to ground AI answers without rescanning the vault each time." });
+      const aiIndexMetrics = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-metric-grid" });
+      this.renderDayMetric(aiIndexMetrics, "Notes", `${aiStatus.indexStatus.indexedNotes}`);
+      this.renderDayMetric(aiIndexMetrics, "Chunks", `${aiStatus.indexStatus.indexedChunks}`);
+      this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
+      this.renderDayMetric(aiIndexMetrics, "Last index", formatSyncTimestamp(aiStatus.indexStatus.indexedAt));
       if (aiStatus.indexStatus.lastIndexedFile) {
-        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Last indexed file: ${aiStatus.indexStatus.lastIndexedFile}` });
+        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last file: ${aiStatus.indexStatus.lastIndexedFile}` });
       }
-
       if (aiStatus.indexStatus.indexedFolders.length > 0) {
-        aiCard.createEl("p", { cls: "daily-dashboard-row-meta", text: `Indexed folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
+        aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: `Folders: ${aiStatus.indexStatus.indexedFolders.join(", ")}` });
       }
 
-      aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
-      const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      const aiAskPanel = aiShell.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
+      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
+      const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
       aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
       aiQuestion.rows = 4;
-      const aiQuestionActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
 
       if (aiStatus.latestArtifact) {
-        const latest = aiCard.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
+        const latestPanel = aiShell.createDiv({ cls: "daily-dashboard-ai-panel" });
+        latestPanel.createEl("strong", { text: "Latest output" });
+        const latest = latestPanel.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-ai-output" });
         latest.createEl("strong", { text: `${aiStatus.latestArtifact.kind} • ${aiStatus.latestArtifact.generatedAt}` });
         latest.createEl("span", { text: aiStatus.latestArtifact.summary || "AI note generated." });
         latest.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.latestArtifact.notePath });
 
-        const latestActions = aiCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        const latestActions = latestPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(latestActions, "Open latest AI note", async () => this.plugin.openAiArtifact(aiStatus.latestArtifact), false, "file-text");
 
         if (aiStatus.latestArtifact.suggestedFocus.length > 0) {
-          aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
-          const suggestionList = aiCard.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+          latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
+          const suggestionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
           aiStatus.latestArtifact.suggestedFocus.forEach((item) => {
             const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
             row.createEl("span", { text: item });
@@ -2566,7 +2683,9 @@ class DailyDashboardView extends ItemView {
           });
         }
       } else {
-        aiCard.createEl("p", { cls: "daily-dashboard-empty", text: "No AI notes generated yet. Start with Today plan or ask a question." });
+        const latestEmpty = aiShell.createDiv({ cls: "daily-dashboard-ai-panel" });
+        latestEmpty.createEl("strong", { text: "Latest output" });
+        latestEmpty.createEl("p", { cls: "daily-dashboard-empty", text: "No AI notes generated yet. Start with Today plan or ask a question." });
       }
 
       const stateCard = createCard(grid, "State And Friction", "Track the day honestly so weak-output days can be explained, not guessed at later.", {
@@ -3484,6 +3603,48 @@ class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Enable AI embeddings")
+      .setDesc("Optionally generate embeddings for indexed note chunks so retrieval can rank by semantic similarity, not just keywords.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.aiEmbeddingsEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            aiEmbeddingsEnabled: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("AI embedding model")
+      .setDesc("Recommended default: text-embedding-3-small for strong cost efficiency on scoped note indexing.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiEmbeddingModel)
+          .setValue(settings.aiEmbeddingModel)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiEmbeddingModel: value.trim() || DEFAULT_SETTINGS.aiEmbeddingModel
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("AI embedding API URL")
+      .setDesc("Defaults to OpenAI embeddings. Change only if you are intentionally targeting a compatible embeddings endpoint.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiEmbeddingApiUrl)
+          .setValue(settings.aiEmbeddingApiUrl)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiEmbeddingApiUrl: value.trim() || DEFAULT_SETTINGS.aiEmbeddingApiUrl
+            });
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Wallpaper folder")
       .setDesc("Image folder used for dashboard hero wallpapers.")
       .addText((text) => {
@@ -3647,6 +3808,9 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
     aiIndexEnabled: settings.aiIndexEnabled ?? DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
     aiChunkCharLimit: clamp(Number(settings.aiChunkCharLimit ?? DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3000),
+    aiEmbeddingsEnabled: settings.aiEmbeddingsEnabled ?? DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: settings.aiEmbeddingModel?.trim() || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: settings.aiEmbeddingApiUrl?.trim() || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
@@ -3682,7 +3846,10 @@ function normalizeNoteIndexCache(cache: Partial<NoteIndexCache> | undefined): No
                 id: typeof chunk.id === "string" ? chunk.id : `${normalizePath(path)}#${index + 1}`,
                 heading: typeof chunk.heading === "string" ? chunk.heading : "",
                 text: chunk.text,
-                keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item): item is string => typeof item === "string") : extractKeywords(chunk.text)
+                keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item): item is string => typeof item === "string") : extractKeywords(chunk.text),
+                embedding: Array.isArray(chunk.embedding)
+                  ? chunk.embedding.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+                  : undefined
               }))
           : [];
 
@@ -3717,6 +3884,8 @@ function shouldRebuildAiIndex(previous: DashboardSettings, next: DashboardSettin
   return previous.aiIndexEnabled !== next.aiIndexEnabled
     || previous.aiIndexedFolders !== next.aiIndexedFolders
     || previous.aiChunkCharLimit !== next.aiChunkCharLimit
+    || previous.aiEmbeddingsEnabled !== next.aiEmbeddingsEnabled
+    || previous.aiEmbeddingModel !== next.aiEmbeddingModel
     || previous.masterTodoPath !== next.masterTodoPath;
 }
 
@@ -3810,6 +3979,7 @@ function extractKeywords(value: string): string[] {
 function getRelevantIndexedNotes(
   noteIndex: NoteIndexCache,
   terms: string[],
+  queryEmbedding: number[] | null,
   settings: DashboardSettings,
   activeFilePath: string,
   includeActiveNote: boolean,
@@ -3819,12 +3989,12 @@ function getRelevantIndexedNotes(
 
   Object.values(noteIndex.entries).forEach((entry) => {
     const baseScore = scoreIndexedEntry(entry, terms, settings, activeFilePath, includeActiveNote);
-    if (baseScore <= 0) {
+    if (baseScore <= 0 && !(queryEmbedding && entry.chunks.some((chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0))) {
       return;
     }
 
     entry.chunks.forEach((chunk) => {
-      const chunkScore = baseScore + scoreIndexedChunk(chunk, terms);
+      const chunkScore = baseScore + scoreIndexedChunk(chunk, terms, queryEmbedding);
       if (chunkScore <= 0) {
         return;
       }
@@ -3868,9 +4038,9 @@ function scoreIndexedEntry(entry: NoteIndexEntry, terms: string[], settings: Das
   return score;
 }
 
-function scoreIndexedChunk(chunk: NoteIndexChunk, terms: string[]): number {
+function scoreIndexedChunk(chunk: NoteIndexChunk, terms: string[], queryEmbedding: number[] | null): number {
   const haystack = `${chunk.heading}\n${chunk.text}`.toLowerCase();
-  return terms.reduce((score, term) => {
+  const keywordScore = terms.reduce((score, term) => {
     let next = score;
     if (chunk.keywords.includes(term)) {
       next += 4;
@@ -3880,6 +4050,33 @@ function scoreIndexedChunk(chunk: NoteIndexChunk, terms: string[]): number {
     }
     return next;
   }, 0);
+
+  const semanticScore = queryEmbedding && Array.isArray(chunk.embedding) && chunk.embedding.length > 0
+    ? cosineSimilarity(queryEmbedding, chunk.embedding) * 40
+    : 0;
+
+  return keywordScore + semanticScore;
+}
+
+function cosineSimilarity(left: number[], right: number[]): number {
+  if (left.length === 0 || right.length === 0 || left.length !== right.length) {
+    return 0;
+  }
+
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    dot += left[index] * right[index];
+    leftMagnitude += left[index] * left[index];
+    rightMagnitude += right[index] * right[index];
+  }
+
+  if (leftMagnitude === 0 || rightMagnitude === 0) {
+    return 0;
+  }
+
+  return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }
 
 function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {

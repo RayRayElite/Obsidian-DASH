@@ -703,6 +703,65 @@ input.daily-dashboard-input {
   gap: 10px;
 }
 
+.daily-dashboard-ai-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.daily-dashboard-ai-overview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.daily-dashboard-ai-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 78%, transparent);
+  border-radius: 16px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--background-primary-alt) 90%, transparent), color-mix(in srgb, var(--background-secondary) 72%, transparent));
+}
+
+.daily-dashboard-ai-panel--ask {
+  gap: 12px;
+}
+
+.daily-dashboard-ai-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daily-dashboard-ai-action-grid .daily-dashboard-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.daily-dashboard-ai-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daily-dashboard-ai-question {
+  min-height: 112px;
+}
+
+.daily-dashboard-card--ai-workspace {
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, #87c6ff 12%, transparent), transparent 34%),
+    radial-gradient(circle at 0% 100%, color-mix(in srgb, #9ce3bf 10%, transparent), transparent 30%),
+    linear-gradient(145deg, color-mix(in srgb, var(--daily-dashboard-panel) 92%, transparent), color-mix(in srgb, var(--daily-dashboard-panel-strong) 88%, transparent));
+}
+
+.daily-dashboard-card--ai-workspace .daily-dashboard-card-icon {
+  background: color-mix(in srgb, #87c6ff 18%, var(--background-primary));
+}
+
 .daily-dashboard-card--top-3-for-today {
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--daily-dashboard-accent-soft) 13%, transparent), transparent 34%),
@@ -771,6 +830,11 @@ input.daily-dashboard-input {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .daily-dashboard-ai-overview,
+  .daily-dashboard-ai-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .daily-dashboard-hero-utility-actions {
     justify-content: flex-start;
   }
@@ -800,6 +864,12 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-dashboard-ai-action-grid,
+  .daily-dashboard-ai-overview,
+  .daily-dashboard-ai-metric-grid {
     grid-template-columns: 1fr;
   }
 
