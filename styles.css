@@ -22,6 +22,14 @@
   margin: 0 auto;
 }
 
+.daily-dashboard-view.is-compact {
+  padding: 18px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-page {
+  gap: 16px;
+}
+
 .daily-dashboard-hero,
 .daily-dashboard-card {
   border: 1px solid var(--daily-dashboard-border);
@@ -267,6 +275,20 @@
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--daily-dashboard-card-accent) 11%, transparent), transparent 38%),
     linear-gradient(145deg, color-mix(in srgb, var(--daily-dashboard-panel) 92%, transparent), color-mix(in srgb, var(--daily-dashboard-panel-strong) 88%, transparent));
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-card {
+  gap: 12px;
+  padding: 16px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-hero {
+  max-height: 250px;
+  padding: 16px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-grid {
+  gap: 14px;
 }
 
 .daily-dashboard-card::before {
@@ -580,6 +602,15 @@
   align-items: flex-start;
 }
 
+.daily-dashboard-project-row--dense {
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.daily-dashboard-project-row--dense .daily-dashboard-row-meta {
+  display: none;
+}
+
 .daily-dashboard-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -834,6 +865,17 @@ input.daily-dashboard-input {
   border: 1px dashed color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 18%, var(--background-modifier-border));
 }
 
+.daily-dashboard-empty-state--actionable {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.daily-dashboard-empty-state--actionable .daily-dashboard-actions-inline {
+  width: 100%;
+}
+
 .daily-dashboard-ai-suggestions {
   display: flex;
   flex-direction: column;
@@ -927,6 +969,10 @@ input.daily-dashboard-input {
   justify-content: space-between;
 }
 
+.daily-dashboard-ai-metric--wide {
+  grid-column: 1 / -1;
+}
+
 .daily-dashboard-ai-metric-grid .daily-dashboard-day-metric strong {
   font-size: clamp(1.15rem, 2vw, 1.35rem);
   line-height: 1.1;
@@ -972,6 +1018,34 @@ input.daily-dashboard-input {
   color: var(--text-muted);
   background: color-mix(in srgb, var(--background-primary) 72%, var(--daily-dashboard-accent) 5%);
   border: 1px dashed color-mix(in srgb, var(--daily-dashboard-accent) 18%, var(--background-modifier-border));
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-card-header p {
+  -webkit-line-clamp: 1;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-day-metric,
+.daily-dashboard-view.is-compact .daily-dashboard-score-block,
+.daily-dashboard-view.is-compact .daily-dashboard-habit-row,
+.daily-dashboard-view.is-compact .daily-dashboard-project-row,
+.daily-dashboard-view.is-compact .daily-dashboard-completed-row,
+.daily-dashboard-view.is-compact .daily-dashboard-food-row,
+.daily-dashboard-view.is-compact .daily-dashboard-ai-panel {
+  padding: 12px 13px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-textarea {
+  min-height: 92px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-ai-question {
+  min-height: 108px;
+}
+
+.daily-dashboard-view.is-compact .daily-dashboard-button-label,
+.daily-dashboard-view.is-compact .daily-dashboard-row-meta,
+.daily-dashboard-view.is-compact .daily-dashboard-habit-meta {
+  font-size: 0.82rem;
 }
 
 .daily-dashboard-card--ai-workspace {

@@ -2500,6 +2500,25 @@ class DailyDashboardView extends ItemView {
     await this.render();
   }
 
+  private isCompactMode(): boolean {
+    return getDashboardCompactMode();
+  }
+
+  private async toggleCompactMode(): Promise<void> {
+    setDashboardCompactMode(!this.isCompactMode());
+    await this.render();
+  }
+
+  private isSectionExpanded(sectionKey: string): boolean {
+    return getDashboardExpandedSections().has(sectionKey);
+  }
+
+  private async toggleSectionExpanded(sectionKey: string): Promise<void> {
+    const expanded = this.isSectionExpanded(sectionKey);
+    setDashboardSectionExpanded(sectionKey, !expanded);
+    await this.render();
+  }
+
   async render(): Promise<void> {
     try {
       const { contentEl } = this;
@@ -2520,6 +2539,7 @@ class DailyDashboardView extends ItemView {
 
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
+      contentEl.toggleClass("is-compact", this.isCompactMode());
 
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
 
@@ -2537,6 +2557,7 @@ class DailyDashboardView extends ItemView {
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
+      createButton(actions, this.isCompactMode() ? "Richer mode" : "Compact mode", async () => this.toggleCompactMode(), false, this.isCompactMode() ? "maximize-2" : "minimize-2");
 
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
@@ -2606,7 +2627,11 @@ class DailyDashboardView extends ItemView {
       });
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
       if (todayEntry.todayFocus.length === 0) {
-        focusList.createDiv({ cls: "daily-dashboard-empty-state", text: "No focus items yet. Add one below or use Promote to today." });
+        const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+        emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
+        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(emptyActions, "Promote task", async () => this.plugin.openPromoteTaskFlow(), false, "target");
+        createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
         todayEntry.todayFocus.forEach((item, index) => {
           const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
@@ -2778,7 +2803,12 @@ class DailyDashboardView extends ItemView {
     });
     const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
     if (todayEntry.foodLog.length === 0) {
-      foodList.createDiv({ cls: "daily-dashboard-empty-state", text: "No food entries yet today." });
+      const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+      emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
+      const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(emptyActions, "Breakfast", async () => this.plugin.addFoodEntry("Breakfast"), false, "sunrise");
+      createButton(emptyActions, "Lunch", async () => this.plugin.addFoodEntry("Lunch"), false, "utensils-crossed");
+      createButton(emptyActions, "Dinner", async () => this.plugin.addFoodEntry("Dinner"), false, "moon-star");
     } else {
       todayEntry.foodLog.forEach((item, index) => {
         const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
@@ -2897,7 +2927,8 @@ class DailyDashboardView extends ItemView {
       const aiIndexMetrics = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-metric-grid" });
       this.renderDayMetric(aiIndexMetrics, "Notes", `${aiStatus.indexStatus.indexedNotes}`);
       this.renderDayMetric(aiIndexMetrics, "Chunks", `${aiStatus.indexStatus.indexedChunks}`);
-      this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
+      const embeddingsMetric = this.renderDayMetric(aiIndexMetrics, "Embeddings", `${aiStatus.indexStatus.embeddedChunks}`);
+      embeddingsMetric.addClass("daily-dashboard-ai-metric--wide");
       const aiIndexDetails = aiIndexPanel.createDiv({ cls: "daily-dashboard-ai-index-details" });
       const aiUpdatedRow = aiIndexDetails.createDiv({ cls: "daily-dashboard-ai-index-detail" });
       aiUpdatedRow.createEl("span", { cls: "daily-dashboard-habit-meta", text: "Updated" });
@@ -2958,31 +2989,35 @@ class DailyDashboardView extends ItemView {
       tone: "health",
       tag: "Health"
     });
+    const projectsExpanded = this.isSectionExpanded("project-health-details");
     const projectList = projectsCard.createDiv({ cls: "daily-dashboard-project-list" });
     if (!todoSnapshot || todoSnapshot.projects.length === 0) {
       projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured master task hub." });
     } else {
       [...todoSnapshot.projects]
         .sort((left, right) => right.healthScore - left.healthScore)
-        .slice(0, 10)
+        .slice(0, projectsExpanded ? 10 : 6)
         .forEach((project) => {
-          const row = projectList.createDiv({ cls: "daily-dashboard-project-row" });
+          const row = projectList.createDiv({ cls: projectsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
           const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
           createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 75 ? "focus" : project.healthScore >= 50 ? "state" : "alert");
           createSemanticChip(chipRow, project.trend, project.trend === "up" ? "done" : project.trend === "down" ? "alert" : "neutral");
           row.createEl("strong", { text: `${project.name} • ${project.healthScore}` });
           row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend}` });
-          if (project.staleDays !== null) {
+          if (projectsExpanded && project.staleDays !== null) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
           }
-          if (project.focus) {
+          if (projectsExpanded && project.focus) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Focus: ${project.focus}` });
           }
-          if (project.relationships.length > 0) {
+          if (projectsExpanded && project.relationships.length > 0) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Relationships: ${project.relationships.join(", ")}` });
           }
         });
     }
+    const projectActions = projectsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(projectActions, projectsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("project-health-details"), false, projectsExpanded ? "chevrons-up" : "chevrons-down");
+    createButton(projectActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
 
     const alertsCard = createCard(grid, "Stale Work And Cleanup", "Catch stale projects, vague tasks, duplicates, and empty sections.", {
       icon: "triangle-alert",
@@ -2990,6 +3025,7 @@ class DailyDashboardView extends ItemView {
       tone: "alert",
       tag: "Attention"
     });
+    const alertsExpanded = this.isSectionExpanded("cleanup-details");
     const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
     const alertLines = [
       ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
@@ -2999,12 +3035,15 @@ class DailyDashboardView extends ItemView {
     if (alertLines.length === 0) {
       alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
     } else {
-      alertLines.forEach((line) => {
-        const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+      alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
+        const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
         row.createEl("span", { text: line });
       });
     }
     const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+    if (alertLines.length > 6) {
+      createButton(alertActions, alertsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("cleanup-details"), false, alertsExpanded ? "chevrons-up" : "chevrons-down");
+    }
     createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
     createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
 
@@ -3016,7 +3055,11 @@ class DailyDashboardView extends ItemView {
     });
     const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
     if (todayEntry.completedTasks.length === 0) {
-      completedList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived tasks yet today." });
+      const emptyState = completedList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+      emptyState.createEl("span", { text: "No archived tasks yet today. Pull something into today or open the hub to finish a concrete item." });
+      const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(emptyActions, "Promote task", async () => this.plugin.openPromoteTaskFlow(), false, "target");
+      createButton(emptyActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
     } else {
       todayEntry.completedTasks.slice(0, 10).forEach((task) => {
         const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
@@ -3065,10 +3108,11 @@ class DailyDashboardView extends ItemView {
     });
   }
 
-  private renderDayMetric(parent: HTMLElement, label: string, value: string): void {
+  private renderDayMetric(parent: HTMLElement, label: string, value: string): HTMLElement {
     const metric = parent.createDiv({ cls: "daily-dashboard-day-metric" });
     metric.createEl("span", { cls: "daily-dashboard-habit-meta", text: label });
     metric.createEl("strong", { text: value });
+    return metric;
   }
 
   private getFilteredWorkLogEntries(): ArchivedTaskSnapshot[] {
@@ -3740,6 +3784,8 @@ class DailyDashboardSettingTab extends PluginSettingTab {
 }
 
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
+const DASHBOARD_COMPACT_MODE_STORAGE_KEY = "daily-dashboard-compact-mode";
+const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -3875,6 +3921,53 @@ function setCollapsedCardState(cardKey: string, collapsed: boolean): void {
     window.localStorage.setItem(DASHBOARD_CARD_COLLAPSE_STORAGE_KEY, JSON.stringify(Array.from(current)));
   } catch {
     // Ignore storage failures and keep cards interactive.
+  }
+}
+
+function getDashboardCompactMode(): boolean {
+  try {
+    return window.localStorage.getItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function setDashboardCompactMode(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY, enabled ? "true" : "false");
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getDashboardExpandedSections(): Set<string> {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY);
+    if (!stored) {
+      return new Set<string>();
+    }
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((item): item is string => typeof item === "string"))
+      : new Set<string>();
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function setDashboardSectionExpanded(sectionKey: string, expanded: boolean): void {
+  try {
+    const current = getDashboardExpandedSections();
+    if (expanded) {
+      current.add(sectionKey);
+    } else {
+      current.delete(sectionKey);
+    }
+
+    window.localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY, JSON.stringify(Array.from(current)));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
   }
 }
 
