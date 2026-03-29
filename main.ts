@@ -72,6 +72,7 @@ interface DashboardSettings {
   dailyLogFolder: string;
   weeklyReportFolder: string;
   monthlyReportFolder: string;
+  liveStatePath: string;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -200,6 +201,21 @@ interface ArchiveResult {
   archivedTasks: ArchivedTaskSnapshot[];
 }
 
+interface LiveDayStateSnapshot {
+  updatedAt: string;
+  dayState: DayLifecycleState;
+  entry: Pick<DailyEntry, "date" | "dayStartedAt" | "dayEndedAt" | "wakeTime" | "sleepTime" | "workSessions" | "napSessions">;
+}
+
+interface DashboardSyncStatus {
+  lastCheckAt: string;
+  lastAppliedAt: string;
+  lastWriteAt: string;
+  lastSource: string;
+  liveStatePath: string;
+  liveStateAvailable: boolean;
+}
+
 const DEFAULT_SETTINGS: DashboardSettings = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -207,6 +223,7 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   dailyLogFolder: "Dashboard Logs/Daily",
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
+  liveStatePath: "Dashboard Logs/State/Live Day State.md",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -230,10 +247,16 @@ export default class DailyDashboardPlugin extends Plugin {
   private wallpaperOptions: WallpaperOption[] = [];
   private autoArchiveDebounceId: number | null = null;
   private isAutoArchivingTodo = false;
+  private lastSyncCheckAt = "";
+  private lastSyncAppliedAt = "";
+  private lastLiveStateWriteAt = "";
+  private lastSyncSource = "Startup";
+  private liveStateAvailable = false;
 
   async onload(): Promise<void> {
     await this.loadPluginData();
     await this.ensureTodayEntry();
+    await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
 
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
@@ -394,12 +417,30 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "refresh-synced-dashboard-state",
+      name: "Refresh synced dashboard state",
+      callback: () => {
+        void this.refreshSyncedStateManually();
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
-      if (file instanceof TFile && normalizePath(file.path) === normalizePath(this.data.settings.masterTodoPath)) {
+      if (!(file instanceof TFile)) {
+        return;
+      }
+
+      const normalizedPath = normalizePath(file.path);
+      if (normalizedPath === normalizePath(this.data.settings.masterTodoPath)) {
         this.scheduleAutomaticTodoArchive();
         this.refreshDashboardViews();
+        return;
+      }
+
+      if (normalizedPath === normalizePath(this.data.settings.liveStatePath)) {
+        void this.refreshFromStorageIfChanged();
       }
     }));
 
@@ -482,6 +523,17 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const option = this.wallpaperOptions.find((candidate) => normalizePath(candidate.path) === normalizePath(path));
     return option?.url ?? null;
+  }
+
+  getSyncStatus(): DashboardSyncStatus {
+    return {
+      lastCheckAt: this.lastSyncCheckAt,
+      lastAppliedAt: this.lastSyncAppliedAt,
+      lastWriteAt: this.lastLiveStateWriteAt,
+      lastSource: this.lastSyncSource,
+      liveStatePath: this.data.settings.liveStatePath,
+      liveStateAvailable: this.liveStateAvailable
+    };
   }
 
   async activateDashboardView(): Promise<void> {
@@ -1209,8 +1261,12 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async loadPluginData(): Promise<void> {
-    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
-    this.data = this.hydratePluginData(loaded);
+    const loaded = await this.buildDataFromStorage();
+    this.data = loaded.data;
+    this.liveStateAvailable = loaded.liveStateAvailable;
+    this.lastSyncCheckAt = formatDateTimeKey(new Date());
+    this.lastSyncAppliedAt = this.lastSyncCheckAt;
+    this.lastSyncSource = loaded.source;
   }
 
   private normalizeEntry(
@@ -1291,6 +1347,85 @@ export default class DailyDashboardPlugin extends Plugin {
     return createEmptyEntry(date, this.getHabitDefinitions());
   }
 
+  private getLiveStateEntryDate(data: DashboardPluginData): string {
+    return data.dayState.activeDate || Object.keys(data.entries).sort().slice(-1)[0] || formatDateKey(new Date());
+  }
+
+  private createLiveStateSnapshot(data: DashboardPluginData = this.data): LiveDayStateSnapshot {
+    const date = this.getLiveStateEntryDate(data);
+    const baseEntry = data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions);
+
+    return {
+      updatedAt: formatDateTimeKey(new Date()),
+      dayState: normalizeDayState(data.dayState, data.entries),
+      entry: {
+        date,
+        dayStartedAt: baseEntry.dayStartedAt,
+        dayEndedAt: baseEntry.dayEndedAt,
+        wakeTime: baseEntry.wakeTime,
+        sleepTime: baseEntry.sleepTime,
+        workSessions: baseEntry.workSessions.map((session) => ({ ...session })),
+        napSessions: baseEntry.napSessions.map((session) => ({ ...session }))
+      }
+    };
+  }
+
+  private async loadLiveStateSnapshotFromVault(path: string): Promise<LiveDayStateSnapshot | null> {
+    const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (!(target instanceof TFile)) {
+      return null;
+    }
+
+    const content = await this.app.vault.read(target);
+    return parseLiveDayStateNote(content);
+  }
+
+  private applyLiveStateSnapshot(data: DashboardPluginData, snapshot: LiveDayStateSnapshot): DashboardPluginData {
+    const date = snapshot.entry.date || snapshot.dayState.activeDate || this.getLiveStateEntryDate(data);
+    const baseEntry = data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions);
+    const mergedEntry = this.normalizeEntry({
+      ...baseEntry,
+      date,
+      dayStartedAt: snapshot.entry.dayStartedAt,
+      dayEndedAt: snapshot.entry.dayEndedAt,
+      wakeTime: snapshot.entry.wakeTime,
+      sleepTime: snapshot.entry.sleepTime,
+      workSessions: snapshot.entry.workSessions,
+      napSessions: snapshot.entry.napSessions
+    }, date, data.settings);
+
+    const entries = {
+      ...data.entries,
+      [date]: mergedEntry
+    };
+
+    return {
+      ...data,
+      entries,
+      dayState: normalizeDayState(snapshot.dayState, entries)
+    };
+  }
+
+  private async buildDataFromStorage(): Promise<{ data: DashboardPluginData; source: string; liveStateAvailable: boolean }> {
+    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
+    const hydrated = this.hydratePluginData(loaded);
+    const snapshot = await this.loadLiveStateSnapshotFromVault(hydrated.settings.liveStatePath);
+
+    if (!snapshot) {
+      return {
+        data: hydrated,
+        source: "Plugin data",
+        liveStateAvailable: false
+      };
+    }
+
+    return {
+      data: this.applyLiveStateSnapshot(hydrated, snapshot),
+      source: "Live state note",
+      liveStateAvailable: true
+    };
+  }
+
   private getDataSignature(data: DashboardPluginData = this.data): string {
     const orderedEntries = Object.keys(data.entries)
       .sort()
@@ -1307,8 +1442,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async refreshDataFromStorage(refreshViews: boolean): Promise<boolean> {
-    const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
-    const hydrated = this.hydratePluginData(loaded);
+    const loaded = await this.buildDataFromStorage();
+    const hydrated = loaded.data;
+    this.lastSyncCheckAt = formatDateTimeKey(new Date());
+    this.liveStateAvailable = loaded.liveStateAvailable;
+    this.lastSyncSource = loaded.source;
 
     if (this.getDataSignature(hydrated) === this.getDataSignature(this.data)) {
       return false;
@@ -1321,6 +1459,8 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.refreshWallpaperOptions();
     }
 
+    this.lastSyncAppliedAt = this.lastSyncCheckAt;
+
     if (refreshViews) {
       this.refreshDashboardViews();
     }
@@ -1332,11 +1472,26 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.refreshDataFromStorage(true);
   }
 
+  async refreshSyncedStateManually(): Promise<void> {
+    const changed = await this.refreshDataFromStorage(true);
+    new Notice(changed
+      ? `Refreshed dashboard state from ${this.lastSyncSource.toLowerCase()}.`
+      : `Dashboard state is already current. Last check: ${this.lastSyncCheckAt || "just now"}.`);
+  }
+
+  private async syncLiveStateNote(): Promise<void> {
+    const content = renderLiveDayStateNote(this.createLiveStateSnapshot());
+    await this.upsertMarkdownFile(this.data.settings.liveStatePath, content);
+    this.lastLiveStateWriteAt = formatDateTimeKey(new Date());
+    this.liveStateAvailable = true;
+  }
+
   private async savePluginData(): Promise<void> {
     await this.saveData({
       ...this.data,
       dayState: normalizeDayState(this.data.dayState, this.data.entries)
     });
+    await this.syncLiveStateNote();
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
@@ -1598,6 +1753,7 @@ class DailyDashboardView extends ItemView {
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
 
       const dayState = this.plugin.getDayState();
+      const syncStatus = this.plugin.getSyncStatus();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
@@ -1613,6 +1769,7 @@ class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeWorkSession ? "Working" : "Not working", activeWorkSession ? "capture" : "neutral");
       createSemanticChip(dayFlowStatus, activeNapSession ? "Napping" : "Awake", activeNapSession ? "alert" : "neutral");
+      createSemanticChip(dayFlowStatus, syncStatus.liveStateAvailable ? "Live sync note ready" : "Live sync note pending", syncStatus.liveStateAvailable ? "done" : "alert");
 
       const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
@@ -1623,12 +1780,17 @@ class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Last sync check", formatSyncTimestamp(syncStatus.lastCheckAt));
+      this.renderDayMetric(dayFlowGrid, "Last sync apply", formatSyncTimestamp(syncStatus.lastAppliedAt));
+      this.renderDayMetric(dayFlowGrid, "Last live write", formatSyncTimestamp(syncStatus.lastWriteAt));
+      this.renderDayMetric(dayFlowGrid, "Sync source", syncStatus.lastSource || "Unknown");
 
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
       createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
+      createButton(dayFlowActions, "Refresh sync", async () => this.plugin.refreshSyncedStateManually(), false, "refresh-cw");
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete. Promote project tasks here or type them directly.", {
         icon: "target",
@@ -2372,6 +2534,21 @@ class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Live day state note path")
+      .setDesc("Vault note used to mirror logical day and session state for stronger cross-device sync behavior.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.liveStatePath)
+          .setValue(settings.liveStatePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              liveStatePath: value.trim() || DEFAULT_SETTINGS.liveStatePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Wallpaper folder")
       .setDesc("Image folder used for dashboard hero wallpapers.")
       .addText((text) => {
@@ -2525,6 +2702,7 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
     dailyLogFolder: settings.dailyLogFolder?.trim() || DEFAULT_SETTINGS.dailyLogFolder,
     weeklyReportFolder: settings.weeklyReportFolder?.trim() || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: settings.monthlyReportFolder?.trim() || DEFAULT_SETTINGS.monthlyReportFolder,
+    liveStatePath: settings.liveStatePath?.trim() || DEFAULT_SETTINGS.liveStatePath,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
@@ -2622,6 +2800,138 @@ function formatDateTimeKey(date: Date): string {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${formatDateKey(date)} ${hours}:${minutes}`;
+}
+
+function formatSyncTimestamp(value: string): string {
+  return value.trim().length > 0 ? value : "Not yet";
+}
+
+function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
+  const workSessionLines = snapshot.entry.workSessions.length > 0
+    ? snapshot.entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- None"];
+  const napSessionLines = snapshot.entry.napSessions.length > 0
+    ? snapshot.entry.napSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- None"];
+
+  return [
+    "---",
+    `updatedAt: ${snapshot.updatedAt}`,
+    `activeDate: ${snapshot.dayState.activeDate}`,
+    `status: ${snapshot.dayState.status}`,
+    `date: ${snapshot.entry.date}`,
+    `dayStartedAt: ${snapshot.entry.dayStartedAt || ""}`,
+    `dayEndedAt: ${snapshot.entry.dayEndedAt || ""}`,
+    `wakeTime: ${snapshot.entry.wakeTime || ""}`,
+    `sleepTime: ${snapshot.entry.sleepTime || ""}`,
+    "---",
+    "",
+    "# Live Day State",
+    "",
+    "This note is maintained by Daily Dashboard to make logical-day state easier to sync across devices.",
+    "",
+    "## Work Sessions",
+    ...workSessionLines,
+    "",
+    "## Nap Sessions",
+    ...napSessionLines,
+    ""
+  ].join("\n");
+}
+
+function parseLiveDayStateNote(content: string): LiveDayStateSnapshot | null {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return null;
+  }
+
+  let index = 1;
+  const frontmatter = new Map<string, string>();
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      index += 1;
+      break;
+    }
+
+    const separatorIndex = line.indexOf(":");
+    if (separatorIndex < 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    frontmatter.set(key, value);
+  }
+
+  const activeDate = frontmatter.get("activeDate") ?? "";
+  const statusValue = frontmatter.get("status");
+  const date = frontmatter.get("date") ?? activeDate;
+  if (!activeDate || !date) {
+    return null;
+  }
+
+  const workSessions: WorkSession[] = [];
+  const napSessions: WorkSession[] = [];
+  let currentSection = "";
+
+  for (; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line.startsWith("## ")) {
+      currentSection = line.slice(3).trim().toLowerCase();
+      continue;
+    }
+
+    if (!line.startsWith("- ")) {
+      continue;
+    }
+
+    const session = parseWorkSessionLine(line);
+    if (!session) {
+      continue;
+    }
+
+    if (currentSection === "work sessions") {
+      workSessions.push(session);
+    }
+    if (currentSection === "nap sessions") {
+      napSessions.push(session);
+    }
+  }
+
+  return {
+    updatedAt: frontmatter.get("updatedAt") ?? "",
+    dayState: {
+      activeDate,
+      status: statusValue === "in-progress" || statusValue === "ended" ? statusValue : "not-started"
+    },
+    entry: {
+      date,
+      dayStartedAt: frontmatter.get("dayStartedAt") ?? "",
+      dayEndedAt: frontmatter.get("dayEndedAt") ?? "",
+      wakeTime: frontmatter.get("wakeTime") ?? "",
+      sleepTime: frontmatter.get("sleepTime") ?? "",
+      workSessions,
+      napSessions
+    }
+  };
+}
+
+function parseWorkSessionLine(line: string): WorkSession | null {
+  const rawValue = line.replace(/^-\s+/, "").trim();
+  if (!rawValue || rawValue.toLowerCase() === "none") {
+    return null;
+  }
+
+  const [startValue, endValue] = rawValue.split("->").map((part) => part.trim());
+  if (!startValue) {
+    return null;
+  }
+
+  return {
+    start: startValue,
+    end: !endValue || endValue === "Still active" ? null : endValue
+  };
 }
 
 function renderScore(value: number): string {

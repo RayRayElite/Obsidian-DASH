@@ -42,7 +42,11 @@ The dashboard records wake time, sleep time, day start/end, tracked work session
 
 If you use Obsidian Sync across desktop and mobile, the plugin now reloads synced dashboard state before day/session actions and also polls for synced changes in the background. That means actions like starting a nap on your phone and stopping it on desktop should work once sync has landed on the second device.
 
-There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin cannot fully prevent conflicts because its live state is stored in plugin data rather than a merge-friendly markdown note. The safest workflow for day/session controls is to wait a moment for sync to complete before continuing on the second device.
+The Day Flow card now shows the last sync check, last applied sync, last live-state write, and the current sync source. It also includes a `Refresh sync` button if you want to force a cross-device refresh immediately.
+
+Logical day and session state are also mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
+
+There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin cannot fully prevent conflicts. Logical day and session state now have a vault note mirror, but the broader dashboard dataset still lives in plugin data. The safest workflow for day/session controls is to wait a moment for sync to complete before continuing on the second device.
 
 ## New Project Flow
 
