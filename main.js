@@ -86,11 +86,25 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.isIndexingNotes = false;
     this.noteIndexDebounceId = null;
   }
-  async onload() {
-    await this.loadPluginData();
+  getErrorMessage(error) {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+    return String(error);
+  }
+  async initializeWorkspaceArtifacts() {
     await this.ensureTodayEntry();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
+  }
+  async onload() {
+    await this.loadPluginData();
+    try {
+      await this.initializeWorkspaceArtifacts();
+    } catch (error) {
+      console.error("Daily Dashboard startup initialization failed", error);
+      new import_obsidian.Notice(`Daily Dashboard could not sync its files during startup. ${this.getErrorMessage(error)} Check the plugin path settings if you recently moved vault folders.`);
+    }
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
     this.addRibbonIcon("check-square", "Open Daily Dashboard", () => {
       void this.activateDashboardView();
@@ -1742,6 +1756,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       await this.app.vault.modify(existing, content);
       return existing;
     }
+    if (existing) {
+      throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+    }
     return await this.app.vault.create(normalizedPath, content);
   }
   async ensureFolder(folderPath) {
@@ -1754,6 +1771,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     for (const part of parts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       const existing = this.app.vault.getAbstractFileByPath(currentPath);
+      if (existing && !(existing instanceof TFolder)) {
+        throw new Error(`Path conflict at ${currentPath}: a file exists where the plugin expects a folder.`);
+      }
       if (!existing) {
         await this.app.vault.createFolder(currentPath);
       }
@@ -1772,7 +1792,13 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       if (!exists) {
         continue;
       }
-      const listed = await adapter.list(folderPath);
+      let listed;
+      try {
+        listed = await adapter.list(folderPath);
+      } catch (error) {
+        console.warn(`Daily Dashboard skipped wallpaper path ${folderPath}`, error);
+        continue;
+      }
       listed.files.forEach((filePath) => {
         var _a, _b, _c;
         const normalizedFilePath = (0, import_obsidian.normalizePath)(filePath);

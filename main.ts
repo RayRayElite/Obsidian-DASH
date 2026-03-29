@@ -359,11 +359,29 @@ export default class DailyDashboardPlugin extends Plugin {
   private isIndexingNotes = false;
   private noteIndexDebounceId: number | null = null;
 
-  async onload(): Promise<void> {
-    await this.loadPluginData();
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message.trim();
+    }
+
+    return String(error);
+  }
+
+  private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.ensureTodayEntry();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
+  }
+
+  async onload(): Promise<void> {
+    await this.loadPluginData();
+
+    try {
+      await this.initializeWorkspaceArtifacts();
+    } catch (error) {
+      console.error("Daily Dashboard startup initialization failed", error);
+      new Notice(`Daily Dashboard could not sync its files during startup. ${this.getErrorMessage(error)} Check the plugin path settings if you recently moved vault folders.`);
+    }
 
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
 
@@ -2350,6 +2368,10 @@ export default class DailyDashboardPlugin extends Plugin {
       return existing;
     }
 
+    if (existing) {
+      throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+    }
+
     return await this.app.vault.create(normalizedPath, content);
   }
 
@@ -2365,6 +2387,10 @@ export default class DailyDashboardPlugin extends Plugin {
     for (const part of parts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
       const existing = this.app.vault.getAbstractFileByPath(currentPath);
+      if (existing && !(existing instanceof TFolder)) {
+        throw new Error(`Path conflict at ${currentPath}: a file exists where the plugin expects a folder.`);
+      }
+
       if (!existing) {
         await this.app.vault.createFolder(currentPath);
       }
@@ -2387,7 +2413,14 @@ export default class DailyDashboardPlugin extends Plugin {
         continue;
       }
 
-      const listed = await adapter.list(folderPath);
+      let listed;
+      try {
+        listed = await adapter.list(folderPath);
+      } catch (error) {
+        console.warn(`Daily Dashboard skipped wallpaper path ${folderPath}`, error);
+        continue;
+      }
+
       listed.files.forEach((filePath) => {
         const normalizedFilePath = normalizePath(filePath);
         const extension = normalizedFilePath.split(".").pop()?.toLowerCase() ?? "";
