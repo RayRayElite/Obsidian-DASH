@@ -1262,20 +1262,14 @@ class DailyDashboardView extends ItemView {
       createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
 
-      const heroAside = hero.createDiv({ cls: "daily-dashboard-hero-aside" });
-      const heroSnapshot = heroAside.createDiv({ cls: "daily-dashboard-hero-panel" });
-      const snapshotHeader = heroSnapshot.createDiv({ cls: "daily-dashboard-hero-panel-header" });
-      snapshotHeader.createEl("span", { cls: "daily-dashboard-hero-utility-label", text: "Today Snapshot" });
-      const heroMeta = heroSnapshot.createDiv({ cls: "daily-dashboard-hero-metrics" });
+      const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
+      const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-metrics" });
       createHeroMetric(heroMeta, "calendar-days", "Date", todayEntry.date, "date");
       createHeroMetric(heroMeta, "archive", "Archived", `${todayEntry.completedTasks.length} today`, "done");
       createHeroMetric(heroMeta, "triangle-alert", "Stale", `${staleProjectCount} project${staleProjectCount === 1 ? "" : "s"}`, staleProjectCount > 0 ? "alert" : "neutral");
       createHeroMetric(heroMeta, "activity", "State", `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "state");
 
-      const heroUtility = heroAside.createDiv({ cls: "daily-dashboard-hero-panel daily-dashboard-hero-utility" });
-      const utilityHeader = heroUtility.createDiv({ cls: "daily-dashboard-hero-utility-header" });
-      utilityHeader.createEl("span", { cls: "daily-dashboard-hero-utility-label", text: "Reports And Maintenance" });
-      const utilityActions = heroUtility.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-hero-utility-actions" });
       createButton(utilityActions, "Weekly review", async () => this.plugin.generateWeeklyReview(), false, "notebook-pen");
       createButton(utilityActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
       createButton(utilityActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
