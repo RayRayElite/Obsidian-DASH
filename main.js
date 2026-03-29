@@ -44,6 +44,7 @@ var DEFAULT_SETTINGS = {
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
   aiContextDays: 14,
+  aiRelatedNotesLimit: 6,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -260,6 +261,13 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.openAskAiFlow();
       }
     });
+    this.addCommand({
+      id: "analyze-active-note-with-ai",
+      name: "Analyze active note with AI",
+      callback: () => {
+        void this.generateAiActiveNoteAnalysis();
+      }
+    });
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (!(file instanceof import_obsidian.TFile)) {
@@ -389,6 +397,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.persistEntry(entry);
   }
   async updateHabitValue(habitId, value) {
+    var _a;
     await this.refreshDataFromStorage(false);
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
@@ -396,7 +405,17 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       return;
     }
     const entry = this.getTodayEntry();
-    entry.habits[habitId] = clamp(value, 0, definition.target);
+    const nextValue = clamp(value, 0, definition.target);
+    const currentEvents = [...(_a = entry.habitEvents[habitId]) != null ? _a : []];
+    if (nextValue > currentEvents.length) {
+      for (let index = currentEvents.length; index < nextValue; index += 1) {
+        currentEvents.push(formatDateTimeKey(/* @__PURE__ */ new Date()));
+      }
+    } else if (nextValue < currentEvents.length) {
+      currentEvents.length = nextValue;
+    }
+    entry.habitEvents[habitId] = currentEvents;
+    entry.habits[habitId] = nextValue;
     await this.persistEntry(entry);
   }
   async addFoodEntry(value) {
@@ -406,7 +425,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       return;
     }
     const entry = this.getTodayEntry();
-    entry.foodLog = [trimmedValue, ...entry.foodLog];
+    entry.foodLog = [{ text: trimmedValue, loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()) }, ...entry.foodLog];
     await this.persistEntry(entry);
   }
   async removeFoodEntry(index) {
@@ -419,6 +438,12 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
+    await this.persistEntry(entry);
+  }
+  async updateDreamLog(value) {
+    await this.refreshDataFromStorage(false);
+    const entry = this.getTodayEntry();
+    entry.dreamLog = value.trim();
     await this.persistEntry(entry);
   }
   async beginLogicalDay() {
@@ -895,6 +920,26 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
       includeMasterTodoRaw: false
     });
   }
+  async generateAiActiveNoteAnalysis() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof import_obsidian.TFile) || !activeFile.path.endsWith(".md")) {
+      new import_obsidian.Notice("Open a markdown note before using active note analysis.");
+      return;
+    }
+    await this.runAiWorkflow({
+      kind: "Active Note Analysis",
+      fileLabel: `AI Active Note Analysis ${stripMarkdownExtension(activeFile.name)}`,
+      systemPrompt: [
+        "You are an analytical assistant reading the user's active Obsidian note in the context of their dashboard and related vault notes.",
+        "Respond in markdown with headings: Note Summary, Hidden Implications, Connections To Other Work, Recommended Next Moves, Questions Worth Answering.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Analyze the active note ${activeFile.path} in the broader context of the dashboard, projects, routines, and related notes.`,
+      includeMasterTodoRaw: false,
+      includeActiveNote: true,
+      question: `Active note analysis for ${activeFile.path}`
+    });
+  }
   async askAiQuestion(question) {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) {
@@ -919,6 +964,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     new AskAiModal(this.app, this).open();
   }
   async runAiWorkflow(input) {
+    var _a;
     if (!this.data.settings.aiApiKey.trim()) {
       new import_obsidian.Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
       return;
@@ -931,7 +977,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     this.isAiBusy = true;
     this.refreshDashboardViews();
     try {
-      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question);
+      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, (_a = input.includeActiveNote) != null ? _a : false);
       const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}
 
 ${context}`);
@@ -963,11 +1009,12 @@ ${context}`);
       this.refreshDashboardViews();
     }
   }
-  async buildAiContext(includeMasterTodoRaw, question) {
+  async buildAiContext(includeMasterTodoRaw, question, includeActiveNote = false) {
     const todayEntry = this.getTodayEntry();
     const allEntries = this.getAllEntries();
     const recentEntries = allEntries.slice(-this.data.settings.aiContextDays);
     const todoSnapshot = await this.getTodoSnapshot();
+    const relevantNotes = await this.collectAiRelevantNotes(question, todoSnapshot, includeActiveNote);
     const recentRange = recentEntries.length > 0 ? `${recentEntries[0].date} to ${recentEntries[recentEntries.length - 1].date}` : "No recent entries";
     const recentReport = recentEntries.length > 0 ? renderPeriodReport({
       title: "Recent Dashboard Context",
@@ -977,11 +1024,19 @@ ${context}`);
     }) : "No recent dashboard entries available.";
     const masterTodoFile = this.getMasterTodoFile();
     const masterTodoRaw = includeMasterTodoRaw && masterTodoFile ? truncateText(await this.app.vault.read(masterTodoFile), 12e3) : "Master task hub raw content not included for this request.";
+    const activeFile = includeActiveNote ? this.app.workspace.getActiveFile() : null;
+    const activeNoteSection = activeFile instanceof import_obsidian.TFile ? `## Active Note
+Path: ${activeFile.path}
+
+${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return [
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
       renderDailyLog(todayEntry, this.getHabitDefinitions()),
+      "",
+      "## Routine Signals",
+      renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
       "",
       "## Recent Report",
       recentReport,
@@ -989,9 +1044,39 @@ ${context}`);
       "## Master Task Hub Snapshot",
       renderTodoSnapshotForAi(todoSnapshot),
       "",
+      "## Relevant Vault Notes",
+      renderAiRelevantNotes(relevantNotes),
+      "",
+      activeNoteSection,
+      "",
       "## Master Task Hub Raw Excerpt",
       masterTodoRaw
     ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+  async collectAiRelevantNotes(question, todoSnapshot, includeActiveNote) {
+    const allFiles = this.app.vault.getMarkdownFiles();
+    const activeFile = this.app.workspace.getActiveFile();
+    const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
+    const candidateLimit = Math.max(this.data.settings.aiRelatedNotesLimit * 4, 20);
+    const rankedCandidates = allFiles.filter((file) => !shouldExcludeAiContextFile(file.path, this.data.settings)).map((file) => ({
+      file,
+      score: scoreNotePathForAi(file, terms, this.data.settings, includeActiveNote && activeFile instanceof import_obsidian.TFile ? activeFile.path : "")
+    })).sort((left, right) => right.score - left.score).slice(0, candidateLimit);
+    const resolved = [];
+    for (const candidate of rankedCandidates) {
+      const content = truncateText(await this.app.vault.read(candidate.file), 5e3);
+      const combinedScore = candidate.score + scoreTextForAi(content, terms);
+      if (combinedScore <= 0) {
+        continue;
+      }
+      resolved.push({
+        path: candidate.file.path,
+        reason: deriveAiNoteReason(candidate.file.path, this.data.settings, activeFile instanceof import_obsidian.TFile ? activeFile.path : "", includeActiveNote, terms),
+        excerpt: truncateText(content, 1200),
+        score: combinedScore
+      });
+    }
+    return resolved.sort((left, right) => right.score - left.score).slice(0, this.data.settings.aiRelatedNotesLimit);
   }
   async requestAiCompletion(systemPrompt, userPrompt) {
     var _a, _b, _c, _d;
@@ -1221,9 +1306,13 @@ ${context}`);
       return baseEntry;
     }
     const normalizedHabits = {};
+    const normalizedHabitEvents = {};
     settings.habitDefinitions.forEach((habit) => {
-      var _a2, _b2;
-      normalizedHabits[habit.id] = clamp(Number((_b2 = (_a2 = entry.habits) == null ? void 0 : _a2[habit.id]) != null ? _b2 : 0), 0, habit.target);
+      var _a2, _b2, _c, _d, _e, _f;
+      const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d = (_c = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c.filter((item) => typeof item === "string" && item.trim().length > 0)) != null ? _d : [] : [];
+      const normalizedCount = clamp(Number((_f = (_e = entry.habits) == null ? void 0 : _e[habit.id]) != null ? _f : rawEvents.length), 0, habit.target);
+      normalizedHabits[habit.id] = normalizedCount;
+      normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
     });
     return {
       date,
@@ -1232,13 +1321,15 @@ ${context}`);
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
       sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
       habits: normalizedHabits,
+      habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number((_a = entry.moodScore) != null ? _a : 0), 0, 5),
       energyScore: clamp(Number((_b = entry.energyScore) != null ? _b : 0), 0, 5),
       todayFocus: Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 3) : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
-      foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.filter((item) => typeof item === "string" && item.trim().length > 0) : [],
+      foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => normalizeFoodEntry(item)).filter((item) => item !== null) : [],
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
+      dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
       workSessions: Array.isArray(entry.workSessions) ? entry.workSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
         start: item.start,
@@ -1692,6 +1783,7 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
       createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
       createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
+      createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
       aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
       const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       aiQuestion.placeholder = "What should I prioritize this week? Which project is actually dragging me down? What am I underestimating?";
@@ -1751,8 +1843,9 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       });
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit) => {
-        var _a2;
+        var _a2, _b2;
         const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
+        const habitEvents = (_b2 = todayEntry.habitEvents[habit.id]) != null ? _b2 : [];
         const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         copy.createEl("strong", { text: habit.label });
@@ -1760,6 +1853,12 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
           cls: "daily-dashboard-habit-meta",
           text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak`
         });
+        if (habitEvents.length > 0) {
+          copy.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")}`
+          });
+        }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
         for (let index = 1; index <= habit.target; index += 1) {
           const stepButton = controls.createEl("button", {
@@ -1852,7 +1951,8 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       } else {
         todayEntry.foodLog.forEach((item, index) => {
           const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
-          row.createEl("span", { text: item });
+          row.createEl("span", { text: item.text });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
@@ -1872,6 +1972,13 @@ var DailyDashboardView = class extends import_obsidian.ItemView {
       sleepInput.placeholder = "Bedtime, wake time, sleep quality, naps, anything worth tracking.";
       sleepInput.addEventListener("change", () => {
         void this.plugin.updateSleepLog(sleepInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Dream log" });
+      const dreamInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      dreamInput.value = todayEntry.dreamLog;
+      dreamInput.placeholder = "Dream fragments, themes, symbols, emotions, or recurring patterns you want the AI to analyze later.";
+      dreamInput.addEventListener("change", () => {
+        void this.plugin.updateDreamLog(dreamInput.value);
       });
       notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes for today" });
       const notesInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
@@ -2364,6 +2471,14 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
         });
       });
     });
+    new import_obsidian.Setting(containerEl).setName("AI related note limit").setDesc("How many relevant vault notes are pulled into AI context for deeper analysis.").addText((text) => {
+      text.setPlaceholder(`${DEFAULT_SETTINGS.aiRelatedNotesLimit}`).setValue(`${settings.aiRelatedNotesLimit}`).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiRelatedNotesLimit: clamp(Number(value.trim() || DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16)
+        });
+      });
+    });
     new import_obsidian.Setting(containerEl).setName("Wallpaper folder").setDesc("Image folder used for dashboard hero wallpapers.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.wallpaperFolder).setValue(settings.wallpaperFolder).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -2462,7 +2577,7 @@ function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2;
     return {
@@ -2484,8 +2599,9 @@ function sanitizeSettings(settings) {
     aiBaseUrl: ((_j = settings.aiBaseUrl) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath(((_k = settings.aiOutputFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     aiContextDays: clamp(Number((_l = settings.aiContextDays) != null ? _l : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    wallpaperFolder: normalizeFolderPath(((_m = settings.wallpaperFolder) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_n = settings.selectedWallpaper) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    aiRelatedNotesLimit: clamp(Number((_m = settings.aiRelatedNotesLimit) != null ? _m : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    wallpaperFolder: normalizeFolderPath(((_n = settings.wallpaperFolder) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_o = settings.selectedWallpaper) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
   };
 }
@@ -2495,6 +2611,7 @@ function normalizeFolderPath(value) {
 }
 function createEmptyEntry(date, habits) {
   const habitValues = Object.fromEntries(habits.map((habit) => [habit.id, 0]));
+  const habitEvents = Object.fromEntries(habits.map((habit) => [habit.id, []]));
   return {
     date,
     dayStartedAt: "",
@@ -2502,6 +2619,7 @@ function createEmptyEntry(date, habits) {
     wakeTime: "",
     sleepTime: "",
     habits: habitValues,
+    habitEvents,
     moodScore: 0,
     energyScore: 0,
     todayFocus: [],
@@ -2509,6 +2627,7 @@ function createEmptyEntry(date, habits) {
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
     sleepLog: "",
+    dreamLog: "",
     notes: "",
     workSessions: [],
     napSessions: [],
@@ -2637,6 +2756,113 @@ function renderTodoSnapshotForAi(snapshot) {
     ...cleanupLines.length > 0 ? cleanupLines : ["- None"]
   ].join("\n");
 }
+function renderRoutineSignalsForAi(entries, habits) {
+  if (entries.length === 0) {
+    return "No recent routine data available.";
+  }
+  const habitLines = habits.map((habit) => {
+    const timestamps = entries.flatMap((entry) => {
+      var _a;
+      return (_a = entry.habitEvents[habit.id]) != null ? _a : [];
+    }).map((item) => item.slice(11));
+    const averageCount = (entries.reduce((sum, entry) => {
+      var _a;
+      return sum + ((_a = entry.habits[habit.id]) != null ? _a : 0);
+    }, 0) / entries.length).toFixed(1);
+    return `- ${habit.label}: avg ${averageCount}/${habit.target}, recent times ${timestamps.slice(-8).join(", ") || "none"}`;
+  });
+  const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
+  const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
+  return [
+    "Habit timing:",
+    ...habitLines,
+    "",
+    `Recent food times: ${foodTimes.slice(-12).join(", ") || "none"}`,
+    `Dream log days: ${dreamDays.join(", ") || "none"}`
+  ].join("\n");
+}
+function renderAiRelevantNotes(notes) {
+  if (notes.length === 0) {
+    return "No relevant vault notes were selected.";
+  }
+  return notes.map((note) => [
+    `### ${note.path}`,
+    `Reason: ${note.reason}`,
+    note.excerpt
+  ].join("\n")).join("\n\n");
+}
+function buildAiSearchTerms(question, todayEntry, snapshot) {
+  var _a;
+  const rawTerms = [
+    ...question ? question.toLowerCase().split(/[^a-z0-9]+/) : [],
+    ...todayEntry.todayFocus.flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
+    ...(_a = snapshot == null ? void 0 : snapshot.projects.slice(0, 8).flatMap((project) => project.name.toLowerCase().split(/[^a-z0-9]+/))) != null ? _a : []
+  ];
+  return Array.from(new Set(rawTerms.filter((term) => term.length >= 3))).slice(0, 32);
+}
+function shouldExcludeAiContextFile(path, settings) {
+  const normalizedPath = (0, import_obsidian.normalizePath)(path);
+  const excludedPrefixes = [
+    normalizeFolderPath(settings.aiOutputFolder),
+    normalizeFolderPath(settings.dailyLogFolder),
+    normalizeFolderPath(settings.weeklyReportFolder),
+    normalizeFolderPath(settings.monthlyReportFolder)
+  ].filter((prefix) => prefix.length > 0);
+  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix) || normalizedPath === (0, import_obsidian.normalizePath)(settings.liveStatePath);
+}
+function scoreNotePathForAi(file, terms, settings, activeFilePath) {
+  let score = 0;
+  const path = (0, import_obsidian.normalizePath)(file.path).toLowerCase();
+  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
+  if ((0, import_obsidian.normalizePath)(file.path) === (0, import_obsidian.normalizePath)(activeFilePath)) {
+    score += 80;
+  }
+  if (projectNotesFolder && path.startsWith(projectNotesFolder)) {
+    score += 18;
+  }
+  if (path === (0, import_obsidian.normalizePath)(settings.masterTodoPath).toLowerCase()) {
+    score += 28;
+  }
+  score += scoreTextForAi(path, terms) * 3;
+  score += Math.max(0, 10 - Math.floor((Date.now() - file.stat.mtime) / 864e5));
+  return score;
+}
+function scoreTextForAi(value, terms) {
+  const normalized = value.toLowerCase();
+  return terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0);
+}
+function deriveAiNoteReason(path, settings, activeFilePath, includeActiveNote, terms) {
+  const normalizedPath = (0, import_obsidian.normalizePath)(path);
+  if (includeActiveNote && normalizedPath === (0, import_obsidian.normalizePath)(activeFilePath)) {
+    return "Currently active note";
+  }
+  if (normalizedPath === (0, import_obsidian.normalizePath)(settings.masterTodoPath)) {
+    return "Master task hub";
+  }
+  if (normalizedPath.startsWith(`${normalizeFolderPath(settings.projectNotesFolder)}/`)) {
+    return "Project note matched current context";
+  }
+  const matchedTerms = terms.filter((term) => normalizedPath.toLowerCase().includes(term)).slice(0, 3);
+  return matchedTerms.length > 0 ? `Matched terms: ${matchedTerms.join(", ")}` : "Recent relevant vault note";
+}
+function normalizeFoodEntry(input) {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    return trimmed.length > 0 ? { text: trimmed, loggedAt: "" } : null;
+  }
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const text = typeof candidate.text === "string" ? candidate.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  return {
+    text,
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
 function renderLiveDayStateNote(snapshot) {
   const workSessionLines = snapshot.entry.workSessions.length > 0 ? snapshot.entry.workSessions.map((session) => {
     var _a;
@@ -2757,10 +2983,12 @@ function renderScore(value) {
 }
 function renderDailyLog(entry, habits) {
   const habitLines = habits.map((habit) => {
-    var _a;
-    return `- ${habit.label}: ${(_a = entry.habits[habit.id]) != null ? _a : 0}/${habit.target}`;
+    var _a, _b;
+    const events = (_a = entry.habitEvents[habit.id]) != null ? _a : [];
+    const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
+    return `- ${habit.label}: ${(_b = entry.habits[habit.id]) != null ? _b : 0}/${habit.target}${timing}`;
   });
-  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item}`) : ["- None logged"];
+  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
     var _a;
@@ -2783,6 +3011,7 @@ function renderDailyLog(entry, habits) {
     `trackedNapMinutes: ${totalNapMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
+    `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
     `energyScore: ${entry.energyScore}`,
     "---",
@@ -2810,6 +3039,9 @@ function renderDailyLog(entry, habits) {
     "## Sleep Log",
     entry.sleepLog || "No sleep log yet.",
     "",
+    "## Dream Log",
+    entry.dreamLog || "No dream log yet.",
+    "",
     "## Work Sessions",
     ...workSessionLines,
     "",
@@ -2828,6 +3060,7 @@ function renderPeriodReport(input) {
   const workByProject = /* @__PURE__ */ new Map();
   let daysWithFood = 0;
   let daysWithSleep = 0;
+  let daysWithDreams = 0;
   let moodTotal = 0;
   let moodDays = 0;
   let energyTotal = 0;
@@ -2841,6 +3074,9 @@ function renderPeriodReport(input) {
     }
     if (entry.sleepLog.trim().length > 0) {
       daysWithSleep += 1;
+    }
+    if (entry.dreamLog.trim().length > 0) {
+      daysWithDreams += 1;
     }
     if (entry.moodScore > 0) {
       moodTotal += entry.moodScore;
@@ -2873,7 +3109,8 @@ function renderPeriodReport(input) {
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
     const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
+    const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
   });
   return [
     `# ${input.title}`,
@@ -2885,6 +3122,7 @@ function renderPeriodReport(input) {
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
     `- Days with food logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
+    `- Days with dream logs: ${daysWithDreams}`,
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Days with naps tracked: ${daysWithNaps}`,
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,

@@ -40,6 +40,11 @@ interface WorkSession {
   end: string | null;
 }
 
+interface FoodEntry {
+  text: string;
+  loggedAt: string;
+}
+
 interface DailyEntry {
   date: string;
   dayStartedAt: string;
@@ -47,13 +52,15 @@ interface DailyEntry {
   wakeTime: string;
   sleepTime: string;
   habits: Record<string, number>;
+  habitEvents: Record<string, string[]>;
   moodScore: number;
   energyScore: number;
   todayFocus: string[];
   frictionLog: string;
   missedHabits: string[];
-  foodLog: string[];
+  foodLog: FoodEntry[];
   sleepLog: string;
+  dreamLog: string;
   notes: string;
   workSessions: WorkSession[];
   napSessions: WorkSession[];
@@ -78,6 +85,7 @@ interface DashboardSettings {
   aiBaseUrl: string;
   aiOutputFolder: string;
   aiContextDays: number;
+  aiRelatedNotesLimit: number;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -245,6 +253,13 @@ interface AiStatus {
   latestArtifact: AiArtifact | null;
 }
 
+interface AiRelevantNote {
+  path: string;
+  reason: string;
+  excerpt: string;
+  score: number;
+}
+
 const DEFAULT_SETTINGS: DashboardSettings = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -258,6 +273,7 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
   aiContextDays: 14,
+  aiRelatedNotesLimit: 6,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -501,6 +517,14 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    this.addCommand({
+      id: "analyze-active-note-with-ai",
+      name: "Analyze active note with AI",
+      callback: () => {
+        void this.generateAiActiveNoteAnalysis();
+      }
+    });
+
     this.addSettingTab(new DailyDashboardSettingTab(this.app, this));
 
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -671,7 +695,18 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
-    entry.habits[habitId] = clamp(value, 0, definition.target);
+    const nextValue = clamp(value, 0, definition.target);
+    const currentEvents = [...(entry.habitEvents[habitId] ?? [])];
+    if (nextValue > currentEvents.length) {
+      for (let index = currentEvents.length; index < nextValue; index += 1) {
+        currentEvents.push(formatDateTimeKey(new Date()));
+      }
+    } else if (nextValue < currentEvents.length) {
+      currentEvents.length = nextValue;
+    }
+
+    entry.habitEvents[habitId] = currentEvents;
+    entry.habits[habitId] = nextValue;
     await this.persistEntry(entry);
   }
 
@@ -683,7 +718,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
-    entry.foodLog = [trimmedValue, ...entry.foodLog];
+    entry.foodLog = [{ text: trimmedValue, loggedAt: formatDateTimeKey(new Date()) }, ...entry.foodLog];
     await this.persistEntry(entry);
   }
 
@@ -698,6 +733,13 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.refreshDataFromStorage(false);
     const entry = this.getTodayEntry();
     entry.sleepLog = value.trim();
+    await this.persistEntry(entry);
+  }
+
+  async updateDreamLog(value: string): Promise<void> {
+    await this.refreshDataFromStorage(false);
+    const entry = this.getTodayEntry();
+    entry.dreamLog = value.trim();
     await this.persistEntry(entry);
   }
 
@@ -1250,6 +1292,28 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  async generateAiActiveNoteAnalysis(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile) || !activeFile.path.endsWith(".md")) {
+      new Notice("Open a markdown note before using active note analysis.");
+      return;
+    }
+
+    await this.runAiWorkflow({
+      kind: "Active Note Analysis",
+      fileLabel: `AI Active Note Analysis ${stripMarkdownExtension(activeFile.name)}`,
+      systemPrompt: [
+        "You are an analytical assistant reading the user's active Obsidian note in the context of their dashboard and related vault notes.",
+        "Respond in markdown with headings: Note Summary, Hidden Implications, Connections To Other Work, Recommended Next Moves, Questions Worth Answering.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Analyze the active note ${activeFile.path} in the broader context of the dashboard, projects, routines, and related notes.`,
+      includeMasterTodoRaw: false,
+      includeActiveNote: true,
+      question: `Active note analysis for ${activeFile.path}`
+    });
+  }
+
   async askAiQuestion(question: string): Promise<void> {
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) {
@@ -1282,6 +1346,7 @@ export default class DailyDashboardPlugin extends Plugin {
     systemPrompt: string;
     userPrompt: string;
     includeMasterTodoRaw: boolean;
+    includeActiveNote?: boolean;
     question?: string;
   }): Promise<void> {
     if (!this.data.settings.aiApiKey.trim()) {
@@ -1299,7 +1364,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
 
     try {
-      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question);
+      const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, input.includeActiveNote ?? false);
       const rawResponse = await this.requestAiCompletion(input.systemPrompt, `${input.userPrompt}\n\n${context}`);
       const payload = extractAiStructuredPayload(rawResponse);
       const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
@@ -1332,11 +1397,12 @@ export default class DailyDashboardPlugin extends Plugin {
     }
   }
 
-  private async buildAiContext(includeMasterTodoRaw: boolean, question?: string): Promise<string> {
+  private async buildAiContext(includeMasterTodoRaw: boolean, question?: string, includeActiveNote = false): Promise<string> {
     const todayEntry = this.getTodayEntry();
     const allEntries = this.getAllEntries();
     const recentEntries = allEntries.slice(-this.data.settings.aiContextDays);
     const todoSnapshot = await this.getTodoSnapshot();
+    const relevantNotes = await this.collectAiRelevantNotes(question, todoSnapshot, includeActiveNote);
     const recentRange = recentEntries.length > 0
       ? `${recentEntries[0].date} to ${recentEntries[recentEntries.length - 1].date}`
       : "No recent entries";
@@ -1353,6 +1419,10 @@ export default class DailyDashboardPlugin extends Plugin {
     const masterTodoRaw = includeMasterTodoRaw && masterTodoFile
       ? truncateText(await this.app.vault.read(masterTodoFile), 12000)
       : "Master task hub raw content not included for this request.";
+    const activeFile = includeActiveNote ? this.app.workspace.getActiveFile() : null;
+    const activeNoteSection = activeFile instanceof TFile
+      ? `## Active Note\nPath: ${activeFile.path}\n\n${truncateText(await this.app.vault.read(activeFile), 8000)}`
+      : "";
 
     return [
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
@@ -1360,15 +1430,59 @@ export default class DailyDashboardPlugin extends Plugin {
       "## Today Entry",
       renderDailyLog(todayEntry, this.getHabitDefinitions()),
       "",
+      "## Routine Signals",
+      renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
+      "",
       "## Recent Report",
       recentReport,
       "",
       "## Master Task Hub Snapshot",
       renderTodoSnapshotForAi(todoSnapshot),
       "",
+      "## Relevant Vault Notes",
+      renderAiRelevantNotes(relevantNotes),
+      "",
+      activeNoteSection,
+      "",
       "## Master Task Hub Raw Excerpt",
       masterTodoRaw
     ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+
+  private async collectAiRelevantNotes(question: string | undefined, todoSnapshot: TodoSnapshot | null, includeActiveNote: boolean): Promise<AiRelevantNote[]> {
+    const allFiles = this.app.vault.getMarkdownFiles();
+    const activeFile = this.app.workspace.getActiveFile();
+    const terms = buildAiSearchTerms(question, this.getTodayEntry(), todoSnapshot);
+    const candidateLimit = Math.max(this.data.settings.aiRelatedNotesLimit * 4, 20);
+
+    const rankedCandidates = allFiles
+      .filter((file) => !shouldExcludeAiContextFile(file.path, this.data.settings))
+      .map((file) => ({
+        file,
+        score: scoreNotePathForAi(file, terms, this.data.settings, includeActiveNote && activeFile instanceof TFile ? activeFile.path : "")
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, candidateLimit);
+
+    const resolved: AiRelevantNote[] = [];
+    for (const candidate of rankedCandidates) {
+      const content = truncateText(await this.app.vault.read(candidate.file), 5000);
+      const combinedScore = candidate.score + scoreTextForAi(content, terms);
+      if (combinedScore <= 0) {
+        continue;
+      }
+
+      resolved.push({
+        path: candidate.file.path,
+        reason: deriveAiNoteReason(candidate.file.path, this.data.settings, activeFile instanceof TFile ? activeFile.path : "", includeActiveNote, terms),
+        excerpt: truncateText(content, 1200),
+        score: combinedScore
+      });
+    }
+
+    return resolved
+      .sort((left, right) => right.score - left.score)
+      .slice(0, this.data.settings.aiRelatedNotesLimit);
   }
 
   private async requestAiCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -1652,8 +1766,14 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const normalizedHabits: Record<string, number> = {};
+    const normalizedHabitEvents: Record<string, string[]> = {};
     settings.habitDefinitions.forEach((habit) => {
-      normalizedHabits[habit.id] = clamp(Number(entry.habits?.[habit.id] ?? 0), 0, habit.target);
+      const rawEvents = Array.isArray(entry.habitEvents?.[habit.id])
+        ? entry.habitEvents?.[habit.id]?.filter((item): item is string => typeof item === "string" && item.trim().length > 0) ?? []
+        : [];
+      const normalizedCount = clamp(Number(entry.habits?.[habit.id] ?? rawEvents.length), 0, habit.target);
+      normalizedHabits[habit.id] = normalizedCount;
+      normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
     });
 
     return {
@@ -1663,6 +1783,7 @@ export default class DailyDashboardPlugin extends Plugin {
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
       sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
       habits: normalizedHabits,
+      habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
       energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
       todayFocus: Array.isArray(entry.todayFocus)
@@ -1671,9 +1792,12 @@ export default class DailyDashboardPlugin extends Plugin {
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog)
-        ? entry.foodLog.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        ? entry.foodLog
+            .map((item) => normalizeFoodEntry(item))
+            .filter((item): item is FoodEntry => item !== null)
         : [],
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
+      dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
       workSessions: Array.isArray(entry.workSessions)
         ? entry.workSessions
@@ -2225,6 +2349,7 @@ class DailyDashboardView extends ItemView {
       createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
       createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
       createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
+      createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
 
       aiCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
       const aiQuestion = aiCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
@@ -2291,6 +2416,7 @@ class DailyDashboardView extends ItemView {
     const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
     this.plugin.getHabitDefinitions().forEach((habit) => {
       const currentValue = todayEntry.habits[habit.id] ?? 0;
+      const habitEvents = todayEntry.habitEvents[habit.id] ?? [];
       const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
       const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
       copy.createEl("strong", { text: habit.label });
@@ -2298,6 +2424,12 @@ class DailyDashboardView extends ItemView {
         cls: "daily-dashboard-habit-meta",
         text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak`
       });
+      if (habitEvents.length > 0) {
+        copy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")}`
+        });
+      }
       const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
       for (let index = 1; index <= habit.target; index += 1) {
         const stepButton = controls.createEl("button", {
@@ -2392,7 +2524,8 @@ class DailyDashboardView extends ItemView {
     } else {
       todayEntry.foodLog.forEach((item, index) => {
         const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
-        row.createEl("span", { text: item });
+        row.createEl("span", { text: item.text });
+        row.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
         const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
         removeButton.type = "button";
         removeButton.addEventListener("click", () => {
@@ -2413,6 +2546,13 @@ class DailyDashboardView extends ItemView {
     sleepInput.placeholder = "Bedtime, wake time, sleep quality, naps, anything worth tracking.";
     sleepInput.addEventListener("change", () => {
       void this.plugin.updateSleepLog(sleepInput.value);
+    });
+    notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Dream log" });
+    const dreamInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+    dreamInput.value = todayEntry.dreamLog;
+    dreamInput.placeholder = "Dream fragments, themes, symbols, emotions, or recurring patterns you want the AI to analyze later.";
+    dreamInput.addEventListener("change", () => {
+      void this.plugin.updateDreamLog(dreamInput.value);
     });
     notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes for today" });
     const notesInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
@@ -3100,6 +3240,21 @@ class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("AI related note limit")
+      .setDesc("How many relevant vault notes are pulled into AI context for deeper analysis.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.aiRelatedNotesLimit}`)
+          .setValue(`${settings.aiRelatedNotesLimit}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiRelatedNotesLimit: clamp(Number(value.trim() || DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16)
+            });
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Wallpaper folder")
       .setDesc("Image folder used for dashboard hero wallpapers.")
       .addText((text) => {
@@ -3259,6 +3414,7 @@ function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
     aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
     aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number(settings.aiRelatedNotesLimit ?? DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
@@ -3272,6 +3428,7 @@ function normalizeFolderPath(value: string): string {
 
 function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
   const habitValues = Object.fromEntries(habits.map((habit) => [habit.id, 0]));
+  const habitEvents = Object.fromEntries(habits.map((habit) => [habit.id, [] as string[]]));
   return {
     date,
     dayStartedAt: "",
@@ -3279,6 +3436,7 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
     wakeTime: "",
     sleepTime: "",
     habits: habitValues,
+    habitEvents,
     moodScore: 0,
     energyScore: 0,
     todayFocus: [],
@@ -3286,6 +3444,7 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
     sleepLog: "",
+    dreamLog: "",
     notes: "",
     workSessions: [],
     napSessions: [],
@@ -3452,6 +3611,124 @@ function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
   ].join("\n");
 }
 
+function renderRoutineSignalsForAi(entries: DailyEntry[], habits: HabitDefinition[]): string {
+  if (entries.length === 0) {
+    return "No recent routine data available.";
+  }
+
+  const habitLines = habits.map((habit) => {
+    const timestamps = entries.flatMap((entry) => entry.habitEvents[habit.id] ?? []).map((item) => item.slice(11));
+    const averageCount = (entries.reduce((sum, entry) => sum + (entry.habits[habit.id] ?? 0), 0) / entries.length).toFixed(1);
+    return `- ${habit.label}: avg ${averageCount}/${habit.target}, recent times ${timestamps.slice(-8).join(", ") || "none"}`;
+  });
+
+  const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
+  const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
+
+  return [
+    "Habit timing:",
+    ...habitLines,
+    "",
+    `Recent food times: ${foodTimes.slice(-12).join(", ") || "none"}`,
+    `Dream log days: ${dreamDays.join(", ") || "none"}`
+  ].join("\n");
+}
+
+function renderAiRelevantNotes(notes: AiRelevantNote[]): string {
+  if (notes.length === 0) {
+    return "No relevant vault notes were selected.";
+  }
+
+  return notes.map((note) => [
+    `### ${note.path}`,
+    `Reason: ${note.reason}`,
+    note.excerpt
+  ].join("\n")).join("\n\n");
+}
+
+function buildAiSearchTerms(question: string | undefined, todayEntry: DailyEntry, snapshot: TodoSnapshot | null): string[] {
+  const rawTerms = [
+    ...(question ? question.toLowerCase().split(/[^a-z0-9]+/) : []),
+    ...todayEntry.todayFocus.flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
+    ...(snapshot?.projects.slice(0, 8).flatMap((project) => project.name.toLowerCase().split(/[^a-z0-9]+/)) ?? [])
+  ];
+
+  return Array.from(new Set(rawTerms.filter((term) => term.length >= 3))).slice(0, 32);
+}
+
+function shouldExcludeAiContextFile(path: string, settings: DashboardSettings): boolean {
+  const normalizedPath = normalizePath(path);
+  const excludedPrefixes = [
+    normalizeFolderPath(settings.aiOutputFolder),
+    normalizeFolderPath(settings.dailyLogFolder),
+    normalizeFolderPath(settings.weeklyReportFolder),
+    normalizeFolderPath(settings.monthlyReportFolder)
+  ].filter((prefix) => prefix.length > 0);
+
+  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix)
+    || normalizedPath === normalizePath(settings.liveStatePath);
+}
+
+function scoreNotePathForAi(file: TFile, terms: string[], settings: DashboardSettings, activeFilePath: string): number {
+  let score = 0;
+  const path = normalizePath(file.path).toLowerCase();
+  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
+  if (normalizePath(file.path) === normalizePath(activeFilePath)) {
+    score += 80;
+  }
+  if (projectNotesFolder && path.startsWith(projectNotesFolder)) {
+    score += 18;
+  }
+  if (path === normalizePath(settings.masterTodoPath).toLowerCase()) {
+    score += 28;
+  }
+  score += scoreTextForAi(path, terms) * 3;
+  score += Math.max(0, 10 - Math.floor((Date.now() - file.stat.mtime) / 86_400_000));
+  return score;
+}
+
+function scoreTextForAi(value: string, terms: string[]): number {
+  const normalized = value.toLowerCase();
+  return terms.reduce((score, term) => score + (normalized.includes(term) ? 1 : 0), 0);
+}
+
+function deriveAiNoteReason(path: string, settings: DashboardSettings, activeFilePath: string, includeActiveNote: boolean, terms: string[]): string {
+  const normalizedPath = normalizePath(path);
+  if (includeActiveNote && normalizedPath === normalizePath(activeFilePath)) {
+    return "Currently active note";
+  }
+  if (normalizedPath === normalizePath(settings.masterTodoPath)) {
+    return "Master task hub";
+  }
+  if (normalizedPath.startsWith(`${normalizeFolderPath(settings.projectNotesFolder)}/`)) {
+    return "Project note matched current context";
+  }
+  const matchedTerms = terms.filter((term) => normalizedPath.toLowerCase().includes(term)).slice(0, 3);
+  return matchedTerms.length > 0 ? `Matched terms: ${matchedTerms.join(", ")}` : "Recent relevant vault note";
+}
+
+function normalizeFoodEntry(input: unknown): FoodEntry | null {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    return trimmed.length > 0 ? { text: trimmed, loggedAt: "" } : null;
+  }
+
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<FoodEntry>;
+  const text = typeof candidate.text === "string" ? candidate.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
+
 function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
   const workSessionLines = snapshot.entry.workSessions.length > 0
     ? snapshot.entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
@@ -3585,8 +3862,14 @@ function renderScore(value: number): string {
 }
 
 function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
-  const habitLines = habits.map((habit) => `- ${habit.label}: ${entry.habits[habit.id] ?? 0}/${habit.target}`);
-  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item}`) : ["- None logged"];
+  const habitLines = habits.map((habit) => {
+    const events = entry.habitEvents[habit.id] ?? [];
+    const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
+    return `- ${habit.label}: ${entry.habits[habit.id] ?? 0}/${habit.target}${timing}`;
+  });
+  const foodLines = entry.foodLog.length > 0
+    ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.text}`)
+    : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
     : ["- No archived tasks today"];
@@ -3610,6 +3893,7 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     `trackedNapMinutes: ${totalNapMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
+    `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
     `energyScore: ${entry.energyScore}`,
     "---",
@@ -3637,6 +3921,9 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     "## Sleep Log",
     entry.sleepLog || "No sleep log yet.",
     "",
+    "## Dream Log",
+    entry.dreamLog || "No dream log yet.",
+    "",
     "## Work Sessions",
     ...workSessionLines,
     "",
@@ -3661,6 +3948,7 @@ function renderPeriodReport(input: {
   const workByProject = new Map<string, number>();
   let daysWithFood = 0;
   let daysWithSleep = 0;
+  let daysWithDreams = 0;
   let moodTotal = 0;
   let moodDays = 0;
   let energyTotal = 0;
@@ -3676,6 +3964,10 @@ function renderPeriodReport(input: {
 
     if (entry.sleepLog.trim().length > 0) {
       daysWithSleep += 1;
+    }
+
+    if (entry.dreamLog.trim().length > 0) {
+      daysWithDreams += 1;
     }
 
     if (entry.moodScore > 0) {
@@ -3713,7 +4005,8 @@ function renderPeriodReport(input: {
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
     const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
+    const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
   });
 
   return [
@@ -3726,6 +4019,7 @@ function renderPeriodReport(input: {
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
     `- Days with food logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
+    `- Days with dream logs: ${daysWithDreams}`,
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Days with naps tracked: ${daysWithNaps}`,
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,

@@ -5,7 +5,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 ## What It Does
 
 - tracks repeat daily habits with per-day counts
-- stores mood, energy, Top 3 focus, friction log, food log, sleep log, and daily notes
+- stores mood, energy, Top 3 focus, friction log, timestamped food entries, sleep log, dream log, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
 - tracks work sessions and nap sessions inside the active logical day for more accurate sleep and activity history
 - writes a markdown daily log note for every tracked day
@@ -39,6 +39,8 @@ The dashboard now separates your real day from the calendar date.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 
+Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
+
 ## AI Integration
 
 The dashboard now includes an `AI Workspace` card plus command-palette actions for:
@@ -48,6 +50,7 @@ The dashboard now includes an `AI Workspace` card plus command-palette actions f
 3. `Generate AI project triage`
 4. `Generate AI weekly coach note`
 5. `Ask AI about dashboard and vault`
+6. `Analyze active note with AI`
 
 AI output is written into `Dashboard Logs/AI` by default, grouped by date, so the generated planning and analysis stays searchable in your vault.
 
@@ -61,6 +64,8 @@ Setup notes:
 3. Adjust `AI context days` if you want broader or narrower historical context in prompts.
 
 The API key is stored in plugin settings, not a secure vault, so if you sync plugin settings across devices that key will sync too.
+
+The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, and the active note you are currently reading. `AI related note limit` controls how many retrieved notes are included in each request.
 
 ## Cross-Device Sync Notes
 
