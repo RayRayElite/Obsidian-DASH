@@ -60,7 +60,6 @@ Recommended starting model: `gpt-4o-mini`.
 Use that as the default for frequent dashboard actions because it is usually the best cost-to-quality tradeoff for planning, reflection, and triage. If later you want deeper long-form strategic writeups, you can swap the model in settings without changing the rest of the plugin.
 
 Setup notes:
-
 1. Put your OpenAI API key into the plugin settings.
 2. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
 3. Adjust `AI context days` if you want broader or narrower historical context in prompts.
@@ -157,6 +156,12 @@ You can do that with:
 
 ```bash
 npm run deploy -- "D:/YourVault/.obsidian/plugins/daily-dashboard"
+```
+
+For this vault, the concrete command is:
+
+```bash
+npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"
 ```
 
 Or set `OBSIDIAN_PLUGIN_DIR` and run:

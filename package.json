@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "deploy": "node scripts/deploy-plugin.mjs",
-    "build:deploy": "npm run build ; npm run deploy",
+    "build:deploy": "node scripts/build-deploy.mjs",
     "dev": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs"
   },
