@@ -693,10 +693,6 @@ input.daily-dashboard-input {
   color: var(--text-muted);
 }
 
-.daily-dashboard-ai-output {
-  margin-top: 8px;
-}
-
 .daily-dashboard-ai-suggestions {
   display: flex;
   flex-direction: column;
