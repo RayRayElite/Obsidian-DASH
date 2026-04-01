@@ -20,6 +20,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
   const completedTaskLines = entry.completedTasks.length > 0
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
     : ["- No archived tasks today"];
+  const focusLines = entry.todayFocus.length > 0
+    ? entry.todayFocus.map((item) => `- ${item}`)
+    : ["- No focus items set"];
   const workSessionLines = entry.workSessions.length > 0
     ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked work sessions"];
@@ -77,6 +80,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     "",
     "## Habits",
     ...habitLines,
+    "",
+    "## Top 3 For Today",
+    ...focusLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
@@ -149,6 +155,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
   }
 
   const payloadLines: string[] = [];
+  const focusLines: string[] = [];
   let currentSection = "";
   let inPayload = false;
 
@@ -156,6 +163,11 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     const trimmed = lines[index].trim();
     if (trimmed.startsWith("## ")) {
       currentSection = trimmed.slice(3).trim().toLowerCase();
+      continue;
+    }
+
+    if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
+      focusLines.push(trimmed.slice(2).trim());
       continue;
     }
 
@@ -203,7 +215,9 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     anxietyScore: Number(frontmatter.get("anxietyScore") ?? parsedEntry.anxietyScore ?? 0),
     habits: parsedEntry.habits ?? baseEntry.habits,
     habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
-    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
+    todayFocus: Array.isArray(parsedEntry.todayFocus)
+      ? parsedEntry.todayFocus
+      : focusLines.filter((line) => line.length > 0 && line.toLowerCase() !== "no focus items set").slice(0, 3),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,

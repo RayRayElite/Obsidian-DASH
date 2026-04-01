@@ -608,6 +608,7 @@ function renderDailyLog(entry, habits) {
   });
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
+  const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item) => `- ${item}`) : ["- No focus items set"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
     var _a2;
     return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
@@ -668,6 +669,9 @@ function renderDailyLog(entry, habits) {
     "",
     "## Habits",
     ...habitLines,
+    "",
+    "## Top 3 For Today",
+    ...focusLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
@@ -735,12 +739,17 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     return null;
   }
   const payloadLines = [];
+  const focusLines = [];
   let currentSection = "";
   let inPayload = false;
   for (; index < lines.length; index += 1) {
     const trimmed = lines[index].trim();
     if (trimmed.startsWith("## ")) {
       currentSection = trimmed.slice(3).trim().toLowerCase();
+      continue;
+    }
+    if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
+      focusLines.push(trimmed.slice(2).trim());
       continue;
     }
     if (currentSection !== "entry payload") {
@@ -782,7 +791,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     anxietyScore: Number((_n = (_m = frontmatter.get("anxietyScore")) != null ? _m : parsedEntry.anxietyScore) != null ? _n : 0),
     habits: (_o = parsedEntry.habits) != null ? _o : baseEntry.habits,
     habitEvents: (_p = parsedEntry.habitEvents) != null ? _p : baseEntry.habitEvents,
-    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
+    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : focusLines.filter((line) => line.length > 0 && line.toLowerCase() !== "no focus items set").slice(0, 3),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,

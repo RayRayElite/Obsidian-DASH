@@ -159,10 +159,11 @@
 
 .daily-dashboard-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 6px;
   padding-top: 2px;
-  max-width: 360px;
+  max-width: 220px;
 }
 
 .daily-dashboard-primary-button,
@@ -920,7 +921,7 @@ input.daily-dashboard-input {
 .daily-dashboard-week-strip {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 8px;
 }
 
 .daily-dashboard-week-stage {
@@ -929,7 +930,7 @@ input.daily-dashboard-input {
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 12px 10px 18px;
+  padding: 12px 10px 8px;
 }
 
 .daily-dashboard-week-stage::-webkit-scrollbar {
@@ -945,7 +946,7 @@ input.daily-dashboard-input {
   position: absolute;
   left: var(--daily-dashboard-week-stage-padding);
   right: var(--daily-dashboard-week-stage-padding);
-  bottom: 56px;
+  bottom: 44px;
   width: auto;
   min-width: calc(var(--daily-dashboard-week-stage-min-width) - (var(--daily-dashboard-week-stage-padding) * 2));
   height: 82px;
@@ -968,7 +969,7 @@ input.daily-dashboard-input {
   align-items: end;
   min-width: var(--daily-dashboard-week-stage-min-width);
   height: 332px;
-  padding: 0 var(--daily-dashboard-week-stage-padding) 58px;
+  padding: 0 var(--daily-dashboard-week-stage-padding) 46px;
 }
 
 .daily-dashboard-week-column {
@@ -1076,6 +1077,7 @@ input.daily-dashboard-input {
   flex-wrap: wrap;
   justify-content: center;
   gap: 18px;
+  margin-top: -2px;
   color: var(--text-muted);
   font-size: 0.86rem;
 }
@@ -1384,10 +1386,11 @@ input.daily-dashboard-input {
   .daily-dashboard-week-bars {
     height: 300px;
     gap: 12px;
+    padding-bottom: 42px;
   }
 
   .daily-dashboard-week-platform {
-    bottom: 54px;
+    bottom: 40px;
   }
 
   .daily-dashboard-week-cylinder {
