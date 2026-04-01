@@ -924,6 +924,8 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-stage {
+  --daily-dashboard-week-stage-padding: 24px;
+  --daily-dashboard-week-stage-min-width: 700px;
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
@@ -941,11 +943,13 @@ input.daily-dashboard-input {
 
 .daily-dashboard-week-platform {
   position: absolute;
-  left: 50%;
+  left: var(--daily-dashboard-week-stage-padding);
+  right: var(--daily-dashboard-week-stage-padding);
   bottom: 56px;
-  width: min(100%, 760px);
+  width: auto;
+  min-width: calc(var(--daily-dashboard-week-stage-min-width) - (var(--daily-dashboard-week-stage-padding) * 2));
   height: 82px;
-  transform: translateX(-50%) perspective(1000px) rotateX(15deg);
+  transform: perspective(1000px) rotateX(15deg);
   transform-origin: bottom;
   border-radius: 6px;
   background: linear-gradient(to bottom, rgba(58, 58, 58, 0.95) 0%, rgba(27, 27, 27, 0.98) 22%, rgba(10, 10, 12, 1) 100%);
@@ -962,9 +966,9 @@ input.daily-dashboard-input {
   grid-template-columns: repeat(7, minmax(74px, 1fr));
   gap: 18px;
   align-items: end;
-  min-width: 700px;
+  min-width: var(--daily-dashboard-week-stage-min-width);
   height: 332px;
-  padding: 0 24px 58px;
+  padding: 0 var(--daily-dashboard-week-stage-padding) 58px;
 }
 
 .daily-dashboard-week-column {
@@ -1334,9 +1338,8 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-week-bars {
-    min-width: 700px;
     gap: 14px;
-    padding: 0 18px 58px;
+    --daily-dashboard-week-stage-padding: 18px;
   }
 
 }
@@ -1373,19 +1376,18 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-week-stage {
+    --daily-dashboard-week-stage-padding: 12px;
+    --daily-dashboard-week-stage-min-width: 640px;
     padding-inline: 0;
   }
 
   .daily-dashboard-week-bars {
-    min-width: 640px;
     height: 300px;
     gap: 12px;
-    padding: 0 12px 58px;
   }
 
   .daily-dashboard-week-platform {
     bottom: 54px;
-    width: min(100%, 680px);
   }
 
   .daily-dashboard-week-cylinder {
