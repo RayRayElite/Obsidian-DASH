@@ -221,6 +221,7 @@ export class DailyDashboardView extends ItemView {
 
       const dayState = this.plugin.getDayState();
       const aiStatus = this.plugin.getAiStatus();
+      const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
@@ -263,6 +264,7 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
       this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
+      this.renderDayMetric(dayFlowGrid, "Tracked sleep", formatMinutesAsHours(trackedSleepMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));

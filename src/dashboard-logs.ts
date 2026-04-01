@@ -7,7 +7,7 @@ import {
 } from "./dashboard-core";
 import type { DailyEntry, HabitDefinition, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
-export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
+export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], previousEntry?: DailyEntry): string {
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
     const events = entry.habitEvents[habit.id] ?? [];
@@ -36,6 +36,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     ? entry.breakSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
+  const totalSleepMinutes = getSleepMinutesForDay(entry, previousEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
@@ -50,6 +51,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     `wakeTime: ${entry.wakeTime || ""}`,
     `sleepTime: ${entry.sleepTime || ""}`,
     `sleepMinutesOverride: ${entry.sleepMinutesOverride ?? ""}`,
+    `trackedSleepMinutes: ${totalSleepMinutes}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
@@ -73,6 +75,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     `- Wake time: ${entry.wakeTime || "Not logged"}`,
     `- Day ended: ${entry.dayEndedAt || "Not ended"}`,
     `- Sleep time: ${entry.sleepTime || "Not logged"}`,
+    `- Tracked sleep: ${formatMinutesAsHours(totalSleepMinutes)}`,
     `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
     `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,

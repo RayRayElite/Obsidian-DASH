@@ -538,6 +538,10 @@ export default class DailyDashboardPlugin extends Plugin {
     return getTrackedBreakMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
+  getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getSleepMinutesForDay(entry, this.getPreviousEntry(entry.date));
+  }
+
   getAllEntries(): DailyEntry[] {
     return Object.values(this.data.entries)
       .map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey()))
@@ -907,6 +911,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "work");
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.workSessions = [...entry.workSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Work session started.");
@@ -939,6 +944,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "nap");
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Nap started.");
@@ -971,6 +977,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "relax");
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Relaxing started.");
@@ -1003,6 +1010,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "break");
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Break started.");
@@ -2110,11 +2118,78 @@ export default class DailyDashboardPlugin extends Plugin {
     return changed;
   }
 
+  private cleanSleepTiming(entry: DailyEntry): boolean {
+    let changed = false;
+    const previousEntry = this.getPreviousEntry(entry.date);
+    const previousSleepTime = previousEntry?.sleepTime ?? "";
+    const inferredWakeTime = this.getEarliestActivityTimestamp(entry, previousSleepTime);
+
+    if (previousSleepTime) {
+      if (entry.wakeTime && entry.wakeTime < previousSleepTime) {
+        const nextWakeTime = inferredWakeTime ?? "";
+        if (entry.wakeTime !== nextWakeTime) {
+          entry.wakeTime = nextWakeTime;
+          changed = true;
+        }
+      }
+
+      if (entry.dayStartedAt && entry.dayStartedAt < previousSleepTime) {
+        const nextDayStart = inferredWakeTime ?? entry.wakeTime ?? "";
+        if (entry.dayStartedAt !== nextDayStart) {
+          entry.dayStartedAt = nextDayStart;
+          changed = true;
+        }
+      }
+    }
+
+    const derivedSleepMinutes = getSleepMinutesForDay({
+      ...entry,
+      sleepMinutesOverride: null
+    }, previousEntry);
+    if (entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0) {
+      entry.sleepMinutesOverride = null;
+      changed = true;
+    }
+
+    return changed;
+  }
+
+  private getEarliestActivityTimestamp(entry: DailyEntry, minimumTimestamp = ""): string | null {
+    const timestamps = [
+      ...entry.workSessions.map((session) => session.start),
+      ...entry.napSessions.map((session) => session.start),
+      ...entry.relaxSessions.map((session) => session.start),
+      ...entry.breakSessions.map((session) => session.start),
+      ...entry.foodLog.map((item) => item.loggedAt ?? ""),
+      ...Object.values(entry.habitEvents).flat(),
+      entry.dayEndedAt,
+      entry.sleepTime
+    ].filter((value): value is string => Boolean(value) && (!minimumTimestamp || value >= minimumTimestamp));
+
+    return timestamps.sort()[0] ?? null;
+  }
+
+  private ensureWakeAndDayStartFromActivity(entry: DailyEntry, timestamp: string): void {
+    const previousSleepTime = this.getPreviousEntry(entry.date)?.sleepTime ?? "";
+    if (!previousSleepTime) {
+      return;
+    }
+
+    if (!entry.wakeTime || entry.wakeTime < previousSleepTime) {
+      entry.wakeTime = timestamp;
+    }
+
+    if (!entry.dayStartedAt || entry.dayStartedAt < previousSleepTime) {
+      entry.dayStartedAt = timestamp;
+    }
+  }
+
   private async cleanupStaleTrackedMinuteOverrides(): Promise<void> {
     let changed = false;
 
     for (const [date, entry] of Object.entries(this.data.entries)) {
-      if (!this.cleanTrackedMinuteOverrides(entry)) {
+      const entryChanged = this.cleanTrackedMinuteOverrides(entry) || this.cleanSleepTiming(entry);
+      if (!entryChanged) {
         continue;
       }
 
@@ -2245,6 +2320,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
     this.cleanTrackedMinuteOverrides(normalizedEntry);
+    this.cleanSleepTiming(normalizedEntry);
     this.data.entries[parsed.date] = normalizedEntry;
     await this.savePluginData();
     this.refreshDashboardViews();
@@ -2403,6 +2479,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
     this.cleanTrackedMinuteOverrides(entry);
+    this.cleanSleepTiming(entry);
     this.data.entries[entry.date] = this.normalizeEntry({
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(new Date())
@@ -2478,7 +2555,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async syncDailyLog(entry: DailyEntry): Promise<void> {
-    const content = renderDailyLog(entry, this.getHabitDefinitions());
+    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getPreviousEntry(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
 
