@@ -25,6 +25,8 @@ import {
 } from "./dashboard-types";
 
 export class DailyDashboardView extends ItemView {
+  private static readonly AUTO_REFRESH_MS = 30 * 60 * 1000;
+
   private plugin: DailyDashboardPlugin;
   private workLogFilters: WorkLogFilters = {
     project: "",
@@ -32,8 +34,6 @@ export class DailyDashboardView extends ItemView {
     fromDate: "",
     toDate: ""
   };
-  private static readonly ACTIVE_SESSION_REFRESH_MS = 5 * 60 * 1000;
-  private static readonly IDLE_REFRESH_MS = 30 * 60 * 1000;
   private autoRefreshHandle: number | null = null;
   private lastRenderAt = 0;
   private quickAddState: QuickAddState = {
@@ -719,7 +719,7 @@ export class DailyDashboardView extends ItemView {
     this.stopAutoRefresh();
     this.autoRefreshHandle = window.setInterval(() => {
       void this.maybeAutoRefresh();
-    }, DailyDashboardView.ACTIVE_SESSION_REFRESH_MS);
+    }, DailyDashboardView.AUTO_REFRESH_MS);
   }
 
   private stopAutoRefresh(): void {
@@ -734,16 +734,7 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    const todayEntry = this.plugin.getTodayEntry();
-    const hasActiveSession = todayEntry.workSessions.some((session) => session.end === null)
-      || todayEntry.napSessions.some((session) => session.end === null)
-      || todayEntry.relaxSessions.some((session) => session.end === null)
-      || todayEntry.breakSessions.some((session) => session.end === null);
-    const refreshInterval = hasActiveSession
-      ? DailyDashboardView.ACTIVE_SESSION_REFRESH_MS
-      : DailyDashboardView.IDLE_REFRESH_MS;
-
-    if (Date.now() - this.lastRenderAt < refreshInterval) {
+    if (Date.now() - this.lastRenderAt < DailyDashboardView.AUTO_REFRESH_MS) {
       return;
     }
 

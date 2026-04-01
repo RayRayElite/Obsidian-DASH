@@ -762,6 +762,7 @@ export default class DailyDashboardPlugin extends Plugin {
     entry.sleepTime = "";
     await this.persistEntry(entry);
     await this.savePluginData();
+    this.refreshDashboardViews();
     new Notice(`Began logical day ${nextDate}.`);
   }
 
@@ -787,6 +788,7 @@ export default class DailyDashboardPlugin extends Plugin {
     };
     await this.persistEntry(entry);
     await this.savePluginData();
+    this.refreshDashboardViews();
     new Notice(`Ended logical day ${entry.date}.`);
   }
 
@@ -2320,6 +2322,7 @@ export default class DailyDashboardPlugin extends Plugin {
       if (calendarKey !== this.data.dayState.activeDate) {
         this.data.dayState.activeDate = calendarKey;
         await this.savePluginData();
+        this.refreshDashboardViews();
       }
     }
 

@@ -2573,7 +2573,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.stopAutoRefresh();
     this.autoRefreshHandle = window.setInterval(() => {
       void this.maybeAutoRefresh();
-    }, _DailyDashboardView.ACTIVE_SESSION_REFRESH_MS);
+    }, _DailyDashboardView.AUTO_REFRESH_MS);
   }
   stopAutoRefresh() {
     if (this.autoRefreshHandle !== null) {
@@ -2585,10 +2585,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (!this.leaf || !this.contentEl.isConnected) {
       return;
     }
-    const todayEntry = this.plugin.getTodayEntry();
-    const hasActiveSession = todayEntry.workSessions.some((session) => session.end === null) || todayEntry.napSessions.some((session) => session.end === null) || todayEntry.relaxSessions.some((session) => session.end === null) || todayEntry.breakSessions.some((session) => session.end === null);
-    const refreshInterval = hasActiveSession ? _DailyDashboardView.ACTIVE_SESSION_REFRESH_MS : _DailyDashboardView.IDLE_REFRESH_MS;
-    if (Date.now() - this.lastRenderAt < refreshInterval) {
+    if (Date.now() - this.lastRenderAt < _DailyDashboardView.AUTO_REFRESH_MS) {
       return;
     }
     await this.render();
@@ -2715,8 +2712,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     return `${hours.toFixed(minutes % 60 === 0 ? 0 : 1).replace(/\.0$/, "")}h`;
   }
 };
-_DailyDashboardView.ACTIVE_SESSION_REFRESH_MS = 5 * 60 * 1e3;
-_DailyDashboardView.IDLE_REFRESH_MS = 30 * 60 * 1e3;
+_DailyDashboardView.AUTO_REFRESH_MS = 30 * 60 * 1e3;
 var DailyDashboardView = _DailyDashboardView;
 var CreateProjectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, categories) {
@@ -3982,6 +3978,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     entry.sleepTime = "";
     await this.persistEntry(entry);
     await this.savePluginData();
+    this.refreshDashboardViews();
     new import_obsidian4.Notice(`Began logical day ${nextDate}.`);
   }
   async endLogicalDay() {
@@ -4005,6 +4002,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     };
     await this.persistEntry(entry);
     await this.savePluginData();
+    this.refreshDashboardViews();
     new import_obsidian4.Notice(`Ended logical day ${entry.date}.`);
   }
   async openLogicalDayRepairFlow() {
@@ -5272,6 +5270,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       if (calendarKey !== this.data.dayState.activeDate) {
         this.data.dayState.activeDate = calendarKey;
         await this.savePluginData();
+        this.refreshDashboardViews();
       }
     }
     await this.ensureTodayEntry();
