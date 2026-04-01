@@ -64,7 +64,7 @@ Setup notes:
 2. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
 3. Adjust `AI context days` if you want broader or narrower historical context in prompts.
 
-The API key is stored in plugin settings, not a secure vault, so if you sync plugin settings across devices that key will sync too.
+The API key is stored in plugin settings, not a secure vault.
 
 The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, and the active note you are currently reading. `AI related note limit` controls how many retrieved notes are included in each request.
 
@@ -83,17 +83,15 @@ By default, retrieval stays keyword-weighted and cheap. If you enable embeddings
 Recommended embeddings model: `text-embedding-3-small`.
 Use that when you want better semantic note retrieval at relatively low cost.
 
-## Cross-Device Sync Notes
+## Storage Model
 
-If you use Obsidian Sync across desktop and mobile, the plugin now reloads synced dashboard state before day/session actions and also polls for synced changes in the background. That means actions like starting a nap on your phone and stopping it on desktop should work once sync has landed on the second device.
+Daily Dashboard is currently designed as a desktop-first plugin.
 
-The Day Flow card now shows the last sync check, last applied sync, last live-state write, and the current sync source. It also includes a `Refresh sync` button if you want to force a cross-device refresh immediately.
+- Plugin state is stored in Obsidian plugin data.
+- The plugin also writes a readable markdown daily log for each tracked day under `Dashboard Logs/Daily` by default.
+- On startup, the plugin can still read those daily logs back in, so existing log history remains usable and older data is not stranded.
 
-The important storage change is that the daily dashboard entry itself is now persisted in synced vault files, not primarily in plugin `data.json`. The visible per-day markdown log stays human-readable, and the plugin also keeps a protected per-day state file under `Dashboard Logs/State/Entries` so an older plugin build cannot wipe the only structured copy of the day. Plugin data is now treated as cache and settings storage.
-
-Logical day status is still mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
-
-There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin still cannot merge two conflicting edits perfectly. The main improvement is that the hot daily state now lives in normal vault files, which is a better fit for Obsidian Sync than relying on plugin storage blobs. The safest workflow is still to let Sync settle before continuing on the second device.
+This keeps the working model simple: local plugin state is the primary source of truth, and daily logs are the durable human-readable record.
 
 ## New Project Flow
 
@@ -120,8 +118,6 @@ The compiled plugin entrypoint is written to `main.js`.
 
 The easiest workflow on Windows is to make your vault use this project folder directly instead of copying files after every change.
 
-That is good for desktop iteration, but it is not a good sync strategy for mobile. Obsidian Sync needs a real plugin folder with real files inside the vault. A desktop junction or symlink can work locally and still fail to restore the plugin on phone.
-
 1. Close Obsidian.
 2. Go to your vault's plugin directory: `.obsidian/plugins/`.
 3. Remove the existing `daily-dashboard` plugin folder there if you already copied one in manually.
@@ -146,13 +142,12 @@ When you make code changes after that:
 2. let `npm run watch` rebuild
 3. reload the plugin in Obsidian, or restart Obsidian if needed
 
-## Sync-Friendly Deploy
+## Deploy To Vault
 
-If you want the plugin to sync to mobile reliably, deploy a real copy into your vault plugin folder instead of relying only on the junction.
+If you want to test the plugin from a normal vault plugin folder instead of a junction, copy the built files into that plugin directory.
 
 1. Build the plugin.
 2. Copy the built plugin files into your vault's real plugin folder.
-3. Let Obsidian Sync propagate that real folder to mobile.
 
 You can do that with:
 
@@ -172,4 +167,4 @@ Or set `OBSIDIAN_PLUGIN_DIR` and run:
 npm run build:deploy
 ```
 
-That copies `main.js`, `manifest.json`, `styles.css`, and the `Wallpapers` folder into a normal vault plugin directory that Sync can actually send to mobile.
+That copies `main.js`, `manifest.json`, `styles.css`, and the `Wallpapers` folder into a normal vault plugin directory.
