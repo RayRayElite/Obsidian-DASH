@@ -998,12 +998,16 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-column.is-today .daily-dashboard-week-cylinder {
-  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 48%, rgba(255, 255, 255, 0.14));
+  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 30%, rgba(255, 255, 255, 0.14));
   box-shadow:
     inset -6px 0 16px rgba(0, 0, 0, 0.42),
     inset 6px 0 16px rgba(255, 255, 255, 0.16),
-    0 0 0 2px color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 18%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, transparent),
     0 10px 18px rgba(0, 0, 0, 0.42);
+}
+
+.daily-dashboard-week-column.is-today .daily-dashboard-week-labels strong {
+  color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 55%, white);
 }
 
 .daily-dashboard-week-cylinder-overlay {

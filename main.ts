@@ -1875,7 +1875,7 @@ export default class DailyDashboardPlugin extends Plugin {
     leaves.forEach((leaf) => {
       const view = leaf.view;
       if (view instanceof DailyDashboardView) {
-        void view.render();
+        void view.requestRefresh();
       }
     });
   }

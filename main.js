@@ -1018,10 +1018,11 @@ function renderWeeklyReview(input) {
   ].join("\n");
 }
 function getSleepMinutesForDay(entry, previousEntry) {
-  if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
-    return entry.sleepMinutesOverride;
-  }
   const napMinutes = getTrackedNapMinutes(entry);
+  const derivedSleepMinutes = !(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime ? napMinutes : napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+  if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
+    return entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0 ? derivedSleepMinutes : entry.sleepMinutesOverride;
+  }
   if (!(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime) {
     return napMinutes;
   }
@@ -1954,6 +1955,8 @@ var import_obsidian3 = require("obsidian");
 var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
+    this.hasDeferredRefreshListeners = false;
+    this.pendingRefresh = false;
     this.workLogFilters = {
       project: "",
       keyword: "",
@@ -1980,10 +1983,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   async onOpen() {
     await this.render();
+    this.attachDeferredRefreshListeners();
     this.startAutoRefresh();
   }
   async onClose() {
     this.stopAutoRefresh();
+    this.pendingRefresh = false;
+  }
+  async requestRefresh() {
+    if (this.isEditingTextField()) {
+      this.pendingRefresh = true;
+      return;
+    }
+    this.pendingRefresh = false;
+    await this.render();
   }
   isSectionExpanded(sectionKey) {
     return getDashboardExpandedSections().has(sectionKey);
@@ -1991,6 +2004,34 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   async toggleSectionExpanded(sectionKey) {
     const expanded = this.isSectionExpanded(sectionKey);
     setDashboardSectionExpanded(sectionKey, !expanded);
+    await this.render();
+  }
+  attachDeferredRefreshListeners() {
+    if (this.hasDeferredRefreshListeners) {
+      return;
+    }
+    this.hasDeferredRefreshListeners = true;
+    this.contentEl.addEventListener("focusout", () => {
+      window.setTimeout(() => {
+        void this.flushPendingRefresh();
+      }, 0);
+    });
+  }
+  isEditingTextField() {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
+      return false;
+    }
+    if (!this.contentEl.contains(activeElement)) {
+      return false;
+    }
+    return activeElement instanceof HTMLTextAreaElement || ["text", "search", "number"].includes(activeElement.type);
+  }
+  async flushPendingRefresh() {
+    if (!this.pendingRefresh || this.isEditingTextField()) {
+      return;
+    }
+    this.pendingRefresh = false;
     await this.render();
   }
   async render() {
@@ -2601,7 +2642,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (Date.now() - this.lastRenderAt < _DailyDashboardView.AUTO_REFRESH_MS) {
       return;
     }
-    await this.render();
+    await this.requestRefresh();
   }
   renderErrorState(error) {
     const { contentEl } = this;
@@ -4931,7 +4972,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     leaves.forEach((leaf) => {
       const view = leaf.view;
       if (view instanceof DailyDashboardView) {
-        void view.render();
+        void view.requestRefresh();
       }
     });
   }

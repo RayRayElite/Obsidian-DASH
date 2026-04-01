@@ -487,11 +487,17 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
 }
 
 export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEntry): number {
+  const napMinutes = getTrackedNapMinutes(entry);
+  const derivedSleepMinutes = !previousEntry?.sleepTime || !entry.wakeTime
+    ? napMinutes
+    : napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+
   if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
-    return entry.sleepMinutesOverride;
+    return entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0
+      ? derivedSleepMinutes
+      : entry.sleepMinutesOverride;
   }
 
-  const napMinutes = getTrackedNapMinutes(entry);
   if (!previousEntry?.sleepTime || !entry.wakeTime) {
     return napMinutes;
   }

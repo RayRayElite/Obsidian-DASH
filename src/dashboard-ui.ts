@@ -28,6 +28,8 @@ export class DailyDashboardView extends ItemView {
   private static readonly AUTO_REFRESH_MS = 30 * 60 * 1000;
 
   private plugin: DailyDashboardPlugin;
+  private hasDeferredRefreshListeners = false;
+  private pendingRefresh = false;
   private workLogFilters: WorkLogFilters = {
     project: "",
     keyword: "",
@@ -61,11 +63,23 @@ export class DailyDashboardView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
+    this.attachDeferredRefreshListeners();
     this.startAutoRefresh();
   }
 
   async onClose(): Promise<void> {
     this.stopAutoRefresh();
+    this.pendingRefresh = false;
+  }
+
+  async requestRefresh(): Promise<void> {
+    if (this.isEditingTextField()) {
+      this.pendingRefresh = true;
+      return;
+    }
+
+    this.pendingRefresh = false;
+    await this.render();
   }
 
   private isSectionExpanded(sectionKey: string): boolean {
@@ -75,6 +89,42 @@ export class DailyDashboardView extends ItemView {
   private async toggleSectionExpanded(sectionKey: string): Promise<void> {
     const expanded = this.isSectionExpanded(sectionKey);
     setDashboardSectionExpanded(sectionKey, !expanded);
+    await this.render();
+  }
+
+  private attachDeferredRefreshListeners(): void {
+    if (this.hasDeferredRefreshListeners) {
+      return;
+    }
+
+    this.hasDeferredRefreshListeners = true;
+    this.contentEl.addEventListener("focusout", () => {
+      window.setTimeout(() => {
+        void this.flushPendingRefresh();
+      }, 0);
+    });
+  }
+
+  private isEditingTextField(): boolean {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
+      return false;
+    }
+
+    if (!this.contentEl.contains(activeElement)) {
+      return false;
+    }
+
+    return activeElement instanceof HTMLTextAreaElement
+      || ["text", "search", "number"].includes(activeElement.type);
+  }
+
+  private async flushPendingRefresh(): Promise<void> {
+    if (!this.pendingRefresh || this.isEditingTextField()) {
+      return;
+    }
+
+    this.pendingRefresh = false;
     await this.render();
   }
 
@@ -738,7 +788,7 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    await this.render();
+    await this.requestRefresh();
   }
 
   private renderErrorState(error: unknown): void {
