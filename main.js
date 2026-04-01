@@ -1448,6 +1448,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     });
     return {
       date,
+      lastEditedAt: getEntryRecencyKey(entry),
       dayStartedAt: typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
       dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
@@ -1497,7 +1498,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const date = this.getLiveStateEntryDate(data);
     const baseEntry = this.normalizeEntry((_a = data.entries[date]) != null ? _a : createEmptyEntry(date, data.settings.habitDefinitions), date, data.settings);
     return {
-      updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
+      updatedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date()),
       dayState: normalizeDayState(data.dayState, data.entries),
       entry: {
         ...baseEntry,
@@ -1539,6 +1540,22 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       dayState: normalizeDayState(snapshot.dayState, entries)
     };
   }
+  shouldApplyLiveStateSnapshot(data, snapshot) {
+    const date = snapshot.entry.date || snapshot.dayState.activeDate || this.getLiveStateEntryDate(data);
+    const localEntry = data.entries[date];
+    if (!localEntry) {
+      return true;
+    }
+    const localTimestamp = getEntryRecencyKey(localEntry);
+    const snapshotTimestamp = getEntryRecencyKey(snapshot.entry) || snapshot.updatedAt;
+    if (!localTimestamp) {
+      return isEntryEffectivelyEmpty(localEntry);
+    }
+    if (!snapshotTimestamp) {
+      return false;
+    }
+    return snapshotTimestamp >= localTimestamp;
+  }
   async buildDataFromStorage() {
     const loaded = await this.loadData();
     const hydrated = this.hydratePluginData(loaded);
@@ -1548,6 +1565,13 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
         data: hydrated,
         source: "Plugin data",
         liveStateAvailable: false
+      };
+    }
+    if (!this.shouldApplyLiveStateSnapshot(hydrated, snapshot)) {
+      return {
+        data: hydrated,
+        source: "Plugin data (newer than live state note)",
+        liveStateAvailable: true
       };
     }
     return {
@@ -1700,7 +1724,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     });
   }
   async persistEntry(entry) {
-    this.data.entries[entry.date] = this.normalizeEntry(entry, entry.date);
+    this.data.entries[entry.date] = this.normalizeEntry({
+      ...entry,
+      lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
+    }, entry.date);
     await this.savePluginData();
     await this.syncDailyLog(this.data.entries[entry.date]);
     this.refreshDashboardViews();
@@ -3288,6 +3315,7 @@ function createEmptyEntry(date, habits) {
   const habitEvents = Object.fromEntries(habits.map((habit) => [habit.id, []]));
   return {
     date,
+    lastEditedAt: "",
     dayStartedAt: "",
     dayEndedAt: "",
     wakeTime: "",
@@ -3353,6 +3381,12 @@ function formatDateTimeKey(date) {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${formatDateKey(date)} ${hours}:${minutes}`;
+}
+function formatPreciseDateTimeKey(date) {
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+  const seconds = `${date.getSeconds()}`.padStart(2, "0");
+  return `${formatDateKey(date)} ${hours}:${minutes}:${seconds}`;
 }
 function formatSyncTimestamp(value) {
   return value.trim().length > 0 ? value : "Not yet";
@@ -3516,6 +3550,38 @@ function normalizeFoodEntry(input) {
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
   };
 }
+function getEntryRecencyKey(entry) {
+  var _a;
+  if (!entry) {
+    return "";
+  }
+  const timestamps = [
+    typeof entry.lastEditedAt === "string" ? entry.lastEditedAt : "",
+    typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
+    typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
+    typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+    typeof entry.sleepTime === "string" ? entry.sleepTime : "",
+    ...Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : [],
+    ...Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => {
+      var _a2;
+      return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => {
+      var _a2;
+      return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.completedTasks) ? entry.completedTasks.map((task) => task.archivedAt) : [],
+    ...entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : []
+  ].filter((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));
+  return (_a = timestamps.sort().slice(-1)[0]) != null ? _a : "";
+}
+function isEntryEffectivelyEmpty(entry) {
+  var _a, _b;
+  if (!entry) {
+    return true;
+  }
+  return !(typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 || typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 || typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 || typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 || entry.habits && Object.values(entry.habits).some((count) => Number(count) > 0) || entry.habitEvents && Object.values(entry.habitEvents).some((items) => Array.isArray(items) && items.length > 0) || Number((_a = entry.moodScore) != null ? _a : 0) > 0 || Number((_b = entry.energyScore) != null ? _b : 0) > 0 || Array.isArray(entry.todayFocus) && entry.todayFocus.some((item) => item.trim().length > 0) || typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 || Array.isArray(entry.foodLog) && entry.foodLog.length > 0 || typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 || typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 || typeof entry.notes === "string" && entry.notes.trim().length > 0 || Array.isArray(entry.workSessions) && entry.workSessions.length > 0 || Array.isArray(entry.napSessions) && entry.napSessions.length > 0 || Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0);
+}
 function renderLiveDayStateNote(snapshot) {
   const workSessionLines = snapshot.entry.workSessions.length > 0 ? snapshot.entry.workSessions.map((session) => {
     var _a;
@@ -3532,6 +3598,7 @@ function renderLiveDayStateNote(snapshot) {
     `activeDate: ${snapshot.dayState.activeDate}`,
     `status: ${snapshot.dayState.status}`,
     `date: ${snapshot.entry.date}`,
+    `lastEditedAt: ${snapshot.entry.lastEditedAt || ""}`,
     `dayStartedAt: ${snapshot.entry.dayStartedAt || ""}`,
     `dayEndedAt: ${snapshot.entry.dayEndedAt || ""}`,
     `wakeTime: ${snapshot.entry.wakeTime || ""}`,
@@ -3556,7 +3623,7 @@ function renderLiveDayStateNote(snapshot) {
   ].join("\n");
 }
 function parseLiveDayStateNote(content) {
-  var _a, _b, _c, _d, _e, _f, _g;
+  var _a, _b, _c, _d, _e, _f, _g, _h;
   const lines = content.split(/\r?\n/);
   if (lines[0] !== "---") {
     return null;
@@ -3640,10 +3707,11 @@ function parseLiveDayStateNote(content) {
       ...createEmptyEntry(date, DEFAULT_SETTINGS.habitDefinitions),
       ...parsedEntry,
       date,
-      dayStartedAt: (_d = frontmatter.get("dayStartedAt")) != null ? _d : "",
-      dayEndedAt: (_e = frontmatter.get("dayEndedAt")) != null ? _e : "",
-      wakeTime: (_f = frontmatter.get("wakeTime")) != null ? _f : "",
-      sleepTime: (_g = frontmatter.get("sleepTime")) != null ? _g : "",
+      lastEditedAt: (_d = frontmatter.get("lastEditedAt")) != null ? _d : getEntryRecencyKey(parsedEntry),
+      dayStartedAt: (_e = frontmatter.get("dayStartedAt")) != null ? _e : "",
+      dayEndedAt: (_f = frontmatter.get("dayEndedAt")) != null ? _f : "",
+      wakeTime: (_g = frontmatter.get("wakeTime")) != null ? _g : "",
+      sleepTime: (_h = frontmatter.get("sleepTime")) != null ? _h : "",
       workSessions,
       napSessions
     }

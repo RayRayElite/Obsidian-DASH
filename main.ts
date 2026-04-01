@@ -48,6 +48,7 @@ interface FoodEntry {
 
 interface DailyEntry {
   date: string;
+  lastEditedAt: string;
   dayStartedAt: string;
   dayEndedAt: string;
   wakeTime: string;
@@ -1973,6 +1974,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     return {
       date,
+      lastEditedAt: getEntryRecencyKey(entry),
       dayStartedAt: typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
       dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
@@ -2046,7 +2048,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const baseEntry = this.normalizeEntry(data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions), date, data.settings);
 
     return {
-      updatedAt: formatDateTimeKey(new Date()),
+      updatedAt: formatPreciseDateTimeKey(new Date()),
       dayState: normalizeDayState(data.dayState, data.entries),
       entry: {
         ...baseEntry,
@@ -2093,6 +2095,25 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
+  private shouldApplyLiveStateSnapshot(data: DashboardPluginData, snapshot: LiveDayStateSnapshot): boolean {
+    const date = snapshot.entry.date || snapshot.dayState.activeDate || this.getLiveStateEntryDate(data);
+    const localEntry = data.entries[date];
+    if (!localEntry) {
+      return true;
+    }
+
+    const localTimestamp = getEntryRecencyKey(localEntry);
+    const snapshotTimestamp = getEntryRecencyKey(snapshot.entry) || snapshot.updatedAt;
+    if (!localTimestamp) {
+      return isEntryEffectivelyEmpty(localEntry);
+    }
+    if (!snapshotTimestamp) {
+      return false;
+    }
+
+    return snapshotTimestamp >= localTimestamp;
+  }
+
   private async buildDataFromStorage(): Promise<{ data: DashboardPluginData; source: string; liveStateAvailable: boolean }> {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
     const hydrated = this.hydratePluginData(loaded);
@@ -2103,6 +2124,14 @@ export default class DailyDashboardPlugin extends Plugin {
         data: hydrated,
         source: "Plugin data",
         liveStateAvailable: false
+      };
+    }
+
+    if (!this.shouldApplyLiveStateSnapshot(hydrated, snapshot)) {
+      return {
+        data: hydrated,
+        source: "Plugin data (newer than live state note)",
+        liveStateAvailable: true
       };
     }
 
@@ -2290,7 +2319,10 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
-    this.data.entries[entry.date] = this.normalizeEntry(entry, entry.date);
+    this.data.entries[entry.date] = this.normalizeEntry({
+      ...entry,
+      lastEditedAt: formatPreciseDateTimeKey(new Date())
+    }, entry.date);
     await this.savePluginData();
     await this.syncDailyLog(this.data.entries[entry.date]);
     this.refreshDashboardViews();
@@ -4315,6 +4347,7 @@ function createEmptyEntry(date: string, habits: HabitDefinition[]): DailyEntry {
   const habitEvents = Object.fromEntries(habits.map((habit) => [habit.id, [] as string[]]));
   return {
     date,
+    lastEditedAt: "",
     dayStartedAt: "",
     dayEndedAt: "",
     wakeTime: "",
@@ -4399,6 +4432,13 @@ function formatDateTimeKey(date: Date): string {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${formatDateKey(date)} ${hours}:${minutes}`;
+}
+
+function formatPreciseDateTimeKey(date: Date): string {
+  const hours = `${date.getHours()}`.padStart(2, "0");
+  const minutes = `${date.getMinutes()}`.padStart(2, "0");
+  const seconds = `${date.getSeconds()}`.padStart(2, "0");
+  return `${formatDateKey(date)} ${hours}:${minutes}:${seconds}`;
 }
 
 function formatSyncTimestamp(value: string): string {
@@ -4613,6 +4653,53 @@ function normalizeFoodEntry(input: unknown): FoodEntry | null {
   };
 }
 
+function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): string {
+  if (!entry) {
+    return "";
+  }
+
+  const timestamps = [
+    typeof entry.lastEditedAt === "string" ? entry.lastEditedAt : "",
+    typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
+    typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
+    typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+    typeof entry.sleepTime === "string" ? entry.sleepTime : "",
+    ...(Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : []),
+    ...(Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.completedTasks) ? entry.completedTasks.map((task) => task.archivedAt) : []),
+    ...(entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : [])
+  ].filter((value): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));
+
+  return timestamps.sort().slice(-1)[0] ?? "";
+}
+
+function isEntryEffectivelyEmpty(entry: Partial<DailyEntry> | undefined): boolean {
+  if (!entry) {
+    return true;
+  }
+
+  return !(
+    (typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0)
+    || (typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0)
+    || (typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0)
+    || (typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0)
+    || (entry.habits && Object.values(entry.habits).some((count) => Number(count) > 0))
+    || (entry.habitEvents && Object.values(entry.habitEvents).some((items) => Array.isArray(items) && items.length > 0))
+    || Number(entry.moodScore ?? 0) > 0
+    || Number(entry.energyScore ?? 0) > 0
+    || (Array.isArray(entry.todayFocus) && entry.todayFocus.some((item) => item.trim().length > 0))
+    || (typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0)
+    || (Array.isArray(entry.foodLog) && entry.foodLog.length > 0)
+    || (typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0)
+    || (typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0)
+    || (typeof entry.notes === "string" && entry.notes.trim().length > 0)
+    || (Array.isArray(entry.workSessions) && entry.workSessions.length > 0)
+    || (Array.isArray(entry.napSessions) && entry.napSessions.length > 0)
+    || (Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0)
+  );
+}
+
 function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
   const workSessionLines = snapshot.entry.workSessions.length > 0
     ? snapshot.entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
@@ -4628,6 +4715,7 @@ function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
     `activeDate: ${snapshot.dayState.activeDate}`,
     `status: ${snapshot.dayState.status}`,
     `date: ${snapshot.entry.date}`,
+    `lastEditedAt: ${snapshot.entry.lastEditedAt || ""}`,
     `dayStartedAt: ${snapshot.entry.dayStartedAt || ""}`,
     `dayEndedAt: ${snapshot.entry.dayEndedAt || ""}`,
     `wakeTime: ${snapshot.entry.wakeTime || ""}`,
@@ -4748,6 +4836,7 @@ function parseLiveDayStateNote(content: string): LiveDayStateSnapshot | null {
       ...createEmptyEntry(date, DEFAULT_SETTINGS.habitDefinitions),
       ...parsedEntry,
       date,
+      lastEditedAt: frontmatter.get("lastEditedAt") ?? getEntryRecencyKey(parsedEntry),
       dayStartedAt: frontmatter.get("dayStartedAt") ?? "",
       dayEndedAt: frontmatter.get("dayEndedAt") ?? "",
       wakeTime: frontmatter.get("wakeTime") ?? "",

@@ -91,7 +91,7 @@ The Day Flow card now shows the last sync check, last applied sync, last live-st
 
 Logical day and session state are also mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
 
-There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin cannot fully prevent conflicts. Logical day and session state now have a vault note mirror, but the broader dashboard dataset still lives in plugin data. The safest workflow for day/session controls is to wait a moment for sync to complete before continuing on the second device.
+There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin still cannot merge two conflicting edits perfectly. The current logical day entry is mirrored into the live sync note, and the plugin now compares edit recency before applying synced state so an older mobile snapshot should not overwrite newer desktop edits for that same day. The safest workflow is still to let Sync settle before continuing on the second device.
 
 ## New Project Flow
 
