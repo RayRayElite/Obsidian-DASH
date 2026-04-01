@@ -1849,20 +1849,6 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
   async onOpen() {
     await this.render();
   }
-  isCompactMode() {
-    return getDashboardCompactMode();
-  }
-  async toggleCompactMode() {
-    setDashboardCompactMode(!this.isCompactMode());
-    await this.render();
-  }
-  isMobileMode() {
-    return getDashboardMobileMode();
-  }
-  async toggleMobileMode() {
-    setDashboardMobileMode(!this.isMobileMode());
-    await this.render();
-  }
   isSectionExpanded(sectionKey) {
     return getDashboardExpandedSections().has(sectionKey);
   }
@@ -1890,8 +1876,6 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       }
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
-      contentEl.toggleClass("is-compact", this.isCompactMode());
-      contentEl.toggleClass("is-mobile-layout", this.isMobileMode());
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
       const hero = page.createDiv({ cls: "daily-dashboard-hero" });
       if (wallpaperUrl) {
@@ -1903,10 +1887,8 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
       const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
-      createButton(actions, "Promote to today", async () => this.plugin.openPromoteTaskFlow(), false, "target");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
-      createButton(actions, this.isCompactMode() ? "Richer mode" : "Compact mode", async () => this.toggleCompactMode(), false, this.isCompactMode() ? "maximize-2" : "minimize-2");
-      createButton(actions, this.isMobileMode() ? "Desktop view" : "Mobile view", async () => this.toggleMobileMode(), false, this.isMobileMode() ? "monitor" : "smartphone");
+      createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
       const datePill = createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
@@ -1966,7 +1948,6 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
       createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(), false, activeRelaxSession ? "square" : "coffee");
@@ -2008,7 +1989,6 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Promote task", async () => this.plugin.openPromoteTaskFlow(), false, "target");
         createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
         todayEntry.todayFocus.forEach((item, index) => {
@@ -2105,8 +2085,11 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
             void this.plugin.updateHabitValue(habit.id, nextValue);
           });
         }
-        const removeButton = controls.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+        const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
         removeButton.type = "button";
+        removeButton.ariaLabel = `Remove habit ${habit.label}`;
+        removeButton.title = `Remove ${habit.label}`;
+        (0, import_obsidian3.setIcon)(removeButton, "x");
         removeButton.addEventListener("click", () => {
           void this.plugin.removeHabitDefinition(habit.id);
         });
@@ -2441,7 +2424,6 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         const emptyState = completedList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No archived tasks yet today. Pull something into today or open the hub to finish a concrete item." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Promote task", async () => this.plugin.openPromoteTaskFlow(), false, "target");
         createButton(emptyActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
       } else {
         todayEntry.completedTasks.slice(0, 10).forEach((task) => {
@@ -3001,9 +2983,7 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
   }
 };
 var DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
-var DASHBOARD_COMPACT_MODE_STORAGE_KEY = "daily-dashboard-compact-mode";
 var DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
-var DASHBOARD_MOBILE_MODE_STORAGE_KEY = "daily-dashboard-mobile-mode";
 function createCard(parent, title, description, options) {
   const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
@@ -3111,32 +3091,6 @@ function setCollapsedCardState(cardKey, collapsed) {
       current.delete(cardKey);
     }
     window.localStorage.setItem(DASHBOARD_CARD_COLLAPSE_STORAGE_KEY, JSON.stringify(Array.from(current)));
-  } catch (e) {
-  }
-}
-function getDashboardCompactMode() {
-  try {
-    return window.localStorage.getItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY) === "true";
-  } catch (e) {
-    return false;
-  }
-}
-function setDashboardCompactMode(enabled) {
-  try {
-    window.localStorage.setItem(DASHBOARD_COMPACT_MODE_STORAGE_KEY, enabled ? "true" : "false");
-  } catch (e) {
-  }
-}
-function getDashboardMobileMode() {
-  try {
-    return window.localStorage.getItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY) === "true";
-  } catch (e) {
-    return false;
-  }
-}
-function setDashboardMobileMode(enabled) {
-  try {
-    window.localStorage.setItem(DASHBOARD_MOBILE_MODE_STORAGE_KEY, enabled ? "true" : "false");
   } catch (e) {
   }
 }
