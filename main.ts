@@ -4865,18 +4865,63 @@ function isEntryEffectivelyEmpty(entry: Partial<DailyEntry> | undefined): boolea
   );
 }
 
+function getEntryCompletenessScore(entry: Partial<DailyEntry> | undefined): number {
+  if (!entry) {
+    return 0;
+  }
+
+  let score = 0;
+  score += typeof entry.lastEditedAt === "string" && entry.lastEditedAt.trim().length > 0 ? 3 : 0;
+  score += typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 ? 1 : 0;
+  score += typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 ? 1 : 0;
+  score += typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 ? 1 : 0;
+  score += typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 ? 1 : 0;
+  score += entry.habits ? Object.values(entry.habits).reduce((sum, value) => sum + (Number(value) > 0 ? 1 : 0), 0) : 0;
+  score += entry.habitEvents ? Object.values(entry.habitEvents).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0) : 0;
+  score += Number(entry.moodScore ?? 0) > 0 ? 1 : 0;
+  score += Number(entry.energyScore ?? 0) > 0 ? 1 : 0;
+  score += Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => item.trim().length > 0).length : 0;
+  score += typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 ? 2 : 0;
+  score += Array.isArray(entry.foodLog) ? entry.foodLog.length : 0;
+  score += typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 ? 2 : 0;
+  score += typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 ? 2 : 0;
+  score += typeof entry.notes === "string" && entry.notes.trim().length > 0 ? 2 : 0;
+  score += Array.isArray(entry.workSessions) ? entry.workSessions.length : 0;
+  score += Array.isArray(entry.napSessions) ? entry.napSessions.length : 0;
+  score += Array.isArray(entry.completedTasks) ? entry.completedTasks.length : 0;
+  return score;
+}
+
 function pickNewerEntry(left: DailyEntry, right: DailyEntry): DailyEntry {
   const leftTimestamp = getEntryRecencyKey(left);
   const rightTimestamp = getEntryRecencyKey(right);
+  const leftCompleteness = getEntryCompletenessScore(left);
+  const rightCompleteness = getEntryCompletenessScore(right);
 
   if (!leftTimestamp && !rightTimestamp) {
-    return isEntryEffectivelyEmpty(left) ? right : left;
+    if (isEntryEffectivelyEmpty(left)) {
+      return right;
+    }
+    if (isEntryEffectivelyEmpty(right)) {
+      return left;
+    }
+    return rightCompleteness > leftCompleteness ? right : left;
   }
   if (!leftTimestamp) {
-    return isEntryEffectivelyEmpty(left) ? right : left;
+    if (isEntryEffectivelyEmpty(left)) {
+      return right;
+    }
+    return rightCompleteness >= leftCompleteness ? right : left;
   }
   if (!rightTimestamp) {
-    return isEntryEffectivelyEmpty(right) ? left : right;
+    if (isEntryEffectivelyEmpty(right)) {
+      return left;
+    }
+    return leftCompleteness >= rightCompleteness ? left : right;
+  }
+
+  if (leftTimestamp === rightTimestamp) {
+    return rightCompleteness > leftCompleteness ? right : left;
   }
 
   return rightTimestamp >= leftTimestamp ? right : left;
