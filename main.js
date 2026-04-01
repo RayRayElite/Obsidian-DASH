@@ -2021,17 +2021,12 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      const weekBoardCard = createCard(page, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
+      const weekBoardCard = createCard(page, "Week At A Glance", "", {
         icon: "layout-dashboard",
         eyebrow: "Week",
         tone: "health",
         tag: "Visual"
       });
-      const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(weekLegend, "Sleep", "focus");
-      createSemanticChip(weekLegend, "Work", "capture");
-      createSemanticChip(weekLegend, "Relax", "health");
-      createSemanticChip(weekLegend, "Unknown", "neutral");
       const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
       this.getCurrentWeekTimeBoard().forEach((day) => {
         const dayCard = weekBoard.createDiv({ cls: "daily-dashboard-week-day" });
