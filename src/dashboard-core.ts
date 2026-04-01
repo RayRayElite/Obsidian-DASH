@@ -28,7 +28,6 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .filter((habit) => habit.label.length > 0)
     : DEFAULT_SETTINGS.habitDefinitions;
   const aiApiKeySource = settings.aiApiKeySource === "env" ? "env" : "settings";
-  const calendarSourceType = settings.calendarSourceType === "url-ics" ? "url-ics" : "vault-ics";
   const calendarLookaheadHours = clamp(Number(settings.calendarLookaheadHours ?? DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number(settings.calendarWarningHours ?? DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
 
@@ -54,9 +53,6 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiEmbeddingModel: settings.aiEmbeddingModel?.trim() || DEFAULT_SETTINGS.aiEmbeddingModel,
     aiEmbeddingApiUrl: settings.aiEmbeddingApiUrl?.trim() || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
     calendarEnabled: settings.calendarEnabled ?? DEFAULT_SETTINGS.calendarEnabled,
-    calendarSourceType,
-    calendarIcsPath: settings.calendarIcsPath?.trim() || DEFAULT_SETTINGS.calendarIcsPath,
-    calendarIcsUrl: settings.calendarIcsUrl?.trim() || DEFAULT_SETTINGS.calendarIcsUrl,
     calendarLookaheadHours,
     calendarWarningHours,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),

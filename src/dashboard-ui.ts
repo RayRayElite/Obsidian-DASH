@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
+  type CalendarEventEntry,
   type CalendarSnapshot,
   type CardVisualOptions,
   type CreateProjectInput,
@@ -44,6 +45,8 @@ export class DailyDashboardView extends ItemView {
     sectionName: "Add",
     taskText: ""
   };
+  private calendarCursorDate = new Date();
+  private selectedCalendarDate = formatDateKey(new Date());
 
   constructor(leaf: WorkspaceLeaf, plugin: DailyDashboardPlugin) {
     super(leaf);
@@ -143,6 +146,9 @@ export class DailyDashboardView extends ItemView {
       const cleanupSuggestions = todoSnapshot?.cleanupSuggestions ?? [];
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
+      if (!this.selectedCalendarDate) {
+        this.selectedCalendarDate = todayEntry.date;
+      }
 
       if (!this.quickAddState.projectName && projects.length > 0) {
         this.quickAddState.projectName = projects[0].name;
@@ -367,7 +373,15 @@ export class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
-      this.renderCalendarBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
+      this.renderReminderBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
+
+      const calendarCard = createCard(grid, "Monthly Calendar", "Click a day to add events and keep the month visible without leaving the dashboard.", {
+        icon: "calendar-days",
+        eyebrow: "Calendar",
+        tone: "log",
+        tag: settings.calendarEnabled ? "Reminders On" : "Reminders Off"
+      });
+      this.renderMonthlyCalendar(calendarCard, todayEntry.date);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -871,43 +885,35 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private renderCalendarBlock(parent: HTMLElement, snapshot: CalendarSnapshot, lookaheadHours: number): void {
+  private renderReminderBlock(parent: HTMLElement, snapshot: CalendarSnapshot, lookaheadHours: number): void {
     const block = parent.createDiv({ cls: "daily-dashboard-calendar-block" });
     const header = block.createDiv({ cls: "daily-dashboard-calendar-header" });
-    header.createEl("strong", { text: "Upcoming activity" });
+    header.createEl("strong", { text: "Upcoming reminders" });
     header.createEl("span", {
       cls: "daily-dashboard-row-meta",
       text: snapshot.enabled
-        ? snapshot.sourceLabel || `Next ${lookaheadHours}h`
-        : "Enable calendar support in settings to surface upcoming activities here."
+        ? `Next ${lookaheadHours}h from your dashboard calendar`
+        : "Enable calendar reminders in settings to surface upcoming events here."
     });
 
     if (!snapshot.enabled) {
       block.createDiv({
         cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
-        text: "Calendar support is off. Point the plugin at an ICS file or URL to get upcoming warnings below Top 3."
+        text: "Calendar reminders are off. Turn them on in settings to push upcoming events into the Execution card."
       });
       return;
     }
 
-    if (snapshot.error) {
-      const errorRow = block.createDiv({ cls: "daily-dashboard-calendar-row is-warning" });
-      const copy = errorRow.createDiv({ cls: "daily-dashboard-calendar-copy" });
-      copy.createEl("strong", { text: "Calendar feed unavailable" });
-      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.error });
-      return;
-    }
-
-    if (snapshot.events.length === 0) {
+    if (snapshot.reminders.length === 0) {
       block.createDiv({
         cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
-        text: `No upcoming calendar activity in the next ${lookaheadHours} hours.`
+        text: `No upcoming calendar reminders in the next ${lookaheadHours} hours.`
       });
       return;
     }
 
     const list = block.createDiv({ cls: "daily-dashboard-calendar-list" });
-    snapshot.events.forEach((event) => {
+    snapshot.reminders.forEach((event) => {
       const row = list.createDiv({ cls: `daily-dashboard-calendar-row is-${event.warningLevel}` });
       const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
       time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay) });
@@ -917,7 +923,7 @@ export class DailyDashboardView extends ItemView {
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: event.location || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
+        text: event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
       });
 
       const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
@@ -925,6 +931,127 @@ export class DailyDashboardView extends ItemView {
       if (event.allDay) {
         createSemanticChip(chips, "All day", "log");
       }
+    });
+  }
+
+  private renderMonthlyCalendar(parent: HTMLElement, todayKey: string): void {
+    const header = parent.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
+    const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
+    const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
+    title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
+    title.createEl("span", { cls: "daily-dashboard-row-meta", text: "Click any day to add or remove events." });
+    const controls = header.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    createButton(controls, "Prev", async () => {
+      this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+      await this.render();
+    }, false, "chevron-left");
+    createButton(controls, "Today", async () => {
+      this.calendarCursorDate = new Date();
+      this.selectedCalendarDate = todayKey;
+      await this.render();
+    }, false, "calendar-days");
+    createButton(controls, "Next", async () => {
+      this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+      await this.render();
+    }, false, "chevron-right");
+
+    const weekHeader = parent.createDiv({ cls: "daily-dashboard-calendar-weekdays" });
+    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach((label) => {
+      weekHeader.createEl("span", { text: label });
+    });
+
+    const eventMap = new Map<string, CalendarEventEntry[]>();
+    this.plugin.getCalendarEvents().forEach((event) => {
+      const list = eventMap.get(event.date) ?? [];
+      list.push(event);
+      eventMap.set(event.date, list);
+    });
+
+    const grid = parent.createDiv({ cls: "daily-dashboard-calendar-grid" });
+    this.getCalendarMonthDays(currentMonth).forEach((date) => {
+      const dateKey = formatDateKey(date);
+      const events = eventMap.get(dateKey) ?? [];
+      const cell = grid.createEl("button", { cls: "daily-dashboard-calendar-day" });
+      cell.type = "button";
+      if (date.getMonth() !== currentMonth.getMonth()) {
+        cell.addClass("is-outside-month");
+      }
+      if (dateKey === todayKey) {
+        cell.addClass("is-today");
+      }
+      if (dateKey === this.selectedCalendarDate) {
+        cell.addClass("is-selected");
+      }
+      if (events.length > 0) {
+        cell.addClass("has-events");
+      }
+
+      const top = cell.createDiv({ cls: "daily-dashboard-calendar-day-top" });
+      top.createEl("strong", { text: `${date.getDate()}` });
+      if (events.length > 0) {
+        top.createEl("span", { text: `${events.length}` });
+      }
+
+      const preview = cell.createDiv({ cls: "daily-dashboard-calendar-day-preview" });
+      if (events.length === 0) {
+        preview.createEl("span", { cls: "daily-dashboard-row-meta", text: "Add event" });
+      } else {
+        events.slice(0, 2).forEach((event) => {
+          preview.createEl("span", { text: event.startTime ? `${event.startTime} ${event.title}` : event.title });
+        });
+        if (events.length > 2) {
+          preview.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${events.length - 2} more` });
+        }
+      }
+
+      cell.addEventListener("click", () => {
+        this.selectedCalendarDate = dateKey;
+        new CalendarEventModal(this.app, this.plugin, dateKey).open();
+        void this.render();
+      });
+    });
+
+    const selectedDate = this.selectedCalendarDate || todayKey;
+    const selectedEvents = this.plugin.getCalendarEventsForDate(selectedDate);
+    const detail = parent.createDiv({ cls: "daily-dashboard-calendar-detail" });
+    const detailHeader = detail.createDiv({ cls: "daily-dashboard-calendar-detail-header" });
+    detailHeader.createEl("strong", { text: `Events for ${selectedDate}` });
+    const detailActions = detailHeader.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    createButton(detailActions, "Add event", async () => {
+      new CalendarEventModal(this.app, this.plugin, selectedDate).open();
+    }, false, "plus-circle");
+
+    if (selectedEvents.length === 0) {
+      detail.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact", text: "No events on this day yet." });
+      return;
+    }
+
+    const list = detail.createDiv({ cls: "daily-dashboard-calendar-list" });
+    selectedEvents.forEach((event) => {
+      const row = list.createDiv({ cls: "daily-dashboard-calendar-row" });
+      const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
+      time.createEl("strong", { text: event.startTime || "All day" });
+      time.createEl("span", { text: event.endTime || (event.startTime ? "No end" : "Runs all day") });
+
+      const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
+      copy.createEl("strong", { text: event.title });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
+
+      const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(actions, "Delete", async () => this.plugin.removeCalendarEvent(event.id), false, "trash-2");
+    });
+  }
+
+  private getCalendarMonthDays(currentMonth: Date): Date[] {
+    const firstOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    const firstWeekday = (firstOfMonth.getDay() + 6) % 7;
+    const startDate = new Date(firstOfMonth);
+    startDate.setDate(firstOfMonth.getDate() - firstWeekday);
+
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + index);
+      return date;
     });
   }
 
@@ -1086,6 +1213,132 @@ export class DailyDashboardView extends ItemView {
 
     const hours = minutes / 60;
     return `${hours.toFixed(minutes % 60 === 0 ? 0 : 1).replace(/\.0$/, "")}h`;
+  }
+}
+
+export class CalendarEventModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private date: string;
+  private titleValue = "";
+  private startTimeValue = "";
+  private endTimeValue = "";
+  private notesValue = "";
+
+  constructor(app: App, plugin: DailyDashboardPlugin, date: string) {
+    super(app);
+    this.plugin = plugin;
+    this.date = date;
+  }
+
+  onOpen(): void {
+    this.setTitle(`Calendar Events • ${this.date}`);
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    const existingEvents = this.plugin.getCalendarEventsForDate(this.date);
+    if (existingEvents.length > 0) {
+      contentEl.createEl("h3", { text: "Existing events" });
+      existingEvents.forEach((event) => {
+        new Setting(contentEl)
+          .setName(event.title)
+          .setDesc([
+            event.startTime || "All day",
+            event.endTime ? `to ${event.endTime}` : "",
+            event.notes
+          ].filter((value) => value.length > 0).join(" • "))
+          .addButton((button) => {
+            button.setButtonText("Delete").onClick(async () => {
+              await this.plugin.removeCalendarEvent(event.id);
+              this.renderContent();
+            });
+          });
+      });
+    }
+
+    contentEl.createEl("h3", { text: "Add event" });
+
+    new Setting(contentEl)
+      .setName("Title")
+      .setDesc("Required")
+      .addText((text) => {
+        text
+          .setPlaceholder("Appointment, reminder, call, errand")
+          .setValue(this.titleValue)
+          .onChange((value) => {
+            this.titleValue = value;
+          });
+        window.setTimeout(() => text.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Start time")
+      .setDesc("Leave blank for all-day events.")
+      .addText((text) => {
+        text
+          .setPlaceholder("09:30")
+          .setValue(this.startTimeValue)
+          .onChange((value) => {
+            this.startTimeValue = value.trim();
+          });
+        text.inputEl.type = "time";
+      });
+
+    new Setting(contentEl)
+      .setName("End time")
+      .setDesc("Optional")
+      .addText((text) => {
+        text
+          .setPlaceholder("10:15")
+          .setValue(this.endTimeValue)
+          .onChange((value) => {
+            this.endTimeValue = value.trim();
+          });
+        text.inputEl.type = "time";
+      });
+
+    new Setting(contentEl)
+      .setName("Notes")
+      .setDesc("Optional context shown in reminders and the calendar detail list.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Location, prep, what to bring, who it is with")
+          .setValue(this.notesValue)
+          .onChange((value) => {
+            this.notesValue = value;
+          });
+        textArea.inputEl.rows = 3;
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Add event").setCta().onClick(async () => {
+          await this.plugin.addCalendarEvent({
+            title: this.titleValue,
+            date: this.date,
+            startTime: this.startTimeValue,
+            endTime: this.endTimeValue,
+            notes: this.notesValue
+          });
+          this.titleValue = "";
+          this.startTimeValue = "";
+          this.endTimeValue = "";
+          this.notesValue = "";
+          this.renderContent();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Close").onClick(() => {
+          this.close();
+        });
+      });
   }
 }
 
@@ -1651,8 +1904,8 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
     containerEl.createEl("h3", { text: "Calendar" });
 
     new Setting(containerEl)
-      .setName("Enable calendar support")
-      .setDesc("Show upcoming calendar activity below Top 3 and raise notices inside the warning window.")
+      .setName("Enable calendar reminders")
+      .setDesc("Show upcoming calendar events below Top 3 and raise notices inside the warning window.")
       .addToggle((toggle) => {
         toggle.setValue(settings.calendarEnabled).onChange(async (value) => {
           await this.plugin.updateSettings({
@@ -1664,56 +1917,12 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Calendar source")
-      .setDesc("Use an ICS file from the vault or an ICS URL from another calendar service.")
-      .addDropdown((dropdown) => {
-        dropdown.addOption("vault-ics", "Vault ICS file");
-        dropdown.addOption("url-ics", "ICS URL");
-        dropdown.setValue(settings.calendarSourceType);
-        dropdown.onChange(async (value) => {
-          await this.plugin.updateSettings({
-            ...this.plugin.getSettings(),
-            calendarSourceType: value === "url-ics" ? "url-ics" : "vault-ics"
-          });
-          this.display();
-        });
-      });
-
-    if (settings.calendarSourceType === "vault-ics") {
-      new Setting(containerEl)
-        .setName("Calendar ICS path")
-        .setDesc("Path to an .ics file inside the vault. Example: Calendars/Personal.ics")
-        .addText((text) => {
-          text
-            .setPlaceholder("Calendars/Personal.ics")
-            .setValue(settings.calendarIcsPath)
-            .onChange(async (value) => {
-              await this.plugin.updateSettings({
-                ...this.plugin.getSettings(),
-                calendarIcsPath: value.trim()
-              });
-            });
-        });
-    } else {
-      new Setting(containerEl)
-        .setName("Calendar ICS URL")
-        .setDesc("Public or tokenized ICS feed URL used for upcoming-activity warnings.")
-        .addText((text) => {
-          text
-            .setPlaceholder("https://calendar.example.com/feed.ics")
-            .setValue(settings.calendarIcsUrl)
-            .onChange(async (value) => {
-              await this.plugin.updateSettings({
-                ...this.plugin.getSettings(),
-                calendarIcsUrl: value.trim()
-              });
-            });
-        });
-    }
+      .setName("Calendar behavior")
+      .setDesc("Events are stored directly in plugin data from the Monthly Calendar card. Click any day to add or remove them.");
 
     new Setting(containerEl)
       .setName("Calendar lookahead hours")
-      .setDesc("How far ahead the Execution card should look when listing upcoming activity.")
+      .setDesc("How far ahead the Execution card should look when listing upcoming reminders.")
       .addText((text) => {
         text
           .setPlaceholder(`${DEFAULT_SETTINGS.calendarLookaheadHours}`)

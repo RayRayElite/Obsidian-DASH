@@ -27,9 +27,18 @@ export interface WorkSession {
 
 export type AiApiKeySource = "settings" | "env";
 
-export type CalendarSourceType = "vault-ics" | "url-ics";
-
 export type TodayFocusStatus = "pending" | "working" | "done";
+
+export interface CalendarEventEntry {
+  id: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface TodayFocusItem {
   text: string;
@@ -121,9 +130,6 @@ export interface DashboardSettings {
   aiEmbeddingModel: string;
   aiEmbeddingApiUrl: string;
   calendarEnabled: boolean;
-  calendarSourceType: CalendarSourceType;
-  calendarIcsPath: string;
-  calendarIcsUrl: string;
   calendarLookaheadHours: number;
   calendarWarningHours: number;
   wallpaperFolder: string;
@@ -131,21 +137,20 @@ export interface DashboardSettings {
   habitDefinitions: HabitDefinition[];
 }
 
-export interface CalendarEventSummary {
+export interface CalendarReminderItem {
   id: string;
   title: string;
+  date: string;
   start: string;
   end: string;
-  location: string;
+  notes: string;
   allDay: boolean;
   warningLevel: "warning" | "upcoming";
 }
 
 export interface CalendarSnapshot {
-  events: CalendarEventSummary[];
-  error: string | null;
+  reminders: CalendarReminderItem[];
   enabled: boolean;
-  sourceLabel: string;
 }
 
 export interface CreateProjectInput {
@@ -170,6 +175,7 @@ export interface ExistingProjectDefinition {
 export interface DashboardPluginData {
   settings: DashboardSettings;
   entries: Record<string, DailyEntry>;
+  calendarEvents: CalendarEventEntry[];
   dayState: DayLifecycleState;
   noteIndex: NoteIndexCache;
 }
@@ -370,9 +376,6 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiEmbeddingModel: "text-embedding-3-small",
   aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
   calendarEnabled: false,
-  calendarSourceType: "vault-ics",
-  calendarIcsPath: "",
-  calendarIcsUrl: "",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   wallpaperFolder: "Wallpapers",

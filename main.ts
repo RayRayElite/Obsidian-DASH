@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, TFolder, normalizePath, requestUrl } from "obsidian";
+import { Notice, Plugin, TFile, TFolder, normalizePath } from "obsidian";
 
 import {
   buildAiSearchTerms,
@@ -89,6 +89,7 @@ import {
   type AiStructuredPayload,
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
+  type CalendarEventEntry,
   type CalendarSnapshot,
   type CreateProjectInput,
   type DayRepairInput,
@@ -107,21 +108,11 @@ import {
   type WorkSession
 } from "./src/dashboard-types";
 
-type ParsedCalendarEvent = {
-  id: string;
-  title: string;
-  start: Date;
-  end: Date;
-  location: string;
-  allDay: boolean;
-};
-
 export default class DailyDashboardPlugin extends Plugin {
-  private static readonly CALENDAR_CACHE_MS = 5 * 60 * 1000;
-
   private data: DashboardPluginData = {
     settings: { ...DEFAULT_SETTINGS },
     entries: {},
+    calendarEvents: [],
     dayState: {
       activeDate: formatDateKey(new Date()),
       status: "not-started"
@@ -135,11 +126,6 @@ export default class DailyDashboardPlugin extends Plugin {
   private isAiBusy = false;
   private isIndexingNotes = false;
   private noteIndexDebounceId: number | null = null;
-  private calendarCache: { key: string; fetchedAt: number; snapshot: CalendarSnapshot | null } = {
-    key: "",
-    fetchedAt: 0,
-    snapshot: null
-  };
   private calendarWarningDay = "";
   private warnedCalendarEventKeys = new Set<string>();
 
@@ -629,275 +615,145 @@ export default class DailyDashboardPlugin extends Plugin {
     return "Add your OpenAI API key in Daily Dashboard settings before using AI features.";
   }
 
-  private resetCalendarCache(): void {
-    this.calendarCache = {
-      key: "",
-      fetchedAt: 0,
-      snapshot: null
-    };
-  }
-
-  private getCalendarSourceLabel(): string {
-    if (this.data.settings.calendarSourceType === "url-ics") {
-      return this.data.settings.calendarIcsUrl.trim();
-    }
-
-    return normalizePath(this.data.settings.calendarIcsPath.trim());
-  }
-
-  private getCalendarCacheKey(): string {
-    const settings = this.data.settings;
-    return [
-      settings.calendarEnabled ? "on" : "off",
-      settings.calendarSourceType,
-      this.getCalendarSourceLabel(),
-      String(settings.calendarLookaheadHours),
-      String(settings.calendarWarningHours)
-    ].join("|");
-  }
-
   async getUpcomingCalendarSnapshot(now: Date = new Date()): Promise<CalendarSnapshot> {
     if (!this.data.settings.calendarEnabled) {
       return {
-        events: [],
-        error: null,
-        enabled: false,
-        sourceLabel: ""
+        reminders: [],
+        enabled: false
       };
     }
 
-    const cacheKey = this.getCalendarCacheKey();
-    if (
-      this.calendarCache.snapshot
-      && this.calendarCache.key === cacheKey
-      && now.getTime() - this.calendarCache.fetchedAt < DailyDashboardPlugin.CALENDAR_CACHE_MS
-    ) {
-      this.maybeWarnUpcomingCalendarEvents(this.calendarCache.snapshot.events, now);
-      return this.calendarCache.snapshot;
-    }
+    const reminders = this.data.calendarEvents
+      .map((event) => this.toCalendarReminderItem(event))
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .filter((item) => this.isCalendarReminderVisible(item, now))
+      .map((item) => ({
+        ...item,
+        warningLevel: this.getCalendarReminderWarningLevel(item, now)
+      }))
+      .sort((left, right) => left.start.localeCompare(right.start));
 
-    let snapshot: CalendarSnapshot;
-    try {
-      const { text, sourceLabel } = await this.loadCalendarIcsText();
-      const windowEnd = new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1000);
-      const upcomingEvents = this.parseCalendarEvents(text)
-        .filter((event) => event.end.getTime() >= now.getTime() && event.start.getTime() <= windowEnd.getTime())
-        .sort((left, right) => left.start.getTime() - right.start.getTime())
-        .slice(0, 8)
-        .map((event) => ({
-          id: event.id,
-          title: event.title,
-          start: event.start.toISOString(),
-          end: event.end.toISOString(),
-          location: event.location,
-          allDay: event.allDay,
-          warningLevel: event.start.getTime() - now.getTime() <= this.data.settings.calendarWarningHours * 60 * 60 * 1000
-            ? "warning"
-            : "upcoming"
-        }));
-
-      snapshot = {
-        events: upcomingEvents,
-        error: null,
-        enabled: true,
-        sourceLabel
-      };
-      this.maybeWarnUpcomingCalendarEvents(snapshot.events, now);
-    } catch (error) {
-      snapshot = {
-        events: [],
-        error: this.getErrorMessage(error),
-        enabled: true,
-        sourceLabel: this.getCalendarSourceLabel()
-      };
-    }
-
-    this.calendarCache = {
-      key: cacheKey,
-      fetchedAt: now.getTime(),
-      snapshot
+    const snapshot: CalendarSnapshot = {
+      reminders,
+      enabled: true
     };
-
+    this.maybeWarnUpcomingCalendarEvents(snapshot.reminders, now);
     return snapshot;
   }
-
-  private async loadCalendarIcsText(): Promise<{ text: string; sourceLabel: string }> {
-    if (this.data.settings.calendarSourceType === "url-ics") {
-      const url = this.data.settings.calendarIcsUrl.trim();
-      if (!url) {
-        throw new Error("Calendar ICS URL is empty.");
-      }
-
-      const response = await requestUrl({ url });
-      return {
-        text: response.text,
-        sourceLabel: url
-      };
-    }
-
-    const path = normalizePath(this.data.settings.calendarIcsPath.trim());
-    if (!path) {
-      throw new Error("Calendar ICS path is empty.");
-    }
-
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (!(file instanceof TFile)) {
-      throw new Error(`Calendar ICS file not found: ${path}`);
-    }
-
-    return {
-      text: await this.app.vault.read(file),
-      sourceLabel: path
-    };
-  }
-
-  private parseCalendarEvents(icsText: string): ParsedCalendarEvent[] {
-    const lines = this.unfoldIcsLines(icsText);
-    const events: ParsedCalendarEvent[] = [];
-    let currentEvent: Record<string, Array<{ value: string; params: Record<string, string> }>> | null = null;
-
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) {
-        continue;
-      }
-
-      if (line === "BEGIN:VEVENT") {
-        currentEvent = {};
-        continue;
-      }
-
-      if (line === "END:VEVENT") {
-        if (currentEvent) {
-          const parsed = this.buildCalendarEvent(currentEvent);
-          if (parsed) {
-            events.push(parsed);
-          }
-        }
-        currentEvent = null;
-        continue;
-      }
-
-      if (!currentEvent) {
-        continue;
-      }
-
-      const separatorIndex = line.indexOf(":");
-      if (separatorIndex === -1) {
-        continue;
-      }
-
-      const keyPart = line.slice(0, separatorIndex);
-      const value = line.slice(separatorIndex + 1);
-      const [rawKey, ...rawParams] = keyPart.split(";");
-      const key = rawKey.toUpperCase();
-      const params = Object.fromEntries(
-        rawParams.map((parameter) => {
-          const equalsIndex = parameter.indexOf("=");
-          if (equalsIndex === -1) {
-            return [parameter.toUpperCase(), ""];
-          }
-
-          return [parameter.slice(0, equalsIndex).toUpperCase(), parameter.slice(equalsIndex + 1)];
-        })
-      );
-
-      currentEvent[key] = [...(currentEvent[key] ?? []), { value, params }];
-    }
-
-    return events;
-  }
-
-  private unfoldIcsLines(icsText: string): string[] {
-    const rawLines = icsText.split(/\r?\n/);
-    const lines: string[] = [];
-
-    rawLines.forEach((line) => {
-      if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length > 0) {
-        lines[lines.length - 1] += line.slice(1);
-        return;
-      }
-
-      lines.push(line);
+  getCalendarEvents(): CalendarEventEntry[] {
+    return [...this.data.calendarEvents].sort((left, right) => {
+      const leftKey = `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`;
+      const rightKey = `${right.date} ${right.startTime || "00:00"} ${right.title.toLowerCase()}`;
+      return leftKey.localeCompare(rightKey);
     });
-
-    return lines;
   }
 
-  private buildCalendarEvent(rawEvent: Record<string, Array<{ value: string; params: Record<string, string> }>>): ParsedCalendarEvent | null {
-    const startField = rawEvent.DTSTART?.[0];
-    if (!startField) {
-      return null;
-    }
-
-    const start = this.parseIcsDateValue(startField.value, startField.params);
-    if (!start) {
-      return null;
-    }
-
-    const endField = rawEvent.DTEND?.[0];
-    const end = endField
-      ? this.parseIcsDateValue(endField.value, endField.params)
-      : null;
-    const endDate = end?.date ?? new Date(start.date.getTime() + (start.allDay ? 24 : 1) * 60 * 60 * 1000);
-
-    return {
-      id: this.decodeIcsText(rawEvent.UID?.[0]?.value || `${start.date.toISOString()}-${rawEvent.SUMMARY?.[0]?.value || "event"}`),
-      title: this.decodeIcsText(rawEvent.SUMMARY?.[0]?.value || "Untitled event"),
-      start: start.date,
-      end: endDate,
-      location: this.decodeIcsText(rawEvent.LOCATION?.[0]?.value || ""),
-      allDay: start.allDay
-    };
+  getCalendarEventsForDate(date: string): CalendarEventEntry[] {
+    return this.getCalendarEvents().filter((event) => event.date === date);
   }
 
-  private parseIcsDateValue(value: string, params: Record<string, string>): { date: Date; allDay: boolean } | null {
-    const normalizedValue = value.trim();
-    if (!normalizedValue) {
-      return null;
+  async addCalendarEvent(input: {
+    title: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    notes: string;
+  }): Promise<void> {
+    const title = input.title.trim();
+    const date = input.date.trim();
+    const startTime = input.startTime.trim();
+    const endTime = input.endTime.trim();
+    const notes = input.notes.trim();
+
+    if (!title) {
+      new Notice("Calendar event title is required.");
+      return;
     }
 
-    const allDay = params.VALUE?.toUpperCase() === "DATE" || /^\d{8}$/.test(normalizedValue);
-    if (allDay) {
-      const match = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})$/);
-      if (!match) {
-        return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      new Notice("Calendar event date must use YYYY-MM-DD.");
+      return;
+    }
+
+    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
+      new Notice("Start time must use HH:MM.");
+      return;
+    }
+
+    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
+      new Notice("End time must use HH:MM.");
+      return;
+    }
+
+    if (startTime && endTime && endTime < startTime) {
+      new Notice("End time must be after start time.");
+      return;
+    }
+
+    const timestamp = formatPreciseDateTimeKey(new Date());
+    this.data.calendarEvents = [
+      ...this.data.calendarEvents,
+      {
+        id: `calendar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        date,
+        startTime,
+        endTime,
+        notes,
+        createdAt: timestamp,
+        updatedAt: timestamp
       }
+    ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    new Notice(`Added calendar event for ${date}.`);
+  }
 
-      const [, year, month, day] = match;
-      return {
-        date: new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0),
-        allDay: true
-      };
+  async removeCalendarEvent(eventId: string): Promise<void> {
+    const nextEvents = this.data.calendarEvents.filter((event) => event.id !== eventId);
+    if (nextEvents.length === this.data.calendarEvents.length) {
+      return;
     }
 
-    const match = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?Z?$/);
-    if (!match) {
+    this.data.calendarEvents = nextEvents;
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  private toCalendarReminderItem(event: CalendarEventEntry): CalendarSnapshot["reminders"][number] | null {
+    const startDate = this.getCalendarEventStartDate(event);
+    const endDate = this.getCalendarEventEndDate(event);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       return null;
     }
 
-    const [, year, month, day, hour, minute, second] = match;
-    const numericSecond = Number(second ?? "0");
-    const isUtc = normalizedValue.endsWith("Z");
-
     return {
-      date: isUtc
-        ? new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond))
-        : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond, 0),
-      allDay: false
+      id: event.id,
+      title: event.title,
+      date: event.date,
+      start: startDate.toISOString(),
+      end: endDate.toISOString(),
+      notes: event.notes,
+      allDay: event.startTime.length === 0,
+      warningLevel: "upcoming"
     };
   }
 
-  private decodeIcsText(value: string): string {
-    return value
-      .replace(/\\n/gi, "\n")
-      .replace(/\\,/g, ",")
-      .replace(/\\;/g, ";")
-      .replace(/\\\\/g, "\\")
-      .trim();
+  private isCalendarReminderVisible(item: CalendarSnapshot["reminders"][number], now: Date): boolean {
+    const start = new Date(item.start);
+    const end = new Date(item.end);
+    const lookaheadMs = this.data.settings.calendarLookaheadHours * 60 * 60 * 1000;
+    if (item.allDay) {
+      const startOfDay = new Date(start);
+      startOfDay.setHours(0, 0, 0, 0);
+      return startOfDay.getTime() >= this.startOfToday(now).getTime()
+        && startOfDay.getTime() <= this.startOfToday(new Date(now.getTime() + lookaheadMs)).getTime();
+    }
+
+    return end.getTime() >= now.getTime() && start.getTime() <= now.getTime() + lookaheadMs;
   }
 
-  private maybeWarnUpcomingCalendarEvents(events: CalendarSnapshot["events"], now: Date): void {
+  private maybeWarnUpcomingCalendarEvents(reminders: CalendarSnapshot["reminders"], now: Date): void {
     const currentDay = formatDateKey(now);
     if (this.calendarWarningDay !== currentDay) {
       this.calendarWarningDay = currentDay;
@@ -905,13 +761,19 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1000;
-    events
+    reminders
+      .map((reminder) => ({
+        ...reminder,
+        warningLevel: this.getCalendarReminderWarningLevel(reminder, now)
+      }))
       .filter((event) => {
+        const startTime = new Date(event.start).getTime();
         if (event.allDay) {
-          return false;
+          const startOfDay = this.startOfToday(new Date(event.start));
+          return startOfDay.getTime() >= this.startOfToday(now).getTime()
+            && startOfDay.getTime() - this.startOfToday(now).getTime() <= warningWindowMs;
         }
 
-        const startTime = new Date(event.start).getTime();
         return startTime >= now.getTime() && startTime - now.getTime() <= warningWindowMs;
       })
       .forEach((event) => {
@@ -922,9 +784,43 @@ export default class DailyDashboardPlugin extends Plugin {
 
         this.warnedCalendarEventKeys.add(eventKey);
         const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
-        const locationLabel = event.location ? ` • ${event.location}` : "";
-        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}${locationLabel}`, 10000);
+        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}`, 10000);
       });
+  }
+
+  private getCalendarReminderWarningLevel(reminder: CalendarSnapshot["reminders"][number], now: Date): "warning" | "upcoming" {
+    const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1000;
+    const start = new Date(reminder.start);
+    if (reminder.allDay) {
+      const dayOffset = this.startOfToday(start).getTime() - this.startOfToday(now).getTime();
+      return dayOffset <= warningWindowMs ? "warning" : "upcoming";
+    }
+
+    return start.getTime() - now.getTime() <= warningWindowMs ? "warning" : "upcoming";
+  }
+
+  private getCalendarEventStartDate(event: CalendarEventEntry): Date {
+    if (!event.startTime) {
+      return new Date(`${event.date}T00:00:00`);
+    }
+
+    return new Date(`${event.date}T${event.startTime}:00`);
+  }
+
+  private getCalendarEventEndDate(event: CalendarEventEntry): Date {
+    if (!event.endTime) {
+      return event.startTime
+        ? new Date(`${event.date}T${event.startTime}:00`)
+        : new Date(`${event.date}T23:59:00`);
+    }
+
+    return new Date(`${event.date}T${event.endTime}:00`);
+  }
+
+  private startOfToday(date: Date): Date {
+    const next = new Date(date);
+    next.setHours(0, 0, 0, 0);
+    return next;
   }
 
   private formatCalendarEventWindow(start: Date, end: Date, allDay: boolean): string {
@@ -984,7 +880,6 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateSettings(settings: DashboardSettings): Promise<void> {
     const previousSettings = this.data.settings;
     this.data.settings = sanitizeSettings(settings);
-    this.resetCalendarCache();
     await this.refreshWallpaperOptions();
 
     for (const date of Object.keys(this.data.entries)) {
@@ -2509,12 +2404,18 @@ export default class DailyDashboardPlugin extends Plugin {
     Object.entries(rawEntries).forEach(([date, entry]) => {
       entries[date] = this.normalizeEntry(entry as Partial<DailyEntry>, date, settings);
     });
+    const calendarEvents = Array.isArray(loaded?.calendarEvents)
+      ? loaded.calendarEvents
+          .map((event) => this.normalizeCalendarEvent(event))
+          .filter((event): event is CalendarEventEntry => event !== null)
+      : [];
 
     const dayState = normalizeDayState(loaded?.dayState, entries);
 
     return {
       settings,
       entries,
+      calendarEvents,
       dayState,
       noteIndex: normalizeNoteIndexCache(loaded?.noteIndex)
     };
@@ -2767,6 +2668,39 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private createEmptyEntry(date: string): DailyEntry {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+
+  private normalizeCalendarEvent(event: Partial<CalendarEventEntry> | undefined): CalendarEventEntry | null {
+    if (!event || typeof event !== "object") {
+      return null;
+    }
+
+    const title = typeof event.title === "string" ? event.title.trim() : "";
+    const date = typeof event.date === "string" ? event.date.trim() : "";
+    const startTime = typeof event.startTime === "string" ? event.startTime.trim() : "";
+    const endTime = typeof event.endTime === "string" ? event.endTime.trim() : "";
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return null;
+    }
+
+    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
+      return null;
+    }
+
+    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
+      return null;
+    }
+
+    return {
+      id: typeof event.id === "string" && event.id.trim().length > 0 ? event.id : `calendar-${date}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      title,
+      date,
+      startTime,
+      endTime,
+      notes: typeof event.notes === "string" ? event.notes : "",
+      createdAt: typeof event.createdAt === "string" ? event.createdAt : "",
+      updatedAt: typeof event.updatedAt === "string" ? event.updatedAt : ""
+    };
   }
 
   private createTodayFocusItem(text: string): TodayFocusItem {
@@ -3066,16 +3000,14 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.saveData({
       settings: this.data.settings,
       entries: this.data.entries,
+      calendarEvents: this.data.calendarEvents,
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex
     });
   }
 
   private async persistNoteIndex(): Promise<void> {
-    await this.saveData({
-      settings: this.data.settings,
-      noteIndex: this.data.noteIndex
-    });
+    await this.savePluginData();
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
