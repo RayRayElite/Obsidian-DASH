@@ -4990,6 +4990,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
+    await this.cleanupStaleTrackedMinuteOverrides();
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
     var _a, _b, _c;
@@ -5062,25 +5063,51 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return this.data.entries[date];
   }
   getEffectiveTrackedEntry(entry) {
-    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
-      return entry;
-    }
-    return {
-      ...entry,
-      workMinutesOverride: null,
-      napMinutesOverride: null,
-      relaxMinutesOverride: null,
-      breakMinutesOverride: null
-    };
+    return this.withCleanTrackedMinuteOverrides(entry);
   }
-  clearLiveSessionOverrides(entry) {
-    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
+  withCleanTrackedMinuteOverrides(entry) {
+    const normalizedEntry = {
+      ...entry,
+      workSessions: [...entry.workSessions],
+      napSessions: [...entry.napSessions],
+      relaxSessions: [...entry.relaxSessions],
+      breakSessions: [...entry.breakSessions]
+    };
+    return this.cleanTrackedMinuteOverrides(normalizedEntry) ? normalizedEntry : entry;
+  }
+  cleanTrackedMinuteOverrides(entry) {
+    let changed = false;
+    const isActiveDay = this.data.dayState.status === "in-progress" && entry.date === this.data.dayState.activeDate;
+    const clearOverride = (key, sessions) => {
+      const hasTrackedSessions = getTrackedMinutes(sessions) > 0;
+      if (!isActiveDay && !(entry[key] === 0 && hasTrackedSessions)) {
+        return;
+      }
+      if (entry[key] !== null) {
+        entry[key] = null;
+        changed = true;
+      }
+    };
+    clearOverride("workMinutesOverride", entry.workSessions);
+    clearOverride("napMinutesOverride", entry.napSessions);
+    clearOverride("relaxMinutesOverride", entry.relaxSessions);
+    clearOverride("breakMinutesOverride", entry.breakSessions);
+    return changed;
+  }
+  async cleanupStaleTrackedMinuteOverrides() {
+    let changed = false;
+    for (const [date, entry] of Object.entries(this.data.entries)) {
+      if (!this.cleanTrackedMinuteOverrides(entry)) {
+        continue;
+      }
+      this.data.entries[date] = this.normalizeEntry(entry, date, this.data.settings);
+      await this.syncDailyLog(this.data.entries[date]);
+      changed = true;
+    }
+    if (!changed) {
       return;
     }
-    entry.workMinutesOverride = null;
-    entry.napMinutesOverride = null;
-    entry.relaxMinutesOverride = null;
-    entry.breakMinutesOverride = null;
+    await this.savePluginData();
   }
   createEmptyEntry(date) {
     return createEmptyEntry(date, this.getHabitDefinitions());
@@ -5172,7 +5199,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       return;
     }
     const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
-    this.clearLiveSessionOverrides(normalizedEntry);
+    this.cleanTrackedMinuteOverrides(normalizedEntry);
     this.data.entries[parsed.date] = normalizedEntry;
     await this.savePluginData();
     this.refreshDashboardViews();
@@ -5307,7 +5334,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     });
   }
   async persistEntry(entry) {
-    this.clearLiveSessionOverrides(entry);
+    this.cleanTrackedMinuteOverrides(entry);
     this.data.entries[entry.date] = this.normalizeEntry({
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
