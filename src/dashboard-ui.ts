@@ -147,6 +147,42 @@ export class DailyDashboardView extends ItemView {
               : dayState.status === "in-progress"
                 ? "Idle"
                 : "Offline";
+      const weekBoardCard = createCard(grid, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
+        icon: "layout-dashboard",
+        eyebrow: "Week",
+        tone: "health",
+        tag: "Visual"
+      });
+      const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(weekLegend, "Sleep", "focus");
+      createSemanticChip(weekLegend, "Work", "capture");
+      createSemanticChip(weekLegend, "Relax", "health");
+      createSemanticChip(weekLegend, "Unknown", "neutral");
+      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
+      this.getCurrentWeekTimeBoard().forEach((day) => {
+        const dayCard = weekBoard.createDiv({ cls: "daily-dashboard-week-day" });
+        if (day.isToday) {
+          dayCard.addClass("is-today");
+        }
+
+        const heading = dayCard.createDiv({ cls: "daily-dashboard-week-day-heading" });
+        heading.createEl("strong", { text: day.label });
+        heading.createEl("span", { cls: "daily-dashboard-row-meta", text: day.date.slice(5) });
+
+        const visual = dayCard.createDiv({ cls: "daily-dashboard-week-day-visual" });
+        const orb = visual.createDiv({ cls: "daily-dashboard-week-orb" });
+        orb.style.background = this.buildWeekOrbGradient(day);
+        const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
+        orbCore.createEl("strong", { text: `${Math.round(((1440 - day.unknownMinutes) / 1440) * 100)}%` });
+        orbCore.createEl("span", { text: "Logged" });
+
+        const stats = dayCard.createDiv({ cls: "daily-dashboard-week-mini-stats" });
+        this.renderWeekMiniStat(stats, "Sl", formatMinutesAsHours(day.sleepMinutes), "focus");
+        this.renderWeekMiniStat(stats, "Wk", formatMinutesAsHours(day.workMinutes), "capture");
+        this.renderWeekMiniStat(stats, "Rx", formatMinutesAsHours(day.relaxMinutes), "health");
+        this.renderWeekMiniStat(stats, "Un", formatMinutesAsHours(day.unknownMinutes), "neutral");
+      });
+
       const dayToggleLabel = dayState.status === "in-progress" ? "End day" : "Begin day";
       const dayToggleIcon = dayState.status === "in-progress" ? "moon-star" : "sunrise";
       const dayToggleAction = dayState.status === "in-progress"
@@ -187,41 +223,6 @@ export class DailyDashboardView extends ItemView {
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
       createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(), false, activeRelaxSession ? "square" : "coffee");
       createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(), false, activeBreakSession ? "square" : "pause");
-
-      const weekBoardCard = createCard(grid, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
-        icon: "layout-dashboard",
-        eyebrow: "Week",
-        tone: "health",
-        tag: "Visual"
-      });
-      const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(weekLegend, "Sleep", "focus");
-      createSemanticChip(weekLegend, "Work", "capture");
-      createSemanticChip(weekLegend, "Relax", "health");
-      createSemanticChip(weekLegend, "Unknown", "neutral");
-      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
-      this.getCurrentWeekTimeBoard().forEach((day) => {
-        const dayCard = weekBoard.createDiv({ cls: "daily-dashboard-week-day" });
-        if (day.isToday) {
-          dayCard.addClass("is-today");
-        }
-
-        const top = dayCard.createDiv({ cls: "daily-dashboard-week-day-top" });
-        const heading = top.createDiv({ cls: "daily-dashboard-week-day-heading" });
-        heading.createEl("strong", { text: day.label });
-        heading.createEl("span", { cls: "daily-dashboard-row-meta", text: day.date.slice(5) });
-
-        const orb = top.createDiv({ cls: "daily-dashboard-week-orb" });
-        orb.style.background = this.buildWeekOrbGradient(day);
-        const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
-        orbCore.createEl("span", { text: `${Math.round(((1440 - day.unknownMinutes) / 1440) * 100)}% logged` });
-
-        const stats = dayCard.createDiv({ cls: "daily-dashboard-week-mini-stats" });
-        this.renderWeekMiniStat(stats, "Sleep", formatMinutesAsHours(day.sleepMinutes), "focus");
-        this.renderWeekMiniStat(stats, "Work", formatMinutesAsHours(day.workMinutes), "capture");
-        this.renderWeekMiniStat(stats, "Relax", formatMinutesAsHours(day.relaxMinutes), "health");
-        this.renderWeekMiniStat(stats, "Unknown", formatMinutesAsHours(day.unknownMinutes), "neutral");
-      });
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
