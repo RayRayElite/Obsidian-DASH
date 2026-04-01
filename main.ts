@@ -420,6 +420,11 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (this.isDailyLogPath(normalizedPath)) {
+        void this.reloadDailyLogFile(file);
+        return;
+      }
+
       if (file.extension === "md") {
         this.scheduleNoteIndexRefresh();
       }
@@ -430,12 +435,20 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (this.isDailyLogPath(file.path)) {
+        void this.reloadDailyLogFile(file);
+      }
+
       this.scheduleNoteIndexRefresh();
     }));
 
     this.registerEvent(this.app.vault.on("delete", (file) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
         return;
+      }
+
+      if (this.isDailyLogPath(file.path)) {
+        this.removeDailyLogEntry(file.path);
       }
 
       delete this.data.noteIndex.entries[normalizePath(file.path)];
@@ -445,6 +458,13 @@ export default class DailyDashboardPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
         return;
+      }
+
+      if (this.isDailyLogPath(oldPath) || this.isDailyLogPath(file.path)) {
+        this.removeDailyLogEntry(oldPath);
+        if (this.isDailyLogPath(file.path)) {
+          void this.reloadDailyLogFile(file);
+        }
       }
 
       delete this.data.noteIndex.entries[normalizePath(oldPath)];
@@ -2148,6 +2168,39 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     return entries;
+  }
+
+  private async reloadDailyLogFile(file: TFile): Promise<void> {
+    const normalizedPath = normalizePath(file.path);
+    if (!this.isDailyLogPath(normalizedPath)) {
+      return;
+    }
+
+    const content = await this.app.vault.read(file);
+    const parsed = parseDailyLogEntry(content, file.basename, this.data.settings.habitDefinitions);
+    if (!parsed) {
+      this.removeDailyLogEntry(normalizedPath);
+      return;
+    }
+
+    this.data.entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  private removeDailyLogEntry(path: string): void {
+    if (!this.isDailyLogPath(path)) {
+      return;
+    }
+
+    const date = path.split("/").pop()?.replace(/\.md$/i, "") ?? "";
+    if (!date || !this.data.entries[date]) {
+      return;
+    }
+
+    delete this.data.entries[date];
+    void this.savePluginData();
+    this.refreshDashboardViews();
   }
 
   private async buildDataFromStorage(): Promise<DashboardPluginData> {

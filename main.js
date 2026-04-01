@@ -3692,6 +3692,10 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
         this.refreshDashboardViews();
         return;
       }
+      if (this.isDailyLogPath(normalizedPath)) {
+        void this.reloadDailyLogFile(file);
+        return;
+      }
       if (file.extension === "md") {
         this.scheduleNoteIndexRefresh();
       }
@@ -3700,11 +3704,17 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
         return;
       }
+      if (this.isDailyLogPath(file.path)) {
+        void this.reloadDailyLogFile(file);
+      }
       this.scheduleNoteIndexRefresh();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
         return;
+      }
+      if (this.isDailyLogPath(file.path)) {
+        this.removeDailyLogEntry(file.path);
       }
       delete this.data.noteIndex.entries[(0, import_obsidian4.normalizePath)(file.path)];
       this.scheduleNoteIndexRefresh();
@@ -3712,6 +3722,12 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
         return;
+      }
+      if (this.isDailyLogPath(oldPath) || this.isDailyLogPath(file.path)) {
+        this.removeDailyLogEntry(oldPath);
+        if (this.isDailyLogPath(file.path)) {
+          void this.reloadDailyLogFile(file);
+        }
       }
       delete this.data.noteIndex.entries[(0, import_obsidian4.normalizePath)(oldPath)];
       this.scheduleNoteIndexRefresh();
@@ -5122,6 +5138,34 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       }
     }
     return entries;
+  }
+  async reloadDailyLogFile(file) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(file.path);
+    if (!this.isDailyLogPath(normalizedPath)) {
+      return;
+    }
+    const content = await this.app.vault.read(file);
+    const parsed = parseDailyLogEntry(content, file.basename, this.data.settings.habitDefinitions);
+    if (!parsed) {
+      this.removeDailyLogEntry(normalizedPath);
+      return;
+    }
+    this.data.entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  removeDailyLogEntry(path) {
+    var _a, _b;
+    if (!this.isDailyLogPath(path)) {
+      return;
+    }
+    const date = (_b = (_a = path.split("/").pop()) == null ? void 0 : _a.replace(/\.md$/i, "")) != null ? _b : "";
+    if (!date || !this.data.entries[date]) {
+      return;
+    }
+    delete this.data.entries[date];
+    void this.savePluginData();
+    this.refreshDashboardViews();
   }
   async buildDataFromStorage() {
     const loaded = await this.loadData();
