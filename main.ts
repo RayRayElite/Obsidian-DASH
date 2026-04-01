@@ -2157,12 +2157,46 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  private mergeDataByRecency(current: DashboardPluginData, incoming: DashboardPluginData): DashboardPluginData {
+    const mergedEntries: Record<string, DailyEntry> = {};
+    const dates = new Set([...Object.keys(current.entries), ...Object.keys(incoming.entries)]);
+
+    dates.forEach((date) => {
+      const currentEntry = current.entries[date];
+      const incomingEntry = incoming.entries[date];
+
+      if (!currentEntry) {
+        mergedEntries[date] = incomingEntry;
+        return;
+      }
+
+      if (!incomingEntry) {
+        mergedEntries[date] = currentEntry;
+        return;
+      }
+
+      mergedEntries[date] = pickNewerEntry(currentEntry, incomingEntry);
+    });
+
+    const currentDayState = normalizeDayState(current.dayState, mergedEntries);
+    const incomingDayState = normalizeDayState(incoming.dayState, mergedEntries);
+    const mergedDayState = pickNewerDayState(currentDayState, incomingDayState, mergedEntries);
+
+    return {
+      ...incoming,
+      entries: mergedEntries,
+      dayState: mergedDayState
+    };
+  }
+
   private async refreshDataFromStorage(refreshViews: boolean): Promise<boolean> {
     const loaded = await this.buildDataFromStorage();
-    const hydrated = loaded.data;
+    const hydrated = this.mergeDataByRecency(this.data, loaded.data);
     this.lastSyncCheckAt = formatDateTimeKey(new Date());
     this.liveStateAvailable = loaded.liveStateAvailable;
-    this.lastSyncSource = loaded.source;
+    this.lastSyncSource = this.getDataSignature(hydrated) === this.getDataSignature(loaded.data)
+      ? loaded.source
+      : `${loaded.source} (merged by recency)`;
 
     if (this.getDataSignature(hydrated) === this.getDataSignature(this.data)) {
       return false;
@@ -4698,6 +4732,44 @@ function isEntryEffectivelyEmpty(entry: Partial<DailyEntry> | undefined): boolea
     || (Array.isArray(entry.napSessions) && entry.napSessions.length > 0)
     || (Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0)
   );
+}
+
+function pickNewerEntry(left: DailyEntry, right: DailyEntry): DailyEntry {
+  const leftTimestamp = getEntryRecencyKey(left);
+  const rightTimestamp = getEntryRecencyKey(right);
+
+  if (!leftTimestamp && !rightTimestamp) {
+    return isEntryEffectivelyEmpty(left) ? right : left;
+  }
+  if (!leftTimestamp) {
+    return isEntryEffectivelyEmpty(left) ? right : left;
+  }
+  if (!rightTimestamp) {
+    return isEntryEffectivelyEmpty(right) ? left : right;
+  }
+
+  return rightTimestamp >= leftTimestamp ? right : left;
+}
+
+function getDayStateRecencyKey(dayState: DayLifecycleState, entries: Record<string, DailyEntry>): string {
+  return getEntryRecencyKey(entries[dayState.activeDate]);
+}
+
+function pickNewerDayState(left: DayLifecycleState, right: DayLifecycleState, entries: Record<string, DailyEntry>): DayLifecycleState {
+  const leftTimestamp = getDayStateRecencyKey(left, entries);
+  const rightTimestamp = getDayStateRecencyKey(right, entries);
+
+  if (!leftTimestamp && !rightTimestamp) {
+    return right;
+  }
+  if (!leftTimestamp) {
+    return right;
+  }
+  if (!rightTimestamp) {
+    return left;
+  }
+
+  return rightTimestamp >= leftTimestamp ? right : left;
 }
 
 function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {

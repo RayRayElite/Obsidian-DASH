@@ -1591,12 +1591,37 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       dayState: data.dayState
     });
   }
+  mergeDataByRecency(current, incoming) {
+    const mergedEntries = {};
+    const dates = /* @__PURE__ */ new Set([...Object.keys(current.entries), ...Object.keys(incoming.entries)]);
+    dates.forEach((date) => {
+      const currentEntry = current.entries[date];
+      const incomingEntry = incoming.entries[date];
+      if (!currentEntry) {
+        mergedEntries[date] = incomingEntry;
+        return;
+      }
+      if (!incomingEntry) {
+        mergedEntries[date] = currentEntry;
+        return;
+      }
+      mergedEntries[date] = pickNewerEntry(currentEntry, incomingEntry);
+    });
+    const currentDayState = normalizeDayState(current.dayState, mergedEntries);
+    const incomingDayState = normalizeDayState(incoming.dayState, mergedEntries);
+    const mergedDayState = pickNewerDayState(currentDayState, incomingDayState, mergedEntries);
+    return {
+      ...incoming,
+      entries: mergedEntries,
+      dayState: mergedDayState
+    };
+  }
   async refreshDataFromStorage(refreshViews) {
     const loaded = await this.buildDataFromStorage();
-    const hydrated = loaded.data;
+    const hydrated = this.mergeDataByRecency(this.data, loaded.data);
     this.lastSyncCheckAt = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.liveStateAvailable = loaded.liveStateAvailable;
-    this.lastSyncSource = loaded.source;
+    this.lastSyncSource = this.getDataSignature(hydrated) === this.getDataSignature(loaded.data) ? loaded.source : `${loaded.source} (merged by recency)`;
     if (this.getDataSignature(hydrated) === this.getDataSignature(this.data)) {
       return false;
     }
@@ -3581,6 +3606,37 @@ function isEntryEffectivelyEmpty(entry) {
     return true;
   }
   return !(typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 || typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 || typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 || typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 || entry.habits && Object.values(entry.habits).some((count) => Number(count) > 0) || entry.habitEvents && Object.values(entry.habitEvents).some((items) => Array.isArray(items) && items.length > 0) || Number((_a = entry.moodScore) != null ? _a : 0) > 0 || Number((_b = entry.energyScore) != null ? _b : 0) > 0 || Array.isArray(entry.todayFocus) && entry.todayFocus.some((item) => item.trim().length > 0) || typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 || Array.isArray(entry.foodLog) && entry.foodLog.length > 0 || typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 || typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 || typeof entry.notes === "string" && entry.notes.trim().length > 0 || Array.isArray(entry.workSessions) && entry.workSessions.length > 0 || Array.isArray(entry.napSessions) && entry.napSessions.length > 0 || Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0);
+}
+function pickNewerEntry(left, right) {
+  const leftTimestamp = getEntryRecencyKey(left);
+  const rightTimestamp = getEntryRecencyKey(right);
+  if (!leftTimestamp && !rightTimestamp) {
+    return isEntryEffectivelyEmpty(left) ? right : left;
+  }
+  if (!leftTimestamp) {
+    return isEntryEffectivelyEmpty(left) ? right : left;
+  }
+  if (!rightTimestamp) {
+    return isEntryEffectivelyEmpty(right) ? left : right;
+  }
+  return rightTimestamp >= leftTimestamp ? right : left;
+}
+function getDayStateRecencyKey(dayState, entries) {
+  return getEntryRecencyKey(entries[dayState.activeDate]);
+}
+function pickNewerDayState(left, right, entries) {
+  const leftTimestamp = getDayStateRecencyKey(left, entries);
+  const rightTimestamp = getDayStateRecencyKey(right, entries);
+  if (!leftTimestamp && !rightTimestamp) {
+    return right;
+  }
+  if (!leftTimestamp) {
+    return right;
+  }
+  if (!rightTimestamp) {
+    return left;
+  }
+  return rightTimestamp >= leftTimestamp ? right : left;
 }
 function renderLiveDayStateNote(snapshot) {
   const workSessionLines = snapshot.entry.workSessions.length > 0 ? snapshot.entry.workSessions.map((session) => {
