@@ -89,7 +89,7 @@ If you use Obsidian Sync across desktop and mobile, the plugin now reloads synce
 
 The Day Flow card now shows the last sync check, last applied sync, last live-state write, and the current sync source. It also includes a `Refresh sync` button if you want to force a cross-device refresh immediately.
 
-The important storage change is that the daily dashboard entry itself is now persisted in the synced vault day log for that date, not primarily in plugin `data.json`. Plugin data is now treated as cache and settings storage, while the per-day markdown log is the main cross-device record for habits, Top 3, food, sleep, notes, sessions, and archived-task history.
+The important storage change is that the daily dashboard entry itself is now persisted in synced vault files, not primarily in plugin `data.json`. The visible per-day markdown log stays human-readable, and the plugin also keeps a protected per-day state file under `Dashboard Logs/State/Entries` so an older plugin build cannot wipe the only structured copy of the day. Plugin data is now treated as cache and settings storage.
 
 Logical day status is still mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
 

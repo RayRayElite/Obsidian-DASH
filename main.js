@@ -94,6 +94,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
   }
   async initializeWorkspaceArtifacts() {
     await this.ensureTodayEntry();
+    await this.backfillEntryStateFilesFromEntries();
     await this.backfillDailyLogsFromEntries();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
@@ -314,6 +315,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.refreshFromStorageIfChanged();
         return;
       }
+      if (this.isEntryStatePath(normalizedPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
       if (this.isDailyLogPath(normalizedPath)) {
         void this.refreshFromStorageIfChanged();
         return;
@@ -330,6 +335,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.refreshFromStorageIfChanged();
         return;
       }
+      if (this.isEntryStatePath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
       this.scheduleNoteIndexRefresh();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -337,6 +346,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         return;
       }
       if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+      if (this.isEntryStatePath(file.path)) {
         void this.refreshFromStorageIfChanged();
         return;
       }
@@ -348,6 +361,10 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         return;
       }
       if (this.isDailyLogPath(file.path) || this.isDailyLogPath(oldPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+      if (this.isEntryStatePath(file.path) || this.isEntryStatePath(oldPath)) {
         void this.refreshFromStorageIfChanged();
         return;
       }
@@ -1515,10 +1532,23 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   getDailyLogPath(date, settings = this.data.settings) {
     return (0, import_obsidian.normalizePath)(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
   }
+  getEntryStateFolder(settings = this.data.settings) {
+    const liveStatePath = (0, import_obsidian.normalizePath)(settings.liveStatePath);
+    const liveStateDirectory = liveStatePath.includes("/") ? liveStatePath.slice(0, liveStatePath.lastIndexOf("/")) : "Dashboard Logs/State";
+    return normalizeFolderPath(`${liveStateDirectory}/Entries`);
+  }
+  getEntryStatePath(date, settings = this.data.settings) {
+    return (0, import_obsidian.normalizePath)(`${this.getEntryStateFolder(settings)}/${date}.json`);
+  }
   isDailyLogPath(path, settings = this.data.settings) {
     const normalizedPath = (0, import_obsidian.normalizePath)(path);
     const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
     return dailyLogFolder.length > 0 && normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+  }
+  isEntryStatePath(path, settings = this.data.settings) {
+    const normalizedPath = (0, import_obsidian.normalizePath)(path);
+    const entryStateFolder = this.getEntryStateFolder(settings);
+    return entryStateFolder.length > 0 && normalizedPath.startsWith(`${entryStateFolder}/`) && normalizedPath.endsWith(".json");
   }
   async loadDailyLogEntryFromVault(date, settings = this.data.settings) {
     const target = this.app.vault.getAbstractFileByPath(this.getDailyLogPath(date, settings));
@@ -1549,6 +1579,41 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
     for (const date of uniqueDates) {
       const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+      if (parsed) {
+        entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+      }
+    }
+    return entries;
+  }
+  async loadEntryStateFromVault(date, settings = this.data.settings) {
+    const target = this.app.vault.getAbstractFileByPath(this.getEntryStatePath(date, settings));
+    if (!(target instanceof import_obsidian.TFile)) {
+      return null;
+    }
+    const content = await this.app.vault.read(target);
+    return parseEntryStateFile(content, date, settings.habitDefinitions);
+  }
+  async loadEntryStateFilesFromVault(settings, loadAllEntries, dateHints) {
+    const entries = {};
+    if (loadAllEntries) {
+      const entryStateFolder = this.getEntryStateFolder(settings);
+      const files = this.app.vault.getFiles().filter((file) => {
+        const normalizedPath = (0, import_obsidian.normalizePath)(file.path);
+        return normalizedPath.startsWith(`${entryStateFolder}/`) && normalizedPath.endsWith(".json");
+      });
+      for (const file of files) {
+        const content = await this.app.vault.read(file);
+        const dateFromPath = file.basename;
+        const parsed = parseEntryStateFile(content, dateFromPath, settings.habitDefinitions);
+        if (parsed) {
+          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+        }
+      }
+      return entries;
+    }
+    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
+    for (const date of uniqueDates) {
+      const parsed = await this.loadEntryStateFromVault(date, settings);
       if (parsed) {
         entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
       }
@@ -1641,23 +1706,37 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const loaded = await this.loadData();
     const hydrated = this.hydratePluginData(loaded);
     const snapshot = await this.loadLiveStateSnapshotFromVault(hydrated.settings.liveStatePath);
-    const vaultEntries = await this.loadDailyEntriesFromVault(
+    const dateHints = [
+      formatDateKey(/* @__PURE__ */ new Date()),
+      hydrated.dayState.activeDate,
+      (_a = snapshot == null ? void 0 : snapshot.dayState.activeDate) != null ? _a : "",
+      (_b = snapshot == null ? void 0 : snapshot.entry.date) != null ? _b : ""
+    ];
+    const stateEntries = await this.loadEntryStateFilesFromVault(
       hydrated.settings,
       loadAllEntries,
-      [
-        formatDateKey(/* @__PURE__ */ new Date()),
-        hydrated.dayState.activeDate,
-        (_a = snapshot == null ? void 0 : snapshot.dayState.activeDate) != null ? _a : "",
-        (_b = snapshot == null ? void 0 : snapshot.entry.date) != null ? _b : ""
-      ]
+      dateHints
     );
-    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, vaultEntries);
+    const dailyLogEntries = await this.loadDailyEntriesFromVault(
+      hydrated.settings,
+      loadAllEntries,
+      dateHints
+    );
+    const mergedEntries = this.mergeEntryMapsByRecency(
+      this.mergeEntryMapsByRecency(hydrated.entries, stateEntries),
+      dailyLogEntries
+    );
     const mergedBaseData = {
       ...hydrated,
       entries: mergedEntries,
       dayState: normalizeDayState(hydrated.dayState, mergedEntries)
     };
-    const baseSource = Object.keys(vaultEntries).length > 0 ? "Daily logs" : "Plugin data (legacy)";
+    const sourceParts = [
+      Object.keys(stateEntries).length > 0 ? "Entry state files" : "",
+      Object.keys(dailyLogEntries).length > 0 ? "Daily logs" : "",
+      Object.keys(stateEntries).length === 0 && Object.keys(dailyLogEntries).length === 0 ? "Plugin data (legacy)" : ""
+    ].filter((value) => value.length > 0);
+    const baseSource = sourceParts.join(" + ");
     if (!snapshot) {
       return {
         data: mergedBaseData,
@@ -1833,6 +1912,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     this.lastLiveStateWriteAt = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.liveStateAvailable = true;
   }
+  async syncEntryStateFile(entry) {
+    await this.upsertTextFile(this.getEntryStatePath(entry.date), renderEntryStateFile(entry));
+  }
   async savePluginData() {
     await this.saveData({
       settings: this.data.settings,
@@ -1851,9 +1933,16 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
     }, entry.date);
+    await this.syncEntryStateFile(this.data.entries[entry.date]);
     await this.syncDailyLog(this.data.entries[entry.date]);
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+  async backfillEntryStateFilesFromEntries() {
+    const dates = Object.keys(this.data.entries).sort();
+    for (const date of dates) {
+      await this.syncEntryStateFile(this.data.entries[date]);
+    }
   }
   async backfillDailyLogsFromEntries() {
     const dates = Object.keys(this.data.entries).sort();
@@ -1909,6 +1998,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
   async upsertMarkdownFile(path, content) {
+    return this.upsertTextFile(path, content);
+  }
+  async upsertTextFile(path, content) {
     const normalizedPath = (0, import_obsidian.normalizePath)(path);
     const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
     if (directory) {
@@ -4106,6 +4198,23 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
+}
+function renderEntryStateFile(entry) {
+  return JSON.stringify(entry, null, 2);
+}
+function parseEntryStateFile(content, fallbackDate, habits) {
+  try {
+    const parsed = JSON.parse(content);
+    return {
+      ...createEmptyEntry(fallbackDate, habits),
+      ...parsed,
+      date: typeof parsed.date === "string" && parsed.date.trim().length > 0 ? parsed.date : fallbackDate,
+      lastEditedAt: typeof parsed.lastEditedAt === "string" ? parsed.lastEditedAt : getEntryRecencyKey(parsed)
+    };
+  } catch (error) {
+    console.warn("Daily Dashboard could not parse entry state file", error);
+    return null;
+  }
 }
 function renderPeriodReport(input) {
   const workByProject = /* @__PURE__ */ new Map();

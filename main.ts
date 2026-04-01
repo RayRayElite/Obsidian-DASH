@@ -371,6 +371,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.ensureTodayEntry();
+    await this.backfillEntryStateFilesFromEntries();
     await this.backfillDailyLogsFromEntries();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
@@ -627,6 +628,11 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (this.isEntryStatePath(normalizedPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
       if (this.isDailyLogPath(normalizedPath)) {
         void this.refreshFromStorageIfChanged();
         return;
@@ -647,6 +653,11 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (this.isEntryStatePath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
       this.scheduleNoteIndexRefresh();
     }));
 
@@ -656,6 +667,11 @@ export default class DailyDashboardPlugin extends Plugin {
       }
 
       if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
+      if (this.isEntryStatePath(file.path)) {
         void this.refreshFromStorageIfChanged();
         return;
       }
@@ -670,6 +686,11 @@ export default class DailyDashboardPlugin extends Plugin {
       }
 
       if (this.isDailyLogPath(file.path) || this.isDailyLogPath(oldPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
+      if (this.isEntryStatePath(file.path) || this.isEntryStatePath(oldPath)) {
         void this.refreshFromStorageIfChanged();
         return;
       }
@@ -2072,12 +2093,32 @@ export default class DailyDashboardPlugin extends Plugin {
     return normalizePath(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
   }
 
+  private getEntryStateFolder(settings: DashboardSettings = this.data.settings): string {
+    const liveStatePath = normalizePath(settings.liveStatePath);
+    const liveStateDirectory = liveStatePath.includes("/")
+      ? liveStatePath.slice(0, liveStatePath.lastIndexOf("/"))
+      : "Dashboard Logs/State";
+    return normalizeFolderPath(`${liveStateDirectory}/Entries`);
+  }
+
+  private getEntryStatePath(date: string, settings: DashboardSettings = this.data.settings): string {
+    return normalizePath(`${this.getEntryStateFolder(settings)}/${date}.json`);
+  }
+
   private isDailyLogPath(path: string, settings: DashboardSettings = this.data.settings): boolean {
     const normalizedPath = normalizePath(path);
     const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
     return dailyLogFolder.length > 0
       && normalizedPath.startsWith(`${dailyLogFolder}/`)
       && normalizedPath.endsWith(".md");
+  }
+
+  private isEntryStatePath(path: string, settings: DashboardSettings = this.data.settings): boolean {
+    const normalizedPath = normalizePath(path);
+    const entryStateFolder = this.getEntryStateFolder(settings);
+    return entryStateFolder.length > 0
+      && normalizedPath.startsWith(`${entryStateFolder}/`)
+      && normalizedPath.endsWith(".json");
   }
 
   private async loadDailyLogEntryFromVault(date: string, settings: DashboardSettings = this.data.settings): Promise<DailyEntry | null> {
@@ -2115,6 +2156,49 @@ export default class DailyDashboardPlugin extends Plugin {
     const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
     for (const date of uniqueDates) {
       const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+      if (parsed) {
+        entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+      }
+    }
+
+    return entries;
+  }
+
+  private async loadEntryStateFromVault(date: string, settings: DashboardSettings = this.data.settings): Promise<DailyEntry | null> {
+    const target = this.app.vault.getAbstractFileByPath(this.getEntryStatePath(date, settings));
+    if (!(target instanceof TFile)) {
+      return null;
+    }
+
+    const content = await this.app.vault.read(target);
+    return parseEntryStateFile(content, date, settings.habitDefinitions);
+  }
+
+  private async loadEntryStateFilesFromVault(settings: DashboardSettings, loadAllEntries: boolean, dateHints: string[]): Promise<Record<string, DailyEntry>> {
+    const entries: Record<string, DailyEntry> = {};
+
+    if (loadAllEntries) {
+      const entryStateFolder = this.getEntryStateFolder(settings);
+      const files = this.app.vault.getFiles().filter((file) => {
+        const normalizedPath = normalizePath(file.path);
+        return normalizedPath.startsWith(`${entryStateFolder}/`) && normalizedPath.endsWith(".json");
+      });
+
+      for (const file of files) {
+        const content = await this.app.vault.read(file);
+        const dateFromPath = file.basename;
+        const parsed = parseEntryStateFile(content, dateFromPath, settings.habitDefinitions);
+        if (parsed) {
+          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+        }
+      }
+
+      return entries;
+    }
+
+    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
+    for (const date of uniqueDates) {
+      const parsed = await this.loadEntryStateFromVault(date, settings);
       if (parsed) {
         entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
       }
@@ -2222,23 +2306,37 @@ export default class DailyDashboardPlugin extends Plugin {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
     const hydrated = this.hydratePluginData(loaded);
     const snapshot = await this.loadLiveStateSnapshotFromVault(hydrated.settings.liveStatePath);
-    const vaultEntries = await this.loadDailyEntriesFromVault(
+    const dateHints = [
+      formatDateKey(new Date()),
+      hydrated.dayState.activeDate,
+      snapshot?.dayState.activeDate ?? "",
+      snapshot?.entry.date ?? ""
+    ];
+    const stateEntries = await this.loadEntryStateFilesFromVault(
       hydrated.settings,
       loadAllEntries,
-      [
-        formatDateKey(new Date()),
-        hydrated.dayState.activeDate,
-        snapshot?.dayState.activeDate ?? "",
-        snapshot?.entry.date ?? ""
-      ]
+      dateHints
     );
-    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, vaultEntries);
+    const dailyLogEntries = await this.loadDailyEntriesFromVault(
+      hydrated.settings,
+      loadAllEntries,
+      dateHints
+    );
+    const mergedEntries = this.mergeEntryMapsByRecency(
+      this.mergeEntryMapsByRecency(hydrated.entries, stateEntries),
+      dailyLogEntries
+    );
     const mergedBaseData: DashboardPluginData = {
       ...hydrated,
       entries: mergedEntries,
       dayState: normalizeDayState(hydrated.dayState, mergedEntries)
     };
-    const baseSource = Object.keys(vaultEntries).length > 0 ? "Daily logs" : "Plugin data (legacy)";
+    const sourceParts = [
+      Object.keys(stateEntries).length > 0 ? "Entry state files" : "",
+      Object.keys(dailyLogEntries).length > 0 ? "Daily logs" : "",
+      Object.keys(stateEntries).length === 0 && Object.keys(dailyLogEntries).length === 0 ? "Plugin data (legacy)" : ""
+    ].filter((value) => value.length > 0);
+    const baseSource = sourceParts.join(" + ");
 
     if (!snapshot) {
       return {
@@ -2458,6 +2556,10 @@ export default class DailyDashboardPlugin extends Plugin {
     this.liveStateAvailable = true;
   }
 
+  private async syncEntryStateFile(entry: DailyEntry): Promise<void> {
+    await this.upsertTextFile(this.getEntryStatePath(entry.date), renderEntryStateFile(entry));
+  }
+
   private async savePluginData(): Promise<void> {
     await this.saveData({
       settings: this.data.settings,
@@ -2478,9 +2580,17 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(new Date())
     }, entry.date);
+    await this.syncEntryStateFile(this.data.entries[entry.date]);
     await this.syncDailyLog(this.data.entries[entry.date]);
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+
+  private async backfillEntryStateFilesFromEntries(): Promise<void> {
+    const dates = Object.keys(this.data.entries).sort();
+    for (const date of dates) {
+      await this.syncEntryStateFile(this.data.entries[date]);
+    }
   }
 
   private async backfillDailyLogsFromEntries(): Promise<void> {
@@ -2553,6 +2663,10 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async upsertMarkdownFile(path: string, content: string): Promise<TFile> {
+    return this.upsertTextFile(path, content);
+  }
+
+  private async upsertTextFile(path: string, content: string): Promise<TFile> {
     const normalizedPath = normalizePath(path);
     const directory = normalizedPath.includes("/")
       ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
@@ -5296,6 +5410,25 @@ function parseDailyLogEntry(content: string, fallbackDate: string, habits: Habit
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
+}
+
+function renderEntryStateFile(entry: DailyEntry): string {
+  return JSON.stringify(entry, null, 2);
+}
+
+function parseEntryStateFile(content: string, fallbackDate: string, habits: HabitDefinition[]): DailyEntry | null {
+  try {
+    const parsed = JSON.parse(content) as Partial<DailyEntry>;
+    return {
+      ...createEmptyEntry(fallbackDate, habits),
+      ...parsed,
+      date: typeof parsed.date === "string" && parsed.date.trim().length > 0 ? parsed.date : fallbackDate,
+      lastEditedAt: typeof parsed.lastEditedAt === "string" ? parsed.lastEditedAt : getEntryRecencyKey(parsed)
+    };
+  } catch (error) {
+    console.warn("Daily Dashboard could not parse entry state file", error);
+    return null;
+  }
 }
 
 function renderPeriodReport(input: {
