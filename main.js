@@ -2080,25 +2080,25 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       createSemanticChip(weekLegend, "Work", "capture");
       createSemanticChip(weekLegend, "Relax", "health");
       createSemanticChip(weekLegend, "Unknown", "neutral");
-      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-orbit" });
+      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
       this.getCurrentWeekTimeBoard().forEach((day) => {
-        const card = weekBoard.createDiv({ cls: "daily-dashboard-week-orb-card" });
+        const dayCard = weekBoard.createDiv({ cls: "daily-dashboard-week-day" });
         if (day.isToday) {
-          card.addClass("is-today");
+          dayCard.addClass("is-today");
         }
-        const orb = card.createDiv({ cls: "daily-dashboard-week-orb" });
+        const top = dayCard.createDiv({ cls: "daily-dashboard-week-day-top" });
+        const heading = top.createDiv({ cls: "daily-dashboard-week-day-heading" });
+        heading.createEl("strong", { text: day.label });
+        heading.createEl("span", { cls: "daily-dashboard-row-meta", text: day.date.slice(5) });
+        const orb = top.createDiv({ cls: "daily-dashboard-week-orb" });
         orb.style.background = this.buildWeekOrbGradient(day);
         const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
-        orbCore.createEl("strong", { text: day.label });
         orbCore.createEl("span", { text: `${Math.round((1440 - day.unknownMinutes) / 1440 * 100)}% logged` });
-        const summary = card.createDiv({ cls: "daily-dashboard-week-orb-summary" });
-        summary.createEl("strong", { text: day.date });
-        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `Sleep ${formatMinutesAsHours(day.sleepMinutes)} \u2022 Work ${formatMinutesAsHours(day.workMinutes)} \u2022 Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
-        const stats = card.createDiv({ cls: "daily-dashboard-week-orb-stats" });
-        this.renderDayMetric(stats, "Sleep", formatMinutesAsHours(day.sleepMinutes));
-        this.renderDayMetric(stats, "Work", formatMinutesAsHours(day.workMinutes));
-        this.renderDayMetric(stats, "Relax", formatMinutesAsHours(day.relaxMinutes));
-        this.renderDayMetric(stats, "Unknown", formatMinutesAsHours(day.unknownMinutes));
+        const stats = dayCard.createDiv({ cls: "daily-dashboard-week-mini-stats" });
+        this.renderWeekMiniStat(stats, "Sleep", formatMinutesAsHours(day.sleepMinutes), "focus");
+        this.renderWeekMiniStat(stats, "Work", formatMinutesAsHours(day.workMinutes), "capture");
+        this.renderWeekMiniStat(stats, "Relax", formatMinutesAsHours(day.relaxMinutes), "health");
+        this.renderWeekMiniStat(stats, "Unknown", formatMinutesAsHours(day.unknownMinutes), "neutral");
       });
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
@@ -2671,6 +2671,12 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       const end = (cursor / total * 100).toFixed(2);
       return `${segment.color} ${start}% ${end}%`;
     }).join(", ")})`;
+  }
+  renderWeekMiniStat(parent, label, value, tone) {
+    const stat = parent.createDiv({ cls: "daily-dashboard-week-mini-stat" });
+    stat.addClass(`is-${tone}`);
+    stat.createEl("span", { cls: "daily-dashboard-habit-meta", text: label });
+    stat.createEl("strong", { text: value });
   }
 };
 var CreateProjectModal = class extends import_obsidian3.Modal {
