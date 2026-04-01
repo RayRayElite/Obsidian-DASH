@@ -89,9 +89,11 @@ If you use Obsidian Sync across desktop and mobile, the plugin now reloads synce
 
 The Day Flow card now shows the last sync check, last applied sync, last live-state write, and the current sync source. It also includes a `Refresh sync` button if you want to force a cross-device refresh immediately.
 
-Logical day and session state are also mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
+The important storage change is that the daily dashboard entry itself is now persisted in the synced vault day log for that date, not primarily in plugin `data.json`. Plugin data is now treated as cache and settings storage, while the per-day markdown log is the main cross-device record for habits, Top 3, food, sleep, notes, sessions, and archived-task history.
 
-There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin still cannot merge two conflicting edits perfectly. The current logical day entry is mirrored into the live sync note, and the plugin now compares edit recency before applying synced state so an older mobile snapshot should not overwrite newer desktop edits for that same day. The safest workflow is still to let Sync settle before continuing on the second device.
+Logical day status is still mirrored into a vault markdown note at `Dashboard Logs/State/Live Day State.md` by default. You can change that path in plugin settings if you want the live sync note somewhere else in your vault.
+
+There is still one class of risk to be aware of: if two devices make different dashboard changes before sync finishes, the plugin still cannot merge two conflicting edits perfectly. The main improvement is that the hot daily state now lives in normal vault files, which is a better fit for Obsidian Sync than relying on plugin storage blobs. The safest workflow is still to let Sync settle before continuing on the second device.
 
 ## New Project Flow
 

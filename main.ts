@@ -371,6 +371,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.ensureTodayEntry();
+    await this.backfillDailyLogsFromEntries();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
   }
@@ -626,26 +627,50 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (this.isDailyLogPath(normalizedPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
       if (file.extension === "md") {
         this.scheduleNoteIndexRefresh();
       }
     }));
 
     this.registerEvent(this.app.vault.on("create", (file) => {
-      if (file instanceof TFile && file.extension === "md") {
-        this.scheduleNoteIndexRefresh();
+      if (!(file instanceof TFile) || file.extension !== "md") {
+        return;
       }
+
+      if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
+      this.scheduleNoteIndexRefresh();
     }));
 
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      if (file instanceof TFile && file.extension === "md") {
-        delete this.data.noteIndex.entries[normalizePath(file.path)];
-        this.scheduleNoteIndexRefresh();
+      if (!(file instanceof TFile) || file.extension !== "md") {
+        return;
       }
+
+      if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+
+      delete this.data.noteIndex.entries[normalizePath(file.path)];
+      this.scheduleNoteIndexRefresh();
     }));
 
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
+        return;
+      }
+
+      if (this.isDailyLogPath(file.path) || this.isDailyLogPath(oldPath)) {
+        void this.refreshFromStorageIfChanged();
         return;
       }
 
@@ -1942,7 +1967,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async loadPluginData(): Promise<void> {
-    const loaded = await this.buildDataFromStorage();
+    const loaded = await this.buildDataFromStorage(true);
     this.data = loaded.data;
     this.liveStateAvailable = loaded.liveStateAvailable;
     this.lastSyncCheckAt = formatDateTimeKey(new Date());
@@ -2043,6 +2068,61 @@ export default class DailyDashboardPlugin extends Plugin {
     return data.dayState.activeDate || Object.keys(data.entries).sort().slice(-1)[0] || formatDateKey(new Date());
   }
 
+  private getDailyLogPath(date: string, settings: DashboardSettings = this.data.settings): string {
+    return normalizePath(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
+  }
+
+  private isDailyLogPath(path: string, settings: DashboardSettings = this.data.settings): boolean {
+    const normalizedPath = normalizePath(path);
+    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    return dailyLogFolder.length > 0
+      && normalizedPath.startsWith(`${dailyLogFolder}/`)
+      && normalizedPath.endsWith(".md");
+  }
+
+  private async loadDailyLogEntryFromVault(date: string, settings: DashboardSettings = this.data.settings): Promise<DailyEntry | null> {
+    const target = this.app.vault.getAbstractFileByPath(this.getDailyLogPath(date, settings));
+    if (!(target instanceof TFile)) {
+      return null;
+    }
+
+    const content = await this.app.vault.read(target);
+    return parseDailyLogEntry(content, date, settings.habitDefinitions);
+  }
+
+  private async loadDailyEntriesFromVault(settings: DashboardSettings, loadAllEntries: boolean, dateHints: string[]): Promise<Record<string, DailyEntry>> {
+    const entries: Record<string, DailyEntry> = {};
+
+    if (loadAllEntries) {
+      const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+      const files = this.app.vault.getMarkdownFiles().filter((file) => {
+        const normalizedPath = normalizePath(file.path);
+        return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+      });
+
+      for (const file of files) {
+        const content = await this.app.vault.read(file);
+        const dateFromPath = file.basename;
+        const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
+        if (parsed) {
+          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+        }
+      }
+
+      return entries;
+    }
+
+    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
+    for (const date of uniqueDates) {
+      const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+      if (parsed) {
+        entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+      }
+    }
+
+    return entries;
+  }
+
   private createLiveStateSnapshot(data: DashboardPluginData = this.data): LiveDayStateSnapshot {
     const date = this.getLiveStateEntryDate(data);
     const baseEntry = this.normalizeEntry(data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions), date, data.settings);
@@ -2114,30 +2194,71 @@ export default class DailyDashboardPlugin extends Plugin {
     return snapshotTimestamp >= localTimestamp;
   }
 
-  private async buildDataFromStorage(): Promise<{ data: DashboardPluginData; source: string; liveStateAvailable: boolean }> {
+  private mergeEntryMapsByRecency(left: Record<string, DailyEntry>, right: Record<string, DailyEntry>): Record<string, DailyEntry> {
+    const mergedEntries: Record<string, DailyEntry> = {};
+    const dates = new Set([...Object.keys(left), ...Object.keys(right)]);
+
+    dates.forEach((date) => {
+      const leftEntry = left[date];
+      const rightEntry = right[date];
+
+      if (!leftEntry) {
+        mergedEntries[date] = rightEntry;
+        return;
+      }
+
+      if (!rightEntry) {
+        mergedEntries[date] = leftEntry;
+        return;
+      }
+
+      mergedEntries[date] = pickNewerEntry(leftEntry, rightEntry);
+    });
+
+    return mergedEntries;
+  }
+
+  private async buildDataFromStorage(loadAllEntries: boolean): Promise<{ data: DashboardPluginData; source: string; liveStateAvailable: boolean }> {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
     const hydrated = this.hydratePluginData(loaded);
     const snapshot = await this.loadLiveStateSnapshotFromVault(hydrated.settings.liveStatePath);
+    const vaultEntries = await this.loadDailyEntriesFromVault(
+      hydrated.settings,
+      loadAllEntries,
+      [
+        formatDateKey(new Date()),
+        hydrated.dayState.activeDate,
+        snapshot?.dayState.activeDate ?? "",
+        snapshot?.entry.date ?? ""
+      ]
+    );
+    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, vaultEntries);
+    const mergedBaseData: DashboardPluginData = {
+      ...hydrated,
+      entries: mergedEntries,
+      dayState: normalizeDayState(hydrated.dayState, mergedEntries)
+    };
+    const baseSource = Object.keys(vaultEntries).length > 0 ? "Daily logs" : "Plugin data (legacy)";
 
     if (!snapshot) {
       return {
-        data: hydrated,
-        source: "Plugin data",
+        data: mergedBaseData,
+        source: baseSource,
         liveStateAvailable: false
       };
     }
 
-    if (!this.shouldApplyLiveStateSnapshot(hydrated, snapshot)) {
+    if (!this.shouldApplyLiveStateSnapshot(mergedBaseData, snapshot)) {
       return {
-        data: hydrated,
-        source: "Plugin data (newer than live state note)",
+        data: mergedBaseData,
+        source: `${baseSource} (newer than live state note)`,
         liveStateAvailable: true
       };
     }
 
     return {
-      data: this.applyLiveStateSnapshot(hydrated, snapshot),
-      source: "Live state note",
+      data: this.applyLiveStateSnapshot(mergedBaseData, snapshot),
+      source: `Live state note + ${baseSource.toLowerCase()}`,
       liveStateAvailable: true
     };
   }
@@ -2190,7 +2311,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async refreshDataFromStorage(refreshViews: boolean): Promise<boolean> {
-    const loaded = await this.buildDataFromStorage();
+    const loaded = await this.buildDataFromStorage(false);
     const hydrated = this.mergeDataByRecency(this.data, loaded.data);
     this.lastSyncCheckAt = formatDateTimeKey(new Date());
     this.liveStateAvailable = loaded.liveStateAvailable;
@@ -2339,16 +2460,16 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async savePluginData(): Promise<void> {
     await this.saveData({
-      ...this.data,
-      dayState: normalizeDayState(this.data.dayState, this.data.entries)
-    });
+      settings: this.data.settings,
+      noteIndex: this.data.noteIndex
+    } as Partial<DashboardPluginData>);
     await this.syncLiveStateNote();
   }
 
   private async persistNoteIndex(): Promise<void> {
     await this.saveData({
-      ...this.data,
-      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+      settings: this.data.settings,
+      noteIndex: this.data.noteIndex
     });
   }
 
@@ -2357,9 +2478,16 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(new Date())
     }, entry.date);
-    await this.savePluginData();
     await this.syncDailyLog(this.data.entries[entry.date]);
+    await this.savePluginData();
     this.refreshDashboardViews();
+  }
+
+  private async backfillDailyLogsFromEntries(): Promise<void> {
+    const dates = Object.keys(this.data.entries).sort();
+    for (const date of dates) {
+      await this.syncDailyLog(this.data.entries[date]);
+    }
   }
 
   private async ensureTodayEntry(): Promise<void> {
@@ -2436,7 +2564,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
     if (existing instanceof TFile) {
-      await this.app.vault.modify(existing, content);
+      const current = await this.app.vault.read(existing);
+      if (current !== content) {
+        await this.app.vault.modify(existing, content);
+      }
       return existing;
     }
 
@@ -4941,6 +5072,7 @@ function renderScore(value: number): string {
 }
 
 function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
+  const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
     const events = entry.habitEvents[habit.id] ?? [];
     const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
@@ -4964,6 +5096,8 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
   return [
     "---",
     `date: ${entry.date}`,
+    `lastEditedAt: ${entry.lastEditedAt || ""}`,
+    `updatedAt: ${entry.lastEditedAt || ""}`,
     `dayStartedAt: ${entry.dayStartedAt || ""}`,
     `dayEndedAt: ${entry.dayEndedAt || ""}`,
     `wakeTime: ${entry.wakeTime || ""}`,
@@ -5014,8 +5148,109 @@ function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): string {
     "",
     "## Notes",
     entry.notes || "No notes yet.",
+    "",
+    "## Entry Payload",
+    "```json",
+    payload,
+    "```",
     ""
   ].join("\n");
+}
+
+function parseDailyLogEntry(content: string, fallbackDate: string, habits: HabitDefinition[]): DailyEntry | null {
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return null;
+  }
+
+  let index = 1;
+  const frontmatter = new Map<string, string>();
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      index += 1;
+      break;
+    }
+
+    const separatorIndex = line.indexOf(":");
+    if (separatorIndex < 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    frontmatter.set(key, value);
+  }
+
+  const date = frontmatter.get("date") ?? fallbackDate;
+  if (!date) {
+    return null;
+  }
+
+  const payloadLines: string[] = [];
+  let currentSection = "";
+  let inPayload = false;
+
+  for (; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (trimmed.startsWith("## ")) {
+      currentSection = trimmed.slice(3).trim().toLowerCase();
+      continue;
+    }
+
+    if (currentSection !== "entry payload") {
+      continue;
+    }
+
+    if (trimmed === "```json") {
+      inPayload = true;
+      continue;
+    }
+
+    if (trimmed === "```" && inPayload) {
+      inPayload = false;
+      continue;
+    }
+
+    if (inPayload) {
+      payloadLines.push(lines[index]);
+    }
+  }
+
+  let parsedEntry: Partial<DailyEntry> = {};
+  if (payloadLines.length > 0) {
+    try {
+      parsedEntry = JSON.parse(payloadLines.join("\n")) as Partial<DailyEntry>;
+    } catch (error) {
+      console.warn("Daily Dashboard could not parse daily log payload", error);
+    }
+  }
+
+  const baseEntry = createEmptyEntry(date, habits);
+  return {
+    ...baseEntry,
+    ...parsedEntry,
+    date,
+    lastEditedAt: frontmatter.get("lastEditedAt") ?? frontmatter.get("updatedAt") ?? getEntryRecencyKey(parsedEntry),
+    dayStartedAt: frontmatter.get("dayStartedAt") ?? (typeof parsedEntry.dayStartedAt === "string" ? parsedEntry.dayStartedAt : ""),
+    dayEndedAt: frontmatter.get("dayEndedAt") ?? (typeof parsedEntry.dayEndedAt === "string" ? parsedEntry.dayEndedAt : ""),
+    wakeTime: frontmatter.get("wakeTime") ?? (typeof parsedEntry.wakeTime === "string" ? parsedEntry.wakeTime : ""),
+    sleepTime: frontmatter.get("sleepTime") ?? (typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : ""),
+    moodScore: Number(frontmatter.get("moodScore") ?? parsedEntry.moodScore ?? 0),
+    energyScore: Number(frontmatter.get("energyScore") ?? parsedEntry.energyScore ?? 0),
+    habits: parsedEntry.habits ?? baseEntry.habits,
+    habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
+    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
+    frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
+    missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
+    foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
+    sleepLog: typeof parsedEntry.sleepLog === "string" ? parsedEntry.sleepLog : baseEntry.sleepLog,
+    dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
+    notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
+    workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
+    napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
+  };
 }
 
 function renderPeriodReport(input: {

@@ -94,6 +94,7 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
   }
   async initializeWorkspaceArtifacts() {
     await this.ensureTodayEntry();
+    await this.backfillDailyLogsFromEntries();
     await this.syncLiveStateNote();
     await this.refreshWallpaperOptions();
   }
@@ -313,23 +314,41 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
         void this.refreshFromStorageIfChanged();
         return;
       }
+      if (this.isDailyLogPath(normalizedPath)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
       if (file.extension === "md") {
         this.scheduleNoteIndexRefresh();
       }
     }));
     this.registerEvent(this.app.vault.on("create", (file) => {
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
-        this.scheduleNoteIndexRefresh();
+      if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") {
+        return;
       }
+      if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+      this.scheduleNoteIndexRefresh();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      if (file instanceof import_obsidian.TFile && file.extension === "md") {
-        delete this.data.noteIndex.entries[(0, import_obsidian.normalizePath)(file.path)];
-        this.scheduleNoteIndexRefresh();
+      if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") {
+        return;
       }
+      if (this.isDailyLogPath(file.path)) {
+        void this.refreshFromStorageIfChanged();
+        return;
+      }
+      delete this.data.noteIndex.entries[(0, import_obsidian.normalizePath)(file.path)];
+      this.scheduleNoteIndexRefresh();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") {
+        return;
+      }
+      if (this.isDailyLogPath(file.path) || this.isDailyLogPath(oldPath)) {
+        void this.refreshFromStorageIfChanged();
         return;
       }
       delete this.data.noteIndex.entries[(0, import_obsidian.normalizePath)(oldPath)];
@@ -1424,7 +1443,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     };
   }
   async loadPluginData() {
-    const loaded = await this.buildDataFromStorage();
+    const loaded = await this.buildDataFromStorage(true);
     this.data = loaded.data;
     this.liveStateAvailable = loaded.liveStateAvailable;
     this.lastSyncCheckAt = formatDateTimeKey(/* @__PURE__ */ new Date());
@@ -1493,6 +1512,49 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   getLiveStateEntryDate(data) {
     return data.dayState.activeDate || Object.keys(data.entries).sort().slice(-1)[0] || formatDateKey(/* @__PURE__ */ new Date());
   }
+  getDailyLogPath(date, settings = this.data.settings) {
+    return (0, import_obsidian.normalizePath)(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
+  }
+  isDailyLogPath(path, settings = this.data.settings) {
+    const normalizedPath = (0, import_obsidian.normalizePath)(path);
+    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    return dailyLogFolder.length > 0 && normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+  }
+  async loadDailyLogEntryFromVault(date, settings = this.data.settings) {
+    const target = this.app.vault.getAbstractFileByPath(this.getDailyLogPath(date, settings));
+    if (!(target instanceof import_obsidian.TFile)) {
+      return null;
+    }
+    const content = await this.app.vault.read(target);
+    return parseDailyLogEntry(content, date, settings.habitDefinitions);
+  }
+  async loadDailyEntriesFromVault(settings, loadAllEntries, dateHints) {
+    const entries = {};
+    if (loadAllEntries) {
+      const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+      const files = this.app.vault.getMarkdownFiles().filter((file) => {
+        const normalizedPath = (0, import_obsidian.normalizePath)(file.path);
+        return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+      });
+      for (const file of files) {
+        const content = await this.app.vault.read(file);
+        const dateFromPath = file.basename;
+        const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
+        if (parsed) {
+          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+        }
+      }
+      return entries;
+    }
+    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
+    for (const date of uniqueDates) {
+      const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+      if (parsed) {
+        entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+      }
+    }
+    return entries;
+  }
   createLiveStateSnapshot(data = this.data) {
     var _a;
     const date = this.getLiveStateEntryDate(data);
@@ -1556,27 +1618,63 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     return snapshotTimestamp >= localTimestamp;
   }
-  async buildDataFromStorage() {
+  mergeEntryMapsByRecency(left, right) {
+    const mergedEntries = {};
+    const dates = /* @__PURE__ */ new Set([...Object.keys(left), ...Object.keys(right)]);
+    dates.forEach((date) => {
+      const leftEntry = left[date];
+      const rightEntry = right[date];
+      if (!leftEntry) {
+        mergedEntries[date] = rightEntry;
+        return;
+      }
+      if (!rightEntry) {
+        mergedEntries[date] = leftEntry;
+        return;
+      }
+      mergedEntries[date] = pickNewerEntry(leftEntry, rightEntry);
+    });
+    return mergedEntries;
+  }
+  async buildDataFromStorage(loadAllEntries) {
+    var _a, _b;
     const loaded = await this.loadData();
     const hydrated = this.hydratePluginData(loaded);
     const snapshot = await this.loadLiveStateSnapshotFromVault(hydrated.settings.liveStatePath);
+    const vaultEntries = await this.loadDailyEntriesFromVault(
+      hydrated.settings,
+      loadAllEntries,
+      [
+        formatDateKey(/* @__PURE__ */ new Date()),
+        hydrated.dayState.activeDate,
+        (_a = snapshot == null ? void 0 : snapshot.dayState.activeDate) != null ? _a : "",
+        (_b = snapshot == null ? void 0 : snapshot.entry.date) != null ? _b : ""
+      ]
+    );
+    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, vaultEntries);
+    const mergedBaseData = {
+      ...hydrated,
+      entries: mergedEntries,
+      dayState: normalizeDayState(hydrated.dayState, mergedEntries)
+    };
+    const baseSource = Object.keys(vaultEntries).length > 0 ? "Daily logs" : "Plugin data (legacy)";
     if (!snapshot) {
       return {
-        data: hydrated,
-        source: "Plugin data",
+        data: mergedBaseData,
+        source: baseSource,
         liveStateAvailable: false
       };
     }
-    if (!this.shouldApplyLiveStateSnapshot(hydrated, snapshot)) {
+    if (!this.shouldApplyLiveStateSnapshot(mergedBaseData, snapshot)) {
       return {
-        data: hydrated,
-        source: "Plugin data (newer than live state note)",
+        data: mergedBaseData,
+        source: `${baseSource} (newer than live state note)`,
         liveStateAvailable: true
       };
     }
     return {
-      data: this.applyLiveStateSnapshot(hydrated, snapshot),
-      source: "Live state note",
+      data: this.applyLiveStateSnapshot(mergedBaseData, snapshot),
+      source: `Live state note + ${baseSource.toLowerCase()}`,
       liveStateAvailable: true
     };
   }
@@ -1617,7 +1715,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     };
   }
   async refreshDataFromStorage(refreshViews) {
-    const loaded = await this.buildDataFromStorage();
+    const loaded = await this.buildDataFromStorage(false);
     const hydrated = this.mergeDataByRecency(this.data, loaded.data);
     this.lastSyncCheckAt = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.liveStateAvailable = loaded.liveStateAvailable;
@@ -1737,15 +1835,15 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   async savePluginData() {
     await this.saveData({
-      ...this.data,
-      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+      settings: this.data.settings,
+      noteIndex: this.data.noteIndex
     });
     await this.syncLiveStateNote();
   }
   async persistNoteIndex() {
     await this.saveData({
-      ...this.data,
-      dayState: normalizeDayState(this.data.dayState, this.data.entries)
+      settings: this.data.settings,
+      noteIndex: this.data.noteIndex
     });
   }
   async persistEntry(entry) {
@@ -1753,9 +1851,15 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
     }, entry.date);
-    await this.savePluginData();
     await this.syncDailyLog(this.data.entries[entry.date]);
+    await this.savePluginData();
     this.refreshDashboardViews();
+  }
+  async backfillDailyLogsFromEntries() {
+    const dates = Object.keys(this.data.entries).sort();
+    for (const date of dates) {
+      await this.syncDailyLog(this.data.entries[date]);
+    }
   }
   async ensureTodayEntry() {
     const today = this.getTodayKey();
@@ -1812,7 +1916,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
     if (existing instanceof import_obsidian.TFile) {
-      await this.app.vault.modify(existing, content);
+      const current = await this.app.vault.read(existing);
+      if (current !== content) {
+        await this.app.vault.modify(existing, content);
+      }
       return existing;
     }
     if (existing) {
@@ -3791,6 +3898,7 @@ function renderScore(value) {
   return value > 0 ? `${value}/5` : "-";
 }
 function renderDailyLog(entry, habits) {
+  const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
     var _a, _b;
     const events = (_a = entry.habitEvents[habit.id]) != null ? _a : [];
@@ -3812,6 +3920,8 @@ function renderDailyLog(entry, habits) {
   return [
     "---",
     `date: ${entry.date}`,
+    `lastEditedAt: ${entry.lastEditedAt || ""}`,
+    `updatedAt: ${entry.lastEditedAt || ""}`,
     `dayStartedAt: ${entry.dayStartedAt || ""}`,
     `dayEndedAt: ${entry.dayEndedAt || ""}`,
     `wakeTime: ${entry.wakeTime || ""}`,
@@ -3862,8 +3972,97 @@ function renderDailyLog(entry, habits) {
     "",
     "## Notes",
     entry.notes || "No notes yet.",
+    "",
+    "## Entry Payload",
+    "```json",
+    payload,
+    "```",
     ""
   ].join("\n");
+}
+function parseDailyLogEntry(content, fallbackDate, habits) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+  const lines = content.split(/\r?\n/);
+  if (lines[0] !== "---") {
+    return null;
+  }
+  let index = 1;
+  const frontmatter = /* @__PURE__ */ new Map();
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      index += 1;
+      break;
+    }
+    const separatorIndex = line.indexOf(":");
+    if (separatorIndex < 0) {
+      continue;
+    }
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    frontmatter.set(key, value);
+  }
+  const date = (_a = frontmatter.get("date")) != null ? _a : fallbackDate;
+  if (!date) {
+    return null;
+  }
+  const payloadLines = [];
+  let currentSection = "";
+  let inPayload = false;
+  for (; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
+    if (trimmed.startsWith("## ")) {
+      currentSection = trimmed.slice(3).trim().toLowerCase();
+      continue;
+    }
+    if (currentSection !== "entry payload") {
+      continue;
+    }
+    if (trimmed === "```json") {
+      inPayload = true;
+      continue;
+    }
+    if (trimmed === "```" && inPayload) {
+      inPayload = false;
+      continue;
+    }
+    if (inPayload) {
+      payloadLines.push(lines[index]);
+    }
+  }
+  let parsedEntry = {};
+  if (payloadLines.length > 0) {
+    try {
+      parsedEntry = JSON.parse(payloadLines.join("\n"));
+    } catch (error) {
+      console.warn("Daily Dashboard could not parse daily log payload", error);
+    }
+  }
+  const baseEntry = createEmptyEntry(date, habits);
+  return {
+    ...baseEntry,
+    ...parsedEntry,
+    date,
+    lastEditedAt: (_c = (_b = frontmatter.get("lastEditedAt")) != null ? _b : frontmatter.get("updatedAt")) != null ? _c : getEntryRecencyKey(parsedEntry),
+    dayStartedAt: (_d = frontmatter.get("dayStartedAt")) != null ? _d : typeof parsedEntry.dayStartedAt === "string" ? parsedEntry.dayStartedAt : "",
+    dayEndedAt: (_e = frontmatter.get("dayEndedAt")) != null ? _e : typeof parsedEntry.dayEndedAt === "string" ? parsedEntry.dayEndedAt : "",
+    wakeTime: (_f = frontmatter.get("wakeTime")) != null ? _f : typeof parsedEntry.wakeTime === "string" ? parsedEntry.wakeTime : "",
+    sleepTime: (_g = frontmatter.get("sleepTime")) != null ? _g : typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : "",
+    moodScore: Number((_i = (_h = frontmatter.get("moodScore")) != null ? _h : parsedEntry.moodScore) != null ? _i : 0),
+    energyScore: Number((_k = (_j = frontmatter.get("energyScore")) != null ? _j : parsedEntry.energyScore) != null ? _k : 0),
+    habits: (_l = parsedEntry.habits) != null ? _l : baseEntry.habits,
+    habitEvents: (_m = parsedEntry.habitEvents) != null ? _m : baseEntry.habitEvents,
+    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
+    frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
+    missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
+    foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
+    sleepLog: typeof parsedEntry.sleepLog === "string" ? parsedEntry.sleepLog : baseEntry.sleepLog,
+    dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
+    notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
+    workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
+    napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
+  };
 }
 function renderPeriodReport(input) {
   const workByProject = /* @__PURE__ */ new Map();
