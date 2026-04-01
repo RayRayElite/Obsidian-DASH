@@ -541,7 +541,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getSleepMinutesForDay(entry, this.getPreviousEntry(entry.date));
+    return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
   }
 
   getAllEntries(): DailyEntry[] {
@@ -825,8 +825,6 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getDayRepairInput(date: string = this.getTodayKey()): DayRepairInput {
     const entry = this.getOrCreateEntry(date);
-    const previousEntry = this.getPreviousEntry(date);
-
     return {
       date,
       status: this.data.dayState.activeDate === date ? this.data.dayState.status : "ended",
@@ -834,7 +832,7 @@ export default class DailyDashboardPlugin extends Plugin {
       dayEndedAt: entry.dayEndedAt,
       wakeTime: entry.wakeTime,
       sleepTime: entry.sleepTime,
-      sleepMinutesOverride: getSleepMinutesForDay(entry, previousEntry),
+      sleepMinutesOverride: getSleepMinutesForDay(entry, this.getNextEntry(date)),
       workMinutesOverride: getTrackedWorkMinutes(entry),
       napMinutesOverride: getTrackedNapMinutes(entry),
       relaxMinutesOverride: getTrackedRelaxMinutes(entry),
@@ -1688,7 +1686,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getPreviousEntry(todayEntry.date)),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -2248,7 +2246,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const derivedSleepMinutes = getSleepMinutesForDay({
       ...entry,
       sleepMinutesOverride: null
-    }, previousEntry);
+    }, this.getNextEntry(entry.date));
     if (entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0) {
       entry.sleepMinutesOverride = null;
       changed = true;
@@ -2363,6 +2361,12 @@ export default class DailyDashboardPlugin extends Plugin {
     const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate < date).sort();
     const previousDate = dates.slice(-1)[0];
     return previousDate ? this.data.entries[previousDate] : undefined;
+  }
+
+  private getNextEntry(date: string): DailyEntry | undefined {
+    const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate > date).sort();
+    const nextDate = dates[0];
+    return nextDate ? this.data.entries[nextDate] : undefined;
   }
 
   private normalizeRepairTimestamp(value: string, label: string): string | null {
@@ -2620,6 +2624,10 @@ export default class DailyDashboardPlugin extends Plugin {
       lastEditedAt: formatPreciseDateTimeKey(new Date())
     }, entry.date);
     await this.syncDailyLog(this.data.entries[entry.date]);
+    const previousEntry = this.getPreviousEntry(entry.date);
+    if (previousEntry) {
+      await this.syncDailyLog(previousEntry);
+    }
     await this.savePluginData();
     this.refreshDashboardViews();
   }
@@ -2690,7 +2698,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async syncDailyLog(entry: DailyEntry): Promise<void> {
-    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getPreviousEntry(entry.date));
+    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
 

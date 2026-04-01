@@ -633,7 +633,7 @@ function computeMissedHabits(habits, definitions) {
 }
 
 // src/dashboard-logs.ts
-function renderDailyLog(entry, habits, previousEntry) {
+function renderDailyLog(entry, habits, nextEntry) {
   var _a, _b, _c, _d, _e;
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
@@ -662,7 +662,7 @@ function renderDailyLog(entry, habits, previousEntry) {
     return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
-  const totalSleepMinutes = getSleepMinutesForDay(entry, previousEntry);
+  const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
@@ -1057,16 +1057,16 @@ function renderWeeklyReview(input) {
     ""
   ].join("\n");
 }
-function getSleepMinutesForDay(entry, previousEntry) {
+function getSleepMinutesForDay(entry, nextEntry) {
   const napMinutes = getTrackedNapMinutes(entry);
-  const derivedSleepMinutes = !(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime ? napMinutes : napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+  const derivedSleepMinutes = !entry.sleepTime || !(nextEntry == null ? void 0 : nextEntry.wakeTime) ? napMinutes : napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
   if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
     return entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0 ? derivedSleepMinutes : entry.sleepMinutesOverride;
   }
-  if (!(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime) {
+  if (!entry.sleepTime || !(nextEntry == null ? void 0 : nextEntry.wakeTime)) {
     return napMinutes;
   }
-  return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+  return napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
 }
 function getTrackedTodayFocusMinutes(item) {
   return getTrackedMinutes(item.workSessions);
@@ -2817,11 +2817,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const dateKey = formatDateKey(date);
-      const previousDate = new Date(date);
-      previousDate.setDate(date.getDate() - 1);
       const entry = entryMap.get(dateKey);
-      const previousEntry = entryMap.get(formatDateKey(previousDate));
-      const sleepMinutes = entry ? getSleepMinutesForDay(entry, previousEntry) : 0;
+      const nextDate = new Date(date);
+      nextDate.setDate(date.getDate() + 1);
+      const nextEntry = entryMap.get(formatDateKey(nextDate));
+      const sleepMinutes = entry ? getSleepMinutesForDay(entry, nextEntry) : 0;
       const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
       const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
       const unknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes);
@@ -3934,7 +3934,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     return getTrackedBreakMinutes(this.getEffectiveTrackedEntry(entry));
   }
   getTrackedSleepMinutes(entry = this.getTodayEntry()) {
-    return getSleepMinutesForDay(entry, this.getPreviousEntry(entry.date));
+    return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
   }
   getAllEntries() {
     return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));
@@ -4182,7 +4182,6 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   }
   getDayRepairInput(date = this.getTodayKey()) {
     const entry = this.getOrCreateEntry(date);
-    const previousEntry = this.getPreviousEntry(date);
     return {
       date,
       status: this.data.dayState.activeDate === date ? this.data.dayState.status : "ended",
@@ -4190,7 +4189,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       dayEndedAt: entry.dayEndedAt,
       wakeTime: entry.wakeTime,
       sleepTime: entry.sleepTime,
-      sleepMinutesOverride: getSleepMinutesForDay(entry, previousEntry),
+      sleepMinutesOverride: getSleepMinutesForDay(entry, this.getNextEntry(date)),
       workMinutesOverride: getTrackedWorkMinutes(entry),
       napMinutesOverride: getTrackedNapMinutes(entry),
       relaxMinutesOverride: getTrackedRelaxMinutes(entry),
@@ -4921,7 +4920,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getPreviousEntry(todayEntry.date)),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -5367,7 +5366,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const derivedSleepMinutes = getSleepMinutesForDay({
       ...entry,
       sleepMinutesOverride: null
-    }, previousEntry);
+    }, this.getNextEntry(entry.date));
     if (entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0) {
       entry.sleepMinutesOverride = null;
       changed = true;
@@ -5467,6 +5466,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate < date).sort();
     const previousDate = dates.slice(-1)[0];
     return previousDate ? this.data.entries[previousDate] : void 0;
+  }
+  getNextEntry(date) {
+    const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate > date).sort();
+    const nextDate = dates[0];
+    return nextDate ? this.data.entries[nextDate] : void 0;
   }
   normalizeRepairTimestamp(value, label) {
     const trimmed = value.trim();
@@ -5679,6 +5683,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
     }, entry.date);
     await this.syncDailyLog(this.data.entries[entry.date]);
+    const previousEntry = this.getPreviousEntry(entry.date);
+    if (previousEntry) {
+      await this.syncDailyLog(previousEntry);
+    }
     await this.savePluginData();
     this.refreshDashboardViews();
   }
@@ -5733,7 +5741,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return Object.keys(this.data.entries).filter((date) => date >= startKey && date <= endKey).sort().map((date) => this.data.entries[date]);
   }
   async syncDailyLog(entry) {
-    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getPreviousEntry(entry.date));
+    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
   async upsertMarkdownFile(path, content) {

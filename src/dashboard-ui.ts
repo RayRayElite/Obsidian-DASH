@@ -917,11 +917,11 @@ export class DailyDashboardView extends ItemView {
       const date = new Date(start);
       date.setDate(start.getDate() + index);
       const dateKey = formatDateKey(date);
-      const previousDate = new Date(date);
-      previousDate.setDate(date.getDate() - 1);
       const entry = entryMap.get(dateKey);
-      const previousEntry = entryMap.get(formatDateKey(previousDate));
-      const sleepMinutes = entry ? getSleepMinutesForDay(entry, previousEntry) : 0;
+      const nextDate = new Date(date);
+      nextDate.setDate(date.getDate() + 1);
+      const nextEntry = entryMap.get(formatDateKey(nextDate));
+      const sleepMinutes = entry ? getSleepMinutesForDay(entry, nextEntry) : 0;
       const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
       const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
       const unknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes);

@@ -9,7 +9,7 @@ import {
 } from "./dashboard-core";
 import type { DailyEntry, HabitDefinition, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
-export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], previousEntry?: DailyEntry): string {
+export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry): string {
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
     const events = entry.habitEvents[habit.id] ?? [];
@@ -38,7 +38,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], pre
     ? entry.breakSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
-  const totalSleepMinutes = getSleepMinutesForDay(entry, previousEntry);
+  const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
@@ -496,11 +496,11 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
   ].join("\n");
 }
 
-export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEntry): number {
+export function getSleepMinutesForDay(entry: DailyEntry, nextEntry?: DailyEntry): number {
   const napMinutes = getTrackedNapMinutes(entry);
-  const derivedSleepMinutes = !previousEntry?.sleepTime || !entry.wakeTime
+  const derivedSleepMinutes = !entry.sleepTime || !nextEntry?.wakeTime
     ? napMinutes
-    : napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+    : napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
 
   if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
     return entry.sleepMinutesOverride === 0 && derivedSleepMinutes > 0
@@ -508,11 +508,11 @@ export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEn
       : entry.sleepMinutesOverride;
   }
 
-  if (!previousEntry?.sleepTime || !entry.wakeTime) {
+  if (!entry.sleepTime || !nextEntry?.wakeTime) {
     return napMinutes;
   }
 
-  return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+  return napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
 }
 
 export function getTrackedTodayFocusMinutes(item: TodayFocusItem): number {
