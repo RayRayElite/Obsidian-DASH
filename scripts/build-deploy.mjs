@@ -5,7 +5,7 @@ function run(command, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: "inherit",
-      shell: true
+      shell: false
     });
 
     child.on("exit", (code) => {
@@ -22,6 +22,7 @@ function run(command, args) {
 }
 
 const deployArgs = process.argv.slice(2);
+const nodeExecutable = process.execPath;
 
-await run("npm", ["run", "build"]);
-await run("node", ["scripts/deploy-plugin.mjs", ...deployArgs]);
+await run(nodeExecutable, ["esbuild.config.mjs", "production"]);
+await run(nodeExecutable, ["scripts/deploy-plugin.mjs", ...deployArgs]);
