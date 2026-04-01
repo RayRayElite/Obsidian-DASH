@@ -63,6 +63,7 @@ import {
   CreateProjectModal,
   DailyDashboardSettingTab,
   DailyDashboardView,
+  LogicalDayRepairModal,
   ProjectReviewModal,
   PromoteTaskModal
 } from "./src/dashboard-ui";
@@ -255,6 +256,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "End logical day",
       callback: () => {
         void this.endLogicalDay();
+      }
+    });
+
+    this.addCommand({
+      id: "repair-logical-day",
+      name: "Repair logical day",
+      callback: () => {
+        void this.openLogicalDayRepairFlow();
       }
     });
 
@@ -650,6 +659,35 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
     await this.savePluginData();
     new Notice(`Ended logical day ${entry.date}.`);
+  }
+
+  async openLogicalDayRepairFlow(): Promise<void> {
+    new LogicalDayRepairModal(this.app, this).open();
+  }
+
+  async repairLogicalDay(date: string, status: DayLifecycleState["status"]): Promise<void> {
+    const normalizedDate = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      new Notice("Logical day must use YYYY-MM-DD.");
+      return;
+    }
+
+    const parsedDate = new Date(`${normalizedDate}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime()) || formatDateKey(parsedDate) !== normalizedDate) {
+      new Notice("Enter a valid calendar date.");
+      return;
+    }
+
+    this.data.dayState = {
+      activeDate: normalizedDate,
+      status
+    };
+
+    this.getOrCreateEntry(normalizedDate);
+    await this.savePluginData();
+    await this.ensureTodayEntry();
+    this.refreshDashboardViews();
+    new Notice(`Logical day set to ${normalizedDate} (${status}).`);
   }
 
   async startWorkSession(): Promise<void> {
@@ -1606,16 +1644,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private getNextLogicalDayKey(referenceDate: Date): string {
-    const calendarKey = formatDateKey(referenceDate);
-    if (this.data.dayState.status === "not-started") {
-      return calendarKey;
-    }
-
-    const current = this.data.dayState.activeDate || calendarKey;
-    const next = new Date(`${current}T00:00:00`);
-    next.setDate(next.getDate() + 1);
-    const nextKey = formatDateKey(next);
-    return nextKey > calendarKey ? nextKey : calendarKey;
+    return formatDateKey(referenceDate);
   }
 
   private hydratePluginData(loaded: Partial<DashboardPluginData> | null | undefined): DashboardPluginData {

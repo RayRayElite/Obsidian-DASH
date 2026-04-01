@@ -179,6 +179,7 @@ export class DailyDashboardView extends ItemView {
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
       createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+      createButton(dayFlowActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
 
@@ -839,6 +840,81 @@ export class CreateProjectModal extends Modal {
           }
 
           await this.plugin.createProjectAndNote(this.state);
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+export class LogicalDayRepairModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private logicalDate: string;
+  private logicalStatus: "not-started" | "in-progress" | "ended";
+
+  constructor(app: App, plugin: DailyDashboardPlugin) {
+    super(app);
+    this.plugin = plugin;
+    const dayState = this.plugin.getDayState();
+    this.logicalDate = dayState.activeDate;
+    this.logicalStatus = dayState.status;
+  }
+
+  onOpen(): void {
+    this.setTitle("Repair Logical Day");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl("p", {
+      text: "Use this when test clicks or a bad state push the dashboard onto the wrong date. The safest reset is today's date with status set to Not started."
+    });
+
+    new Setting(contentEl)
+      .setName("Logical date")
+      .setDesc("Enter the date the dashboard should use in YYYY-MM-DD format.")
+      .addText((text) => {
+        text
+          .setPlaceholder("2026-04-01")
+          .setValue(this.logicalDate)
+          .onChange((value) => {
+            this.logicalDate = value.trim();
+          });
+        window.setTimeout(() => text.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Day status")
+      .setDesc("Choose whether the logical day should be idle, active, or already ended.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("not-started", "Not started");
+        dropdown.addOption("in-progress", "In progress");
+        dropdown.addOption("ended", "Ended");
+        dropdown.setValue(this.logicalStatus);
+        dropdown.onChange((value) => {
+          this.logicalStatus = value === "in-progress" || value === "ended" ? value : "not-started";
+        });
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Reset to today").onClick(async () => {
+          this.logicalDate = formatDateTimeKey(new Date()).slice(0, 10);
+          this.logicalStatus = "not-started";
+          await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
+          this.close();
+        });
+      })
+      .addButton((button) => {
+        button.setButtonText("Apply").setCta().onClick(async () => {
+          await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
           this.close();
         });
       })

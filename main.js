@@ -1884,6 +1884,7 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
       createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+      createButton(dayFlowActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
@@ -2466,6 +2467,58 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
           return;
         }
         await this.plugin.createProjectAndNote(this.state);
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var LogicalDayRepairModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    const dayState = this.plugin.getDayState();
+    this.logicalDate = dayState.activeDate;
+    this.logicalStatus = dayState.status;
+  }
+  onOpen() {
+    this.setTitle("Repair Logical Day");
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("p", {
+      text: "Use this when test clicks or a bad state push the dashboard onto the wrong date. The safest reset is today's date with status set to Not started."
+    });
+    new import_obsidian3.Setting(contentEl).setName("Logical date").setDesc("Enter the date the dashboard should use in YYYY-MM-DD format.").addText((text) => {
+      text.setPlaceholder("2026-04-01").setValue(this.logicalDate).onChange((value) => {
+        this.logicalDate = value.trim();
+      });
+      window.setTimeout(() => text.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Day status").setDesc("Choose whether the logical day should be idle, active, or already ended.").addDropdown((dropdown) => {
+      dropdown.addOption("not-started", "Not started");
+      dropdown.addOption("in-progress", "In progress");
+      dropdown.addOption("ended", "Ended");
+      dropdown.setValue(this.logicalStatus);
+      dropdown.onChange((value) => {
+        this.logicalStatus = value === "in-progress" || value === "ended" ? value : "not-started";
+      });
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Reset to today").onClick(async () => {
+        this.logicalDate = formatDateTimeKey(/* @__PURE__ */ new Date()).slice(0, 10);
+        this.logicalStatus = "not-started";
+        await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
+        this.close();
+      });
+    }).addButton((button) => {
+      button.setButtonText("Apply").setCta().onClick(async () => {
+        await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
         this.close();
       });
     }).addExtraButton((button) => {
@@ -3094,6 +3147,13 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       }
     });
     this.addCommand({
+      id: "repair-logical-day",
+      name: "Repair logical day",
+      callback: () => {
+        void this.openLogicalDayRepairFlow();
+      }
+    });
+    this.addCommand({
       id: "start-work-session",
       name: "Start work session",
       callback: () => {
@@ -3426,6 +3486,30 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     await this.persistEntry(entry);
     await this.savePluginData();
     new import_obsidian4.Notice(`Ended logical day ${entry.date}.`);
+  }
+  async openLogicalDayRepairFlow() {
+    new LogicalDayRepairModal(this.app, this).open();
+  }
+  async repairLogicalDay(date, status) {
+    const normalizedDate = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+      new import_obsidian4.Notice("Logical day must use YYYY-MM-DD.");
+      return;
+    }
+    const parsedDate = /* @__PURE__ */ new Date(`${normalizedDate}T00:00:00`);
+    if (Number.isNaN(parsedDate.getTime()) || formatDateKey(parsedDate) !== normalizedDate) {
+      new import_obsidian4.Notice("Enter a valid calendar date.");
+      return;
+    }
+    this.data.dayState = {
+      activeDate: normalizedDate,
+      status
+    };
+    this.getOrCreateEntry(normalizedDate);
+    await this.savePluginData();
+    await this.ensureTodayEntry();
+    this.refreshDashboardViews();
+    new import_obsidian4.Notice(`Logical day set to ${normalizedDate} (${status}).`);
   }
   async startWorkSession() {
     if (this.data.dayState.status !== "in-progress") {
@@ -4227,15 +4311,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return `${prefix} ${counter}.md`;
   }
   getNextLogicalDayKey(referenceDate) {
-    const calendarKey = formatDateKey(referenceDate);
-    if (this.data.dayState.status === "not-started") {
-      return calendarKey;
-    }
-    const current = this.data.dayState.activeDate || calendarKey;
-    const next = /* @__PURE__ */ new Date(`${current}T00:00:00`);
-    next.setDate(next.getDate() + 1);
-    const nextKey = formatDateKey(next);
-    return nextKey > calendarKey ? nextKey : calendarKey;
+    return formatDateKey(referenceDate);
   }
   hydratePluginData(loaded) {
     var _a, _b;
