@@ -934,7 +934,11 @@ function getTrackedBreakMinutes(entry) {
   return resolveTrackedMinutes(entry.breakSessions, entry.breakMinutesOverride);
 }
 function resolveTrackedMinutes(sessions, override) {
-  return typeof override === "number" && override >= 0 ? override : getTrackedMinutes(sessions);
+  const trackedMinutes = getTrackedMinutes(sessions);
+  if (typeof override === "number" && override >= 0) {
+    return override === 0 && trackedMinutes > 0 ? trackedMinutes : override;
+  }
+  return trackedMinutes;
 }
 function normalizeOptionalMinutes(value) {
   const numericValue = Number(value);
