@@ -27,6 +27,7 @@ export interface WorkSession {
 
 export interface FoodEntry {
   text: string;
+  amount: number;
   loggedAt: string;
 }
 
@@ -41,6 +42,7 @@ export interface DailyEntry {
   habitEvents: Record<string, string[]>;
   moodScore: number;
   energyScore: number;
+  anxietyScore: number;
   todayFocus: string[];
   frictionLog: string;
   missedHabits: string[];
@@ -50,6 +52,8 @@ export interface DailyEntry {
   notes: string;
   workSessions: WorkSession[];
   napSessions: WorkSession[];
+  relaxSessions: WorkSession[];
+  breakSessions: WorkSession[];
   completedTasks: ArchivedTaskSnapshot[];
 }
 

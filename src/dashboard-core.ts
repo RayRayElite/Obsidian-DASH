@@ -326,6 +326,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     habitEvents,
     moodScore: 0,
     energyScore: 0,
+    anxietyScore: 0,
     todayFocus: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
@@ -335,6 +336,8 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     notes: "",
     workSessions: [],
     napSessions: [],
+    relaxSessions: [],
+    breakSessions: [],
     completedTasks: []
   };
 }
@@ -603,7 +606,7 @@ export function deriveAiNoteReason(path: string, settings: DashboardSettings, ac
 export function normalizeFoodEntry(input: unknown): FoodEntry | null {
   if (typeof input === "string") {
     const trimmed = input.trim();
-    return trimmed.length > 0 ? { text: trimmed, loggedAt: "" } : null;
+    return trimmed.length > 0 ? { text: trimmed, amount: 1, loggedAt: "" } : null;
   }
 
   if (!input || typeof input !== "object") {
@@ -618,6 +621,7 @@ export function normalizeFoodEntry(input: unknown): FoodEntry | null {
 
   return {
     text,
+    amount: clamp(Math.round(Number(candidate.amount ?? 1)), 1, 24),
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
   };
 }
@@ -636,6 +640,8 @@ export function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): stri
     ...(Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : []),
     ...(Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.relaxSessions) ? entry.relaxSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.breakSessions) ? entry.breakSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.completedTasks) ? entry.completedTasks.map((task) => task.archivedAt) : []),
     ...(entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : [])
   ].filter((value): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));

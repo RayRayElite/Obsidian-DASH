@@ -282,7 +282,7 @@
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--daily-dashboard-card-accent) 11%, transparent), transparent 38%),
     linear-gradient(145deg, color-mix(in srgb, var(--daily-dashboard-panel) 92%, transparent), color-mix(in srgb, var(--daily-dashboard-panel-strong) 88%, transparent));
-  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .daily-dashboard-view.is-compact .daily-dashboard-card {
@@ -381,7 +381,6 @@
 }
 
 .daily-dashboard-card:hover {
-  transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--daily-dashboard-card-accent) 30%, var(--background-modifier-border));
   box-shadow: var(--daily-dashboard-shadow-strong);
 }
@@ -432,49 +431,54 @@
   order: 1;
 }
 
-.daily-dashboard-card--top-3-for-today {
+.daily-dashboard-card--week-at-a-glance {
+  grid-column: 1 / -1;
   order: 2;
 }
 
-.daily-dashboard-card--state-and-friction {
+.daily-dashboard-card--top-3-for-today {
   order: 3;
 }
 
-.daily-dashboard-card--habits {
+.daily-dashboard-card--state-and-friction {
   order: 4;
 }
 
-.daily-dashboard-card--food-log {
+.daily-dashboard-card--habits {
   order: 5;
 }
 
-.daily-dashboard-card--sleep-and-notes {
+.daily-dashboard-card--food-log {
   order: 6;
 }
 
-.daily-dashboard-card--quick-add-to-project {
+.daily-dashboard-card--sleep-and-notes {
   order: 7;
 }
 
-.daily-dashboard-card--completed-today {
+.daily-dashboard-card--quick-add-to-project {
   order: 8;
 }
 
-.daily-dashboard-card--searchable-work-log {
+.daily-dashboard-card--completed-today {
   order: 9;
+}
+
+.daily-dashboard-card--searchable-work-log {
+  order: 10;
 }
 
 .daily-dashboard-card--ai-workspace {
   grid-column: 1 / -1;
-  order: 10;
-}
-
-.daily-dashboard-card--project-health {
   order: 11;
 }
 
-.daily-dashboard-card--stale-work-and-cleanup {
+.daily-dashboard-card--project-health {
   order: 12;
+}
+
+.daily-dashboard-card--stale-work-and-cleanup {
+  order: 13;
 }
 
 .daily-dashboard-card-header {
@@ -770,6 +774,10 @@
   gap: 10px;
 }
 
+.daily-dashboard-inline-form--food {
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+}
+
 .daily-dashboard-stacked-form {
   display: grid;
   gap: 10px;
@@ -872,7 +880,8 @@
 }
 
 .daily-dashboard-input,
-.daily-dashboard-textarea {
+.daily-dashboard-textarea,
+.daily-dashboard-amount-input {
   box-sizing: border-box;
   display: block;
   width: 100%;
@@ -909,6 +918,13 @@ select.daily-dashboard-input {
 input.daily-dashboard-input {
   padding-top: 11px;
   padding-bottom: 11px;
+}
+
+.daily-dashboard-amount-input {
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  text-align: center;
 }
 
 .daily-dashboard-textarea {
@@ -957,6 +973,71 @@ input.daily-dashboard-input {
 
 .daily-dashboard-empty-state--actionable .daily-dashboard-actions-inline {
   width: 100%;
+}
+
+.daily-dashboard-food-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.daily-dashboard-week-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-dashboard-week-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-primary) 76%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 6%);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
+}
+
+.daily-dashboard-week-row.is-today {
+  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 34%, var(--background-modifier-border));
+}
+
+.daily-dashboard-week-row-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.daily-dashboard-week-bar {
+  display: flex;
+  min-width: 0;
+  min-height: 18px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
+}
+
+.daily-dashboard-week-segment {
+  flex: var(--daily-dashboard-segment-grow) 1 0;
+  min-width: 6px;
+}
+
+.daily-dashboard-week-segment.is-sleep {
+  background: linear-gradient(90deg, #d7c57a, #e8d99a);
+}
+
+.daily-dashboard-week-segment.is-work {
+  background: linear-gradient(90deg, #74b0e6, #94c7f0);
+}
+
+.daily-dashboard-week-segment.is-relax {
+  background: linear-gradient(90deg, #75c9bc, #8ed9ce);
+}
+
+.daily-dashboard-week-segment.is-unknown {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--background-modifier-border) 80%, transparent), color-mix(in srgb, var(--background-secondary) 84%, transparent));
 }
 
 .daily-dashboard-ai-suggestions {
@@ -1113,6 +1194,7 @@ input.daily-dashboard-input {
 .daily-dashboard-view.is-compact .daily-dashboard-project-row,
 .daily-dashboard-view.is-compact .daily-dashboard-completed-row,
 .daily-dashboard-view.is-compact .daily-dashboard-food-row,
+.daily-dashboard-view.is-compact .daily-dashboard-week-row,
 .daily-dashboard-view.is-compact .daily-dashboard-ai-panel {
   padding: 12px 13px;
 }
@@ -1241,6 +1323,11 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-dashboard-inline-form--food,
+  .daily-dashboard-week-row {
     grid-template-columns: 1fr;
   }
 

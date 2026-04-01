@@ -15,7 +15,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     return `- ${habit.label}: ${entry.habits[habit.id] ?? 0}/${habit.target}${timing}`;
   });
   const foodLines = entry.foodLog.length > 0
-    ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.text}`)
+    ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`)
     : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
@@ -26,8 +26,16 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
   const napSessionLines = entry.napSessions.length > 0
     ? entry.napSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked naps"];
+  const relaxSessionLines = entry.relaxSessions.length > 0
+    ? entry.relaxSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- No tracked relaxing sessions"];
+  const breakSessionLines = entry.breakSessions.length > 0
+    ? entry.breakSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
+  const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
+  const totalBreakMinutes = getTrackedBreakMinutes(entry);
 
   return [
     "---",
@@ -40,11 +48,14 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     `sleepTime: ${entry.sleepTime || ""}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
+    `trackedRelaxMinutes: ${totalRelaxMinutes}`,
+    `trackedBreakMinutes: ${totalBreakMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
     `energyScore: ${entry.energyScore}`,
+    `anxietyScore: ${entry.anxietyScore}`,
     "---",
     "",
     `# Daily Dashboard Log - ${entry.date}`,
@@ -56,6 +67,8 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     `- Sleep time: ${entry.sleepTime || "Not logged"}`,
     `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
+    `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,
+    `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -63,6 +76,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
     `- Energy: ${renderScore(entry.energyScore)}`,
+    `- Anxiety: ${renderScore(entry.anxietyScore)}`,
     "",
     "## Food Log",
     ...foodLines,
@@ -78,6 +92,12 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     "",
     "## Nap Sessions",
     ...napSessionLines,
+    "",
+    "## Relax Sessions",
+    ...relaxSessionLines,
+    "",
+    "## Break Sessions",
+    ...breakSessionLines,
     "",
     "## Work Completed",
     ...completedTaskLines,
@@ -174,6 +194,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     sleepTime: frontmatter.get("sleepTime") ?? (typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : ""),
     moodScore: Number(frontmatter.get("moodScore") ?? parsedEntry.moodScore ?? 0),
     energyScore: Number(frontmatter.get("energyScore") ?? parsedEntry.energyScore ?? 0),
+    anxietyScore: Number(frontmatter.get("anxietyScore") ?? parsedEntry.anxietyScore ?? 0),
     habits: parsedEntry.habits ?? baseEntry.habits,
     habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
     todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
@@ -185,6 +206,8 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
     workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    relaxSessions: Array.isArray(parsedEntry.relaxSessions) ? parsedEntry.relaxSessions : baseEntry.relaxSessions,
+    breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
@@ -203,8 +226,12 @@ export function renderPeriodReport(input: {
   let moodDays = 0;
   let energyTotal = 0;
   let energyDays = 0;
+  let anxietyTotal = 0;
+  let anxietyDays = 0;
   let trackedWorkMinutes = 0;
   let trackedNapMinutes = 0;
+  let trackedRelaxMinutes = 0;
+  let trackedBreakMinutes = 0;
   let daysWithNaps = 0;
 
   input.entries.forEach((entry) => {
@@ -230,8 +257,15 @@ export function renderPeriodReport(input: {
       energyDays += 1;
     }
 
+    if (entry.anxietyScore > 0) {
+      anxietyTotal += entry.anxietyScore;
+      anxietyDays += 1;
+    }
+
     trackedWorkMinutes += getTrackedWorkMinutes(entry);
     trackedNapMinutes += getTrackedMinutes(entry.napSessions);
+    trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
+    trackedBreakMinutes += getTrackedBreakMinutes(entry);
     if (entry.napSessions.length > 0) {
       daysWithNaps += 1;
     }
@@ -256,7 +290,10 @@ export function renderPeriodReport(input: {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
     const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
+    const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0
+      ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed`
+      : "no relax tracked";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
   });
 
   return [
@@ -273,8 +310,10 @@ export function renderPeriodReport(input: {
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Days with naps tracked: ${daysWithNaps}`,
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
+    `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
+    `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
     "",
     "## Habit Completion",
     "| Habit | Completed | Rate |",
@@ -298,8 +337,24 @@ export function closeOpenNapSessions(entry: DailyEntry, timestamp: string): void
   entry.napSessions = entry.napSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
 
+export function closeOpenRelaxSessions(entry: DailyEntry, timestamp: string): void {
+  entry.relaxSessions = entry.relaxSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
+export function closeOpenBreakSessions(entry: DailyEntry, timestamp: string): void {
+  entry.breakSessions = entry.breakSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
 export function getTrackedWorkMinutes(entry: DailyEntry): number {
   return getTrackedMinutes(entry.workSessions);
+}
+
+export function getTrackedRelaxMinutes(entry: DailyEntry): number {
+  return getTrackedMinutes(entry.relaxSessions);
+}
+
+export function getTrackedBreakMinutes(entry: DailyEntry): number {
+  return getTrackedMinutes(entry.breakSessions);
 }
 
 export function getTrackedMinutes(sessions: WorkSession[]): number {
@@ -382,4 +437,13 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
       : ["- No daily entries recorded."]),
     ""
   ].join("\n");
+}
+
+export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEntry): number {
+  const napMinutes = getTrackedMinutes(entry.napSessions);
+  if (!previousEntry?.sleepTime || !entry.wakeTime) {
+    return napMinutes;
+  }
+
+  return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
 }

@@ -5,6 +5,7 @@ import {
   buildNoteIndexEntry,
   clamp,
   computeMissedHabits,
+  createHabitId,
   createEmptyEntry,
   createEmptyNoteIndexCache,
   extractAiStructuredPayload,
@@ -30,9 +31,13 @@ import {
   truncateText
 } from "./src/dashboard-core";
 import {
+  closeOpenBreakSessions,
   closeOpenNapSessions,
+  closeOpenRelaxSessions,
   closeOpenWorkSessions,
+  getTrackedBreakMinutes,
   getTrackedMinutes,
+  getTrackedRelaxMinutes,
   getTrackedWorkMinutes,
   parseDailyLogEntry,
   renderDailyLog,
@@ -59,6 +64,7 @@ import {
   stripMarkdownExtension
 } from "./src/dashboard-todo";
 import {
+  AddHabitModal,
   AskAiModal,
   CreateProjectModal,
   DailyDashboardSettingTab,
@@ -244,6 +250,14 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "add-dashboard-habit",
+      name: "Add habit",
+      callback: () => {
+        void this.openAddHabitFlow();
+      }
+    });
+
+    this.addCommand({
       id: "begin-logical-day",
       name: "Begin logical day",
       callback: () => {
@@ -296,6 +310,38 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Stop nap",
       callback: () => {
         void this.stopNapSession();
+      }
+    });
+
+    this.addCommand({
+      id: "start-relax-session",
+      name: "Start relaxing",
+      callback: () => {
+        void this.startRelaxSession();
+      }
+    });
+
+    this.addCommand({
+      id: "stop-relax-session",
+      name: "End relaxing",
+      callback: () => {
+        void this.stopRelaxSession();
+      }
+    });
+
+    this.addCommand({
+      id: "start-break-session",
+      name: "Start break",
+      callback: () => {
+        void this.startBreakSession();
+      }
+    });
+
+    this.addCommand({
+      id: "stop-break-session",
+      name: "End break",
+      callback: () => {
+        void this.stopBreakSession();
       }
     });
 
@@ -443,12 +489,28 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getTodayEntry().napSessions.some((session) => session.end === null);
   }
 
+  isRelaxSessionActive(): boolean {
+    return this.getTodayEntry().relaxSessions.some((session) => session.end === null);
+  }
+
+  isBreakSessionActive(): boolean {
+    return this.getTodayEntry().breakSessions.some((session) => session.end === null);
+  }
+
   getTrackedWorkMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedWorkMinutes(entry);
   }
 
   getTrackedNapMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedMinutes(entry.napSessions);
+  }
+
+  getTrackedRelaxMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedRelaxMinutes(entry);
+  }
+
+  getTrackedBreakMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedBreakMinutes(entry);
   }
 
   getAllEntries(): DailyEntry[] {
@@ -558,6 +620,12 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async updateAnxietyScore(value: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.anxietyScore = clamp(value, 0, 5);
+    await this.persistEntry(entry);
+  }
+
   async updateHabitValue(habitId: string, value: number): Promise<void> {
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
@@ -581,14 +649,68 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
-  async addFoodEntry(value: string): Promise<void> {
+  async addHabitDefinition(label: string, target: number): Promise<void> {
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel) {
+      new Notice("Habit name is required.");
+      return;
+    }
+
+    const nextHabitId = createHabitId(normalizedLabel);
+    if (this.data.settings.habitDefinitions.some((habit) => habit.id === nextHabitId)) {
+      new Notice(`A habit named ${normalizedLabel} already exists.`);
+      return;
+    }
+
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: [
+        ...this.getHabitDefinitions(),
+        {
+          id: nextHabitId,
+          label: normalizedLabel,
+          target: clamp(Math.round(target), 1, 12)
+        }
+      ]
+    });
+  }
+
+  async removeHabitDefinition(habitId: string): Promise<void> {
+    if (this.getHabitDefinitions().length <= 1) {
+      new Notice("Keep at least one habit defined.");
+      return;
+    }
+
+    const nextDefinitions = this.getHabitDefinitions().filter((habit) => habit.id !== habitId);
+    if (nextDefinitions.length === this.getHabitDefinitions().length) {
+      return;
+    }
+
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: nextDefinitions
+    });
+  }
+
+  async addFoodEntry(value: string, amount = 1): Promise<void> {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
     }
 
     const entry = this.getTodayEntry();
-    entry.foodLog = [{ text: trimmedValue, loggedAt: formatDateTimeKey(new Date()) }, ...entry.foodLog];
+    entry.foodLog = [{ text: trimmedValue, amount: clamp(Math.round(amount), 1, 24), loggedAt: formatDateTimeKey(new Date()) }, ...entry.foodLog];
+    await this.persistEntry(entry);
+  }
+
+  async updateFoodEntryAmount(index: number, amount: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextEntry = entry.foodLog[index];
+    if (!nextEntry) {
+      return;
+    }
+
+    nextEntry.amount = clamp(Math.round(amount), 1, 24);
     await this.persistEntry(entry);
   }
 
@@ -652,6 +774,8 @@ export default class DailyDashboardPlugin extends Plugin {
     }
     closeOpenWorkSessions(entry, timestamp);
     closeOpenNapSessions(entry, timestamp);
+    closeOpenRelaxSessions(entry, timestamp);
+    closeOpenBreakSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
       status: "ended"
@@ -702,7 +826,9 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    entry.workSessions = [...entry.workSessions, { start: formatDateTimeKey(new Date()), end: null }];
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "work");
+    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Work session started.");
   }
@@ -732,7 +858,9 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    entry.napSessions = [...entry.napSessions, { start: formatDateTimeKey(new Date()), end: null }];
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "nap");
+    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new Notice("Nap started.");
   }
@@ -748,6 +876,70 @@ export default class DailyDashboardPlugin extends Plugin {
     activeSession.end = formatDateTimeKey(new Date());
     await this.persistEntry(entry);
     new Notice("Nap stopped.");
+  }
+
+  async startRelaxSession(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before tracking relaxing time.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.relaxSessions.some((session) => session.end === null)) {
+      new Notice("A relaxing session is already active.");
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "relax");
+    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new Notice("Relaxing started.");
+  }
+
+  async stopRelaxSession(): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.relaxSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new Notice("No relaxing session is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice("Relaxing stopped.");
+  }
+
+  async startBreakSession(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before starting a break.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.breakSessions.some((session) => session.end === null)) {
+      new Notice("A break is already active.");
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "break");
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new Notice("Break started.");
+  }
+
+  async stopBreakSession(): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.breakSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new Notice("No break is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice("Break ended.");
   }
 
   async updateDailyNotes(value: string): Promise<void> {
@@ -875,6 +1067,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const categories = await this.getTodoCategories();
     new CreateProjectModal(this.app, this, categories).open();
+  }
+
+  async openAddHabitFlow(): Promise<void> {
+    new AddHabitModal(this.app, this).open();
   }
 
   async createProjectAndNote(input: CreateProjectInput): Promise<void> {
@@ -1706,6 +1902,7 @@ export default class DailyDashboardPlugin extends Plugin {
       habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
       energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
+      anxietyScore: clamp(Number(entry.anxietyScore ?? 0), 0, 5),
       todayFocus: Array.isArray(entry.todayFocus)
         ? entry.todayFocus.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 3)
         : [],
@@ -1729,6 +1926,22 @@ export default class DailyDashboardPlugin extends Plugin {
         : [],
       napSessions: Array.isArray(entry.napSessions)
         ? entry.napSessions
+            .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+            .map((item) => ({
+              start: item.start,
+              end: typeof item.end === "string" ? item.end : null
+            }))
+        : [],
+      relaxSessions: Array.isArray(entry.relaxSessions)
+        ? entry.relaxSessions
+            .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+            .map((item) => ({
+              start: item.start,
+              end: typeof item.end === "string" ? item.end : null
+            }))
+        : [],
+      breakSessions: Array.isArray(entry.breakSessions)
+        ? entry.breakSessions
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
@@ -1760,6 +1973,21 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private createEmptyEntry(date: string): DailyEntry {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+
+  private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break"): void {
+    if (keepOpen !== "work") {
+      closeOpenWorkSessions(entry, timestamp);
+    }
+    if (keepOpen !== "nap") {
+      closeOpenNapSessions(entry, timestamp);
+    }
+    if (keepOpen !== "relax") {
+      closeOpenRelaxSessions(entry, timestamp);
+    }
+    if (keepOpen !== "break") {
+      closeOpenBreakSessions(entry, timestamp);
+    }
   }
 
   private getDailyLogPath(date: string, settings: DashboardSettings = this.data.settings): string {

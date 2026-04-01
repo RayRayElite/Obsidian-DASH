@@ -317,6 +317,7 @@ function createEmptyEntry(date, habits) {
     habitEvents,
     moodScore: 0,
     energyScore: 0,
+    anxietyScore: 0,
     todayFocus: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
@@ -326,6 +327,8 @@ function createEmptyEntry(date, habits) {
     notes: "",
     workSessions: [],
     napSessions: [],
+    relaxSessions: [],
+    breakSessions: [],
     completedTasks: []
   };
 }
@@ -526,9 +529,10 @@ function deriveAiNoteReason(path, settings, activeFilePath, includeActiveNote, t
   return matchedTerms.length > 0 ? `Matched terms: ${matchedTerms.join(", ")}` : "Recent relevant vault note";
 }
 function normalizeFoodEntry(input) {
+  var _a;
   if (typeof input === "string") {
     const trimmed = input.trim();
-    return trimmed.length > 0 ? { text: trimmed, loggedAt: "" } : null;
+    return trimmed.length > 0 ? { text: trimmed, amount: 1, loggedAt: "" } : null;
   }
   if (!input || typeof input !== "object") {
     return null;
@@ -540,6 +544,7 @@ function normalizeFoodEntry(input) {
   }
   return {
     text,
+    amount: clamp(Math.round(Number((_a = candidate.amount) != null ? _a : 1)), 1, 24),
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
   };
 }
@@ -560,6 +565,14 @@ function getEntryRecencyKey(entry) {
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
     }) : [],
     ...Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => {
+      var _a2;
+      return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.relaxSessions) ? entry.relaxSessions.flatMap((session) => {
+      var _a2;
+      return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.breakSessions) ? entry.breakSessions.flatMap((session) => {
       var _a2;
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
     }) : [],
@@ -587,7 +600,7 @@ function renderDailyLog(entry, habits) {
     const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
     return `- ${habit.label}: ${(_b = entry.habits[habit.id]) != null ? _b : 0}/${habit.target}${timing}`;
   });
-  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.text}`) : ["- None logged"];
+  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
     var _a;
@@ -597,8 +610,18 @@ function renderDailyLog(entry, habits) {
     var _a;
     return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
   }) : ["- No tracked naps"];
+  const relaxSessionLines = entry.relaxSessions.length > 0 ? entry.relaxSessions.map((session) => {
+    var _a;
+    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+  }) : ["- No tracked relaxing sessions"];
+  const breakSessionLines = entry.breakSessions.length > 0 ? entry.breakSessions.map((session) => {
+    var _a;
+    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+  }) : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
+  const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
+  const totalBreakMinutes = getTrackedBreakMinutes(entry);
   return [
     "---",
     `date: ${entry.date}`,
@@ -610,11 +633,14 @@ function renderDailyLog(entry, habits) {
     `sleepTime: ${entry.sleepTime || ""}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
+    `trackedRelaxMinutes: ${totalRelaxMinutes}`,
+    `trackedBreakMinutes: ${totalBreakMinutes}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
     `energyScore: ${entry.energyScore}`,
+    `anxietyScore: ${entry.anxietyScore}`,
     "---",
     "",
     `# Daily Dashboard Log - ${entry.date}`,
@@ -626,6 +652,8 @@ function renderDailyLog(entry, habits) {
     `- Sleep time: ${entry.sleepTime || "Not logged"}`,
     `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
+    `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,
+    `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -633,6 +661,7 @@ function renderDailyLog(entry, habits) {
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
     `- Energy: ${renderScore(entry.energyScore)}`,
+    `- Anxiety: ${renderScore(entry.anxietyScore)}`,
     "",
     "## Food Log",
     ...foodLines,
@@ -649,6 +678,12 @@ function renderDailyLog(entry, habits) {
     "## Nap Sessions",
     ...napSessionLines,
     "",
+    "## Relax Sessions",
+    ...relaxSessionLines,
+    "",
+    "## Break Sessions",
+    ...breakSessionLines,
+    "",
     "## Work Completed",
     ...completedTaskLines,
     "",
@@ -663,7 +698,7 @@ function renderDailyLog(entry, habits) {
   ].join("\n");
 }
 function parseDailyLogEntry(content, fallbackDate, habits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
   const lines = content.split(/\r?\n/);
   if (lines[0] !== "---") {
     return null;
@@ -732,8 +767,9 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     sleepTime: (_g = frontmatter.get("sleepTime")) != null ? _g : typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : "",
     moodScore: Number((_i = (_h = frontmatter.get("moodScore")) != null ? _h : parsedEntry.moodScore) != null ? _i : 0),
     energyScore: Number((_k = (_j = frontmatter.get("energyScore")) != null ? _j : parsedEntry.energyScore) != null ? _k : 0),
-    habits: (_l = parsedEntry.habits) != null ? _l : baseEntry.habits,
-    habitEvents: (_m = parsedEntry.habitEvents) != null ? _m : baseEntry.habitEvents,
+    anxietyScore: Number((_m = (_l = frontmatter.get("anxietyScore")) != null ? _l : parsedEntry.anxietyScore) != null ? _m : 0),
+    habits: (_n = parsedEntry.habits) != null ? _n : baseEntry.habits,
+    habitEvents: (_o = parsedEntry.habitEvents) != null ? _o : baseEntry.habitEvents,
     todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
@@ -743,6 +779,8 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
     workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    relaxSessions: Array.isArray(parsedEntry.relaxSessions) ? parsedEntry.relaxSessions : baseEntry.relaxSessions,
+    breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
@@ -755,8 +793,12 @@ function renderPeriodReport(input) {
   let moodDays = 0;
   let energyTotal = 0;
   let energyDays = 0;
+  let anxietyTotal = 0;
+  let anxietyDays = 0;
   let trackedWorkMinutes = 0;
   let trackedNapMinutes = 0;
+  let trackedRelaxMinutes = 0;
+  let trackedBreakMinutes = 0;
   let daysWithNaps = 0;
   input.entries.forEach((entry) => {
     if (entry.foodLog.length > 0) {
@@ -776,8 +818,14 @@ function renderPeriodReport(input) {
       energyTotal += entry.energyScore;
       energyDays += 1;
     }
+    if (entry.anxietyScore > 0) {
+      anxietyTotal += entry.anxietyScore;
+      anxietyDays += 1;
+    }
     trackedWorkMinutes += getTrackedWorkMinutes(entry);
     trackedNapMinutes += getTrackedMinutes(entry.napSessions);
+    trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
+    trackedBreakMinutes += getTrackedBreakMinutes(entry);
     if (entry.napSessions.length > 0) {
       daysWithNaps += 1;
     }
@@ -800,7 +848,8 @@ function renderPeriodReport(input) {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
     const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`;
+    const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed` : "no relax tracked";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
   });
   return [
     `# ${input.title}`,
@@ -816,8 +865,10 @@ function renderPeriodReport(input) {
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
     `- Days with naps tracked: ${daysWithNaps}`,
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
+    `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
+    `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
     "",
     "## Habit Completion",
     "| Habit | Completed | Rate |",
@@ -838,8 +889,20 @@ function closeOpenWorkSessions(entry, timestamp) {
 function closeOpenNapSessions(entry, timestamp) {
   entry.napSessions = entry.napSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
+function closeOpenRelaxSessions(entry, timestamp) {
+  entry.relaxSessions = entry.relaxSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+function closeOpenBreakSessions(entry, timestamp) {
+  entry.breakSessions = entry.breakSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
 function getTrackedWorkMinutes(entry) {
   return getTrackedMinutes(entry.workSessions);
+}
+function getTrackedRelaxMinutes(entry) {
+  return getTrackedMinutes(entry.relaxSessions);
+}
+function getTrackedBreakMinutes(entry) {
+  return getTrackedMinutes(entry.breakSessions);
 }
 function getTrackedMinutes(sessions) {
   return sessions.reduce((total, session) => {
@@ -910,6 +973,13 @@ function renderWeeklyReview(input) {
     ...input.entries.length > 0 ? input.entries.map((entry) => `- ${entry.date}: ${entry.completedTasks.length} archived, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`) : ["- No daily entries recorded."],
     ""
   ].join("\n");
+}
+function getSleepMinutesForDay(entry, previousEntry) {
+  const napMinutes = getTrackedMinutes(entry.napSessions);
+  if (!(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime) {
+    return napMinutes;
+  }
+  return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
 }
 
 // src/dashboard-todo.ts
@@ -1802,7 +1872,7 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
     await this.render();
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -1857,8 +1927,16 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       const aiStatus = this.plugin.getAiStatus();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
+      const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
+      const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
       const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
+      const activeRelaxSession = (_g = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _g : null;
+      const activeBreakSession = (_h = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _h : null;
+      const activeModeLabel = activeBreakSession ? "On break" : activeNapSession ? "Napping" : activeWorkSession ? "Working" : activeRelaxSession ? "Relaxing" : dayState.status === "in-progress" ? "Idle" : "Offline";
+      const dayToggleLabel = dayState.status === "in-progress" ? "End day" : "Begin day";
+      const dayToggleIcon = dayState.status === "in-progress" ? "moon-star" : "sunrise";
+      const dayToggleAction = dayState.status === "in-progress" ? async () => this.plugin.endLogicalDay() : async () => this.plugin.beginLogicalDay();
       const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
@@ -1868,8 +1946,9 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       const dayFlowStatus = dayFlowCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
-      createSemanticChip(dayFlowStatus, activeWorkSession ? "Working" : "Not working", activeWorkSession ? "capture" : "neutral");
-      createSemanticChip(dayFlowStatus, activeNapSession ? "Napping" : "Awake", activeNapSession ? "alert" : "neutral");
+      createSemanticChip(dayFlowStatus, activeModeLabel, activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(dayFlowStatus, activeRelaxSession ? "Relaxing tracked" : "No relax active", activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
       const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
@@ -1877,16 +1956,47 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
       this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
+      this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));
+      this.renderDayMetric(dayFlowGrid, "Tracked breaks", formatMinutesAsHours(trackedBreakMinutes));
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Live break", activeBreakSession ? formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
       const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-actions-inline" });
-      createButton(dayFlowActions, "Begin day", async () => this.plugin.beginLogicalDay(), dayState.status !== "in-progress", "sunrise");
-      createButton(dayFlowActions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+      createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(dayFlowActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
+      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(), false, activeRelaxSession ? "square" : "coffee");
+      createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(), false, activeBreakSession ? "square" : "pause");
+      const weekBoardCard = createCard(grid, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
+        icon: "layout-dashboard",
+        eyebrow: "Week",
+        tone: "health",
+        tag: "Visual"
+      });
+      const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(weekLegend, "Sleep", "focus");
+      createSemanticChip(weekLegend, "Work", "capture");
+      createSemanticChip(weekLegend, "Relax", "health");
+      createSemanticChip(weekLegend, "Unknown", "neutral");
+      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-board" });
+      this.getCurrentWeekTimeBoard().forEach((day) => {
+        const row = weekBoard.createDiv({ cls: "daily-dashboard-week-row" });
+        if (day.isToday) {
+          row.addClass("is-today");
+        }
+        const summary = row.createDiv({ cls: "daily-dashboard-week-row-summary" });
+        summary.createEl("strong", { text: day.label });
+        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `${day.date} \u2022 Sleep ${formatMinutesAsHours(day.sleepMinutes)} \u2022 Work ${formatMinutesAsHours(day.workMinutes)} \u2022 Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
+        const bar = row.createDiv({ cls: "daily-dashboard-week-bar" });
+        this.appendWeekSegment(bar, "sleep", day.sleepMinutes);
+        this.appendWeekSegment(bar, "work", day.workMinutes);
+        this.appendWeekSegment(bar, "relax", day.relaxMinutes);
+        this.appendWeekSegment(bar, "unknown", day.unknownMinutes);
+      });
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
@@ -1943,6 +2053,7 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       });
       this.renderScoreControl(stateCard, "Mood", todayEntry.moodScore, (value) => this.plugin.updateMoodScore(value));
       this.renderScoreControl(stateCard, "Energy", todayEntry.energyScore, (value) => this.plugin.updateEnergyScore(value));
+      this.renderScoreControl(stateCard, "Anxiety", todayEntry.anxietyScore, (value) => this.plugin.updateAnxietyScore(value));
       const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
       missedCard.createEl("strong", { text: "Habit misses so far" });
       missedCard.createEl("span", {
@@ -1962,6 +2073,8 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         tone: "state",
         tag: "Track"
       });
+      const habitActions = habitsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(habitActions, "Add habit", async () => this.plugin.openAddHabitFlow(), false, "plus-circle");
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit) => {
         var _a2, _b2;
@@ -1992,6 +2105,11 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
             void this.plugin.updateHabitValue(habit.id, nextValue);
           });
         }
+        const removeButton = controls.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+        removeButton.type = "button";
+        removeButton.addEventListener("click", () => {
+          void this.plugin.removeHabitDefinition(habit.id);
+        });
       });
       const quickAddCard = createCard(grid, "Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
         icon: "plus-circle",
@@ -2042,7 +2160,11 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         tone: "log",
         tag: "Log"
       });
-      const foodInputRow = foodCard.createDiv({ cls: "daily-dashboard-inline-form" });
+      const foodInputRow = foodCard.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const foodAmountInput = foodInputRow.createEl("input", {
+        cls: "daily-dashboard-amount-input",
+        attr: { type: "number", min: "1", max: "24", value: "1", ariaLabel: "Food amount" }
+      });
       const foodInput = foodInputRow.createEl("input", {
         cls: "daily-dashboard-input",
         attr: { type: "text", placeholder: "Add a meal or snack" }
@@ -2054,8 +2176,9 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         if (!value) {
           return;
         }
-        await this.plugin.addFoodEntry(value);
+        await this.plugin.addFoodEntry(value, Number(foodAmountInput.value));
         foodInput.value = "";
+        foodAmountInput.value = "1";
       };
       foodInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -2071,14 +2194,23 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Breakfast", async () => this.plugin.addFoodEntry("Breakfast"), false, "sunrise");
-        createButton(emptyActions, "Lunch", async () => this.plugin.addFoodEntry("Lunch"), false, "utensils-crossed");
-        createButton(emptyActions, "Dinner", async () => this.plugin.addFoodEntry("Dinner"), false, "moon-star");
+        createButton(emptyActions, "Breakfast", async () => this.plugin.addFoodEntry("Breakfast", 1), false, "sunrise");
+        createButton(emptyActions, "Lunch", async () => this.plugin.addFoodEntry("Lunch", 1), false, "utensils-crossed");
+        createButton(emptyActions, "Dinner", async () => this.plugin.addFoodEntry("Dinner", 1), false, "moon-star");
       } else {
         todayEntry.foodLog.forEach((item, index) => {
           const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
-          row.createEl("span", { text: item.text });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          const rowActions = row.createDiv({ cls: "daily-dashboard-food-actions" });
+          const amountInput = rowActions.createEl("input", {
+            cls: "daily-dashboard-amount-input",
+            attr: { type: "number", min: "1", max: "24", value: `${item.amount}`, ariaLabel: `Amount for ${item.text}` }
+          });
+          amountInput.addEventListener("change", () => {
+            void this.plugin.updateFoodEntryAmount(index, Number(amountInput.value));
+          });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
@@ -2387,6 +2519,45 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         void onSelect(currentValue === score ? 0 : score);
       });
     }
+  }
+  getCurrentWeekTimeBoard() {
+    const today = /* @__PURE__ */ new Date();
+    const currentDayIndex = (today.getDay() + 6) % 7;
+    const start = new Date(today);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - currentDayIndex);
+    const allEntries = this.plugin.getAllEntries();
+    const entryMap = new Map(allEntries.map((entry) => [entry.date, entry]));
+    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    return labels.map((label, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const dateKey = formatDateKey(date);
+      const previousDate = new Date(date);
+      previousDate.setDate(date.getDate() - 1);
+      const entry = entryMap.get(dateKey);
+      const previousEntry = entryMap.get(formatDateKey(previousDate));
+      const sleepMinutes = entry ? getSleepMinutesForDay(entry, previousEntry) : 0;
+      const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
+      const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
+      const unknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes);
+      return {
+        label,
+        date: dateKey,
+        sleepMinutes,
+        workMinutes,
+        relaxMinutes,
+        unknownMinutes,
+        isToday: dateKey === formatDateKey(today)
+      };
+    });
+  }
+  appendWeekSegment(parent, tone, minutes) {
+    const segment = parent.createDiv({ cls: "daily-dashboard-week-segment" });
+    segment.addClass(`is-${tone}`);
+    segment.style.setProperty("--daily-dashboard-segment-grow", `${Math.max(minutes, 1)}`);
+    segment.ariaLabel = `${tone} ${formatMinutesAsHours(minutes)}`;
+    segment.title = `${tone}: ${formatMinutesAsHours(minutes)}`;
   }
 };
 var CreateProjectModal = class extends import_obsidian3.Modal {
@@ -2996,6 +3167,46 @@ function setDashboardSectionExpanded(sectionKey, expanded) {
 function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
+var AddHabitModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.habitName = "";
+    this.targetCount = "1";
+    this.plugin = plugin;
+  }
+  onOpen() {
+    this.setTitle("Add Habit");
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian3.Setting(contentEl).setName("Habit name").setDesc("Shown in the dashboard and saved in habit definitions.").addText((text) => {
+      text.setPlaceholder("Drink water").onChange((value) => {
+        this.habitName = value;
+      });
+      window.setTimeout(() => text.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Target count").setDesc("How many times per day counts as complete.").addText((text) => {
+      text.setPlaceholder("1").setValue(this.targetCount).onChange((value) => {
+        this.targetCount = value;
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "1";
+      text.inputEl.max = "12";
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Add habit").setCta().onClick(async () => {
+        await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount));
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 
 // main.ts
 var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
@@ -3133,6 +3344,13 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       }
     });
     this.addCommand({
+      id: "add-dashboard-habit",
+      name: "Add habit",
+      callback: () => {
+        void this.openAddHabitFlow();
+      }
+    });
+    this.addCommand({
       id: "begin-logical-day",
       name: "Begin logical day",
       callback: () => {
@@ -3179,6 +3397,34 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       name: "Stop nap",
       callback: () => {
         void this.stopNapSession();
+      }
+    });
+    this.addCommand({
+      id: "start-relax-session",
+      name: "Start relaxing",
+      callback: () => {
+        void this.startRelaxSession();
+      }
+    });
+    this.addCommand({
+      id: "stop-relax-session",
+      name: "End relaxing",
+      callback: () => {
+        void this.stopRelaxSession();
+      }
+    });
+    this.addCommand({
+      id: "start-break-session",
+      name: "Start break",
+      callback: () => {
+        void this.startBreakSession();
+      }
+    });
+    this.addCommand({
+      id: "stop-break-session",
+      name: "End break",
+      callback: () => {
+        void this.stopBreakSession();
       }
     });
     this.addCommand({
@@ -3296,11 +3542,23 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   isNapSessionActive() {
     return this.getTodayEntry().napSessions.some((session) => session.end === null);
   }
+  isRelaxSessionActive() {
+    return this.getTodayEntry().relaxSessions.some((session) => session.end === null);
+  }
+  isBreakSessionActive() {
+    return this.getTodayEntry().breakSessions.some((session) => session.end === null);
+  }
   getTrackedWorkMinutes(entry = this.getTodayEntry()) {
     return getTrackedWorkMinutes(entry);
   }
   getTrackedNapMinutes(entry = this.getTodayEntry()) {
     return getTrackedMinutes(entry.napSessions);
+  }
+  getTrackedRelaxMinutes(entry = this.getTodayEntry()) {
+    return getTrackedRelaxMinutes(entry);
+  }
+  getTrackedBreakMinutes(entry = this.getTodayEntry()) {
+    return getTrackedBreakMinutes(entry);
   }
   getAllEntries() {
     return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));
@@ -3396,6 +3654,11 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     entry.energyScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
+  async updateAnxietyScore(value) {
+    const entry = this.getTodayEntry();
+    entry.anxietyScore = clamp(value, 0, 5);
+    await this.persistEntry(entry);
+  }
   async updateHabitValue(habitId, value) {
     var _a;
     const definitions = this.getHabitDefinitions();
@@ -3417,13 +3680,59 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     entry.habits[habitId] = nextValue;
     await this.persistEntry(entry);
   }
-  async addFoodEntry(value) {
+  async addHabitDefinition(label, target) {
+    const normalizedLabel = label.trim();
+    if (!normalizedLabel) {
+      new import_obsidian4.Notice("Habit name is required.");
+      return;
+    }
+    const nextHabitId = createHabitId(normalizedLabel);
+    if (this.data.settings.habitDefinitions.some((habit) => habit.id === nextHabitId)) {
+      new import_obsidian4.Notice(`A habit named ${normalizedLabel} already exists.`);
+      return;
+    }
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: [
+        ...this.getHabitDefinitions(),
+        {
+          id: nextHabitId,
+          label: normalizedLabel,
+          target: clamp(Math.round(target), 1, 12)
+        }
+      ]
+    });
+  }
+  async removeHabitDefinition(habitId) {
+    if (this.getHabitDefinitions().length <= 1) {
+      new import_obsidian4.Notice("Keep at least one habit defined.");
+      return;
+    }
+    const nextDefinitions = this.getHabitDefinitions().filter((habit) => habit.id !== habitId);
+    if (nextDefinitions.length === this.getHabitDefinitions().length) {
+      return;
+    }
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: nextDefinitions
+    });
+  }
+  async addFoodEntry(value, amount = 1) {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
       return;
     }
     const entry = this.getTodayEntry();
-    entry.foodLog = [{ text: trimmedValue, loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()) }, ...entry.foodLog];
+    entry.foodLog = [{ text: trimmedValue, amount: clamp(Math.round(amount), 1, 24), loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()) }, ...entry.foodLog];
+    await this.persistEntry(entry);
+  }
+  async updateFoodEntryAmount(index, amount) {
+    const entry = this.getTodayEntry();
+    const nextEntry = entry.foodLog[index];
+    if (!nextEntry) {
+      return;
+    }
+    nextEntry.amount = clamp(Math.round(amount), 1, 24);
     await this.persistEntry(entry);
   }
   async removeFoodEntry(index) {
@@ -3479,6 +3788,8 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     closeOpenWorkSessions(entry, timestamp);
     closeOpenNapSessions(entry, timestamp);
+    closeOpenRelaxSessions(entry, timestamp);
+    closeOpenBreakSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
       status: "ended"
@@ -3521,7 +3832,9 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       new import_obsidian4.Notice("A work session is already active.");
       return;
     }
-    entry.workSessions = [...entry.workSessions, { start: formatDateTimeKey(/* @__PURE__ */ new Date()), end: null }];
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeCompetingSessions(entry, timestamp, "work");
+    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new import_obsidian4.Notice("Work session started.");
   }
@@ -3546,7 +3859,9 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       new import_obsidian4.Notice("A nap session is already active.");
       return;
     }
-    entry.napSessions = [...entry.napSessions, { start: formatDateTimeKey(/* @__PURE__ */ new Date()), end: null }];
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeCompetingSessions(entry, timestamp, "nap");
+    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
     new import_obsidian4.Notice("Nap started.");
   }
@@ -3560,6 +3875,60 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
     await this.persistEntry(entry);
     new import_obsidian4.Notice("Nap stopped.");
+  }
+  async startRelaxSession() {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian4.Notice("Begin your logical day before tracking relaxing time.");
+      return;
+    }
+    const entry = this.getTodayEntry();
+    if (entry.relaxSessions.some((session) => session.end === null)) {
+      new import_obsidian4.Notice("A relaxing session is already active.");
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeCompetingSessions(entry, timestamp, "relax");
+    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice("Relaxing started.");
+  }
+  async stopRelaxSession() {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.relaxSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new import_obsidian4.Notice("No relaxing session is currently active.");
+      return;
+    }
+    activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice("Relaxing stopped.");
+  }
+  async startBreakSession() {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian4.Notice("Begin your logical day before starting a break.");
+      return;
+    }
+    const entry = this.getTodayEntry();
+    if (entry.breakSessions.some((session) => session.end === null)) {
+      new import_obsidian4.Notice("A break is already active.");
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeCompetingSessions(entry, timestamp, "break");
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice("Break started.");
+  }
+  async stopBreakSession() {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.breakSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new import_obsidian4.Notice("No break is currently active.");
+      return;
+    }
+    activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice("Break ended.");
   }
   async updateDailyNotes(value) {
     const entry = this.getTodayEntry();
@@ -3666,6 +4035,9 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     const categories = await this.getTodoCategories();
     new CreateProjectModal(this.app, this, categories).open();
+  }
+  async openAddHabitFlow() {
+    new AddHabitModal(this.app, this).open();
   }
   async createProjectAndNote(input) {
     const todoFile = this.getMasterTodoFile();
@@ -4336,7 +4708,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     this.data = await this.buildDataFromStorage();
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
-    var _a, _b;
+    var _a, _b, _c;
     const baseEntry = createEmptyEntry(date, settings.habitDefinitions);
     if (!entry) {
       return baseEntry;
@@ -4344,8 +4716,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const normalizedHabits = {};
     const normalizedHabitEvents = {};
     settings.habitDefinitions.forEach((habit) => {
-      var _a2, _b2, _c, _d, _e, _f;
-      const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d = (_c = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c.filter((item) => typeof item === "string" && item.trim().length > 0)) != null ? _d : [] : [];
+      var _a2, _b2, _c2, _d, _e, _f;
+      const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d = (_c2 = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c2.filter((item) => typeof item === "string" && item.trim().length > 0)) != null ? _d : [] : [];
       const normalizedCount = clamp(Number((_f = (_e = entry.habits) == null ? void 0 : _e[habit.id]) != null ? _f : rawEvents.length), 0, habit.target);
       normalizedHabits[habit.id] = normalizedCount;
       normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
@@ -4361,6 +4733,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number((_a = entry.moodScore) != null ? _a : 0), 0, 5),
       energyScore: clamp(Number((_b = entry.energyScore) != null ? _b : 0), 0, 5),
+      anxietyScore: clamp(Number((_c = entry.anxietyScore) != null ? _c : 0), 0, 5),
       todayFocus: Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 3) : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
@@ -4373,6 +4746,14 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
         end: typeof item.end === "string" ? item.end : null
       })) : [],
       napSessions: Array.isArray(entry.napSessions) ? entry.napSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null
+      })) : [],
+      relaxSessions: Array.isArray(entry.relaxSessions) ? entry.relaxSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null
+      })) : [],
+      breakSessions: Array.isArray(entry.breakSessions) ? entry.breakSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
         start: item.start,
         end: typeof item.end === "string" ? item.end : null
       })) : [],
@@ -4393,6 +4774,20 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   createEmptyEntry(date) {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+  closeCompetingSessions(entry, timestamp, keepOpen) {
+    if (keepOpen !== "work") {
+      closeOpenWorkSessions(entry, timestamp);
+    }
+    if (keepOpen !== "nap") {
+      closeOpenNapSessions(entry, timestamp);
+    }
+    if (keepOpen !== "relax") {
+      closeOpenRelaxSessions(entry, timestamp);
+    }
+    if (keepOpen !== "break") {
+      closeOpenBreakSessions(entry, timestamp);
+    }
   }
   getDailyLogPath(date, settings = this.data.settings) {
     return (0, import_obsidian4.normalizePath)(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
