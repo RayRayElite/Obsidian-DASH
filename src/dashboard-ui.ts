@@ -131,29 +131,32 @@ export class DailyDashboardView extends ItemView {
         tag: "Visual"
       });
       const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
+      const weekStage = weekBoard.createDiv({ cls: "daily-dashboard-week-stage" });
+      weekStage.createDiv({ cls: "daily-dashboard-week-platform" });
+      const weekBars = weekStage.createDiv({ cls: "daily-dashboard-week-bars" });
       this.getCurrentWeekTimeBoard().forEach((day) => {
-        const dayCard = weekBoard.createDiv({ cls: "daily-dashboard-week-day" });
+        const column = weekBars.createDiv({ cls: "daily-dashboard-week-column" });
         if (day.isToday) {
-          dayCard.addClass("is-today");
+          column.addClass("is-today");
         }
 
-        const heading = dayCard.createDiv({ cls: "daily-dashboard-week-day-heading" });
-        heading.createEl("strong", { text: day.label });
-        heading.createEl("span", { cls: "daily-dashboard-row-meta", text: day.date.slice(5) });
+        const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
+        this.renderWeekBarSegment(cylinder, "unknown", day.unknownMinutes);
+        this.renderWeekBarSegment(cylinder, "relax", day.relaxMinutes);
+        this.renderWeekBarSegment(cylinder, "work", day.workMinutes);
+        this.renderWeekBarSegment(cylinder, "sleep", day.sleepMinutes);
+        cylinder.createDiv({ cls: "daily-dashboard-week-cylinder-overlay" });
 
-        const visual = dayCard.createDiv({ cls: "daily-dashboard-week-day-visual" });
-        const orb = visual.createDiv({ cls: "daily-dashboard-week-orb" });
-        orb.style.background = this.buildWeekOrbGradient(day);
-        const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
-        orbCore.createEl("strong", { text: `${Math.round(((1440 - day.unknownMinutes) / 1440) * 100)}%` });
-        orbCore.createEl("span", { text: "Logged" });
-
-        const stats = dayCard.createDiv({ cls: "daily-dashboard-week-mini-stats" });
-        this.renderWeekMiniStat(stats, "Sl", formatMinutesAsHours(day.sleepMinutes), "focus");
-        this.renderWeekMiniStat(stats, "Wk", formatMinutesAsHours(day.workMinutes), "capture");
-        this.renderWeekMiniStat(stats, "Rx", formatMinutesAsHours(day.relaxMinutes), "health");
-        this.renderWeekMiniStat(stats, "Un", formatMinutesAsHours(day.unknownMinutes), "neutral");
+        const labels = column.createDiv({ cls: "daily-dashboard-week-labels" });
+        labels.createEl("strong", { text: day.label.toUpperCase() });
+        labels.createEl("span", { text: `${Number.parseInt(day.date.slice(-2), 10)}` });
       });
+
+      const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-week-legend" });
+      this.renderWeekLegendItem(weekLegend, "Sleep", "sleep");
+      this.renderWeekLegendItem(weekLegend, "Work", "work");
+      this.renderWeekLegendItem(weekLegend, "Relax", "relax");
+      this.renderWeekLegendItem(weekLegend, "Unknown", "unknown");
 
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
 
@@ -820,34 +823,38 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private buildWeekOrbGradient(day: {
-    sleepMinutes: number;
-    workMinutes: number;
-    relaxMinutes: number;
-    unknownMinutes: number;
-  }): string {
-    const total = 1440;
-    const segments = [
-      { color: "#d7c57a", minutes: day.sleepMinutes },
-      { color: "#74b0e6", minutes: day.workMinutes },
-      { color: "#75c9bc", minutes: day.relaxMinutes },
-      { color: "rgba(255,255,255,0.14)", minutes: day.unknownMinutes }
-    ];
-    let cursor = 0;
+  private renderWeekBarSegment(parent: HTMLElement, tone: "sleep" | "work" | "relax" | "unknown", minutes: number): void {
+    if (minutes <= 0) {
+      return;
+    }
 
-    return `conic-gradient(${segments.map((segment) => {
-      const start = ((cursor / total) * 100).toFixed(2);
-      cursor += segment.minutes;
-      const end = ((cursor / total) * 100).toFixed(2);
-      return `${segment.color} ${start}% ${end}%`;
-    }).join(", ")})`;
+    const segment = parent.createDiv({ cls: `daily-dashboard-week-segment is-${tone}` });
+    segment.style.height = `${(minutes / 1440) * 100}%`;
+    segment.ariaLabel = `${tone} ${this.formatWeekBarValue(minutes)}`;
+
+    const label = segment.createEl("span", { text: this.formatWeekBarValue(minutes) });
+    if (minutes < 120) {
+      label.addClass("is-compact");
+    }
   }
 
-  private renderWeekMiniStat(parent: HTMLElement, label: string, value: string, tone: DashboardTone): void {
-    const stat = parent.createDiv({ cls: "daily-dashboard-week-mini-stat" });
-    stat.addClass(`is-${tone}`);
-    stat.createEl("span", { cls: "daily-dashboard-habit-meta", text: label });
-    stat.createEl("strong", { text: value });
+  private renderWeekLegendItem(parent: HTMLElement, label: string, tone: "sleep" | "work" | "relax" | "unknown"): void {
+    const item = parent.createDiv({ cls: "daily-dashboard-week-legend-item" });
+    item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    item.createEl("span", { text: label });
+  }
+
+  private formatWeekBarValue(minutes: number): string {
+    if (minutes <= 0) {
+      return "0m";
+    }
+
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+
+    const hours = minutes / 60;
+    return `${hours.toFixed(minutes % 60 === 0 ? 0 : 1).replace(/\.0$/, "")}h`;
   }
 }
 
