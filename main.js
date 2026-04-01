@@ -1938,7 +1938,7 @@ function appendLinesToSection(content, sectionName, linesToAppend) {
 
 // src/dashboard-ui.ts
 var import_obsidian3 = require("obsidian");
-var DailyDashboardView = class extends import_obsidian3.ItemView {
+var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.workLogFilters = {
@@ -1947,6 +1947,8 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       fromDate: "",
       toDate: ""
     };
+    this.autoRefreshHandle = null;
+    this.lastRenderAt = 0;
     this.quickAddState = {
       projectName: "",
       sectionName: "Add",
@@ -1965,6 +1967,10 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
   }
   async onOpen() {
     await this.render();
+    this.startAutoRefresh();
+  }
+  async onClose() {
+    this.stopAutoRefresh();
   }
   isSectionExpanded(sectionKey) {
     return getDashboardExpandedSections().has(sectionKey);
@@ -2556,10 +2562,36 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
         });
       }
+      this.lastRenderAt = Date.now();
     } catch (error) {
       console.error("Daily dashboard render failed", error);
       this.renderErrorState(error);
+      this.lastRenderAt = Date.now();
     }
+  }
+  startAutoRefresh() {
+    this.stopAutoRefresh();
+    this.autoRefreshHandle = window.setInterval(() => {
+      void this.maybeAutoRefresh();
+    }, _DailyDashboardView.ACTIVE_SESSION_REFRESH_MS);
+  }
+  stopAutoRefresh() {
+    if (this.autoRefreshHandle !== null) {
+      window.clearInterval(this.autoRefreshHandle);
+      this.autoRefreshHandle = null;
+    }
+  }
+  async maybeAutoRefresh() {
+    if (!this.leaf || !this.contentEl.isConnected) {
+      return;
+    }
+    const todayEntry = this.plugin.getTodayEntry();
+    const hasActiveSession = todayEntry.workSessions.some((session) => session.end === null) || todayEntry.napSessions.some((session) => session.end === null) || todayEntry.relaxSessions.some((session) => session.end === null) || todayEntry.breakSessions.some((session) => session.end === null);
+    const refreshInterval = hasActiveSession ? _DailyDashboardView.ACTIVE_SESSION_REFRESH_MS : _DailyDashboardView.IDLE_REFRESH_MS;
+    if (Date.now() - this.lastRenderAt < refreshInterval) {
+      return;
+    }
+    await this.render();
   }
   renderErrorState(error) {
     const { contentEl } = this;
@@ -2683,6 +2715,9 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
     return `${hours.toFixed(minutes % 60 === 0 ? 0 : 1).replace(/\.0$/, "")}h`;
   }
 };
+_DailyDashboardView.ACTIVE_SESSION_REFRESH_MS = 5 * 60 * 1e3;
+_DailyDashboardView.IDLE_REFRESH_MS = 30 * 60 * 1e3;
+var DailyDashboardView = _DailyDashboardView;
 var CreateProjectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, categories) {
     var _a;

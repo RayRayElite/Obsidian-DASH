@@ -32,6 +32,10 @@ export class DailyDashboardView extends ItemView {
     fromDate: "",
     toDate: ""
   };
+  private static readonly ACTIVE_SESSION_REFRESH_MS = 5 * 60 * 1000;
+  private static readonly IDLE_REFRESH_MS = 30 * 60 * 1000;
+  private autoRefreshHandle: number | null = null;
+  private lastRenderAt = 0;
   private quickAddState: QuickAddState = {
     projectName: "",
     sectionName: "Add",
@@ -57,6 +61,11 @@ export class DailyDashboardView extends ItemView {
 
   async onOpen(): Promise<void> {
     await this.render();
+    this.startAutoRefresh();
+  }
+
+  async onClose(): Promise<void> {
+    this.stopAutoRefresh();
   }
 
   private isSectionExpanded(sectionKey: string): boolean {
@@ -697,10 +706,48 @@ export class DailyDashboardView extends ItemView {
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
         });
       }
+
+      this.lastRenderAt = Date.now();
     } catch (error) {
       console.error("Daily dashboard render failed", error);
       this.renderErrorState(error);
+      this.lastRenderAt = Date.now();
     }
+  }
+
+  private startAutoRefresh(): void {
+    this.stopAutoRefresh();
+    this.autoRefreshHandle = window.setInterval(() => {
+      void this.maybeAutoRefresh();
+    }, DailyDashboardView.ACTIVE_SESSION_REFRESH_MS);
+  }
+
+  private stopAutoRefresh(): void {
+    if (this.autoRefreshHandle !== null) {
+      window.clearInterval(this.autoRefreshHandle);
+      this.autoRefreshHandle = null;
+    }
+  }
+
+  private async maybeAutoRefresh(): Promise<void> {
+    if (!this.leaf || !this.contentEl.isConnected) {
+      return;
+    }
+
+    const todayEntry = this.plugin.getTodayEntry();
+    const hasActiveSession = todayEntry.workSessions.some((session) => session.end === null)
+      || todayEntry.napSessions.some((session) => session.end === null)
+      || todayEntry.relaxSessions.some((session) => session.end === null)
+      || todayEntry.breakSessions.some((session) => session.end === null);
+    const refreshInterval = hasActiveSession
+      ? DailyDashboardView.ACTIVE_SESSION_REFRESH_MS
+      : DailyDashboardView.IDLE_REFRESH_MS;
+
+    if (Date.now() - this.lastRenderAt < refreshInterval) {
+      return;
+    }
+
+    await this.render();
   }
 
   private renderErrorState(error: unknown): void {
