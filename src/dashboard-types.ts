@@ -38,6 +38,7 @@ export interface DailyEntry {
   dayEndedAt: string;
   wakeTime: string;
   sleepTime: string;
+  sleepMinutesOverride: number | null;
   habits: Record<string, number>;
   habitEvents: Record<string, string[]>;
   moodScore: number;
@@ -51,10 +52,31 @@ export interface DailyEntry {
   dreamLog: string;
   notes: string;
   workSessions: WorkSession[];
+  workMinutesOverride: number | null;
   napSessions: WorkSession[];
+  napMinutesOverride: number | null;
   relaxSessions: WorkSession[];
+  relaxMinutesOverride: number | null;
   breakSessions: WorkSession[];
+  breakMinutesOverride: number | null;
   completedTasks: ArchivedTaskSnapshot[];
+}
+
+export interface DayRepairInput {
+  date: string;
+  status: "not-started" | "in-progress" | "ended";
+  dayStartedAt: string;
+  dayEndedAt: string;
+  wakeTime: string;
+  sleepTime: string;
+  sleepMinutesOverride: number;
+  workMinutesOverride: number;
+  napMinutesOverride: number;
+  relaxMinutesOverride: number;
+  breakMinutesOverride: number;
+  moodScore: number;
+  energyScore: number;
+  anxietyScore: number;
 }
 
 export interface DayLifecycleState {
@@ -232,6 +254,12 @@ export interface ReferenceOffloadResult {
 export interface ArchiveResult {
   content: string;
   archivedTasks: ArchivedTaskSnapshot[];
+}
+
+export interface ArchiveMaintenanceResult {
+  content: string;
+  archivedTasks: ArchivedTaskSnapshot[];
+  restoredTasks: ArchivedTaskSnapshot[];
 }
 
 export interface AiStructuredPayload {

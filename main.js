@@ -313,6 +313,7 @@ function createEmptyEntry(date, habits) {
     dayEndedAt: "",
     wakeTime: "",
     sleepTime: "",
+    sleepMinutesOverride: null,
     habits: habitValues,
     habitEvents,
     moodScore: 0,
@@ -326,9 +327,13 @@ function createEmptyEntry(date, habits) {
     dreamLog: "",
     notes: "",
     workSessions: [],
+    workMinutesOverride: null,
     napSessions: [],
+    napMinutesOverride: null,
     relaxSessions: [],
+    relaxMinutesOverride: null,
     breakSessions: [],
+    breakMinutesOverride: null,
     completedTasks: []
   };
 }
@@ -593,30 +598,31 @@ function computeMissedHabits(habits, definitions) {
 
 // src/dashboard-logs.ts
 function renderDailyLog(entry, habits) {
+  var _a, _b, _c, _d, _e;
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
-    var _a, _b;
-    const events = (_a = entry.habitEvents[habit.id]) != null ? _a : [];
+    var _a2, _b2;
+    const events = (_a2 = entry.habitEvents[habit.id]) != null ? _a2 : [];
     const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
-    return `- ${habit.label}: ${(_b = entry.habits[habit.id]) != null ? _b : 0}/${habit.target}${timing}`;
+    return `- ${habit.label}: ${(_b2 = entry.habits[habit.id]) != null ? _b2 : 0}/${habit.target}${timing}`;
   });
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
-    var _a;
-    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+    var _a2;
+    return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked work sessions"];
   const napSessionLines = entry.napSessions.length > 0 ? entry.napSessions.map((session) => {
-    var _a;
-    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+    var _a2;
+    return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked naps"];
   const relaxSessionLines = entry.relaxSessions.length > 0 ? entry.relaxSessions.map((session) => {
-    var _a;
-    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+    var _a2;
+    return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked relaxing sessions"];
   const breakSessionLines = entry.breakSessions.length > 0 ? entry.breakSessions.map((session) => {
-    var _a;
-    return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
+    var _a2;
+    return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked breaks"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
@@ -631,10 +637,15 @@ function renderDailyLog(entry, habits) {
     `dayEndedAt: ${entry.dayEndedAt || ""}`,
     `wakeTime: ${entry.wakeTime || ""}`,
     `sleepTime: ${entry.sleepTime || ""}`,
+    `sleepMinutesOverride: ${(_a = entry.sleepMinutesOverride) != null ? _a : ""}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
+    `workMinutesOverride: ${(_b = entry.workMinutesOverride) != null ? _b : ""}`,
+    `napMinutesOverride: ${(_c = entry.napMinutesOverride) != null ? _c : ""}`,
+    `relaxMinutesOverride: ${(_d = entry.relaxMinutesOverride) != null ? _d : ""}`,
+    `breakMinutesOverride: ${(_e = entry.breakMinutesOverride) != null ? _e : ""}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
@@ -698,7 +709,7 @@ function renderDailyLog(entry, habits) {
   ].join("\n");
 }
 function parseDailyLogEntry(content, fallbackDate, habits) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t;
   const lines = content.split(/\r?\n/);
   if (lines[0] !== "---") {
     return null;
@@ -765,11 +776,12 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     dayEndedAt: (_e = frontmatter.get("dayEndedAt")) != null ? _e : typeof parsedEntry.dayEndedAt === "string" ? parsedEntry.dayEndedAt : "",
     wakeTime: (_f = frontmatter.get("wakeTime")) != null ? _f : typeof parsedEntry.wakeTime === "string" ? parsedEntry.wakeTime : "",
     sleepTime: (_g = frontmatter.get("sleepTime")) != null ? _g : typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : "",
-    moodScore: Number((_i = (_h = frontmatter.get("moodScore")) != null ? _h : parsedEntry.moodScore) != null ? _i : 0),
-    energyScore: Number((_k = (_j = frontmatter.get("energyScore")) != null ? _j : parsedEntry.energyScore) != null ? _k : 0),
-    anxietyScore: Number((_m = (_l = frontmatter.get("anxietyScore")) != null ? _l : parsedEntry.anxietyScore) != null ? _m : 0),
-    habits: (_n = parsedEntry.habits) != null ? _n : baseEntry.habits,
-    habitEvents: (_o = parsedEntry.habitEvents) != null ? _o : baseEntry.habitEvents,
+    sleepMinutesOverride: normalizeOptionalMinutes((_h = frontmatter.get("sleepMinutesOverride")) != null ? _h : parsedEntry.sleepMinutesOverride),
+    moodScore: Number((_j = (_i = frontmatter.get("moodScore")) != null ? _i : parsedEntry.moodScore) != null ? _j : 0),
+    energyScore: Number((_l = (_k = frontmatter.get("energyScore")) != null ? _k : parsedEntry.energyScore) != null ? _l : 0),
+    anxietyScore: Number((_n = (_m = frontmatter.get("anxietyScore")) != null ? _m : parsedEntry.anxietyScore) != null ? _n : 0),
+    habits: (_o = parsedEntry.habits) != null ? _o : baseEntry.habits,
+    habitEvents: (_p = parsedEntry.habitEvents) != null ? _p : baseEntry.habitEvents,
     todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : baseEntry.todayFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
@@ -778,9 +790,13 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
     workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
+    workMinutesOverride: normalizeOptionalMinutes((_q = frontmatter.get("workMinutesOverride")) != null ? _q : parsedEntry.workMinutesOverride),
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    napMinutesOverride: normalizeOptionalMinutes((_r = frontmatter.get("napMinutesOverride")) != null ? _r : parsedEntry.napMinutesOverride),
     relaxSessions: Array.isArray(parsedEntry.relaxSessions) ? parsedEntry.relaxSessions : baseEntry.relaxSessions,
+    relaxMinutesOverride: normalizeOptionalMinutes((_s = frontmatter.get("relaxMinutesOverride")) != null ? _s : parsedEntry.relaxMinutesOverride),
     breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
+    breakMinutesOverride: normalizeOptionalMinutes((_t = frontmatter.get("breakMinutesOverride")) != null ? _t : parsedEntry.breakMinutesOverride),
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
@@ -846,7 +862,8 @@ function renderPeriodReport(input) {
   const workLines = Array.from(workByProject.entries()).sort((left, right) => right[1] - left[1]).map(([project, count]) => `- ${project}: ${count}`);
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
-    const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
+    const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
+    const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
     const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed` : "no relax tracked";
     return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
@@ -896,13 +913,26 @@ function closeOpenBreakSessions(entry, timestamp) {
   entry.breakSessions = entry.breakSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
 function getTrackedWorkMinutes(entry) {
-  return getTrackedMinutes(entry.workSessions);
+  return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
+}
+function getTrackedNapMinutes(entry) {
+  return resolveTrackedMinutes(entry.napSessions, entry.napMinutesOverride);
 }
 function getTrackedRelaxMinutes(entry) {
-  return getTrackedMinutes(entry.relaxSessions);
+  return resolveTrackedMinutes(entry.relaxSessions, entry.relaxMinutesOverride);
 }
 function getTrackedBreakMinutes(entry) {
-  return getTrackedMinutes(entry.breakSessions);
+  return resolveTrackedMinutes(entry.breakSessions, entry.breakMinutesOverride);
+}
+function resolveTrackedMinutes(sessions, override) {
+  return typeof override === "number" && override >= 0 ? override : getTrackedMinutes(sessions);
+}
+function normalizeOptionalMinutes(value) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
+  }
+  return Math.round(numericValue);
 }
 function getTrackedMinutes(sessions) {
   return sessions.reduce((total, session) => {
@@ -975,7 +1005,10 @@ function renderWeeklyReview(input) {
   ].join("\n");
 }
 function getSleepMinutesForDay(entry, previousEntry) {
-  const napMinutes = getTrackedMinutes(entry.napSessions);
+  if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
+    return entry.sleepMinutesOverride;
+  }
+  const napMinutes = getTrackedNapMinutes(entry);
   if (!(previousEntry == null ? void 0 : previousEntry.sleepTime) || !entry.wakeTime) {
     return napMinutes;
   }
@@ -1136,6 +1169,15 @@ function parseTodoSnapshot(content) {
     cleanupSuggestions
   };
 }
+function reconcileCompletedTasks(content, archivedAt) {
+  const restoredResult = restoreUncheckedArchivedTasks(content);
+  const archiveResult = archiveCompletedTasks(restoredResult.content, archivedAt);
+  return {
+    content: archiveResult.content,
+    archivedTasks: archiveResult.archivedTasks,
+    restoredTasks: restoredResult.restoredTasks
+  };
+}
 function archiveCompletedTasks(content, archivedAt) {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -1160,6 +1202,81 @@ function archiveCompletedTasks(content, archivedAt) {
   return {
     content: output.join("\n"),
     archivedTasks
+  };
+}
+function restoreUncheckedArchivedTasks(content) {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return { content, restoredTasks: [] };
+  }
+  const output = [];
+  const restoredTasks = [];
+  let cursor = 0;
+  projectRanges.forEach((project) => {
+    output.push(...lines.slice(cursor, project.start));
+    const result = restoreUncheckedArchivedTasksFromProjectLines(
+      lines.slice(project.start, project.end + 1),
+      project.name
+    );
+    output.push(...result.lines);
+    restoredTasks.push(...result.restoredTasks);
+    cursor = project.end + 1;
+  });
+  output.push(...lines.slice(cursor));
+  return {
+    content: output.join("\n"),
+    restoredTasks
+  };
+}
+function restoreUncheckedArchivedTasksFromProjectLines(projectLines, projectName) {
+  const keptLines = [];
+  const restoredTasks = [];
+  let currentSection = "General";
+  projectLines.forEach((line) => {
+    const sectionName = getSectionName(line);
+    if (sectionName) {
+      currentSection = sectionName;
+      keptLines.push(line);
+      return;
+    }
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (taskMatch && currentSection.trim().toLowerCase() === "completed archive" && taskMatch[1] === " ") {
+      const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), projectName);
+      if (archivedTask) {
+        restoredTasks.push(archivedTask);
+        return;
+      }
+    }
+    keptLines.push(line);
+  });
+  if (restoredTasks.length === 0) {
+    return { lines: projectLines, restoredTasks: [] };
+  }
+  let nextContent = keptLines.join("\n");
+  restoredTasks.forEach((task) => {
+    nextContent = insertTaskIntoProjectSection(nextContent, projectName, task.section, task.text);
+  });
+  return {
+    lines: nextContent.split(/\r?\n/),
+    restoredTasks
+  };
+}
+function parseArchivedArchiveTask(value, projectName) {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}(?::\d{2})?)?)\s+-\s+\[([^\]]+)\]\s+(.*)$/);
+  if (!match) {
+    return null;
+  }
+  const [, archivedAt, section, text] = match;
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return null;
+  }
+  return {
+    project: projectName,
+    section: section.trim() || "General",
+    text: trimmedText,
+    archivedAt
   };
 }
 function archiveCompletedTasksFromProjectLines(projectLines, projectName, archivedAt) {
@@ -1963,20 +2080,25 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       createSemanticChip(weekLegend, "Work", "capture");
       createSemanticChip(weekLegend, "Relax", "health");
       createSemanticChip(weekLegend, "Unknown", "neutral");
-      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-board" });
+      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-orbit" });
       this.getCurrentWeekTimeBoard().forEach((day) => {
-        const row = weekBoard.createDiv({ cls: "daily-dashboard-week-row" });
+        const card = weekBoard.createDiv({ cls: "daily-dashboard-week-orb-card" });
         if (day.isToday) {
-          row.addClass("is-today");
+          card.addClass("is-today");
         }
-        const summary = row.createDiv({ cls: "daily-dashboard-week-row-summary" });
-        summary.createEl("strong", { text: day.label });
-        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `${day.date} \u2022 Sleep ${formatMinutesAsHours(day.sleepMinutes)} \u2022 Work ${formatMinutesAsHours(day.workMinutes)} \u2022 Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
-        const bar = row.createDiv({ cls: "daily-dashboard-week-bar" });
-        this.appendWeekSegment(bar, "sleep", day.sleepMinutes);
-        this.appendWeekSegment(bar, "work", day.workMinutes);
-        this.appendWeekSegment(bar, "relax", day.relaxMinutes);
-        this.appendWeekSegment(bar, "unknown", day.unknownMinutes);
+        const orb = card.createDiv({ cls: "daily-dashboard-week-orb" });
+        orb.style.background = this.buildWeekOrbGradient(day);
+        const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
+        orbCore.createEl("strong", { text: day.label });
+        orbCore.createEl("span", { text: `${Math.round((1440 - day.unknownMinutes) / 1440 * 100)}% logged` });
+        const summary = card.createDiv({ cls: "daily-dashboard-week-orb-summary" });
+        summary.createEl("strong", { text: day.date });
+        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `Sleep ${formatMinutesAsHours(day.sleepMinutes)} \u2022 Work ${formatMinutesAsHours(day.workMinutes)} \u2022 Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
+        const stats = card.createDiv({ cls: "daily-dashboard-week-orb-stats" });
+        this.renderDayMetric(stats, "Sleep", formatMinutesAsHours(day.sleepMinutes));
+        this.renderDayMetric(stats, "Work", formatMinutesAsHours(day.workMinutes));
+        this.renderDayMetric(stats, "Relax", formatMinutesAsHours(day.relaxMinutes));
+        this.renderDayMetric(stats, "Unknown", formatMinutesAsHours(day.unknownMinutes));
       });
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
@@ -2534,12 +2656,21 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       };
     });
   }
-  appendWeekSegment(parent, tone, minutes) {
-    const segment = parent.createDiv({ cls: "daily-dashboard-week-segment" });
-    segment.addClass(`is-${tone}`);
-    segment.style.setProperty("--daily-dashboard-segment-grow", `${Math.max(minutes, 1)}`);
-    segment.ariaLabel = `${tone} ${formatMinutesAsHours(minutes)}`;
-    segment.title = `${tone}: ${formatMinutesAsHours(minutes)}`;
+  buildWeekOrbGradient(day) {
+    const total = 1440;
+    const segments = [
+      { color: "#d7c57a", minutes: day.sleepMinutes },
+      { color: "#74b0e6", minutes: day.workMinutes },
+      { color: "#75c9bc", minutes: day.relaxMinutes },
+      { color: "rgba(255,255,255,0.14)", minutes: day.unknownMinutes }
+    ];
+    let cursor = 0;
+    return `conic-gradient(${segments.map((segment) => {
+      const start = (cursor / total * 100).toFixed(2);
+      cursor += segment.minutes;
+      const end = (cursor / total * 100).toFixed(2);
+      return `${segment.color} ${start}% ${end}%`;
+    }).join(", ")})`;
   }
 };
 var CreateProjectModal = class extends import_obsidian3.Modal {
@@ -2636,43 +2767,88 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
     this.plugin = plugin;
-    const dayState = this.plugin.getDayState();
-    this.logicalDate = dayState.activeDate;
-    this.logicalStatus = dayState.status;
+    this.state = this.plugin.getDayRepairInput();
   }
   onOpen() {
     this.setTitle("Repair Logical Day");
     const { contentEl } = this;
     contentEl.empty();
     contentEl.createEl("p", {
-      text: "Use this when test clicks or a bad state push the dashboard onto the wrong date. The safest reset is today's date with status set to Not started."
+      text: "Use this when the day flow needs correction. You can fix the logical date, key timestamps, and tracked totals so reports and the weekly board stay accurate."
     });
-    new import_obsidian3.Setting(contentEl).setName("Logical date").setDesc("Enter the date the dashboard should use in YYYY-MM-DD format.").addText((text) => {
-      text.setPlaceholder("2026-04-01").setValue(this.logicalDate).onChange((value) => {
-        this.logicalDate = value.trim();
+    new import_obsidian3.Setting(contentEl).setName("Logical date").setDesc("Enter the date the dashboard should use in YYYY-MM-DD format, then load that date if you want its existing values.").addText((text) => {
+      text.setPlaceholder("2026-04-01").setValue(this.state.date).onChange((value) => {
+        this.state.date = value.trim();
       });
       window.setTimeout(() => text.inputEl.focus(), 0);
+    }).addButton((button) => {
+      button.setButtonText("Load date").onClick(() => {
+        this.state = this.plugin.getDayRepairInput(this.state.date.trim() || formatDateKey(/* @__PURE__ */ new Date()));
+        this.onOpen();
+      });
     });
     new import_obsidian3.Setting(contentEl).setName("Day status").setDesc("Choose whether the logical day should be idle, active, or already ended.").addDropdown((dropdown) => {
       dropdown.addOption("not-started", "Not started");
       dropdown.addOption("in-progress", "In progress");
       dropdown.addOption("ended", "Ended");
-      dropdown.setValue(this.logicalStatus);
+      dropdown.setValue(this.state.status);
       dropdown.onChange((value) => {
-        this.logicalStatus = value === "in-progress" || value === "ended" ? value : "not-started";
+        this.state.status = value === "in-progress" || value === "ended" ? value : "not-started";
       });
+    });
+    this.addDateTimeSetting(contentEl, "Day start", "When the day began.", this.state.dayStartedAt, (value) => {
+      this.state.dayStartedAt = value;
+    });
+    this.addDateTimeSetting(contentEl, "Day end", "When the day ended.", this.state.dayEndedAt, (value) => {
+      this.state.dayEndedAt = value;
+    });
+    this.addDateTimeSetting(contentEl, "Wake time", "Useful for sleep calculations and daily context.", this.state.wakeTime, (value) => {
+      this.state.wakeTime = value;
+    });
+    this.addDateTimeSetting(contentEl, "Sleep time", "When you actually went to sleep.", this.state.sleepTime, (value) => {
+      this.state.sleepTime = value;
+    });
+    this.addMinutesSetting(contentEl, "Hours slept", "Total sleep minutes used by the weekly tracker and reports.", this.state.sleepMinutesOverride, (value) => {
+      this.state.sleepMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Work minutes", "Correct tracked work if you missed a timer or ended it late.", this.state.workMinutesOverride, (value) => {
+      this.state.workMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Nap minutes", "Correct nap totals for the day.", this.state.napMinutesOverride, (value) => {
+      this.state.napMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Relax minutes", "Correct relaxing time totals.", this.state.relaxMinutesOverride, (value) => {
+      this.state.relaxMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Break minutes", "Correct break totals without editing raw sessions.", this.state.breakMinutesOverride, (value) => {
+      this.state.breakMinutesOverride = value;
+    });
+    this.addScoreSetting(contentEl, "Mood", this.state.moodScore, (value) => {
+      this.state.moodScore = value;
+    });
+    this.addScoreSetting(contentEl, "Energy", this.state.energyScore, (value) => {
+      this.state.energyScore = value;
+    });
+    this.addScoreSetting(contentEl, "Anxiety", this.state.anxietyScore, (value) => {
+      this.state.anxietyScore = value;
     });
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Reset to today").onClick(async () => {
-        this.logicalDate = formatDateTimeKey(/* @__PURE__ */ new Date()).slice(0, 10);
-        this.logicalStatus = "not-started";
-        await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
-        this.close();
+        this.state = this.plugin.getDayRepairInput(formatDateKey(/* @__PURE__ */ new Date()));
+        this.state.status = "not-started";
+        this.onOpen();
+      });
+    }).addButton((button) => {
+      button.setButtonText("Reload current").onClick(() => {
+        this.state = this.plugin.getDayRepairInput(this.state.date.trim() || this.plugin.getDayRepairInput().date);
+        this.onOpen();
       });
     }).addButton((button) => {
       button.setButtonText("Apply").setCta().onClick(async () => {
-        await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
-        this.close();
+        const didApply = await this.plugin.applyDayRepair(this.state);
+        if (didApply) {
+          this.close();
+        }
       });
     }).addExtraButton((button) => {
       button.setIcon("x").setTooltip("Cancel").onClick(() => {
@@ -2682,6 +2858,40 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
   }
   onClose() {
     this.contentEl.empty();
+  }
+  addDateTimeSetting(parent, name, description, value, onChange) {
+    new import_obsidian3.Setting(parent).setName(name).setDesc(description).addText((text) => {
+      text.setValue(this.toDateTimeLocalValue(value)).onChange((nextValue) => {
+        onChange(nextValue.trim());
+      });
+      text.inputEl.type = "datetime-local";
+    });
+  }
+  addMinutesSetting(parent, name, description, value, onChange) {
+    new import_obsidian3.Setting(parent).setName(name).setDesc(description).addText((text) => {
+      text.setValue(`${value}`).onChange((nextValue) => {
+        onChange(Math.max(0, Math.round(Number(nextValue) || 0)));
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
+      text.inputEl.max = "1440";
+    });
+  }
+  addScoreSetting(parent, name, value, onChange) {
+    new import_obsidian3.Setting(parent).setName(name).setDesc("0 to 5").addText((text) => {
+      text.setValue(`${value}`).onChange((nextValue) => {
+        onChange(Math.max(0, Math.min(5, Math.round(Number(nextValue) || 0))));
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
+      text.inputEl.max = "5";
+    });
+  }
+  toDateTimeLocalValue(value) {
+    if (!value.trim()) {
+      return "";
+    }
+    return value.replace(" ", "T").slice(0, 16);
   }
 };
 var PromoteTaskModal = class extends import_obsidian3.Modal {
@@ -3506,7 +3716,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     return getTrackedWorkMinutes(entry);
   }
   getTrackedNapMinutes(entry = this.getTodayEntry()) {
-    return getTrackedMinutes(entry.napSessions);
+    return getTrackedNapMinutes(entry);
   }
   getTrackedRelaxMinutes(entry = this.getTodayEntry()) {
     return getTrackedRelaxMinutes(entry);
@@ -3755,26 +3965,73 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   async openLogicalDayRepairFlow() {
     new LogicalDayRepairModal(this.app, this).open();
   }
+  getDayRepairInput(date = this.getTodayKey()) {
+    const entry = this.getOrCreateEntry(date);
+    const previousEntry = this.getPreviousEntry(date);
+    return {
+      date,
+      status: this.data.dayState.activeDate === date ? this.data.dayState.status : "ended",
+      dayStartedAt: entry.dayStartedAt,
+      dayEndedAt: entry.dayEndedAt,
+      wakeTime: entry.wakeTime,
+      sleepTime: entry.sleepTime,
+      sleepMinutesOverride: getSleepMinutesForDay(entry, previousEntry),
+      workMinutesOverride: getTrackedWorkMinutes(entry),
+      napMinutesOverride: getTrackedNapMinutes(entry),
+      relaxMinutesOverride: getTrackedRelaxMinutes(entry),
+      breakMinutesOverride: getTrackedBreakMinutes(entry),
+      moodScore: entry.moodScore,
+      energyScore: entry.energyScore,
+      anxietyScore: entry.anxietyScore
+    };
+  }
   async repairLogicalDay(date, status) {
-    const normalizedDate = date.trim();
+    const currentDraft = this.getDayRepairInput(date);
+    return await this.applyDayRepair({
+      ...currentDraft,
+      date,
+      status
+    });
+  }
+  async applyDayRepair(input) {
+    const normalizedDate = input.date.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
       new import_obsidian4.Notice("Logical day must use YYYY-MM-DD.");
-      return;
+      return false;
     }
     const parsedDate = /* @__PURE__ */ new Date(`${normalizedDate}T00:00:00`);
     if (Number.isNaN(parsedDate.getTime()) || formatDateKey(parsedDate) !== normalizedDate) {
       new import_obsidian4.Notice("Enter a valid calendar date.");
-      return;
+      return false;
+    }
+    const dayStartedAt = this.normalizeRepairTimestamp(input.dayStartedAt, "Day start");
+    const dayEndedAt = this.normalizeRepairTimestamp(input.dayEndedAt, "Day end");
+    const wakeTime = this.normalizeRepairTimestamp(input.wakeTime, "Wake time");
+    const sleepTime = this.normalizeRepairTimestamp(input.sleepTime, "Sleep time");
+    if (dayStartedAt === null || dayEndedAt === null || wakeTime === null || sleepTime === null) {
+      return false;
     }
     this.data.dayState = {
       activeDate: normalizedDate,
-      status
+      status: input.status
     };
-    this.getOrCreateEntry(normalizedDate);
-    await this.savePluginData();
-    await this.ensureTodayEntry();
+    const entry = this.getOrCreateEntry(normalizedDate);
+    entry.dayStartedAt = dayStartedAt;
+    entry.dayEndedAt = dayEndedAt;
+    entry.wakeTime = wakeTime;
+    entry.sleepTime = sleepTime;
+    entry.sleepMinutesOverride = clamp(Math.round(input.sleepMinutesOverride), 0, 1440);
+    entry.workMinutesOverride = clamp(Math.round(input.workMinutesOverride), 0, 1440);
+    entry.napMinutesOverride = clamp(Math.round(input.napMinutesOverride), 0, 1440);
+    entry.relaxMinutesOverride = clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
+    entry.breakMinutesOverride = clamp(Math.round(input.breakMinutesOverride), 0, 1440);
+    entry.moodScore = clamp(Math.round(input.moodScore), 0, 5);
+    entry.energyScore = clamp(Math.round(input.energyScore), 0, 5);
+    entry.anxietyScore = clamp(Math.round(input.anxietyScore), 0, 5);
+    await this.persistEntry(entry);
     this.refreshDashboardViews();
-    new import_obsidian4.Notice(`Logical day set to ${normalizedDate} (${status}).`);
+    new import_obsidian4.Notice(`Updated repair data for ${normalizedDate}.`);
+    return true;
   }
   async startWorkSession() {
     if (this.data.dayState.status !== "in-progress") {
@@ -3907,26 +4164,40 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     const content = await this.app.vault.read(todoFile);
     const archivedAt = formatDateTimeKey(/* @__PURE__ */ new Date());
-    const archiveResult = archiveCompletedTasks(content, archivedAt);
-    if (archiveResult.archivedTasks.length === 0) {
+    const archiveResult = reconcileCompletedTasks(content, archivedAt);
+    if (archiveResult.archivedTasks.length === 0 && archiveResult.restoredTasks.length === 0) {
       if (showNotice) {
-        new import_obsidian4.Notice("No completed checklist items were found to archive.");
+        new import_obsidian4.Notice("No archive changes were needed.");
       }
       return;
     }
     this.isAutoArchivingTodo = true;
     try {
-      await this.app.vault.modify(todoFile, archiveResult.content);
+      if (archiveResult.content !== content) {
+        await this.app.vault.modify(todoFile, archiveResult.content);
+      }
     } finally {
       window.setTimeout(() => {
         this.isAutoArchivingTodo = false;
       }, 50);
     }
-    const entry = this.getOrCreateEntry(archivedAt.slice(0, 10));
-    entry.completedTasks = [...archiveResult.archivedTasks, ...entry.completedTasks];
-    await this.persistEntry(entry);
+    if (archiveResult.archivedTasks.length > 0) {
+      const entry = this.getOrCreateEntry(archivedAt.slice(0, 10));
+      entry.completedTasks = [...archiveResult.archivedTasks, ...entry.completedTasks];
+      await this.persistEntry(entry);
+    }
+    if (archiveResult.restoredTasks.length > 0) {
+      await this.removeArchivedTaskSnapshots(archiveResult.restoredTasks);
+    }
     if (showNotice) {
-      new import_obsidian4.Notice(`Archived ${archiveResult.archivedTasks.length} completed task${archiveResult.archivedTasks.length === 1 ? "" : "s"}.`);
+      const noticeParts = [];
+      if (archiveResult.archivedTasks.length > 0) {
+        noticeParts.push(`archived ${archiveResult.archivedTasks.length} task${archiveResult.archivedTasks.length === 1 ? "" : "s"}`);
+      }
+      if (archiveResult.restoredTasks.length > 0) {
+        noticeParts.push(`restored ${archiveResult.restoredTasks.length} task${archiveResult.restoredTasks.length === 1 ? "" : "s"}`);
+      }
+      new import_obsidian4.Notice(`Master task hub ${noticeParts.join(" and ")}.`);
     }
   }
   async generateWeeklyReport() {
@@ -4683,6 +4954,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
       sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
+      sleepMinutesOverride: Number.isFinite(Number(entry.sleepMinutesOverride)) ? clamp(Number(entry.sleepMinutesOverride), 0, 1440) : null,
       habits: normalizedHabits,
       habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number((_a = entry.moodScore) != null ? _a : 0), 0, 5),
@@ -4699,18 +4971,22 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
         start: item.start,
         end: typeof item.end === "string" ? item.end : null
       })) : [],
+      workMinutesOverride: Number.isFinite(Number(entry.workMinutesOverride)) ? clamp(Number(entry.workMinutesOverride), 0, 1440) : null,
       napSessions: Array.isArray(entry.napSessions) ? entry.napSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
         start: item.start,
         end: typeof item.end === "string" ? item.end : null
       })) : [],
+      napMinutesOverride: Number.isFinite(Number(entry.napMinutesOverride)) ? clamp(Number(entry.napMinutesOverride), 0, 1440) : null,
       relaxSessions: Array.isArray(entry.relaxSessions) ? entry.relaxSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
         start: item.start,
         end: typeof item.end === "string" ? item.end : null
       })) : [],
+      relaxMinutesOverride: Number.isFinite(Number(entry.relaxMinutesOverride)) ? clamp(Number(entry.relaxMinutesOverride), 0, 1440) : null,
       breakSessions: Array.isArray(entry.breakSessions) ? entry.breakSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
         start: item.start,
         end: typeof item.end === "string" ? item.end : null
       })) : [],
+      breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
       completedTasks: Array.isArray(entry.completedTasks) ? entry.completedTasks.filter((item) => Boolean(item && typeof item === "object")).map((item) => ({
         project: typeof item.project === "string" ? item.project : "Unknown Project",
         section: typeof item.section === "string" ? item.section : "General",
@@ -4741,6 +5017,42 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     if (keepOpen !== "break") {
       closeOpenBreakSessions(entry, timestamp);
+    }
+  }
+  getPreviousEntry(date) {
+    const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate < date).sort();
+    const previousDate = dates.slice(-1)[0];
+    return previousDate ? this.data.entries[previousDate] : void 0;
+  }
+  normalizeRepairTimestamp(value, label) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    const parsed = new Date(trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T"));
+    if (Number.isNaN(parsed.getTime())) {
+      new import_obsidian4.Notice(`${label} must be a valid date and time.`);
+      return null;
+    }
+    return formatDateTimeKey(parsed);
+  }
+  async removeArchivedTaskSnapshots(tasks) {
+    const updatedDates = /* @__PURE__ */ new Set();
+    tasks.forEach((task) => {
+      const dateKey = task.archivedAt.slice(0, 10);
+      const entry = this.data.entries[dateKey];
+      if (!entry) {
+        return;
+      }
+      const index = entry.completedTasks.findIndex((candidate) => candidate.project === task.project && candidate.section === task.section && candidate.text === task.text && candidate.archivedAt === task.archivedAt);
+      if (index < 0) {
+        return;
+      }
+      entry.completedTasks.splice(index, 1);
+      updatedDates.add(dateKey);
+    });
+    for (const dateKey of updatedDates) {
+      await this.persistEntry(this.data.entries[dateKey]);
     }
   }
   getDailyLogPath(date, settings = this.data.settings) {

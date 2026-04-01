@@ -2,6 +2,7 @@ import { TFile, Vault, normalizePath } from "obsidian";
 
 import { clamp, computeMissedHabits, formatDateKey, renderScore } from "./dashboard-core";
 import {
+  type ArchiveMaintenanceResult,
   CHECKLIST_REGEX,
   NOTE_LINK_REGEX,
   PROJECT_META_REGEX,
@@ -184,6 +185,17 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
   };
 }
 
+export function reconcileCompletedTasks(content: string, archivedAt: string): ArchiveMaintenanceResult {
+  const restoredResult = restoreUncheckedArchivedTasks(content);
+  const archiveResult = archiveCompletedTasks(restoredResult.content, archivedAt);
+
+  return {
+    content: archiveResult.content,
+    archivedTasks: archiveResult.archivedTasks,
+    restoredTasks: restoredResult.restoredTasks
+  };
+}
+
 export function archiveCompletedTasks(content: string, archivedAt: string): ArchiveResult {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -213,6 +225,100 @@ export function archiveCompletedTasks(content: string, archivedAt: string): Arch
   return {
     content: output.join("\n"),
     archivedTasks
+  };
+}
+
+export function restoreUncheckedArchivedTasks(content: string): { content: string; restoredTasks: ArchivedTaskSnapshot[] } {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+
+  if (projectRanges.length === 0) {
+    return { content, restoredTasks: [] };
+  }
+
+  const output: string[] = [];
+  const restoredTasks: ArchivedTaskSnapshot[] = [];
+  let cursor = 0;
+
+  projectRanges.forEach((project) => {
+    output.push(...lines.slice(cursor, project.start));
+    const result = restoreUncheckedArchivedTasksFromProjectLines(
+      lines.slice(project.start, project.end + 1),
+      project.name
+    );
+    output.push(...result.lines);
+    restoredTasks.push(...result.restoredTasks);
+    cursor = project.end + 1;
+  });
+
+  output.push(...lines.slice(cursor));
+
+  return {
+    content: output.join("\n"),
+    restoredTasks
+  };
+}
+
+export function restoreUncheckedArchivedTasksFromProjectLines(
+  projectLines: string[],
+  projectName: string
+): { lines: string[]; restoredTasks: ArchivedTaskSnapshot[] } {
+  const keptLines: string[] = [];
+  const restoredTasks: ArchivedTaskSnapshot[] = [];
+  let currentSection = "General";
+
+  projectLines.forEach((line) => {
+    const sectionName = getSectionName(line);
+    if (sectionName) {
+      currentSection = sectionName;
+      keptLines.push(line);
+      return;
+    }
+
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (taskMatch && currentSection.trim().toLowerCase() === "completed archive" && taskMatch[1] === " ") {
+      const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), projectName);
+      if (archivedTask) {
+        restoredTasks.push(archivedTask);
+        return;
+      }
+    }
+
+    keptLines.push(line);
+  });
+
+  if (restoredTasks.length === 0) {
+    return { lines: projectLines, restoredTasks: [] };
+  }
+
+  let nextContent = keptLines.join("\n");
+  restoredTasks.forEach((task) => {
+    nextContent = insertTaskIntoProjectSection(nextContent, projectName, task.section, task.text);
+  });
+
+  return {
+    lines: nextContent.split(/\r?\n/),
+    restoredTasks
+  };
+}
+
+function parseArchivedArchiveTask(value: string, projectName: string): ArchivedTaskSnapshot | null {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2}(?::\d{2})?)?)\s+-\s+\[([^\]]+)\]\s+(.*)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, archivedAt, section, text] = match;
+  const trimmedText = text.trim();
+  if (!trimmedText) {
+    return null;
+  }
+
+  return {
+    project: projectName,
+    section: section.trim() || "General",
+    text: trimmedText,
+    archivedAt
   };
 }
 

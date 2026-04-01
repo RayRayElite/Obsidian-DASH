@@ -46,10 +46,15 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[]): st
     `dayEndedAt: ${entry.dayEndedAt || ""}`,
     `wakeTime: ${entry.wakeTime || ""}`,
     `sleepTime: ${entry.sleepTime || ""}`,
+    `sleepMinutesOverride: ${entry.sleepMinutesOverride ?? ""}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
+    `workMinutesOverride: ${entry.workMinutesOverride ?? ""}`,
+    `napMinutesOverride: ${entry.napMinutesOverride ?? ""}`,
+    `relaxMinutesOverride: ${entry.relaxMinutesOverride ?? ""}`,
+    `breakMinutesOverride: ${entry.breakMinutesOverride ?? ""}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
@@ -192,6 +197,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     dayEndedAt: frontmatter.get("dayEndedAt") ?? (typeof parsedEntry.dayEndedAt === "string" ? parsedEntry.dayEndedAt : ""),
     wakeTime: frontmatter.get("wakeTime") ?? (typeof parsedEntry.wakeTime === "string" ? parsedEntry.wakeTime : ""),
     sleepTime: frontmatter.get("sleepTime") ?? (typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : ""),
+    sleepMinutesOverride: normalizeOptionalMinutes(frontmatter.get("sleepMinutesOverride") ?? parsedEntry.sleepMinutesOverride),
     moodScore: Number(frontmatter.get("moodScore") ?? parsedEntry.moodScore ?? 0),
     energyScore: Number(frontmatter.get("energyScore") ?? parsedEntry.energyScore ?? 0),
     anxietyScore: Number(frontmatter.get("anxietyScore") ?? parsedEntry.anxietyScore ?? 0),
@@ -205,9 +211,13 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
     workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
+    workMinutesOverride: normalizeOptionalMinutes(frontmatter.get("workMinutesOverride") ?? parsedEntry.workMinutesOverride),
     napSessions: Array.isArray(parsedEntry.napSessions) ? parsedEntry.napSessions : baseEntry.napSessions,
+    napMinutesOverride: normalizeOptionalMinutes(frontmatter.get("napMinutesOverride") ?? parsedEntry.napMinutesOverride),
     relaxSessions: Array.isArray(parsedEntry.relaxSessions) ? parsedEntry.relaxSessions : baseEntry.relaxSessions,
+    relaxMinutesOverride: normalizeOptionalMinutes(frontmatter.get("relaxMinutesOverride") ?? parsedEntry.relaxMinutesOverride),
     breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
+    breakMinutesOverride: normalizeOptionalMinutes(frontmatter.get("breakMinutesOverride") ?? parsedEntry.breakMinutesOverride),
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
@@ -288,7 +298,8 @@ export function renderPeriodReport(input: {
 
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
-    const napSummary = entry.napSessions.length > 0 ? `${formatMinutesAsHours(getTrackedMinutes(entry.napSessions))} naps` : "no naps";
+    const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
+    const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
     const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0
       ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed`
@@ -346,15 +357,32 @@ export function closeOpenBreakSessions(entry: DailyEntry, timestamp: string): vo
 }
 
 export function getTrackedWorkMinutes(entry: DailyEntry): number {
-  return getTrackedMinutes(entry.workSessions);
+  return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
+}
+
+export function getTrackedNapMinutes(entry: DailyEntry): number {
+  return resolveTrackedMinutes(entry.napSessions, entry.napMinutesOverride);
 }
 
 export function getTrackedRelaxMinutes(entry: DailyEntry): number {
-  return getTrackedMinutes(entry.relaxSessions);
+  return resolveTrackedMinutes(entry.relaxSessions, entry.relaxMinutesOverride);
 }
 
 export function getTrackedBreakMinutes(entry: DailyEntry): number {
-  return getTrackedMinutes(entry.breakSessions);
+  return resolveTrackedMinutes(entry.breakSessions, entry.breakMinutesOverride);
+}
+
+function resolveTrackedMinutes(sessions: WorkSession[], override: number | null | undefined): number {
+  return typeof override === "number" && override >= 0 ? override : getTrackedMinutes(sessions);
+}
+
+function normalizeOptionalMinutes(value: unknown): number | null {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return null;
+  }
+
+  return Math.round(numericValue);
 }
 
 export function getTrackedMinutes(sessions: WorkSession[]): number {
@@ -440,7 +468,11 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
 }
 
 export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEntry): number {
-  const napMinutes = getTrackedMinutes(entry.napSessions);
+  if (typeof entry.sleepMinutesOverride === "number" && entry.sleepMinutesOverride >= 0) {
+    return entry.sleepMinutesOverride;
+  }
+
+  const napMinutes = getTrackedNapMinutes(entry);
   if (!previousEntry?.sleepTime || !entry.wakeTime) {
     return napMinutes;
   }

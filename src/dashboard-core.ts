@@ -322,6 +322,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     dayEndedAt: "",
     wakeTime: "",
     sleepTime: "",
+    sleepMinutesOverride: null,
     habits: habitValues,
     habitEvents,
     moodScore: 0,
@@ -335,9 +336,13 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     dreamLog: "",
     notes: "",
     workSessions: [],
+    workMinutesOverride: null,
     napSessions: [],
+    napMinutesOverride: null,
     relaxSessions: [],
+    relaxMinutesOverride: null,
     breakSessions: [],
+    breakMinutesOverride: null,
     completedTasks: []
   };
 }

@@ -37,7 +37,9 @@ import {
   closeOpenWorkSessions,
   getTrackedBreakMinutes,
   getTrackedMinutes,
+  getTrackedNapMinutes,
   getTrackedRelaxMinutes,
+  getSleepMinutesForDay,
   getTrackedWorkMinutes,
   parseDailyLogEntry,
   renderDailyLog,
@@ -57,6 +59,7 @@ import {
   isRepeatingTaskDue,
   offloadReferencesFromMasterHub,
   parseTodoSnapshot,
+  reconcileCompletedTasks,
   renderExistingProjectNoteTemplate,
   renderProjectNoteTemplate,
   renderTodoProjectBlock,
@@ -82,7 +85,9 @@ import {
   type AiStatus,
   type AiStructuredPayload,
   type ArchivedTaskSnapshot,
+  type ArchiveMaintenanceResult,
   type CreateProjectInput,
+  type DayRepairInput,
   type DailyEntry,
   type DashboardPluginData,
   type DashboardSettings,
@@ -502,7 +507,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getTrackedNapMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getTrackedMinutes(entry.napSessions);
+    return getTrackedNapMinutes(entry);
   }
 
   getTrackedRelaxMinutes(entry: DailyEntry = this.getTodayEntry()): number {
@@ -789,29 +794,81 @@ export default class DailyDashboardPlugin extends Plugin {
     new LogicalDayRepairModal(this.app, this).open();
   }
 
-  async repairLogicalDay(date: string, status: DayLifecycleState["status"]): Promise<void> {
-    const normalizedDate = date.trim();
+  getDayRepairInput(date: string = this.getTodayKey()): DayRepairInput {
+    const entry = this.getOrCreateEntry(date);
+    const previousEntry = this.getPreviousEntry(date);
+
+    return {
+      date,
+      status: this.data.dayState.activeDate === date ? this.data.dayState.status : "ended",
+      dayStartedAt: entry.dayStartedAt,
+      dayEndedAt: entry.dayEndedAt,
+      wakeTime: entry.wakeTime,
+      sleepTime: entry.sleepTime,
+      sleepMinutesOverride: getSleepMinutesForDay(entry, previousEntry),
+      workMinutesOverride: getTrackedWorkMinutes(entry),
+      napMinutesOverride: getTrackedNapMinutes(entry),
+      relaxMinutesOverride: getTrackedRelaxMinutes(entry),
+      breakMinutesOverride: getTrackedBreakMinutes(entry),
+      moodScore: entry.moodScore,
+      energyScore: entry.energyScore,
+      anxietyScore: entry.anxietyScore
+    };
+  }
+
+  async repairLogicalDay(date: string, status: DayLifecycleState["status"]): Promise<boolean> {
+    const currentDraft = this.getDayRepairInput(date);
+    return await this.applyDayRepair({
+      ...currentDraft,
+      date,
+      status
+    });
+  }
+
+  async applyDayRepair(input: DayRepairInput): Promise<boolean> {
+    const normalizedDate = input.date.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
       new Notice("Logical day must use YYYY-MM-DD.");
-      return;
+      return false;
     }
 
     const parsedDate = new Date(`${normalizedDate}T00:00:00`);
     if (Number.isNaN(parsedDate.getTime()) || formatDateKey(parsedDate) !== normalizedDate) {
       new Notice("Enter a valid calendar date.");
-      return;
+      return false;
+    }
+
+    const dayStartedAt = this.normalizeRepairTimestamp(input.dayStartedAt, "Day start");
+    const dayEndedAt = this.normalizeRepairTimestamp(input.dayEndedAt, "Day end");
+    const wakeTime = this.normalizeRepairTimestamp(input.wakeTime, "Wake time");
+    const sleepTime = this.normalizeRepairTimestamp(input.sleepTime, "Sleep time");
+    if (dayStartedAt === null || dayEndedAt === null || wakeTime === null || sleepTime === null) {
+      return false;
     }
 
     this.data.dayState = {
       activeDate: normalizedDate,
-      status
+      status: input.status
     };
 
-    this.getOrCreateEntry(normalizedDate);
-    await this.savePluginData();
-    await this.ensureTodayEntry();
+    const entry = this.getOrCreateEntry(normalizedDate);
+    entry.dayStartedAt = dayStartedAt;
+    entry.dayEndedAt = dayEndedAt;
+    entry.wakeTime = wakeTime;
+    entry.sleepTime = sleepTime;
+    entry.sleepMinutesOverride = clamp(Math.round(input.sleepMinutesOverride), 0, 1440);
+    entry.workMinutesOverride = clamp(Math.round(input.workMinutesOverride), 0, 1440);
+    entry.napMinutesOverride = clamp(Math.round(input.napMinutesOverride), 0, 1440);
+    entry.relaxMinutesOverride = clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
+    entry.breakMinutesOverride = clamp(Math.round(input.breakMinutesOverride), 0, 1440);
+    entry.moodScore = clamp(Math.round(input.moodScore), 0, 5);
+    entry.energyScore = clamp(Math.round(input.energyScore), 0, 5);
+    entry.anxietyScore = clamp(Math.round(input.anxietyScore), 0, 5);
+
+    await this.persistEntry(entry);
     this.refreshDashboardViews();
-    new Notice(`Logical day set to ${normalizedDate} (${status}).`);
+    new Notice(`Updated repair data for ${normalizedDate}.`);
+    return true;
   }
 
   async startWorkSession(): Promise<void> {
@@ -969,30 +1026,45 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const content = await this.app.vault.read(todoFile);
     const archivedAt = formatDateTimeKey(new Date());
-    const archiveResult = archiveCompletedTasks(content, archivedAt);
+    const archiveResult = reconcileCompletedTasks(content, archivedAt);
 
-    if (archiveResult.archivedTasks.length === 0) {
+    if (archiveResult.archivedTasks.length === 0 && archiveResult.restoredTasks.length === 0) {
       if (showNotice) {
-        new Notice("No completed checklist items were found to archive.");
+        new Notice("No archive changes were needed.");
       }
       return;
     }
 
     this.isAutoArchivingTodo = true;
     try {
-      await this.app.vault.modify(todoFile, archiveResult.content);
+      if (archiveResult.content !== content) {
+        await this.app.vault.modify(todoFile, archiveResult.content);
+      }
     } finally {
       window.setTimeout(() => {
         this.isAutoArchivingTodo = false;
       }, 50);
     }
 
-    const entry = this.getOrCreateEntry(archivedAt.slice(0, 10));
-    entry.completedTasks = [...archiveResult.archivedTasks, ...entry.completedTasks];
-    await this.persistEntry(entry);
+    if (archiveResult.archivedTasks.length > 0) {
+      const entry = this.getOrCreateEntry(archivedAt.slice(0, 10));
+      entry.completedTasks = [...archiveResult.archivedTasks, ...entry.completedTasks];
+      await this.persistEntry(entry);
+    }
+
+    if (archiveResult.restoredTasks.length > 0) {
+      await this.removeArchivedTaskSnapshots(archiveResult.restoredTasks);
+    }
 
     if (showNotice) {
-      new Notice(`Archived ${archiveResult.archivedTasks.length} completed task${archiveResult.archivedTasks.length === 1 ? "" : "s"}.`);
+      const noticeParts: string[] = [];
+      if (archiveResult.archivedTasks.length > 0) {
+        noticeParts.push(`archived ${archiveResult.archivedTasks.length} task${archiveResult.archivedTasks.length === 1 ? "" : "s"}`);
+      }
+      if (archiveResult.restoredTasks.length > 0) {
+        noticeParts.push(`restored ${archiveResult.restoredTasks.length} task${archiveResult.restoredTasks.length === 1 ? "" : "s"}`);
+      }
+      new Notice(`Master task hub ${noticeParts.join(" and ")}.`);
     }
   }
 
@@ -1898,6 +1970,7 @@ export default class DailyDashboardPlugin extends Plugin {
       dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
       sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
+      sleepMinutesOverride: Number.isFinite(Number(entry.sleepMinutesOverride)) ? clamp(Number(entry.sleepMinutesOverride), 0, 1440) : null,
       habits: normalizedHabits,
       habitEvents: normalizedHabitEvents,
       moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
@@ -1924,6 +1997,7 @@ export default class DailyDashboardPlugin extends Plugin {
               end: typeof item.end === "string" ? item.end : null
             }))
         : [],
+      workMinutesOverride: Number.isFinite(Number(entry.workMinutesOverride)) ? clamp(Number(entry.workMinutesOverride), 0, 1440) : null,
       napSessions: Array.isArray(entry.napSessions)
         ? entry.napSessions
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
@@ -1932,6 +2006,7 @@ export default class DailyDashboardPlugin extends Plugin {
               end: typeof item.end === "string" ? item.end : null
             }))
         : [],
+      napMinutesOverride: Number.isFinite(Number(entry.napMinutesOverride)) ? clamp(Number(entry.napMinutesOverride), 0, 1440) : null,
       relaxSessions: Array.isArray(entry.relaxSessions)
         ? entry.relaxSessions
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
@@ -1940,6 +2015,7 @@ export default class DailyDashboardPlugin extends Plugin {
               end: typeof item.end === "string" ? item.end : null
             }))
         : [],
+      relaxMinutesOverride: Number.isFinite(Number(entry.relaxMinutesOverride)) ? clamp(Number(entry.relaxMinutesOverride), 0, 1440) : null,
       breakSessions: Array.isArray(entry.breakSessions)
         ? entry.breakSessions
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
@@ -1948,6 +2024,7 @@ export default class DailyDashboardPlugin extends Plugin {
               end: typeof item.end === "string" ? item.end : null
             }))
         : [],
+      breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
       completedTasks: Array.isArray(entry.completedTasks)
         ? entry.completedTasks
             .filter((item): item is ArchivedTaskSnapshot => Boolean(item && typeof item === "object"))
@@ -1987,6 +2064,54 @@ export default class DailyDashboardPlugin extends Plugin {
     }
     if (keepOpen !== "break") {
       closeOpenBreakSessions(entry, timestamp);
+    }
+  }
+
+  private getPreviousEntry(date: string): DailyEntry | undefined {
+    const dates = Object.keys(this.data.entries).filter((entryDate) => entryDate < date).sort();
+    const previousDate = dates.slice(-1)[0];
+    return previousDate ? this.data.entries[previousDate] : undefined;
+  }
+
+  private normalizeRepairTimestamp(value: string, label: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const parsed = new Date(trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T"));
+    if (Number.isNaN(parsed.getTime())) {
+      new Notice(`${label} must be a valid date and time.`);
+      return null;
+    }
+
+    return formatDateTimeKey(parsed);
+  }
+
+  private async removeArchivedTaskSnapshots(tasks: ArchivedTaskSnapshot[]): Promise<void> {
+    const updatedDates = new Set<string>();
+
+    tasks.forEach((task) => {
+      const dateKey = task.archivedAt.slice(0, 10);
+      const entry = this.data.entries[dateKey];
+      if (!entry) {
+        return;
+      }
+
+      const index = entry.completedTasks.findIndex((candidate) => candidate.project === task.project
+        && candidate.section === task.section
+        && candidate.text === task.text
+        && candidate.archivedAt === task.archivedAt);
+      if (index < 0) {
+        return;
+      }
+
+      entry.completedTasks.splice(index, 1);
+      updatedDates.add(dateKey);
+    });
+
+    for (const dateKey of updatedDates) {
+      await this.persistEntry(this.data.entries[dateKey]);
     }
   }
 

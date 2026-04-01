@@ -16,6 +16,7 @@ import {
   type ArchivedTaskSnapshot,
   type CardVisualOptions,
   type CreateProjectInput,
+  type DayRepairInput,
   type DashboardTone,
   type ProjectReviewOption,
   type QuickAddState,
@@ -198,20 +199,27 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(weekLegend, "Work", "capture");
       createSemanticChip(weekLegend, "Relax", "health");
       createSemanticChip(weekLegend, "Unknown", "neutral");
-      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-board" });
+      const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-orbit" });
       this.getCurrentWeekTimeBoard().forEach((day) => {
-        const row = weekBoard.createDiv({ cls: "daily-dashboard-week-row" });
+        const card = weekBoard.createDiv({ cls: "daily-dashboard-week-orb-card" });
         if (day.isToday) {
-          row.addClass("is-today");
+          card.addClass("is-today");
         }
-        const summary = row.createDiv({ cls: "daily-dashboard-week-row-summary" });
-        summary.createEl("strong", { text: day.label });
-        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `${day.date} • Sleep ${formatMinutesAsHours(day.sleepMinutes)} • Work ${formatMinutesAsHours(day.workMinutes)} • Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
-        const bar = row.createDiv({ cls: "daily-dashboard-week-bar" });
-        this.appendWeekSegment(bar, "sleep", day.sleepMinutes);
-        this.appendWeekSegment(bar, "work", day.workMinutes);
-        this.appendWeekSegment(bar, "relax", day.relaxMinutes);
-        this.appendWeekSegment(bar, "unknown", day.unknownMinutes);
+        const orb = card.createDiv({ cls: "daily-dashboard-week-orb" });
+        orb.style.background = this.buildWeekOrbGradient(day);
+        const orbCore = orb.createDiv({ cls: "daily-dashboard-week-orb-core" });
+        orbCore.createEl("strong", { text: day.label });
+        orbCore.createEl("span", { text: `${Math.round(((1440 - day.unknownMinutes) / 1440) * 100)}% logged` });
+
+        const summary = card.createDiv({ cls: "daily-dashboard-week-orb-summary" });
+        summary.createEl("strong", { text: day.date });
+        summary.createEl("span", { cls: "daily-dashboard-row-meta", text: `Sleep ${formatMinutesAsHours(day.sleepMinutes)} • Work ${formatMinutesAsHours(day.workMinutes)} • Relax ${formatMinutesAsHours(day.relaxMinutes)}` });
+
+        const stats = card.createDiv({ cls: "daily-dashboard-week-orb-stats" });
+        this.renderDayMetric(stats, "Sleep", formatMinutesAsHours(day.sleepMinutes));
+        this.renderDayMetric(stats, "Work", formatMinutesAsHours(day.workMinutes));
+        this.renderDayMetric(stats, "Relax", formatMinutesAsHours(day.relaxMinutes));
+        this.renderDayMetric(stats, "Unknown", formatMinutesAsHours(day.unknownMinutes));
       });
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
@@ -815,12 +823,27 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private appendWeekSegment(parent: HTMLElement, tone: "sleep" | "work" | "relax" | "unknown", minutes: number): void {
-    const segment = parent.createDiv({ cls: "daily-dashboard-week-segment" });
-    segment.addClass(`is-${tone}`);
-    segment.style.setProperty("--daily-dashboard-segment-grow", `${Math.max(minutes, 1)}`);
-    segment.ariaLabel = `${tone} ${formatMinutesAsHours(minutes)}`;
-    segment.title = `${tone}: ${formatMinutesAsHours(minutes)}`;
+  private buildWeekOrbGradient(day: {
+    sleepMinutes: number;
+    workMinutes: number;
+    relaxMinutes: number;
+    unknownMinutes: number;
+  }): string {
+    const total = 1440;
+    const segments = [
+      { color: "#d7c57a", minutes: day.sleepMinutes },
+      { color: "#74b0e6", minutes: day.workMinutes },
+      { color: "#75c9bc", minutes: day.relaxMinutes },
+      { color: "rgba(255,255,255,0.14)", minutes: day.unknownMinutes }
+    ];
+    let cursor = 0;
+
+    return `conic-gradient(${segments.map((segment) => {
+      const start = ((cursor / total) * 100).toFixed(2);
+      cursor += segment.minutes;
+      const end = ((cursor / total) * 100).toFixed(2);
+      return `${segment.color} ${start}% ${end}%`;
+    }).join(", ")})`;
   }
 }
 
@@ -962,15 +985,12 @@ export class CreateProjectModal extends Modal {
 
 export class LogicalDayRepairModal extends Modal {
   private plugin: DailyDashboardPlugin;
-  private logicalDate: string;
-  private logicalStatus: "not-started" | "in-progress" | "ended";
+  private state: DayRepairInput;
 
   constructor(app: App, plugin: DailyDashboardPlugin) {
     super(app);
     this.plugin = plugin;
-    const dayState = this.plugin.getDayState();
-    this.logicalDate = dayState.activeDate;
-    this.logicalStatus = dayState.status;
+    this.state = this.plugin.getDayRepairInput();
   }
 
   onOpen(): void {
@@ -979,20 +999,26 @@ export class LogicalDayRepairModal extends Modal {
     contentEl.empty();
 
     contentEl.createEl("p", {
-      text: "Use this when test clicks or a bad state push the dashboard onto the wrong date. The safest reset is today's date with status set to Not started."
+      text: "Use this when the day flow needs correction. You can fix the logical date, key timestamps, and tracked totals so reports and the weekly board stay accurate."
     });
 
     new Setting(contentEl)
       .setName("Logical date")
-      .setDesc("Enter the date the dashboard should use in YYYY-MM-DD format.")
+      .setDesc("Enter the date the dashboard should use in YYYY-MM-DD format, then load that date if you want its existing values.")
       .addText((text) => {
         text
           .setPlaceholder("2026-04-01")
-          .setValue(this.logicalDate)
+          .setValue(this.state.date)
           .onChange((value) => {
-            this.logicalDate = value.trim();
+            this.state.date = value.trim();
           });
         window.setTimeout(() => text.inputEl.focus(), 0);
+      })
+      .addButton((button) => {
+        button.setButtonText("Load date").onClick(() => {
+          this.state = this.plugin.getDayRepairInput(this.state.date.trim() || formatDateKey(new Date()));
+          this.onOpen();
+        });
       });
 
     new Setting(contentEl)
@@ -1002,25 +1028,71 @@ export class LogicalDayRepairModal extends Modal {
         dropdown.addOption("not-started", "Not started");
         dropdown.addOption("in-progress", "In progress");
         dropdown.addOption("ended", "Ended");
-        dropdown.setValue(this.logicalStatus);
+        dropdown.setValue(this.state.status);
         dropdown.onChange((value) => {
-          this.logicalStatus = value === "in-progress" || value === "ended" ? value : "not-started";
+          this.state.status = value === "in-progress" || value === "ended" ? value : "not-started";
         });
       });
+
+    this.addDateTimeSetting(contentEl, "Day start", "When the day began.", this.state.dayStartedAt, (value) => {
+      this.state.dayStartedAt = value;
+    });
+    this.addDateTimeSetting(contentEl, "Day end", "When the day ended.", this.state.dayEndedAt, (value) => {
+      this.state.dayEndedAt = value;
+    });
+    this.addDateTimeSetting(contentEl, "Wake time", "Useful for sleep calculations and daily context.", this.state.wakeTime, (value) => {
+      this.state.wakeTime = value;
+    });
+    this.addDateTimeSetting(contentEl, "Sleep time", "When you actually went to sleep.", this.state.sleepTime, (value) => {
+      this.state.sleepTime = value;
+    });
+
+    this.addMinutesSetting(contentEl, "Hours slept", "Total sleep minutes used by the weekly tracker and reports.", this.state.sleepMinutesOverride, (value) => {
+      this.state.sleepMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Work minutes", "Correct tracked work if you missed a timer or ended it late.", this.state.workMinutesOverride, (value) => {
+      this.state.workMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Nap minutes", "Correct nap totals for the day.", this.state.napMinutesOverride, (value) => {
+      this.state.napMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Relax minutes", "Correct relaxing time totals.", this.state.relaxMinutesOverride, (value) => {
+      this.state.relaxMinutesOverride = value;
+    });
+    this.addMinutesSetting(contentEl, "Break minutes", "Correct break totals without editing raw sessions.", this.state.breakMinutesOverride, (value) => {
+      this.state.breakMinutesOverride = value;
+    });
+
+    this.addScoreSetting(contentEl, "Mood", this.state.moodScore, (value) => {
+      this.state.moodScore = value;
+    });
+    this.addScoreSetting(contentEl, "Energy", this.state.energyScore, (value) => {
+      this.state.energyScore = value;
+    });
+    this.addScoreSetting(contentEl, "Anxiety", this.state.anxietyScore, (value) => {
+      this.state.anxietyScore = value;
+    });
 
     new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Reset to today").onClick(async () => {
-          this.logicalDate = formatDateTimeKey(new Date()).slice(0, 10);
-          this.logicalStatus = "not-started";
-          await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
-          this.close();
+          this.state = this.plugin.getDayRepairInput(formatDateKey(new Date()));
+          this.state.status = "not-started";
+          this.onOpen();
+        });
+      })
+      .addButton((button) => {
+        button.setButtonText("Reload current").onClick(() => {
+          this.state = this.plugin.getDayRepairInput(this.state.date.trim() || this.plugin.getDayRepairInput().date);
+          this.onOpen();
         });
       })
       .addButton((button) => {
         button.setButtonText("Apply").setCta().onClick(async () => {
-          await this.plugin.repairLogicalDay(this.logicalDate, this.logicalStatus);
-          this.close();
+          const didApply = await this.plugin.applyDayRepair(this.state);
+          if (didApply) {
+            this.close();
+          }
         });
       })
       .addExtraButton((button) => {
@@ -1032,6 +1104,60 @@ export class LogicalDayRepairModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty();
+  }
+
+  private addDateTimeSetting(parent: HTMLElement, name: string, description: string, value: string, onChange: (value: string) => void): void {
+    new Setting(parent)
+      .setName(name)
+      .setDesc(description)
+      .addText((text) => {
+        text
+          .setValue(this.toDateTimeLocalValue(value))
+          .onChange((nextValue) => {
+            onChange(nextValue.trim());
+          });
+        text.inputEl.type = "datetime-local";
+      });
+  }
+
+  private addMinutesSetting(parent: HTMLElement, name: string, description: string, value: number, onChange: (value: number) => void): void {
+    new Setting(parent)
+      .setName(name)
+      .setDesc(description)
+      .addText((text) => {
+        text
+          .setValue(`${value}`)
+          .onChange((nextValue) => {
+            onChange(Math.max(0, Math.round(Number(nextValue) || 0)));
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.max = "1440";
+      });
+  }
+
+  private addScoreSetting(parent: HTMLElement, name: string, value: number, onChange: (value: number) => void): void {
+    new Setting(parent)
+      .setName(name)
+      .setDesc("0 to 5")
+      .addText((text) => {
+        text
+          .setValue(`${value}`)
+          .onChange((nextValue) => {
+            onChange(Math.max(0, Math.min(5, Math.round(Number(nextValue) || 0))));
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.max = "5";
+      });
+  }
+
+  private toDateTimeLocalValue(value: string): string {
+    if (!value.trim()) {
+      return "";
+    }
+
+    return value.replace(" ", "T").slice(0, 16);
   }
 }
 
