@@ -249,7 +249,7 @@ interface ArchiveResult {
 interface LiveDayStateSnapshot {
   updatedAt: string;
   dayState: DayLifecycleState;
-  entry: Pick<DailyEntry, "date" | "dayStartedAt" | "dayEndedAt" | "wakeTime" | "sleepTime" | "workSessions" | "napSessions">;
+  entry: DailyEntry;
 }
 
 interface DashboardSyncStatus {
@@ -722,6 +722,14 @@ export default class DailyDashboardPlugin extends Plugin {
     const selected = normalizePath(this.data.settings.selectedWallpaper);
     if (selected && files.some((file) => normalizePath(file.path) === selected)) {
       return selected;
+    }
+
+    if (selected) {
+      const selectedFileName = selected.split("/").pop()?.toLowerCase() ?? "";
+      const matchingByName = files.find((file) => (file.path.split("/").pop()?.toLowerCase() ?? "") === selectedFileName);
+      if (matchingByName) {
+        return matchingByName.path;
+      }
     }
 
     return files[0]?.path ?? "";
@@ -2035,19 +2043,21 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private createLiveStateSnapshot(data: DashboardPluginData = this.data): LiveDayStateSnapshot {
     const date = this.getLiveStateEntryDate(data);
-    const baseEntry = data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions);
+    const baseEntry = this.normalizeEntry(data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions), date, data.settings);
 
     return {
       updatedAt: formatDateTimeKey(new Date()),
       dayState: normalizeDayState(data.dayState, data.entries),
       entry: {
-        date,
-        dayStartedAt: baseEntry.dayStartedAt,
-        dayEndedAt: baseEntry.dayEndedAt,
-        wakeTime: baseEntry.wakeTime,
-        sleepTime: baseEntry.sleepTime,
+        ...baseEntry,
+        habits: { ...baseEntry.habits },
+        habitEvents: Object.fromEntries(Object.entries(baseEntry.habitEvents).map(([key, value]) => [key, [...value]])),
+        todayFocus: [...baseEntry.todayFocus],
+        missedHabits: [...baseEntry.missedHabits],
+        foodLog: baseEntry.foodLog.map((item) => ({ ...item })),
         workSessions: baseEntry.workSessions.map((session) => ({ ...session })),
-        napSessions: baseEntry.napSessions.map((session) => ({ ...session }))
+        napSessions: baseEntry.napSessions.map((session) => ({ ...session })),
+        completedTasks: baseEntry.completedTasks.map((task) => ({ ...task }))
       }
     };
   }
@@ -2067,13 +2077,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const baseEntry = data.entries[date] ?? createEmptyEntry(date, data.settings.habitDefinitions);
     const mergedEntry = this.normalizeEntry({
       ...baseEntry,
-      date,
-      dayStartedAt: snapshot.entry.dayStartedAt,
-      dayEndedAt: snapshot.entry.dayEndedAt,
-      wakeTime: snapshot.entry.wakeTime,
-      sleepTime: snapshot.entry.sleepTime,
-      workSessions: snapshot.entry.workSessions,
-      napSessions: snapshot.entry.napSessions
+      ...snapshot.entry,
+      date
     }, date, data.settings);
 
     const entries = {
@@ -3765,11 +3770,11 @@ class DailyDashboardSettingTab extends PluginSettingTab {
         wallpaperFiles.forEach((file) => {
           dropdown.addOption(file.path, file.displayName);
         });
-        dropdown.setValue(settings.selectedWallpaper);
+        dropdown.setValue(this.plugin.getSelectedWallpaperPath());
         dropdown.onChange(async (value) => {
           await this.plugin.updateSettings({
             ...this.plugin.getSettings(),
-            selectedWallpaper: value
+            selectedWallpaper: value ? value.split("/").pop() ?? value : value
           });
         });
       });
@@ -4615,6 +4620,7 @@ function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
   const napSessionLines = snapshot.entry.napSessions.length > 0
     ? snapshot.entry.napSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- None"];
+  const payload = JSON.stringify(snapshot.entry, null, 2);
 
   return [
     "---",
@@ -4637,6 +4643,11 @@ function renderLiveDayStateNote(snapshot: LiveDayStateSnapshot): string {
     "",
     "## Nap Sessions",
     ...napSessionLines,
+    "",
+    "## Entry Payload",
+    "```json",
+    payload,
+    "```",
     ""
   ].join("\n");
 }
@@ -4675,13 +4686,30 @@ function parseLiveDayStateNote(content: string): LiveDayStateSnapshot | null {
 
   const workSessions: WorkSession[] = [];
   const napSessions: WorkSession[] = [];
+  const payloadLines: string[] = [];
   let currentSection = "";
+  let inPayload = false;
 
   for (; index < lines.length; index += 1) {
     const line = lines[index].trim();
     if (line.startsWith("## ")) {
       currentSection = line.slice(3).trim().toLowerCase();
       continue;
+    }
+
+    if (currentSection === "entry payload") {
+      if (line === "```json") {
+        inPayload = true;
+        continue;
+      }
+      if (line === "```" && inPayload) {
+        inPayload = false;
+        continue;
+      }
+      if (inPayload) {
+        payloadLines.push(lines[index]);
+        continue;
+      }
     }
 
     if (!line.startsWith("- ")) {
@@ -4701,6 +4729,15 @@ function parseLiveDayStateNote(content: string): LiveDayStateSnapshot | null {
     }
   }
 
+  let parsedEntry: Partial<DailyEntry> = {};
+  if (payloadLines.length > 0) {
+    try {
+      parsedEntry = JSON.parse(payloadLines.join("\n")) as Partial<DailyEntry>;
+    } catch (error) {
+      console.warn("Daily Dashboard could not parse live state entry payload", error);
+    }
+  }
+
   return {
     updatedAt: frontmatter.get("updatedAt") ?? "",
     dayState: {
@@ -4708,6 +4745,8 @@ function parseLiveDayStateNote(content: string): LiveDayStateSnapshot | null {
       status: statusValue === "in-progress" || statusValue === "ended" ? statusValue : "not-started"
     },
     entry: {
+      ...createEmptyEntry(date, DEFAULT_SETTINGS.habitDefinitions),
+      ...parsedEntry,
       date,
       dayStartedAt: frontmatter.get("dayStartedAt") ?? "",
       dayEndedAt: frontmatter.get("dayEndedAt") ?? "",

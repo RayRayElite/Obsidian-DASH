@@ -382,13 +382,23 @@ var DailyDashboardPlugin = class extends import_obsidian.Plugin {
     return this.wallpaperOptions;
   }
   getSelectedWallpaperPath() {
-    var _a, _b;
+    var _a, _b, _c, _d;
     const files = this.getWallpaperFiles();
     const selected = (0, import_obsidian.normalizePath)(this.data.settings.selectedWallpaper);
     if (selected && files.some((file) => (0, import_obsidian.normalizePath)(file.path) === selected)) {
       return selected;
     }
-    return (_b = (_a = files[0]) == null ? void 0 : _a.path) != null ? _b : "";
+    if (selected) {
+      const selectedFileName = (_b = (_a = selected.split("/").pop()) == null ? void 0 : _a.toLowerCase()) != null ? _b : "";
+      const matchingByName = files.find((file) => {
+        var _a2, _b2;
+        return ((_b2 = (_a2 = file.path.split("/").pop()) == null ? void 0 : _a2.toLowerCase()) != null ? _b2 : "") === selectedFileName;
+      });
+      if (matchingByName) {
+        return matchingByName.path;
+      }
+    }
+    return (_d = (_c = files[0]) == null ? void 0 : _c.path) != null ? _d : "";
   }
   getSelectedWallpaperUrl() {
     var _a;
@@ -1485,18 +1495,20 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   createLiveStateSnapshot(data = this.data) {
     var _a;
     const date = this.getLiveStateEntryDate(data);
-    const baseEntry = (_a = data.entries[date]) != null ? _a : createEmptyEntry(date, data.settings.habitDefinitions);
+    const baseEntry = this.normalizeEntry((_a = data.entries[date]) != null ? _a : createEmptyEntry(date, data.settings.habitDefinitions), date, data.settings);
     return {
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
       dayState: normalizeDayState(data.dayState, data.entries),
       entry: {
-        date,
-        dayStartedAt: baseEntry.dayStartedAt,
-        dayEndedAt: baseEntry.dayEndedAt,
-        wakeTime: baseEntry.wakeTime,
-        sleepTime: baseEntry.sleepTime,
+        ...baseEntry,
+        habits: { ...baseEntry.habits },
+        habitEvents: Object.fromEntries(Object.entries(baseEntry.habitEvents).map(([key, value]) => [key, [...value]])),
+        todayFocus: [...baseEntry.todayFocus],
+        missedHabits: [...baseEntry.missedHabits],
+        foodLog: baseEntry.foodLog.map((item) => ({ ...item })),
         workSessions: baseEntry.workSessions.map((session) => ({ ...session })),
-        napSessions: baseEntry.napSessions.map((session) => ({ ...session }))
+        napSessions: baseEntry.napSessions.map((session) => ({ ...session })),
+        completedTasks: baseEntry.completedTasks.map((task) => ({ ...task }))
       }
     };
   }
@@ -1514,13 +1526,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const baseEntry = (_a = data.entries[date]) != null ? _a : createEmptyEntry(date, data.settings.habitDefinitions);
     const mergedEntry = this.normalizeEntry({
       ...baseEntry,
-      date,
-      dayStartedAt: snapshot.entry.dayStartedAt,
-      dayEndedAt: snapshot.entry.dayEndedAt,
-      wakeTime: snapshot.entry.wakeTime,
-      sleepTime: snapshot.entry.sleepTime,
-      workSessions: snapshot.entry.workSessions,
-      napSessions: snapshot.entry.napSessions
+      ...snapshot.entry,
+      date
     }, date, data.settings);
     const entries = {
       ...data.entries,
@@ -2852,11 +2859,12 @@ var DailyDashboardSettingTab = class extends import_obsidian.PluginSettingTab {
       wallpaperFiles.forEach((file) => {
         dropdown.addOption(file.path, file.displayName);
       });
-      dropdown.setValue(settings.selectedWallpaper);
+      dropdown.setValue(this.plugin.getSelectedWallpaperPath());
       dropdown.onChange(async (value) => {
+        var _a;
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
-          selectedWallpaper: value
+          selectedWallpaper: value ? (_a = value.split("/").pop()) != null ? _a : value : value
         });
       });
     });
@@ -3517,6 +3525,7 @@ function renderLiveDayStateNote(snapshot) {
     var _a;
     return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}`;
   }) : ["- None"];
+  const payload = JSON.stringify(snapshot.entry, null, 2);
   return [
     "---",
     `updatedAt: ${snapshot.updatedAt}`,
@@ -3538,6 +3547,11 @@ function renderLiveDayStateNote(snapshot) {
     "",
     "## Nap Sessions",
     ...napSessionLines,
+    "",
+    "## Entry Payload",
+    "```json",
+    payload,
+    "```",
     ""
   ].join("\n");
 }
@@ -3571,12 +3585,28 @@ function parseLiveDayStateNote(content) {
   }
   const workSessions = [];
   const napSessions = [];
+  const payloadLines = [];
   let currentSection = "";
+  let inPayload = false;
   for (; index < lines.length; index += 1) {
     const line = lines[index].trim();
     if (line.startsWith("## ")) {
       currentSection = line.slice(3).trim().toLowerCase();
       continue;
+    }
+    if (currentSection === "entry payload") {
+      if (line === "```json") {
+        inPayload = true;
+        continue;
+      }
+      if (line === "```" && inPayload) {
+        inPayload = false;
+        continue;
+      }
+      if (inPayload) {
+        payloadLines.push(lines[index]);
+        continue;
+      }
     }
     if (!line.startsWith("- ")) {
       continue;
@@ -3592,6 +3622,14 @@ function parseLiveDayStateNote(content) {
       napSessions.push(session);
     }
   }
+  let parsedEntry = {};
+  if (payloadLines.length > 0) {
+    try {
+      parsedEntry = JSON.parse(payloadLines.join("\n"));
+    } catch (error) {
+      console.warn("Daily Dashboard could not parse live state entry payload", error);
+    }
+  }
   return {
     updatedAt: (_c = frontmatter.get("updatedAt")) != null ? _c : "",
     dayState: {
@@ -3599,6 +3637,8 @@ function parseLiveDayStateNote(content) {
       status: statusValue === "in-progress" || statusValue === "ended" ? statusValue : "not-started"
     },
     entry: {
+      ...createEmptyEntry(date, DEFAULT_SETTINGS.habitDefinitions),
+      ...parsedEntry,
       date,
       dayStartedAt: (_d = frontmatter.get("dayStartedAt")) != null ? _d : "",
       dayEndedAt: (_e = frontmatter.get("dayEndedAt")) != null ? _e : "",
