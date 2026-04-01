@@ -89,9 +89,9 @@ Daily Dashboard is currently designed as a desktop-first plugin.
 
 - Plugin state is stored in Obsidian plugin data.
 - The plugin also writes a readable markdown daily log for each tracked day under `Dashboard Logs/Daily` by default.
-- On startup, the plugin can still read those daily logs back in, so existing log history remains usable and older data is not stranded.
+- On startup, the plugin can still import those daily logs for dates missing from plugin data, so existing log history remains usable and older data is not stranded.
 
-This keeps the working model simple: local plugin state is the primary source of truth, and daily logs are the durable human-readable record.
+This keeps the working model simple: local plugin state is the primary source of truth, and daily logs are the durable human-readable record plus a one-way import fallback.
 
 ## New Project Flow
 

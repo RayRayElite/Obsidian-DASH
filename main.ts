@@ -1872,7 +1872,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async loadPluginData(): Promise<void> {
-    this.data = await this.buildDataFromStorage(true);
+    this.data = await this.buildDataFromStorage();
   }
 
   private normalizeEntry(
@@ -1976,41 +1976,19 @@ export default class DailyDashboardPlugin extends Plugin {
       && normalizedPath.endsWith(".md");
   }
 
-  private async loadDailyLogEntryFromVault(date: string, settings: DashboardSettings = this.data.settings): Promise<DailyEntry | null> {
-    const target = this.app.vault.getAbstractFileByPath(this.getDailyLogPath(date, settings));
-    if (!(target instanceof TFile)) {
-      return null;
-    }
-
-    const content = await this.app.vault.read(target);
-    return parseDailyLogEntry(content, date, settings.habitDefinitions);
-  }
-
-  private async loadDailyEntriesFromVault(settings: DashboardSettings, loadAllEntries: boolean, dateHints: string[]): Promise<Record<string, DailyEntry>> {
+  private async loadDailyEntriesFromVault(settings: DashboardSettings): Promise<Record<string, DailyEntry>> {
     const entries: Record<string, DailyEntry> = {};
 
-    if (loadAllEntries) {
-      const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
-      const files = this.app.vault.getMarkdownFiles().filter((file) => {
-        const normalizedPath = normalizePath(file.path);
-        return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
-      });
+    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    const files = this.app.vault.getMarkdownFiles().filter((file) => {
+      const normalizedPath = normalizePath(file.path);
+      return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+    });
 
-      for (const file of files) {
-        const content = await this.app.vault.read(file);
-        const dateFromPath = file.basename;
-        const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
-        if (parsed) {
-          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
-        }
-      }
-
-      return entries;
-    }
-
-    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
-    for (const date of uniqueDates) {
-      const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const dateFromPath = file.basename;
+      const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
       if (parsed) {
         entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
       }
@@ -2019,48 +1997,22 @@ export default class DailyDashboardPlugin extends Plugin {
     return entries;
   }
 
-  private mergeEntryMapsByRecency(left: Record<string, DailyEntry>, right: Record<string, DailyEntry>): Record<string, DailyEntry> {
-    const mergedEntries: Record<string, DailyEntry> = {};
-    const dates = new Set([...Object.keys(left), ...Object.keys(right)]);
-
-    dates.forEach((date) => {
-      const leftEntry = left[date];
-      const rightEntry = right[date];
-
-      if (!leftEntry) {
-        mergedEntries[date] = rightEntry;
-        return;
-      }
-
-      if (!rightEntry) {
-        mergedEntries[date] = leftEntry;
-        return;
-      }
-
-      mergedEntries[date] = pickNewerEntry(leftEntry, rightEntry);
-    });
-
-    return mergedEntries;
-  }
-
-  private async buildDataFromStorage(loadAllEntries: boolean): Promise<DashboardPluginData> {
+  private async buildDataFromStorage(): Promise<DashboardPluginData> {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
     const hydrated = this.hydratePluginData(loaded);
-    const dateHints = [
-      formatDateKey(new Date()),
-      hydrated.dayState.activeDate
-    ];
-    const dailyLogEntries = await this.loadDailyEntriesFromVault(
-      hydrated.settings,
-      loadAllEntries,
-      dateHints
-    );
-    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, dailyLogEntries);
+    const importedEntries = { ...hydrated.entries };
+    const dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+
+    Object.entries(dailyLogEntries).forEach(([date, entry]) => {
+      if (!importedEntries[date]) {
+        importedEntries[date] = entry;
+      }
+    });
 
     return {
       ...hydrated,
-      entries: mergedEntries,
-      dayState: normalizeDayState(hydrated.dayState, mergedEntries)
+      entries: importedEntries,
+      dayState: normalizeDayState(hydrated.dayState, importedEntries)
     };
   }
 
@@ -4527,94 +4479,6 @@ function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): string {
   ].filter((value): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));
 
   return timestamps.sort().slice(-1)[0] ?? "";
-}
-
-function isEntryEffectivelyEmpty(entry: Partial<DailyEntry> | undefined): boolean {
-  if (!entry) {
-    return true;
-  }
-
-  return !(
-    (typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0)
-    || (typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0)
-    || (typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0)
-    || (typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0)
-    || (entry.habits && Object.values(entry.habits).some((count) => Number(count) > 0))
-    || (entry.habitEvents && Object.values(entry.habitEvents).some((items) => Array.isArray(items) && items.length > 0))
-    || Number(entry.moodScore ?? 0) > 0
-    || Number(entry.energyScore ?? 0) > 0
-    || (Array.isArray(entry.todayFocus) && entry.todayFocus.some((item) => item.trim().length > 0))
-    || (typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0)
-    || (Array.isArray(entry.foodLog) && entry.foodLog.length > 0)
-    || (typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0)
-    || (typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0)
-    || (typeof entry.notes === "string" && entry.notes.trim().length > 0)
-    || (Array.isArray(entry.workSessions) && entry.workSessions.length > 0)
-    || (Array.isArray(entry.napSessions) && entry.napSessions.length > 0)
-    || (Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0)
-  );
-}
-
-function getEntryCompletenessScore(entry: Partial<DailyEntry> | undefined): number {
-  if (!entry) {
-    return 0;
-  }
-
-  let score = 0;
-  score += typeof entry.lastEditedAt === "string" && entry.lastEditedAt.trim().length > 0 ? 3 : 0;
-  score += typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 ? 1 : 0;
-  score += typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 ? 1 : 0;
-  score += typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 ? 1 : 0;
-  score += typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 ? 1 : 0;
-  score += entry.habits ? Object.values(entry.habits).reduce((sum, value) => sum + (Number(value) > 0 ? 1 : 0), 0) : 0;
-  score += entry.habitEvents ? Object.values(entry.habitEvents).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0) : 0;
-  score += Number(entry.moodScore ?? 0) > 0 ? 1 : 0;
-  score += Number(entry.energyScore ?? 0) > 0 ? 1 : 0;
-  score += Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => item.trim().length > 0).length : 0;
-  score += typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 ? 2 : 0;
-  score += Array.isArray(entry.foodLog) ? entry.foodLog.length : 0;
-  score += typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 ? 2 : 0;
-  score += typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 ? 2 : 0;
-  score += typeof entry.notes === "string" && entry.notes.trim().length > 0 ? 2 : 0;
-  score += Array.isArray(entry.workSessions) ? entry.workSessions.length : 0;
-  score += Array.isArray(entry.napSessions) ? entry.napSessions.length : 0;
-  score += Array.isArray(entry.completedTasks) ? entry.completedTasks.length : 0;
-  return score;
-}
-
-function pickNewerEntry(left: DailyEntry, right: DailyEntry): DailyEntry {
-  const leftTimestamp = getEntryRecencyKey(left);
-  const rightTimestamp = getEntryRecencyKey(right);
-  const leftCompleteness = getEntryCompletenessScore(left);
-  const rightCompleteness = getEntryCompletenessScore(right);
-
-  if (!leftTimestamp && !rightTimestamp) {
-    if (isEntryEffectivelyEmpty(left)) {
-      return right;
-    }
-    if (isEntryEffectivelyEmpty(right)) {
-      return left;
-    }
-    return rightCompleteness > leftCompleteness ? right : left;
-  }
-  if (!leftTimestamp) {
-    if (isEntryEffectivelyEmpty(left)) {
-      return right;
-    }
-    return rightCompleteness >= leftCompleteness ? right : left;
-  }
-  if (!rightTimestamp) {
-    if (isEntryEffectivelyEmpty(right)) {
-      return left;
-    }
-    return leftCompleteness >= rightCompleteness ? left : right;
-  }
-
-  if (leftTimestamp === rightTimestamp) {
-    return rightCompleteness > leftCompleteness ? right : left;
-  }
-
-  return rightTimestamp >= leftTimestamp ? right : left;
 }
 
 function renderScore(value: number): string {

@@ -1372,7 +1372,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     };
   }
   async loadPluginData() {
-    this.data = await this.buildDataFromStorage(true);
+    this.data = await this.buildDataFromStorage();
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
     var _a, _b;
@@ -1441,76 +1441,37 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
     return dailyLogFolder.length > 0 && normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
   }
-  async loadDailyLogEntryFromVault(date, settings = this.data.settings) {
-    const target = this.app.vault.getAbstractFileByPath(this.getDailyLogPath(date, settings));
-    if (!(target instanceof import_obsidian.TFile)) {
-      return null;
-    }
-    const content = await this.app.vault.read(target);
-    return parseDailyLogEntry(content, date, settings.habitDefinitions);
-  }
-  async loadDailyEntriesFromVault(settings, loadAllEntries, dateHints) {
+  async loadDailyEntriesFromVault(settings) {
     const entries = {};
-    if (loadAllEntries) {
-      const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
-      const files = this.app.vault.getMarkdownFiles().filter((file) => {
-        const normalizedPath = (0, import_obsidian.normalizePath)(file.path);
-        return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
-      });
-      for (const file of files) {
-        const content = await this.app.vault.read(file);
-        const dateFromPath = file.basename;
-        const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
-        if (parsed) {
-          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
-        }
-      }
-      return entries;
-    }
-    const uniqueDates = Array.from(new Set(dateHints.filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))));
-    for (const date of uniqueDates) {
-      const parsed = await this.loadDailyLogEntryFromVault(date, settings);
+    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    const files = this.app.vault.getMarkdownFiles().filter((file) => {
+      const normalizedPath = (0, import_obsidian.normalizePath)(file.path);
+      return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
+    });
+    for (const file of files) {
+      const content = await this.app.vault.read(file);
+      const dateFromPath = file.basename;
+      const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
       if (parsed) {
         entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
       }
     }
     return entries;
   }
-  mergeEntryMapsByRecency(left, right) {
-    const mergedEntries = {};
-    const dates = /* @__PURE__ */ new Set([...Object.keys(left), ...Object.keys(right)]);
-    dates.forEach((date) => {
-      const leftEntry = left[date];
-      const rightEntry = right[date];
-      if (!leftEntry) {
-        mergedEntries[date] = rightEntry;
-        return;
-      }
-      if (!rightEntry) {
-        mergedEntries[date] = leftEntry;
-        return;
-      }
-      mergedEntries[date] = pickNewerEntry(leftEntry, rightEntry);
-    });
-    return mergedEntries;
-  }
-  async buildDataFromStorage(loadAllEntries) {
+  async buildDataFromStorage() {
     const loaded = await this.loadData();
     const hydrated = this.hydratePluginData(loaded);
-    const dateHints = [
-      formatDateKey(/* @__PURE__ */ new Date()),
-      hydrated.dayState.activeDate
-    ];
-    const dailyLogEntries = await this.loadDailyEntriesFromVault(
-      hydrated.settings,
-      loadAllEntries,
-      dateHints
-    );
-    const mergedEntries = this.mergeEntryMapsByRecency(hydrated.entries, dailyLogEntries);
+    const importedEntries = { ...hydrated.entries };
+    const dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+    Object.entries(dailyLogEntries).forEach(([date, entry]) => {
+      if (!importedEntries[date]) {
+        importedEntries[date] = entry;
+      }
+    });
     return {
       ...hydrated,
-      entries: mergedEntries,
-      dayState: normalizeDayState(hydrated.dayState, mergedEntries)
+      entries: importedEntries,
+      dayState: normalizeDayState(hydrated.dayState, importedEntries)
     };
   }
   scheduleNoteIndexRefresh() {
@@ -3464,70 +3425,6 @@ function getEntryRecencyKey(entry) {
     ...entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : []
   ].filter((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));
   return (_a = timestamps.sort().slice(-1)[0]) != null ? _a : "";
-}
-function isEntryEffectivelyEmpty(entry) {
-  var _a, _b;
-  if (!entry) {
-    return true;
-  }
-  return !(typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 || typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 || typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 || typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 || entry.habits && Object.values(entry.habits).some((count) => Number(count) > 0) || entry.habitEvents && Object.values(entry.habitEvents).some((items) => Array.isArray(items) && items.length > 0) || Number((_a = entry.moodScore) != null ? _a : 0) > 0 || Number((_b = entry.energyScore) != null ? _b : 0) > 0 || Array.isArray(entry.todayFocus) && entry.todayFocus.some((item) => item.trim().length > 0) || typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 || Array.isArray(entry.foodLog) && entry.foodLog.length > 0 || typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 || typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 || typeof entry.notes === "string" && entry.notes.trim().length > 0 || Array.isArray(entry.workSessions) && entry.workSessions.length > 0 || Array.isArray(entry.napSessions) && entry.napSessions.length > 0 || Array.isArray(entry.completedTasks) && entry.completedTasks.length > 0);
-}
-function getEntryCompletenessScore(entry) {
-  var _a, _b;
-  if (!entry) {
-    return 0;
-  }
-  let score = 0;
-  score += typeof entry.lastEditedAt === "string" && entry.lastEditedAt.trim().length > 0 ? 3 : 0;
-  score += typeof entry.dayStartedAt === "string" && entry.dayStartedAt.trim().length > 0 ? 1 : 0;
-  score += typeof entry.dayEndedAt === "string" && entry.dayEndedAt.trim().length > 0 ? 1 : 0;
-  score += typeof entry.wakeTime === "string" && entry.wakeTime.trim().length > 0 ? 1 : 0;
-  score += typeof entry.sleepTime === "string" && entry.sleepTime.trim().length > 0 ? 1 : 0;
-  score += entry.habits ? Object.values(entry.habits).reduce((sum, value) => sum + (Number(value) > 0 ? 1 : 0), 0) : 0;
-  score += entry.habitEvents ? Object.values(entry.habitEvents).reduce((sum, items) => sum + (Array.isArray(items) ? items.length : 0), 0) : 0;
-  score += Number((_a = entry.moodScore) != null ? _a : 0) > 0 ? 1 : 0;
-  score += Number((_b = entry.energyScore) != null ? _b : 0) > 0 ? 1 : 0;
-  score += Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => item.trim().length > 0).length : 0;
-  score += typeof entry.frictionLog === "string" && entry.frictionLog.trim().length > 0 ? 2 : 0;
-  score += Array.isArray(entry.foodLog) ? entry.foodLog.length : 0;
-  score += typeof entry.sleepLog === "string" && entry.sleepLog.trim().length > 0 ? 2 : 0;
-  score += typeof entry.dreamLog === "string" && entry.dreamLog.trim().length > 0 ? 2 : 0;
-  score += typeof entry.notes === "string" && entry.notes.trim().length > 0 ? 2 : 0;
-  score += Array.isArray(entry.workSessions) ? entry.workSessions.length : 0;
-  score += Array.isArray(entry.napSessions) ? entry.napSessions.length : 0;
-  score += Array.isArray(entry.completedTasks) ? entry.completedTasks.length : 0;
-  return score;
-}
-function pickNewerEntry(left, right) {
-  const leftTimestamp = getEntryRecencyKey(left);
-  const rightTimestamp = getEntryRecencyKey(right);
-  const leftCompleteness = getEntryCompletenessScore(left);
-  const rightCompleteness = getEntryCompletenessScore(right);
-  if (!leftTimestamp && !rightTimestamp) {
-    if (isEntryEffectivelyEmpty(left)) {
-      return right;
-    }
-    if (isEntryEffectivelyEmpty(right)) {
-      return left;
-    }
-    return rightCompleteness > leftCompleteness ? right : left;
-  }
-  if (!leftTimestamp) {
-    if (isEntryEffectivelyEmpty(left)) {
-      return right;
-    }
-    return rightCompleteness >= leftCompleteness ? right : left;
-  }
-  if (!rightTimestamp) {
-    if (isEntryEffectivelyEmpty(right)) {
-      return left;
-    }
-    return leftCompleteness >= rightCompleteness ? left : right;
-  }
-  if (leftTimestamp === rightTimestamp) {
-    return rightCompleteness > leftCompleteness ? right : left;
-  }
-  return rightTimestamp >= leftTimestamp ? right : left;
 }
 function renderScore(value) {
   return value > 0 ? `${value}/5` : "-";
