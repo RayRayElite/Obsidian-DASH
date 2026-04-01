@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, TFolder, normalizePath } from "obsidian";
+import { Notice, Plugin, TFile, TFolder, normalizePath, requestUrl } from "obsidian";
 
 import {
   buildAiSearchTerms,
@@ -89,6 +89,7 @@ import {
   type AiStructuredPayload,
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
+  type CalendarSnapshot,
   type CreateProjectInput,
   type DayRepairInput,
   type DailyEntry,
@@ -106,7 +107,18 @@ import {
   type WorkSession
 } from "./src/dashboard-types";
 
+type ParsedCalendarEvent = {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  location: string;
+  allDay: boolean;
+};
+
 export default class DailyDashboardPlugin extends Plugin {
+  private static readonly CALENDAR_CACHE_MS = 5 * 60 * 1000;
+
   private data: DashboardPluginData = {
     settings: { ...DEFAULT_SETTINGS },
     entries: {},
@@ -123,6 +135,13 @@ export default class DailyDashboardPlugin extends Plugin {
   private isAiBusy = false;
   private isIndexingNotes = false;
   private noteIndexDebounceId: number | null = null;
+  private calendarCache: { key: string; fetchedAt: number; snapshot: CalendarSnapshot | null } = {
+    key: "",
+    fetchedAt: 0,
+    snapshot: null
+  };
+  private calendarWarningDay = "";
+  private warnedCalendarEventKeys = new Set<string>();
 
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) {
@@ -588,12 +607,346 @@ export default class DailyDashboardPlugin extends Plugin {
     return option?.url ?? null;
   }
 
+  private getResolvedAiApiKey(): string {
+    if (this.data.settings.aiApiKeySource === "env") {
+      const envVar = this.data.settings.aiApiKeyEnvVar.trim();
+      if (!envVar) {
+        return "";
+      }
+
+      return process.env[envVar]?.trim() ?? "";
+    }
+
+    return this.data.settings.aiApiKey.trim();
+  }
+
+  private getAiConfigurationMessage(): string {
+    if (this.data.settings.aiApiKeySource === "env") {
+      const envVar = this.data.settings.aiApiKeyEnvVar.trim() || "OPENAI_API_KEY";
+      return `Set the ${envVar} environment variable before using AI features.`;
+    }
+
+    return "Add your OpenAI API key in Daily Dashboard settings before using AI features.";
+  }
+
+  private resetCalendarCache(): void {
+    this.calendarCache = {
+      key: "",
+      fetchedAt: 0,
+      snapshot: null
+    };
+  }
+
+  private getCalendarSourceLabel(): string {
+    if (this.data.settings.calendarSourceType === "url-ics") {
+      return this.data.settings.calendarIcsUrl.trim();
+    }
+
+    return normalizePath(this.data.settings.calendarIcsPath.trim());
+  }
+
+  private getCalendarCacheKey(): string {
+    const settings = this.data.settings;
+    return [
+      settings.calendarEnabled ? "on" : "off",
+      settings.calendarSourceType,
+      this.getCalendarSourceLabel(),
+      String(settings.calendarLookaheadHours),
+      String(settings.calendarWarningHours)
+    ].join("|");
+  }
+
+  async getUpcomingCalendarSnapshot(now: Date = new Date()): Promise<CalendarSnapshot> {
+    if (!this.data.settings.calendarEnabled) {
+      return {
+        events: [],
+        error: null,
+        enabled: false,
+        sourceLabel: ""
+      };
+    }
+
+    const cacheKey = this.getCalendarCacheKey();
+    if (
+      this.calendarCache.snapshot
+      && this.calendarCache.key === cacheKey
+      && now.getTime() - this.calendarCache.fetchedAt < DailyDashboardPlugin.CALENDAR_CACHE_MS
+    ) {
+      this.maybeWarnUpcomingCalendarEvents(this.calendarCache.snapshot.events, now);
+      return this.calendarCache.snapshot;
+    }
+
+    let snapshot: CalendarSnapshot;
+    try {
+      const { text, sourceLabel } = await this.loadCalendarIcsText();
+      const windowEnd = new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1000);
+      const upcomingEvents = this.parseCalendarEvents(text)
+        .filter((event) => event.end.getTime() >= now.getTime() && event.start.getTime() <= windowEnd.getTime())
+        .sort((left, right) => left.start.getTime() - right.start.getTime())
+        .slice(0, 8)
+        .map((event) => ({
+          id: event.id,
+          title: event.title,
+          start: event.start.toISOString(),
+          end: event.end.toISOString(),
+          location: event.location,
+          allDay: event.allDay,
+          warningLevel: event.start.getTime() - now.getTime() <= this.data.settings.calendarWarningHours * 60 * 60 * 1000
+            ? "warning"
+            : "upcoming"
+        }));
+
+      snapshot = {
+        events: upcomingEvents,
+        error: null,
+        enabled: true,
+        sourceLabel
+      };
+      this.maybeWarnUpcomingCalendarEvents(snapshot.events, now);
+    } catch (error) {
+      snapshot = {
+        events: [],
+        error: this.getErrorMessage(error),
+        enabled: true,
+        sourceLabel: this.getCalendarSourceLabel()
+      };
+    }
+
+    this.calendarCache = {
+      key: cacheKey,
+      fetchedAt: now.getTime(),
+      snapshot
+    };
+
+    return snapshot;
+  }
+
+  private async loadCalendarIcsText(): Promise<{ text: string; sourceLabel: string }> {
+    if (this.data.settings.calendarSourceType === "url-ics") {
+      const url = this.data.settings.calendarIcsUrl.trim();
+      if (!url) {
+        throw new Error("Calendar ICS URL is empty.");
+      }
+
+      const response = await requestUrl({ url });
+      return {
+        text: response.text,
+        sourceLabel: url
+      };
+    }
+
+    const path = normalizePath(this.data.settings.calendarIcsPath.trim());
+    if (!path) {
+      throw new Error("Calendar ICS path is empty.");
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      throw new Error(`Calendar ICS file not found: ${path}`);
+    }
+
+    return {
+      text: await this.app.vault.read(file),
+      sourceLabel: path
+    };
+  }
+
+  private parseCalendarEvents(icsText: string): ParsedCalendarEvent[] {
+    const lines = this.unfoldIcsLines(icsText);
+    const events: ParsedCalendarEvent[] = [];
+    let currentEvent: Record<string, Array<{ value: string; params: Record<string, string> }>> | null = null;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+
+      if (line === "BEGIN:VEVENT") {
+        currentEvent = {};
+        continue;
+      }
+
+      if (line === "END:VEVENT") {
+        if (currentEvent) {
+          const parsed = this.buildCalendarEvent(currentEvent);
+          if (parsed) {
+            events.push(parsed);
+          }
+        }
+        currentEvent = null;
+        continue;
+      }
+
+      if (!currentEvent) {
+        continue;
+      }
+
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) {
+        continue;
+      }
+
+      const keyPart = line.slice(0, separatorIndex);
+      const value = line.slice(separatorIndex + 1);
+      const [rawKey, ...rawParams] = keyPart.split(";");
+      const key = rawKey.toUpperCase();
+      const params = Object.fromEntries(
+        rawParams.map((parameter) => {
+          const equalsIndex = parameter.indexOf("=");
+          if (equalsIndex === -1) {
+            return [parameter.toUpperCase(), ""];
+          }
+
+          return [parameter.slice(0, equalsIndex).toUpperCase(), parameter.slice(equalsIndex + 1)];
+        })
+      );
+
+      currentEvent[key] = [...(currentEvent[key] ?? []), { value, params }];
+    }
+
+    return events;
+  }
+
+  private unfoldIcsLines(icsText: string): string[] {
+    const rawLines = icsText.split(/\r?\n/);
+    const lines: string[] = [];
+
+    rawLines.forEach((line) => {
+      if ((line.startsWith(" ") || line.startsWith("\t")) && lines.length > 0) {
+        lines[lines.length - 1] += line.slice(1);
+        return;
+      }
+
+      lines.push(line);
+    });
+
+    return lines;
+  }
+
+  private buildCalendarEvent(rawEvent: Record<string, Array<{ value: string; params: Record<string, string> }>>): ParsedCalendarEvent | null {
+    const startField = rawEvent.DTSTART?.[0];
+    if (!startField) {
+      return null;
+    }
+
+    const start = this.parseIcsDateValue(startField.value, startField.params);
+    if (!start) {
+      return null;
+    }
+
+    const endField = rawEvent.DTEND?.[0];
+    const end = endField
+      ? this.parseIcsDateValue(endField.value, endField.params)
+      : null;
+    const endDate = end?.date ?? new Date(start.date.getTime() + (start.allDay ? 24 : 1) * 60 * 60 * 1000);
+
+    return {
+      id: this.decodeIcsText(rawEvent.UID?.[0]?.value || `${start.date.toISOString()}-${rawEvent.SUMMARY?.[0]?.value || "event"}`),
+      title: this.decodeIcsText(rawEvent.SUMMARY?.[0]?.value || "Untitled event"),
+      start: start.date,
+      end: endDate,
+      location: this.decodeIcsText(rawEvent.LOCATION?.[0]?.value || ""),
+      allDay: start.allDay
+    };
+  }
+
+  private parseIcsDateValue(value: string, params: Record<string, string>): { date: Date; allDay: boolean } | null {
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const allDay = params.VALUE?.toUpperCase() === "DATE" || /^\d{8}$/.test(normalizedValue);
+    if (allDay) {
+      const match = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})$/);
+      if (!match) {
+        return null;
+      }
+
+      const [, year, month, day] = match;
+      return {
+        date: new Date(Number(year), Number(month) - 1, Number(day), 0, 0, 0, 0),
+        allDay: true
+      };
+    }
+
+    const match = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?Z?$/);
+    if (!match) {
+      return null;
+    }
+
+    const [, year, month, day, hour, minute, second] = match;
+    const numericSecond = Number(second ?? "0");
+    const isUtc = normalizedValue.endsWith("Z");
+
+    return {
+      date: isUtc
+        ? new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond))
+        : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond, 0),
+      allDay: false
+    };
+  }
+
+  private decodeIcsText(value: string): string {
+    return value
+      .replace(/\\n/gi, "\n")
+      .replace(/\\,/g, ",")
+      .replace(/\\;/g, ";")
+      .replace(/\\\\/g, "\\")
+      .trim();
+  }
+
+  private maybeWarnUpcomingCalendarEvents(events: CalendarSnapshot["events"], now: Date): void {
+    const currentDay = formatDateKey(now);
+    if (this.calendarWarningDay !== currentDay) {
+      this.calendarWarningDay = currentDay;
+      this.warnedCalendarEventKeys.clear();
+    }
+
+    const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1000;
+    events
+      .filter((event) => {
+        if (event.allDay) {
+          return false;
+        }
+
+        const startTime = new Date(event.start).getTime();
+        return startTime >= now.getTime() && startTime - now.getTime() <= warningWindowMs;
+      })
+      .forEach((event) => {
+        const eventKey = `${currentDay}|${event.id}|${event.start}`;
+        if (this.warnedCalendarEventKeys.has(eventKey)) {
+          return;
+        }
+
+        this.warnedCalendarEventKeys.add(eventKey);
+        const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
+        const locationLabel = event.location ? ` • ${event.location}` : "";
+        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}${locationLabel}`, 10000);
+      });
+  }
+
+  private formatCalendarEventWindow(start: Date, end: Date, allDay: boolean): string {
+    if (allDay) {
+      return "All day";
+    }
+
+    const sameDay = formatDateKey(start) === formatDateKey(end);
+    const startLabel = start.toLocaleString([], sameDay
+      ? { hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+    return `${startLabel} - ${endLabel}`;
+  }
+
   getAiStatus(): AiStatus {
     return {
-      configured: this.data.settings.aiApiKey.trim().length > 0,
+      configured: this.getResolvedAiApiKey().length > 0,
       busy: this.isAiBusy,
       model: this.data.settings.aiModel,
       outputFolder: this.data.settings.aiOutputFolder,
+      keySource: this.data.settings.aiApiKeySource,
       latestArtifact: this.latestAiArtifact,
       indexStatus: this.getRetrievalIndexStatus()
     };
@@ -631,6 +984,7 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateSettings(settings: DashboardSettings): Promise<void> {
     const previousSettings = this.data.settings;
     this.data.settings = sanitizeSettings(settings);
+    this.resetCalendarCache();
     await this.refreshWallpaperOptions();
 
     for (const date of Object.keys(this.data.entries)) {
@@ -776,8 +1130,8 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    if (!this.data.settings.aiApiKey.trim()) {
-      new Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+    if (!this.getResolvedAiApiKey()) {
+      new Notice(this.getAiConfigurationMessage());
       return;
     }
 
@@ -1696,8 +2050,8 @@ export default class DailyDashboardPlugin extends Plugin {
     includeActiveNote?: boolean;
     question?: string;
   }): Promise<void> {
-    if (!this.data.settings.aiApiKey.trim()) {
-      new Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+    if (!this.getResolvedAiApiKey()) {
+      new Notice(this.getAiConfigurationMessage());
       return;
     }
 
@@ -1821,11 +2175,16 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async requestAiCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
+    }
+
     const response = await fetch(this.data.settings.aiBaseUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: this.data.settings.aiModel,
@@ -1870,7 +2229,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async requestQueryEmbedding(text: string): Promise<number[] | null> {
-    if (!this.data.settings.aiEmbeddingsEnabled || !this.data.settings.aiApiKey.trim()) {
+    if (!this.data.settings.aiEmbeddingsEnabled || !this.getResolvedAiApiKey()) {
       return null;
     }
 
@@ -1883,8 +2242,9 @@ export default class DailyDashboardPlugin extends Plugin {
       return new Map();
     }
 
-    if (!this.data.settings.aiApiKey.trim()) {
-      throw new Error("Add your OpenAI API key before building embeddings.");
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
     }
 
     if (chunks.length === 0) {
@@ -1895,7 +2255,7 @@ export default class DailyDashboardPlugin extends Plugin {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: this.data.settings.aiEmbeddingModel,

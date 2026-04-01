@@ -44,6 +44,8 @@ var DEFAULT_SETTINGS = {
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
   aiApiKey: "",
+  aiApiKeySource: "settings",
+  aiApiKeyEnvVar: "OPENAI_API_KEY",
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
@@ -55,6 +57,12 @@ var DEFAULT_SETTINGS = {
   aiEmbeddingsEnabled: false,
   aiEmbeddingModel: "text-embedding-3-small",
   aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
+  calendarEnabled: false,
+  calendarSourceType: "vault-ics",
+  calendarIcsPath: "",
+  calendarIcsUrl: "",
+  calendarLookaheadHours: 48,
+  calendarWarningHours: 12,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -68,7 +76,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2;
     return {
@@ -77,27 +85,39 @@ function sanitizeSettings(settings) {
       target: clamp(Number((_a2 = habit.target) != null ? _a2 : 1), 1, 12)
     };
   }).filter((habit) => habit.label.length > 0) : DEFAULT_SETTINGS.habitDefinitions;
+  const aiApiKeySource = settings.aiApiKeySource === "env" ? "env" : "settings";
+  const calendarSourceType = settings.calendarSourceType === "url-ics" ? "url-ics" : "vault-ics";
+  const calendarLookaheadHours = clamp(Number((_a = settings.calendarLookaheadHours) != null ? _a : DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
+  const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   return {
-    dashboardTitle: ((_a = settings.dashboardTitle) == null ? void 0 : _a.trim()) || DEFAULT_SETTINGS.dashboardTitle,
-    masterTodoPath: ((_b = settings.masterTodoPath) == null ? void 0 : _b.trim()) || DEFAULT_SETTINGS.masterTodoPath,
-    projectNotesFolder: normalizeFolderPath(((_c = settings.projectNotesFolder) == null ? void 0 : _c.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
-    dailyLogFolder: ((_d = settings.dailyLogFolder) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
-    weeklyReportFolder: ((_e = settings.weeklyReportFolder) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
-    monthlyReportFolder: ((_f = settings.monthlyReportFolder) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
-    aiApiKey: ((_g = settings.aiApiKey) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.aiApiKey,
-    aiModel: ((_h = settings.aiModel) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.aiModel,
-    aiBaseUrl: ((_i = settings.aiBaseUrl) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    aiOutputFolder: normalizeFolderPath(((_j = settings.aiOutputFolder) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
-    aiContextDays: clamp(Number((_k = settings.aiContextDays) != null ? _k : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_l = settings.aiRelatedNotesLimit) != null ? _l : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_m = settings.aiIndexEnabled) != null ? _m : DEFAULT_SETTINGS.aiIndexEnabled,
+    dashboardTitle: ((_c = settings.dashboardTitle) == null ? void 0 : _c.trim()) || DEFAULT_SETTINGS.dashboardTitle,
+    masterTodoPath: ((_d = settings.masterTodoPath) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.masterTodoPath,
+    projectNotesFolder: normalizeFolderPath(((_e = settings.projectNotesFolder) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
+    dailyLogFolder: ((_f = settings.dailyLogFolder) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
+    weeklyReportFolder: ((_g = settings.weeklyReportFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
+    monthlyReportFolder: ((_h = settings.monthlyReportFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
+    aiApiKey: ((_i = settings.aiApiKey) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.aiApiKey,
+    aiApiKeySource,
+    aiApiKeyEnvVar: ((_j = settings.aiApiKeyEnvVar) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
+    aiModel: ((_k = settings.aiModel) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiModel,
+    aiBaseUrl: ((_l = settings.aiBaseUrl) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
+    aiOutputFolder: normalizeFolderPath(((_m = settings.aiOutputFolder) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    aiContextDays: clamp(Number((_n = settings.aiContextDays) != null ? _n : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_o = settings.aiRelatedNotesLimit) != null ? _o : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_p = settings.aiIndexEnabled) != null ? _p : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_n = settings.aiChunkCharLimit) != null ? _n : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_o = settings.aiEmbeddingsEnabled) != null ? _o : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_p = settings.aiEmbeddingModel) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_q = settings.aiEmbeddingApiUrl) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    wallpaperFolder: normalizeFolderPath(((_r = settings.wallpaperFolder) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_s = settings.selectedWallpaper) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    aiChunkCharLimit: clamp(Number((_q = settings.aiChunkCharLimit) != null ? _q : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_r = settings.aiEmbeddingsEnabled) != null ? _r : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_s = settings.aiEmbeddingModel) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_t = settings.aiEmbeddingApiUrl) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_u = settings.calendarEnabled) != null ? _u : DEFAULT_SETTINGS.calendarEnabled,
+    calendarSourceType,
+    calendarIcsPath: ((_v = settings.calendarIcsPath) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.calendarIcsPath,
+    calendarIcsUrl: ((_w = settings.calendarIcsUrl) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.calendarIcsUrl,
+    calendarLookaheadHours,
+    calendarWarningHours,
+    wallpaperFolder: normalizeFolderPath(((_x = settings.wallpaperFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_y = settings.selectedWallpaper) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
   };
 }
@@ -2139,6 +2159,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const todayEntry = this.plugin.getTodayEntry();
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
+      const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
       const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
       const projects = (_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : [];
       const staleProjects = (_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _b : [];
@@ -2338,6 +2359,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
+      this.renderCalendarBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
         eyebrow: "State",
@@ -2811,6 +2833,82 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     input.addEventListener("change", () => {
       onChange(input.value.trim());
     });
+  }
+  renderCalendarBlock(parent, snapshot, lookaheadHours) {
+    const block = parent.createDiv({ cls: "daily-dashboard-calendar-block" });
+    const header = block.createDiv({ cls: "daily-dashboard-calendar-header" });
+    header.createEl("strong", { text: "Upcoming activity" });
+    header.createEl("span", {
+      cls: "daily-dashboard-row-meta",
+      text: snapshot.enabled ? snapshot.sourceLabel || `Next ${lookaheadHours}h` : "Enable calendar support in settings to surface upcoming activities here."
+    });
+    if (!snapshot.enabled) {
+      block.createDiv({
+        cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+        text: "Calendar support is off. Point the plugin at an ICS file or URL to get upcoming warnings below Top 3."
+      });
+      return;
+    }
+    if (snapshot.error) {
+      const errorRow = block.createDiv({ cls: "daily-dashboard-calendar-row is-warning" });
+      const copy = errorRow.createDiv({ cls: "daily-dashboard-calendar-copy" });
+      copy.createEl("strong", { text: "Calendar feed unavailable" });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.error });
+      return;
+    }
+    if (snapshot.events.length === 0) {
+      block.createDiv({
+        cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+        text: `No upcoming calendar activity in the next ${lookaheadHours} hours.`
+      });
+      return;
+    }
+    const list = block.createDiv({ cls: "daily-dashboard-calendar-list" });
+    snapshot.events.forEach((event) => {
+      const row = list.createDiv({ cls: `daily-dashboard-calendar-row is-${event.warningLevel}` });
+      const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
+      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay) });
+      time.createEl("span", { text: this.formatCalendarTimeLabel(new Date(event.start), new Date(event.end), event.allDay) });
+      const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
+      copy.createEl("strong", { text: event.title });
+      copy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: event.location || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
+      });
+      const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(chips, event.warningLevel === "warning" ? "Soon" : "Later", event.warningLevel === "warning" ? "alert" : "neutral");
+      if (event.allDay) {
+        createSemanticChip(chips, "All day", "log");
+      }
+    });
+  }
+  formatCalendarDayLabel(date, allDay) {
+    if (allDay) {
+      return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    }
+    const todayKey = formatDateKey(/* @__PURE__ */ new Date());
+    const dateKey = formatDateKey(date);
+    if (dateKey === todayKey) {
+      return "Today";
+    }
+    const tomorrow = /* @__PURE__ */ new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (dateKey === formatDateKey(tomorrow)) {
+      return "Tomorrow";
+    }
+    return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  }
+  formatCalendarTimeLabel(start, end, allDay) {
+    if (allDay) {
+      return "All day";
+    }
+    const sameDay = formatDateKey(start) === formatDateKey(end);
+    const startLabel = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (sameDay) {
+      return `${startLabel} - ${endLabel}`;
+    }
+    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${endLabel}`;
   }
   renderDayMetric(parent, label, value) {
     const metric = parent.createDiv({ cls: "daily-dashboard-day-metric" });
@@ -3293,7 +3391,88 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         });
       });
     });
-    new import_obsidian3.Setting(containerEl).setName("OpenAI API key").setDesc("Used for AI planning, reflection, triage, and question answering. Stored in plugin settings.").addText((text) => {
+    containerEl.createEl("h3", { text: "Calendar" });
+    new import_obsidian3.Setting(containerEl).setName("Enable calendar support").setDesc("Show upcoming calendar activity below Top 3 and raise notices inside the warning window.").addToggle((toggle) => {
+      toggle.setValue(settings.calendarEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          calendarEnabled: value
+        });
+        this.display();
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Calendar source").setDesc("Use an ICS file from the vault or an ICS URL from another calendar service.").addDropdown((dropdown) => {
+      dropdown.addOption("vault-ics", "Vault ICS file");
+      dropdown.addOption("url-ics", "ICS URL");
+      dropdown.setValue(settings.calendarSourceType);
+      dropdown.onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          calendarSourceType: value === "url-ics" ? "url-ics" : "vault-ics"
+        });
+        this.display();
+      });
+    });
+    if (settings.calendarSourceType === "vault-ics") {
+      new import_obsidian3.Setting(containerEl).setName("Calendar ICS path").setDesc("Path to an .ics file inside the vault. Example: Calendars/Personal.ics").addText((text) => {
+        text.setPlaceholder("Calendars/Personal.ics").setValue(settings.calendarIcsPath).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            calendarIcsPath: value.trim()
+          });
+        });
+      });
+    } else {
+      new import_obsidian3.Setting(containerEl).setName("Calendar ICS URL").setDesc("Public or tokenized ICS feed URL used for upcoming-activity warnings.").addText((text) => {
+        text.setPlaceholder("https://calendar.example.com/feed.ics").setValue(settings.calendarIcsUrl).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            calendarIcsUrl: value.trim()
+          });
+        });
+      });
+    }
+    new import_obsidian3.Setting(containerEl).setName("Calendar lookahead hours").setDesc("How far ahead the Execution card should look when listing upcoming activity.").addText((text) => {
+      text.setPlaceholder(`${DEFAULT_SETTINGS.calendarLookaheadHours}`).setValue(`${settings.calendarLookaheadHours}`).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          calendarLookaheadHours: Math.min(Math.max(Number(value.trim() || DEFAULT_SETTINGS.calendarLookaheadHours), 1), 336)
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Calendar warning hours").setDesc("Events inside this window trigger a dashboard notice and get marked as soon.").addText((text) => {
+      text.setPlaceholder(`${DEFAULT_SETTINGS.calendarWarningHours}`).setValue(`${settings.calendarWarningHours}`).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          calendarWarningHours: Math.min(
+            Math.max(Number(value.trim() || DEFAULT_SETTINGS.calendarWarningHours), 1),
+            this.plugin.getSettings().calendarLookaheadHours
+          )
+        });
+      });
+    });
+    containerEl.createEl("h3", { text: "AI" });
+    new import_obsidian3.Setting(containerEl).setName("AI API key source").setDesc("Environment variables are safer because the raw key is not persisted in plugin data.").addDropdown((dropdown) => {
+      dropdown.addOption("settings", "Stored in plugin settings");
+      dropdown.addOption("env", "Environment variable");
+      dropdown.setValue(settings.aiApiKeySource);
+      dropdown.onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiApiKeySource: value === "env" ? "env" : "settings"
+        });
+        this.display();
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("AI environment variable").setDesc("Only used when the key source is Environment variable.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.aiApiKeyEnvVar).setValue(settings.aiApiKeyEnvVar).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiApiKeyEnvVar: value.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Stored OpenAI API key").setDesc(settings.aiApiKeySource === "env" ? "Ignored while environment-variable mode is active. Clear it if you do not want a fallback key saved in plugin data." : "Used for AI planning, reflection, triage, and question answering when stored-key mode is active.").addText((text) => {
       text.setPlaceholder("sk-...").setValue(settings.aiApiKey).onChange(async (value) => {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
@@ -3301,6 +3480,14 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         });
       });
       text.inputEl.type = "password";
+    }).addButton((button) => {
+      button.setButtonText("Clear").onClick(async () => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiApiKey: ""
+        });
+        this.display();
+      });
     });
     new import_obsidian3.Setting(containerEl).setName("AI model").setDesc("Recommended default: gpt-4o-mini for strong cost-to-quality balance. You can enter any compatible OpenAI chat-completions model.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.aiModel).setValue(settings.aiModel).onChange(async (value) => {
@@ -3392,6 +3579,7 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         });
       });
     });
+    containerEl.createEl("h3", { text: "Appearance" });
     new import_obsidian3.Setting(containerEl).setName("Wallpaper folder").setDesc("Image folder used for dashboard hero wallpapers.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.wallpaperFolder).setValue(settings.wallpaperFolder).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -3610,7 +3798,7 @@ var AddHabitModal = class extends import_obsidian3.Modal {
 };
 
 // main.ts
-var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
+var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
     this.data = {
@@ -3629,6 +3817,13 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     this.isAiBusy = false;
     this.isIndexingNotes = false;
     this.noteIndexDebounceId = null;
+    this.calendarCache = {
+      key: "",
+      fetchedAt: 0,
+      snapshot: null
+    };
+    this.calendarWarningDay = "";
+    this.warnedCalendarEventKeys = /* @__PURE__ */ new Set();
   }
   getErrorMessage(error) {
     if (error instanceof Error && error.message.trim()) {
@@ -4017,12 +4212,276 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     const option = this.wallpaperOptions.find((candidate) => (0, import_obsidian4.normalizePath)(candidate.path) === (0, import_obsidian4.normalizePath)(path));
     return (_a = option == null ? void 0 : option.url) != null ? _a : null;
   }
+  getResolvedAiApiKey() {
+    var _a, _b;
+    if (this.data.settings.aiApiKeySource === "env") {
+      const envVar = this.data.settings.aiApiKeyEnvVar.trim();
+      if (!envVar) {
+        return "";
+      }
+      return (_b = (_a = process.env[envVar]) == null ? void 0 : _a.trim()) != null ? _b : "";
+    }
+    return this.data.settings.aiApiKey.trim();
+  }
+  getAiConfigurationMessage() {
+    if (this.data.settings.aiApiKeySource === "env") {
+      const envVar = this.data.settings.aiApiKeyEnvVar.trim() || "OPENAI_API_KEY";
+      return `Set the ${envVar} environment variable before using AI features.`;
+    }
+    return "Add your OpenAI API key in Daily Dashboard settings before using AI features.";
+  }
+  resetCalendarCache() {
+    this.calendarCache = {
+      key: "",
+      fetchedAt: 0,
+      snapshot: null
+    };
+  }
+  getCalendarSourceLabel() {
+    if (this.data.settings.calendarSourceType === "url-ics") {
+      return this.data.settings.calendarIcsUrl.trim();
+    }
+    return (0, import_obsidian4.normalizePath)(this.data.settings.calendarIcsPath.trim());
+  }
+  getCalendarCacheKey() {
+    const settings = this.data.settings;
+    return [
+      settings.calendarEnabled ? "on" : "off",
+      settings.calendarSourceType,
+      this.getCalendarSourceLabel(),
+      String(settings.calendarLookaheadHours),
+      String(settings.calendarWarningHours)
+    ].join("|");
+  }
+  async getUpcomingCalendarSnapshot(now = /* @__PURE__ */ new Date()) {
+    if (!this.data.settings.calendarEnabled) {
+      return {
+        events: [],
+        error: null,
+        enabled: false,
+        sourceLabel: ""
+      };
+    }
+    const cacheKey = this.getCalendarCacheKey();
+    if (this.calendarCache.snapshot && this.calendarCache.key === cacheKey && now.getTime() - this.calendarCache.fetchedAt < _DailyDashboardPlugin.CALENDAR_CACHE_MS) {
+      this.maybeWarnUpcomingCalendarEvents(this.calendarCache.snapshot.events, now);
+      return this.calendarCache.snapshot;
+    }
+    let snapshot;
+    try {
+      const { text, sourceLabel } = await this.loadCalendarIcsText();
+      const windowEnd = new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3);
+      const upcomingEvents = this.parseCalendarEvents(text).filter((event) => event.end.getTime() >= now.getTime() && event.start.getTime() <= windowEnd.getTime()).sort((left, right) => left.start.getTime() - right.start.getTime()).slice(0, 8).map((event) => ({
+        id: event.id,
+        title: event.title,
+        start: event.start.toISOString(),
+        end: event.end.toISOString(),
+        location: event.location,
+        allDay: event.allDay,
+        warningLevel: event.start.getTime() - now.getTime() <= this.data.settings.calendarWarningHours * 60 * 60 * 1e3 ? "warning" : "upcoming"
+      }));
+      snapshot = {
+        events: upcomingEvents,
+        error: null,
+        enabled: true,
+        sourceLabel
+      };
+      this.maybeWarnUpcomingCalendarEvents(snapshot.events, now);
+    } catch (error) {
+      snapshot = {
+        events: [],
+        error: this.getErrorMessage(error),
+        enabled: true,
+        sourceLabel: this.getCalendarSourceLabel()
+      };
+    }
+    this.calendarCache = {
+      key: cacheKey,
+      fetchedAt: now.getTime(),
+      snapshot
+    };
+    return snapshot;
+  }
+  async loadCalendarIcsText() {
+    if (this.data.settings.calendarSourceType === "url-ics") {
+      const url = this.data.settings.calendarIcsUrl.trim();
+      if (!url) {
+        throw new Error("Calendar ICS URL is empty.");
+      }
+      const response = await (0, import_obsidian4.requestUrl)({ url });
+      return {
+        text: response.text,
+        sourceLabel: url
+      };
+    }
+    const path = (0, import_obsidian4.normalizePath)(this.data.settings.calendarIcsPath.trim());
+    if (!path) {
+      throw new Error("Calendar ICS path is empty.");
+    }
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof import_obsidian4.TFile)) {
+      throw new Error(`Calendar ICS file not found: ${path}`);
+    }
+    return {
+      text: await this.app.vault.read(file),
+      sourceLabel: path
+    };
+  }
+  parseCalendarEvents(icsText) {
+    var _a;
+    const lines = this.unfoldIcsLines(icsText);
+    const events = [];
+    let currentEvent = null;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+      if (line === "BEGIN:VEVENT") {
+        currentEvent = {};
+        continue;
+      }
+      if (line === "END:VEVENT") {
+        if (currentEvent) {
+          const parsed = this.buildCalendarEvent(currentEvent);
+          if (parsed) {
+            events.push(parsed);
+          }
+        }
+        currentEvent = null;
+        continue;
+      }
+      if (!currentEvent) {
+        continue;
+      }
+      const separatorIndex = line.indexOf(":");
+      if (separatorIndex === -1) {
+        continue;
+      }
+      const keyPart = line.slice(0, separatorIndex);
+      const value = line.slice(separatorIndex + 1);
+      const [rawKey, ...rawParams] = keyPart.split(";");
+      const key = rawKey.toUpperCase();
+      const params = Object.fromEntries(
+        rawParams.map((parameter) => {
+          const equalsIndex = parameter.indexOf("=");
+          if (equalsIndex === -1) {
+            return [parameter.toUpperCase(), ""];
+          }
+          return [parameter.slice(0, equalsIndex).toUpperCase(), parameter.slice(equalsIndex + 1)];
+        })
+      );
+      currentEvent[key] = [...(_a = currentEvent[key]) != null ? _a : [], { value, params }];
+    }
+    return events;
+  }
+  unfoldIcsLines(icsText) {
+    const rawLines = icsText.split(/\r?\n/);
+    const lines = [];
+    rawLines.forEach((line) => {
+      if ((line.startsWith(" ") || line.startsWith("	")) && lines.length > 0) {
+        lines[lines.length - 1] += line.slice(1);
+        return;
+      }
+      lines.push(line);
+    });
+    return lines;
+  }
+  buildCalendarEvent(rawEvent) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+    const startField = (_a = rawEvent.DTSTART) == null ? void 0 : _a[0];
+    if (!startField) {
+      return null;
+    }
+    const start = this.parseIcsDateValue(startField.value, startField.params);
+    if (!start) {
+      return null;
+    }
+    const endField = (_b = rawEvent.DTEND) == null ? void 0 : _b[0];
+    const end = endField ? this.parseIcsDateValue(endField.value, endField.params) : null;
+    const endDate = (_c = end == null ? void 0 : end.date) != null ? _c : new Date(start.date.getTime() + (start.allDay ? 24 : 1) * 60 * 60 * 1e3);
+    return {
+      id: this.decodeIcsText(((_e = (_d = rawEvent.UID) == null ? void 0 : _d[0]) == null ? void 0 : _e.value) || `${start.date.toISOString()}-${((_g = (_f = rawEvent.SUMMARY) == null ? void 0 : _f[0]) == null ? void 0 : _g.value) || "event"}`),
+      title: this.decodeIcsText(((_i = (_h = rawEvent.SUMMARY) == null ? void 0 : _h[0]) == null ? void 0 : _i.value) || "Untitled event"),
+      start: start.date,
+      end: endDate,
+      location: this.decodeIcsText(((_k = (_j = rawEvent.LOCATION) == null ? void 0 : _j[0]) == null ? void 0 : _k.value) || ""),
+      allDay: start.allDay
+    };
+  }
+  parseIcsDateValue(value, params) {
+    var _a;
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      return null;
+    }
+    const allDay = ((_a = params.VALUE) == null ? void 0 : _a.toUpperCase()) === "DATE" || /^\d{8}$/.test(normalizedValue);
+    if (allDay) {
+      const match2 = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})$/);
+      if (!match2) {
+        return null;
+      }
+      const [, year2, month2, day2] = match2;
+      return {
+        date: new Date(Number(year2), Number(month2) - 1, Number(day2), 0, 0, 0, 0),
+        allDay: true
+      };
+    }
+    const match = normalizedValue.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?Z?$/);
+    if (!match) {
+      return null;
+    }
+    const [, year, month, day, hour, minute, second] = match;
+    const numericSecond = Number(second != null ? second : "0");
+    const isUtc = normalizedValue.endsWith("Z");
+    return {
+      date: isUtc ? new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond)) : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), numericSecond, 0),
+      allDay: false
+    };
+  }
+  decodeIcsText(value) {
+    return value.replace(/\\n/gi, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\").trim();
+  }
+  maybeWarnUpcomingCalendarEvents(events, now) {
+    const currentDay = formatDateKey(now);
+    if (this.calendarWarningDay !== currentDay) {
+      this.calendarWarningDay = currentDay;
+      this.warnedCalendarEventKeys.clear();
+    }
+    const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1e3;
+    events.filter((event) => {
+      if (event.allDay) {
+        return false;
+      }
+      const startTime = new Date(event.start).getTime();
+      return startTime >= now.getTime() && startTime - now.getTime() <= warningWindowMs;
+    }).forEach((event) => {
+      const eventKey = `${currentDay}|${event.id}|${event.start}`;
+      if (this.warnedCalendarEventKeys.has(eventKey)) {
+        return;
+      }
+      this.warnedCalendarEventKeys.add(eventKey);
+      const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
+      const locationLabel = event.location ? ` \u2022 ${event.location}` : "";
+      new import_obsidian4.Notice(`Upcoming activity: ${event.title} \u2022 ${timeLabel}${locationLabel}`, 1e4);
+    });
+  }
+  formatCalendarEventWindow(start, end, allDay) {
+    if (allDay) {
+      return "All day";
+    }
+    const sameDay = formatDateKey(start) === formatDateKey(end);
+    const startLabel = start.toLocaleString([], sameDay ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+    return `${startLabel} - ${endLabel}`;
+  }
   getAiStatus() {
     return {
-      configured: this.data.settings.aiApiKey.trim().length > 0,
+      configured: this.getResolvedAiApiKey().length > 0,
       busy: this.isAiBusy,
       model: this.data.settings.aiModel,
       outputFolder: this.data.settings.aiOutputFolder,
+      keySource: this.data.settings.aiApiKeySource,
       latestArtifact: this.latestAiArtifact,
       indexStatus: this.getRetrievalIndexStatus()
     };
@@ -4056,6 +4515,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   async updateSettings(settings) {
     const previousSettings = this.data.settings;
     this.data.settings = sanitizeSettings(settings);
+    this.resetCalendarCache();
     await this.refreshWallpaperOptions();
     for (const date of Object.keys(this.data.entries)) {
       this.data.entries[date] = this.normalizeEntry(this.data.entries[date], date);
@@ -4179,8 +4639,8 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       new import_obsidian4.Notice("Log at least one food entry before asking for a diet summary.");
       return;
     }
-    if (!this.data.settings.aiApiKey.trim()) {
-      new import_obsidian4.Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+    if (!this.getResolvedAiApiKey()) {
+      new import_obsidian4.Notice(this.getAiConfigurationMessage());
       return;
     }
     if (this.isAiBusy) {
@@ -4971,8 +5431,8 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   }
   async runAiWorkflow(input) {
     var _a, _b;
-    if (!this.data.settings.aiApiKey.trim()) {
-      new import_obsidian4.Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+    if (!this.getResolvedAiApiKey()) {
+      new import_obsidian4.Notice(this.getAiConfigurationMessage());
       return;
     }
     if (this.isAiBusy) {
@@ -5080,11 +5540,15 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   async requestAiCompletion(systemPrompt, userPrompt) {
     var _a, _b, _c, _d;
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
+    }
     const response = await fetch(this.data.settings.aiBaseUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: this.data.settings.aiModel,
@@ -5119,7 +5583,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   async requestQueryEmbedding(text) {
     var _a;
-    if (!this.data.settings.aiEmbeddingsEnabled || !this.data.settings.aiApiKey.trim()) {
+    if (!this.data.settings.aiEmbeddingsEnabled || !this.getResolvedAiApiKey()) {
       return null;
     }
     const embeddings = await this.requestChunkEmbeddings([{ id: "query", text }]);
@@ -5130,8 +5594,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     if (!this.data.settings.aiEmbeddingsEnabled) {
       return /* @__PURE__ */ new Map();
     }
-    if (!this.data.settings.aiApiKey.trim()) {
-      throw new Error("Add your OpenAI API key before building embeddings.");
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
     }
     if (chunks.length === 0) {
       return /* @__PURE__ */ new Map();
@@ -5140,7 +5605,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${this.data.settings.aiApiKey}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: this.data.settings.aiEmbeddingModel,
@@ -5969,3 +6434,5 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return Array.from(candidates);
   }
 };
+_DailyDashboardPlugin.CALENDAR_CACHE_MS = 5 * 60 * 1e3;
+var DailyDashboardPlugin = _DailyDashboardPlugin;

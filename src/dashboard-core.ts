@@ -27,6 +27,10 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         }))
         .filter((habit) => habit.label.length > 0)
     : DEFAULT_SETTINGS.habitDefinitions;
+  const aiApiKeySource = settings.aiApiKeySource === "env" ? "env" : "settings";
+  const calendarSourceType = settings.calendarSourceType === "url-ics" ? "url-ics" : "vault-ics";
+  const calendarLookaheadHours = clamp(Number(settings.calendarLookaheadHours ?? DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
+  const calendarWarningHours = clamp(Number(settings.calendarWarningHours ?? DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
 
   return {
     dashboardTitle: settings.dashboardTitle?.trim() || DEFAULT_SETTINGS.dashboardTitle,
@@ -36,6 +40,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     weeklyReportFolder: settings.weeklyReportFolder?.trim() || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: settings.monthlyReportFolder?.trim() || DEFAULT_SETTINGS.monthlyReportFolder,
     aiApiKey: settings.aiApiKey?.trim() || DEFAULT_SETTINGS.aiApiKey,
+    aiApiKeySource,
+    aiApiKeyEnvVar: settings.aiApiKeyEnvVar?.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar,
     aiModel: settings.aiModel?.trim() || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
@@ -47,6 +53,12 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiEmbeddingsEnabled: settings.aiEmbeddingsEnabled ?? DEFAULT_SETTINGS.aiEmbeddingsEnabled,
     aiEmbeddingModel: settings.aiEmbeddingModel?.trim() || DEFAULT_SETTINGS.aiEmbeddingModel,
     aiEmbeddingApiUrl: settings.aiEmbeddingApiUrl?.trim() || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: settings.calendarEnabled ?? DEFAULT_SETTINGS.calendarEnabled,
+    calendarSourceType,
+    calendarIcsPath: settings.calendarIcsPath?.trim() || DEFAULT_SETTINGS.calendarIcsPath,
+    calendarIcsUrl: settings.calendarIcsUrl?.trim() || DEFAULT_SETTINGS.calendarIcsUrl,
+    calendarLookaheadHours,
+    calendarWarningHours,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions

@@ -25,6 +25,10 @@ export interface WorkSession {
   end: string | null;
 }
 
+export type AiApiKeySource = "settings" | "env";
+
+export type CalendarSourceType = "vault-ics" | "url-ics";
+
 export type TodayFocusStatus = "pending" | "working" | "done";
 
 export interface TodayFocusItem {
@@ -103,6 +107,8 @@ export interface DashboardSettings {
   weeklyReportFolder: string;
   monthlyReportFolder: string;
   aiApiKey: string;
+  aiApiKeySource: AiApiKeySource;
+  aiApiKeyEnvVar: string;
   aiModel: string;
   aiBaseUrl: string;
   aiOutputFolder: string;
@@ -114,9 +120,32 @@ export interface DashboardSettings {
   aiEmbeddingsEnabled: boolean;
   aiEmbeddingModel: string;
   aiEmbeddingApiUrl: string;
+  calendarEnabled: boolean;
+  calendarSourceType: CalendarSourceType;
+  calendarIcsPath: string;
+  calendarIcsUrl: string;
+  calendarLookaheadHours: number;
+  calendarWarningHours: number;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
+}
+
+export interface CalendarEventSummary {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location: string;
+  allDay: boolean;
+  warningLevel: "warning" | "upcoming";
+}
+
+export interface CalendarSnapshot {
+  events: CalendarEventSummary[];
+  error: string | null;
+  enabled: boolean;
+  sourceLabel: string;
 }
 
 export interface CreateProjectInput {
@@ -294,6 +323,7 @@ export interface AiStatus {
   busy: boolean;
   model: string;
   outputFolder: string;
+  keySource: AiApiKeySource;
   latestArtifact: AiArtifact | null;
   indexStatus: RetrievalIndexStatus;
 }
@@ -326,6 +356,8 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
   aiApiKey: "",
+  aiApiKeySource: "settings",
+  aiApiKeyEnvVar: "OPENAI_API_KEY",
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
@@ -337,6 +369,12 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiEmbeddingsEnabled: false,
   aiEmbeddingModel: "text-embedding-3-small",
   aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
+  calendarEnabled: false,
+  calendarSourceType: "vault-ics",
+  calendarIcsPath: "",
+  calendarIcsUrl: "",
+  calendarLookaheadHours: 48,
+  calendarWarningHours: 12,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [

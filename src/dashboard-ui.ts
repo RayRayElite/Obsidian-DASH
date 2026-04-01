@@ -14,6 +14,7 @@ import {
   DEFAULT_SETTINGS,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
+  type CalendarSnapshot,
   type CardVisualOptions,
   type CreateProjectInput,
   type DayRepairInput,
@@ -134,6 +135,7 @@ export class DailyDashboardView extends ItemView {
       const todayEntry = this.plugin.getTodayEntry();
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
+      const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
       const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
       const projects = todoSnapshot?.projects ?? [];
       const staleProjects = todoSnapshot?.staleProjects ?? [];
@@ -365,6 +367,7 @@ export class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
+      this.renderCalendarBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -866,6 +869,98 @@ export class DailyDashboardView extends ItemView {
     input.addEventListener("change", () => {
       onChange(input.value.trim());
     });
+  }
+
+  private renderCalendarBlock(parent: HTMLElement, snapshot: CalendarSnapshot, lookaheadHours: number): void {
+    const block = parent.createDiv({ cls: "daily-dashboard-calendar-block" });
+    const header = block.createDiv({ cls: "daily-dashboard-calendar-header" });
+    header.createEl("strong", { text: "Upcoming activity" });
+    header.createEl("span", {
+      cls: "daily-dashboard-row-meta",
+      text: snapshot.enabled
+        ? snapshot.sourceLabel || `Next ${lookaheadHours}h`
+        : "Enable calendar support in settings to surface upcoming activities here."
+    });
+
+    if (!snapshot.enabled) {
+      block.createDiv({
+        cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+        text: "Calendar support is off. Point the plugin at an ICS file or URL to get upcoming warnings below Top 3."
+      });
+      return;
+    }
+
+    if (snapshot.error) {
+      const errorRow = block.createDiv({ cls: "daily-dashboard-calendar-row is-warning" });
+      const copy = errorRow.createDiv({ cls: "daily-dashboard-calendar-copy" });
+      copy.createEl("strong", { text: "Calendar feed unavailable" });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.error });
+      return;
+    }
+
+    if (snapshot.events.length === 0) {
+      block.createDiv({
+        cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+        text: `No upcoming calendar activity in the next ${lookaheadHours} hours.`
+      });
+      return;
+    }
+
+    const list = block.createDiv({ cls: "daily-dashboard-calendar-list" });
+    snapshot.events.forEach((event) => {
+      const row = list.createDiv({ cls: `daily-dashboard-calendar-row is-${event.warningLevel}` });
+      const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
+      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay) });
+      time.createEl("span", { text: this.formatCalendarTimeLabel(new Date(event.start), new Date(event.end), event.allDay) });
+
+      const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
+      copy.createEl("strong", { text: event.title });
+      copy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: event.location || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
+      });
+
+      const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(chips, event.warningLevel === "warning" ? "Soon" : "Later", event.warningLevel === "warning" ? "alert" : "neutral");
+      if (event.allDay) {
+        createSemanticChip(chips, "All day", "log");
+      }
+    });
+  }
+
+  private formatCalendarDayLabel(date: Date, allDay: boolean): string {
+    if (allDay) {
+      return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    }
+
+    const todayKey = formatDateKey(new Date());
+    const dateKey = formatDateKey(date);
+    if (dateKey === todayKey) {
+      return "Today";
+    }
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (dateKey === formatDateKey(tomorrow)) {
+      return "Tomorrow";
+    }
+
+    return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  private formatCalendarTimeLabel(start: Date, end: Date, allDay: boolean): string {
+    if (allDay) {
+      return "All day";
+    }
+
+    const sameDay = formatDateKey(start) === formatDateKey(end);
+    const startLabel = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (sameDay) {
+      return `${startLabel} - ${endLabel}`;
+    }
+
+    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${endLabel}`;
   }
 
   private renderDayMetric(parent: HTMLElement, label: string, value: string): HTMLElement {
@@ -1553,9 +1648,140 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
           });
       });
 
+    containerEl.createEl("h3", { text: "Calendar" });
+
     new Setting(containerEl)
-      .setName("OpenAI API key")
-      .setDesc("Used for AI planning, reflection, triage, and question answering. Stored in plugin settings.")
+      .setName("Enable calendar support")
+      .setDesc("Show upcoming calendar activity below Top 3 and raise notices inside the warning window.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.calendarEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            calendarEnabled: value
+          });
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Calendar source")
+      .setDesc("Use an ICS file from the vault or an ICS URL from another calendar service.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("vault-ics", "Vault ICS file");
+        dropdown.addOption("url-ics", "ICS URL");
+        dropdown.setValue(settings.calendarSourceType);
+        dropdown.onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            calendarSourceType: value === "url-ics" ? "url-ics" : "vault-ics"
+          });
+          this.display();
+        });
+      });
+
+    if (settings.calendarSourceType === "vault-ics") {
+      new Setting(containerEl)
+        .setName("Calendar ICS path")
+        .setDesc("Path to an .ics file inside the vault. Example: Calendars/Personal.ics")
+        .addText((text) => {
+          text
+            .setPlaceholder("Calendars/Personal.ics")
+            .setValue(settings.calendarIcsPath)
+            .onChange(async (value) => {
+              await this.plugin.updateSettings({
+                ...this.plugin.getSettings(),
+                calendarIcsPath: value.trim()
+              });
+            });
+        });
+    } else {
+      new Setting(containerEl)
+        .setName("Calendar ICS URL")
+        .setDesc("Public or tokenized ICS feed URL used for upcoming-activity warnings.")
+        .addText((text) => {
+          text
+            .setPlaceholder("https://calendar.example.com/feed.ics")
+            .setValue(settings.calendarIcsUrl)
+            .onChange(async (value) => {
+              await this.plugin.updateSettings({
+                ...this.plugin.getSettings(),
+                calendarIcsUrl: value.trim()
+              });
+            });
+        });
+    }
+
+    new Setting(containerEl)
+      .setName("Calendar lookahead hours")
+      .setDesc("How far ahead the Execution card should look when listing upcoming activity.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.calendarLookaheadHours}`)
+          .setValue(`${settings.calendarLookaheadHours}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              calendarLookaheadHours: Math.min(Math.max(Number(value.trim() || DEFAULT_SETTINGS.calendarLookaheadHours), 1), 336)
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Calendar warning hours")
+      .setDesc("Events inside this window trigger a dashboard notice and get marked as soon.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.calendarWarningHours}`)
+          .setValue(`${settings.calendarWarningHours}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              calendarWarningHours: Math.min(
+                Math.max(Number(value.trim() || DEFAULT_SETTINGS.calendarWarningHours), 1),
+                this.plugin.getSettings().calendarLookaheadHours
+              )
+            });
+          });
+      });
+
+    containerEl.createEl("h3", { text: "AI" });
+
+    new Setting(containerEl)
+      .setName("AI API key source")
+      .setDesc("Environment variables are safer because the raw key is not persisted in plugin data.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("settings", "Stored in plugin settings");
+        dropdown.addOption("env", "Environment variable");
+        dropdown.setValue(settings.aiApiKeySource);
+        dropdown.onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            aiApiKeySource: value === "env" ? "env" : "settings"
+          });
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("AI environment variable")
+      .setDesc("Only used when the key source is Environment variable.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiApiKeyEnvVar)
+          .setValue(settings.aiApiKeyEnvVar)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiApiKeyEnvVar: value.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Stored OpenAI API key")
+      .setDesc(settings.aiApiKeySource === "env"
+        ? "Ignored while environment-variable mode is active. Clear it if you do not want a fallback key saved in plugin data."
+        : "Used for AI planning, reflection, triage, and question answering when stored-key mode is active.")
       .addText((text) => {
         text
           .setPlaceholder("sk-...")
@@ -1567,6 +1793,15 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             });
           });
         text.inputEl.type = "password";
+      })
+      .addButton((button) => {
+        button.setButtonText("Clear").onClick(async () => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            aiApiKey: ""
+          });
+          this.display();
+        });
       });
 
     new Setting(containerEl)
@@ -1730,6 +1965,8 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             });
           });
       });
+
+    containerEl.createEl("h3", { text: "Appearance" });
 
     new Setting(containerEl)
       .setName("Wallpaper folder")

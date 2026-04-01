@@ -8,6 +8,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - stores mood, energy, Top 3 focus, friction log, timestamped food entries, sleep log, dream log, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
 - tracks work sessions and nap sessions inside the active logical day for more accurate sleep and activity history
+- can surface upcoming calendar activities from an ICS file or ICS URL directly below the Execution block and warn when something is coming up soon
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
 - can call OpenAI for AI-powered today planning, end-of-day review, weekly coaching, project triage, and freeform questions grounded in dashboard context
@@ -60,11 +61,12 @@ Recommended starting model: `gpt-4o-mini`.
 Use that as the default for frequent dashboard actions because it is usually the best cost-to-quality tradeoff for planning, reflection, and triage. If later you want deeper long-form strategic writeups, you can swap the model in settings without changing the rest of the plugin.
 
 Setup notes:
-1. Put your OpenAI API key into the plugin settings.
-2. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
-3. Adjust `AI context days` if you want broader or narrower historical context in prompts.
+1. Safer setup: set an environment variable such as `OPENAI_API_KEY` and switch `AI API key source` to `Environment variable` in plugin settings.
+2. If you prefer, you can still paste a key into plugin settings and leave the source on `Stored in plugin settings`.
+3. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
+4. Adjust `AI context days` if you want broader or narrower historical context in prompts.
 
-The API key is stored in plugin settings, not a secure vault.
+Environment-variable mode avoids persisting the raw API key in plugin data.
 
 The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, and the active note you are currently reading. `AI related note limit` controls how many retrieved notes are included in each request.
 
