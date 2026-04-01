@@ -3770,16 +3770,16 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     return this.getTodayEntry().breakSessions.some((session) => session.end === null);
   }
   getTrackedWorkMinutes(entry = this.getTodayEntry()) {
-    return getTrackedWorkMinutes(entry);
+    return getTrackedWorkMinutes(this.getEffectiveTrackedEntry(entry));
   }
   getTrackedNapMinutes(entry = this.getTodayEntry()) {
-    return getTrackedNapMinutes(entry);
+    return getTrackedNapMinutes(this.getEffectiveTrackedEntry(entry));
   }
   getTrackedRelaxMinutes(entry = this.getTodayEntry()) {
-    return getTrackedRelaxMinutes(entry);
+    return getTrackedRelaxMinutes(this.getEffectiveTrackedEntry(entry));
   }
   getTrackedBreakMinutes(entry = this.getTodayEntry()) {
-    return getTrackedBreakMinutes(entry);
+    return getTrackedBreakMinutes(this.getEffectiveTrackedEntry(entry));
   }
   getAllEntries() {
     return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));
@@ -5061,6 +5061,27 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     return this.data.entries[date];
   }
+  getEffectiveTrackedEntry(entry) {
+    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
+      return entry;
+    }
+    return {
+      ...entry,
+      workMinutesOverride: null,
+      napMinutesOverride: null,
+      relaxMinutesOverride: null,
+      breakMinutesOverride: null
+    };
+  }
+  clearLiveSessionOverrides(entry) {
+    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
+      return;
+    }
+    entry.workMinutesOverride = null;
+    entry.napMinutesOverride = null;
+    entry.relaxMinutesOverride = null;
+    entry.breakMinutesOverride = null;
+  }
   createEmptyEntry(date) {
     return createEmptyEntry(date, this.getHabitDefinitions());
   }
@@ -5150,7 +5171,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       this.removeDailyLogEntry(normalizedPath);
       return;
     }
-    this.data.entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    this.clearLiveSessionOverrides(normalizedEntry);
+    this.data.entries[parsed.date] = normalizedEntry;
     await this.savePluginData();
     this.refreshDashboardViews();
   }
@@ -5284,6 +5307,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     });
   }
   async persistEntry(entry) {
+    this.clearLiveSessionOverrides(entry);
     this.data.entries[entry.date] = this.normalizeEntry({
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())

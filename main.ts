@@ -523,19 +523,19 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getTrackedWorkMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getTrackedWorkMinutes(entry);
+    return getTrackedWorkMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
   getTrackedNapMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getTrackedNapMinutes(entry);
+    return getTrackedNapMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
   getTrackedRelaxMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getTrackedRelaxMinutes(entry);
+    return getTrackedRelaxMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
   getTrackedBreakMinutes(entry: DailyEntry = this.getTodayEntry()): number {
-    return getTrackedBreakMinutes(entry);
+    return getTrackedBreakMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
   getAllEntries(): DailyEntry[] {
@@ -2070,6 +2070,31 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.data.entries[date];
   }
 
+  private getEffectiveTrackedEntry(entry: DailyEntry): DailyEntry {
+    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
+      return entry;
+    }
+
+    return {
+      ...entry,
+      workMinutesOverride: null,
+      napMinutesOverride: null,
+      relaxMinutesOverride: null,
+      breakMinutesOverride: null
+    };
+  }
+
+  private clearLiveSessionOverrides(entry: DailyEntry): void {
+    if (this.data.dayState.status !== "in-progress" || entry.date !== this.data.dayState.activeDate) {
+      return;
+    }
+
+    entry.workMinutesOverride = null;
+    entry.napMinutesOverride = null;
+    entry.relaxMinutesOverride = null;
+    entry.breakMinutesOverride = null;
+  }
+
   private createEmptyEntry(date: string): DailyEntry {
     return createEmptyEntry(date, this.getHabitDefinitions());
   }
@@ -2183,7 +2208,9 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    this.data.entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+    this.clearLiveSessionOverrides(normalizedEntry);
+    this.data.entries[parsed.date] = normalizedEntry;
     await this.savePluginData();
     this.refreshDashboardViews();
   }
@@ -2340,6 +2367,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async persistEntry(entry: DailyEntry): Promise<void> {
+    this.clearLiveSessionOverrides(entry);
     this.data.entries[entry.date] = this.normalizeEntry({
       ...entry,
       lastEditedAt: formatPreciseDateTimeKey(new Date())
