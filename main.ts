@@ -34,11 +34,13 @@ import {
 import {
   closeOpenBreakSessions,
   closeOpenNapSessions,
+  closeOpenPoopSessions,
   closeOpenRelaxSessions,
   closeOpenWorkSessions,
   getTrackedBreakMinutes,
   getTrackedMinutes,
   getTrackedNapMinutes,
+  getTrackedPoopMinutes,
   getTrackedRelaxMinutes,
   getSleepMinutesForDay,
   getTrackedWorkMinutes,
@@ -540,6 +542,10 @@ export default class DailyDashboardPlugin extends Plugin {
     return getTrackedBreakMinutes(this.getEffectiveTrackedEntry(entry));
   }
 
+  getTrackedPoopMinutes(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedPoopMinutes(entry);
+  }
+
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
   }
@@ -763,6 +769,55 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async generateDailyDietInsight(): Promise<void> {
+    const entry = this.getTodayEntry();
+    if (entry.foodLog.length === 0) {
+      new Notice("Log at least one food entry before asking for a diet summary.");
+      return;
+    }
+
+    if (!this.data.settings.aiApiKey.trim()) {
+      new Notice("Add your OpenAI API key in Daily Dashboard settings before using AI features.");
+      return;
+    }
+
+    if (this.isAiBusy) {
+      new Notice("An AI request is already running.");
+      return;
+    }
+
+    this.isAiBusy = true;
+    this.refreshDashboardViews();
+
+    try {
+      const foodLines = entry.foodLog.map((item) => `${item.loggedAt}: ${item.amount}x ${item.text}`).join("\n");
+      const response = await this.requestAiCompletion(
+        [
+          "You are a concise nutrition estimation assistant for a personal dashboard.",
+          "Estimate likely calories and 2-4 useful nutrition signals from a rough food log.",
+          "Be practical, brief, and uncertainty-aware.",
+          "Return only markdown bullet points, at most 4 bullets, no heading or preamble."
+        ].join(" "),
+        [
+          `Date: ${entry.date}`,
+          "Food log:",
+          foodLines,
+          "Give an estimated calorie range and a few high-value observations like protein coverage, fiber, sodium, processed-food load, or likely gaps."
+        ].join("\n\n")
+      );
+
+      entry.dietInsight = stripJsonCodeBlocks(response).trim();
+      await this.persistEntry(entry);
+      new Notice("Diet summary updated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new Notice(`Diet summary failed: ${message}`);
+    } finally {
+      this.isAiBusy = false;
+      this.refreshDashboardViews();
+    }
+  }
+
   async beginLogicalDay(): Promise<void> {
     if (this.data.dayState.status === "in-progress") {
       new Notice(`Your logical day ${this.data.dayState.activeDate} is already in progress.`);
@@ -809,6 +864,7 @@ export default class DailyDashboardPlugin extends Plugin {
     closeOpenNapSessions(entry, timestamp);
     closeOpenRelaxSessions(entry, timestamp);
     closeOpenBreakSessions(entry, timestamp);
+    closeOpenPoopSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
       status: "ended"
@@ -1033,6 +1089,40 @@ export default class DailyDashboardPlugin extends Plugin {
     activeSession.end = formatDateTimeKey(new Date());
     await this.persistEntry(entry);
     new Notice("Break ended.");
+  }
+
+  async startPoopSession(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before tracking a bowel movement.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.poopSessions.some((session) => session.end === null)) {
+      new Notice("A bowel movement session is already active.");
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "poop");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
+    entry.poopSessions = [...entry.poopSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new Notice("Bowel movement tracking started.");
+  }
+
+  async stopPoopSession(): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.poopSessions].reverse().find((session) => session.end === null);
+    if (!activeSession) {
+      new Notice("No bowel movement session is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice("Bowel movement tracking stopped.");
   }
 
   async updateDailyNotes(value: string): Promise<void> {
@@ -2118,6 +2208,7 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => normalizeFoodEntry(item))
             .filter((item): item is FoodEntry => item !== null)
         : [],
+      dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
@@ -2157,6 +2248,14 @@ export default class DailyDashboardPlugin extends Plugin {
             }))
         : [],
       breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
+      poopSessions: Array.isArray(entry.poopSessions)
+        ? entry.poopSessions
+            .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+            .map((item) => ({
+              start: item.start,
+              end: typeof item.end === "string" ? item.end : null
+            }))
+        : [],
       completedTasks: Array.isArray(entry.completedTasks)
         ? entry.completedTasks
             .filter((item): item is ArchivedTaskSnapshot => Boolean(item && typeof item === "object"))
@@ -2342,7 +2441,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return changed;
   }
 
-  private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break"): void {
+  private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break" | "poop"): void {
     if (keepOpen !== "work") {
       closeOpenWorkSessions(entry, timestamp);
     }
@@ -2354,6 +2453,9 @@ export default class DailyDashboardPlugin extends Plugin {
     }
     if (keepOpen !== "break") {
       closeOpenBreakSessions(entry, timestamp);
+    }
+    if (keepOpen !== "poop") {
+      closeOpenPoopSessions(entry, timestamp);
     }
   }
 

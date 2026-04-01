@@ -37,11 +37,15 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const breakSessionLines = entry.breakSessions.length > 0
     ? entry.breakSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked breaks"];
+  const poopSessionLines = entry.poopSessions.length > 0
+    ? entry.poopSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    : ["- No tracked bowel movement sessions"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
+  const totalPoopMinutes = getTrackedPoopMinutes(entry);
 
   return [
     "---",
@@ -58,6 +62,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
+    `trackedPoopMinutes: ${totalPoopMinutes}`,
     `workMinutesOverride: ${entry.workMinutesOverride ?? ""}`,
     `napMinutesOverride: ${entry.napMinutesOverride ?? ""}`,
     `relaxMinutesOverride: ${entry.relaxMinutesOverride ?? ""}`,
@@ -82,6 +87,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
     `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,
     `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
+    `- Tracked poop: ${formatMinutesAsHours(totalPoopMinutes)}`,
     "",
     "## Habits",
     ...habitLines,
@@ -96,6 +102,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     "## Food Log",
     ...foodLines,
+    "",
+    "## Diet Insight",
+    entry.dietInsight || "No AI nutrition summary yet.",
     "",
     "## Sleep Log",
     entry.sleepLog || "No sleep log yet.",
@@ -114,6 +123,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     "## Break Sessions",
     ...breakSessionLines,
+    "",
+    "## Poop Sessions",
+    ...poopSessionLines,
     "",
     "## Work Completed",
     ...completedTaskLines,
@@ -231,6 +243,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
+    dietInsight: typeof parsedEntry.dietInsight === "string" ? parsedEntry.dietInsight : baseEntry.dietInsight,
     sleepLog: typeof parsedEntry.sleepLog === "string" ? parsedEntry.sleepLog : baseEntry.sleepLog,
     dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
@@ -242,6 +255,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     relaxMinutesOverride: normalizeOptionalMinutes(frontmatter.get("relaxMinutesOverride") ?? parsedEntry.relaxMinutesOverride),
     breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
     breakMinutesOverride: normalizeOptionalMinutes(frontmatter.get("breakMinutesOverride") ?? parsedEntry.breakMinutesOverride),
+    poopSessions: Array.isArray(parsedEntry.poopSessions) ? parsedEntry.poopSessions : baseEntry.poopSessions,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
@@ -266,6 +280,7 @@ export function renderPeriodReport(input: {
   let trackedNapMinutes = 0;
   let trackedRelaxMinutes = 0;
   let trackedBreakMinutes = 0;
+  let trackedPoopMinutes = 0;
   let daysWithNaps = 0;
 
   input.entries.forEach((entry) => {
@@ -300,6 +315,7 @@ export function renderPeriodReport(input: {
     trackedNapMinutes += getTrackedMinutes(entry.napSessions);
     trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
     trackedBreakMinutes += getTrackedBreakMinutes(entry);
+    trackedPoopMinutes += getTrackedPoopMinutes(entry);
     if (entry.napSessions.length > 0) {
       daysWithNaps += 1;
     }
@@ -346,6 +362,7 @@ export function renderPeriodReport(input: {
     `- Days with naps tracked: ${daysWithNaps}`,
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
     `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
+    `- Tracked bowel time: ${formatMinutesAsHours(trackedPoopMinutes)}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
@@ -380,6 +397,10 @@ export function closeOpenBreakSessions(entry: DailyEntry, timestamp: string): vo
   entry.breakSessions = entry.breakSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
 
+export function closeOpenPoopSessions(entry: DailyEntry, timestamp: string): void {
+  entry.poopSessions = entry.poopSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
 export function getTrackedWorkMinutes(entry: DailyEntry): number {
   return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
 }
@@ -394,6 +415,10 @@ export function getTrackedRelaxMinutes(entry: DailyEntry): number {
 
 export function getTrackedBreakMinutes(entry: DailyEntry): number {
   return resolveTrackedMinutes(entry.breakSessions, entry.breakMinutesOverride);
+}
+
+export function getTrackedPoopMinutes(entry: DailyEntry): number {
+  return getTrackedMinutes(entry.poopSessions);
 }
 
 function resolveTrackedMinutes(sessions: WorkSession[], override: number | null | undefined): number {

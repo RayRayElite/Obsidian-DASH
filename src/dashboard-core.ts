@@ -334,6 +334,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
+    dietInsight: "",
     sleepLog: "",
     dreamLog: "",
     notes: "",
@@ -345,6 +346,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     relaxMinutesOverride: null,
     breakSessions: [],
     breakMinutesOverride: null,
+    poopSessions: [],
     completedTasks: []
   };
 }

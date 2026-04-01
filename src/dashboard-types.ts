@@ -57,6 +57,7 @@ export interface DailyEntry {
   frictionLog: string;
   missedHabits: string[];
   foodLog: FoodEntry[];
+  dietInsight: string;
   sleepLog: string;
   dreamLog: string;
   notes: string;
@@ -68,6 +69,7 @@ export interface DailyEntry {
   relaxMinutesOverride: number | null;
   breakSessions: WorkSession[];
   breakMinutesOverride: number | null;
+  poopSessions: WorkSession[];
   completedTasks: ArchivedTaskSnapshot[];
 }
 

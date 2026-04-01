@@ -595,6 +595,12 @@
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
 }
 
+.daily-dashboard-food-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px auto;
+  align-items: center;
+}
+
 .daily-dashboard-project-row strong,
 .daily-dashboard-project-row span,
 .daily-dashboard-completed-row strong,
@@ -671,6 +677,17 @@
   gap: 8px;
 }
 
+.daily-dashboard-dayflow-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.daily-dashboard-dayflow-actions .daily-dashboard-primary-button,
+.daily-dashboard-dayflow-actions .daily-dashboard-secondary-button {
+  width: 100%;
+}
+
 .daily-dashboard-score-block {
   display: flex;
   flex-direction: column;
@@ -743,6 +760,10 @@
 
 .daily-dashboard-inline-form--food {
   grid-template-columns: 88px minmax(0, 1fr) auto;
+}
+
+.daily-dashboard-food-insight {
+  gap: 8px;
 }
 
 .daily-dashboard-stacked-form {
@@ -948,6 +969,11 @@ input.daily-dashboard-input {
   gap: 8px;
 }
 
+.daily-dashboard-food-amount-slot {
+  display: flex;
+  justify-content: center;
+}
+
 .daily-dashboard-week-strip {
   display: flex;
   flex-direction: column;
@@ -1084,6 +1110,10 @@ input.daily-dashboard-input {
   background: linear-gradient(180deg, rgba(91, 128, 231, 0.94), rgba(53, 86, 191, 0.88));
 }
 
+.daily-dashboard-week-segment.is-poop {
+  background: linear-gradient(180deg, rgba(199, 144, 96, 0.94), rgba(132, 85, 44, 0.9));
+}
+
 .daily-dashboard-week-segment.is-unknown {
   background: linear-gradient(180deg, rgba(170, 98, 235, 0.94), rgba(121, 59, 197, 0.9));
 }
@@ -1139,6 +1169,10 @@ input.daily-dashboard-input {
 
 .daily-dashboard-week-legend-dot.is-relax {
   background: #4a70df;
+}
+
+.daily-dashboard-week-legend-dot.is-poop {
+  background: #a06a3b;
 }
 
 .daily-dashboard-week-legend-dot.is-unknown {
