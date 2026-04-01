@@ -336,6 +336,14 @@
   order: 1;
 }
 
+.daily-dashboard-page > .daily-dashboard-card--week-at-a-glance {
+  order: 0;
+}
+
+.daily-dashboard-page > .daily-dashboard-grid {
+  order: 1;
+}
+
 .daily-dashboard-card--top-3-for-today {
   order: 3;
 }
@@ -909,7 +917,8 @@ input.daily-dashboard-input {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  padding: 9px;
+  min-height: 154px;
+  padding: 11px 10px;
   border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 12%, var(--background-modifier-border));
   background:
