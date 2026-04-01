@@ -2021,19 +2021,7 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      const grid = page.createDiv({ cls: "daily-dashboard-grid" });
-      const dayState = this.plugin.getDayState();
-      const aiStatus = this.plugin.getAiStatus();
-      const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
-      const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
-      const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
-      const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
-      const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
-      const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
-      const activeRelaxSession = (_g = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _g : null;
-      const activeBreakSession = (_h = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _h : null;
-      const activeModeLabel = activeBreakSession ? "On break" : activeNapSession ? "Napping" : activeWorkSession ? "Working" : activeRelaxSession ? "Relaxing" : dayState.status === "in-progress" ? "Idle" : "Offline";
-      const weekBoardCard = createCard(grid, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
+      const weekBoardCard = createCard(page, "Week At A Glance", "See where the current week is going across sleep, work, relaxing, and untracked time.", {
         icon: "layout-dashboard",
         eyebrow: "Week",
         tone: "health",
@@ -2065,6 +2053,18 @@ var DailyDashboardView = class extends import_obsidian3.ItemView {
         this.renderWeekMiniStat(stats, "Rx", formatMinutesAsHours(day.relaxMinutes), "health");
         this.renderWeekMiniStat(stats, "Un", formatMinutesAsHours(day.unknownMinutes), "neutral");
       });
+      const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const dayState = this.plugin.getDayState();
+      const aiStatus = this.plugin.getAiStatus();
+      const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
+      const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
+      const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
+      const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
+      const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
+      const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
+      const activeRelaxSession = (_g = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _g : null;
+      const activeBreakSession = (_h = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _h : null;
+      const activeModeLabel = activeBreakSession ? "On break" : activeNapSession ? "Napping" : activeWorkSession ? "Working" : activeRelaxSession ? "Relaxing" : dayState.status === "in-progress" ? "Idle" : "Offline";
       const dayToggleLabel = dayState.status === "in-progress" ? "End day" : "Begin day";
       const dayToggleIcon = dayState.status === "in-progress" ? "moon-star" : "sunrise";
       const dayToggleAction = dayState.status === "in-progress" ? async () => this.plugin.endLogicalDay() : async () => this.plugin.beginLogicalDay();
