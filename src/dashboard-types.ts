@@ -25,6 +25,15 @@ export interface WorkSession {
   end: string | null;
 }
 
+export type TodayFocusStatus = "pending" | "working" | "done";
+
+export interface TodayFocusItem {
+  text: string;
+  status: TodayFocusStatus;
+  workSessions: WorkSession[];
+  completedAt: string | null;
+}
+
 export interface FoodEntry {
   text: string;
   amount: number;
@@ -44,7 +53,7 @@ export interface DailyEntry {
   moodScore: number;
   energyScore: number;
   anxietyScore: number;
-  todayFocus: string[];
+  todayFocus: TodayFocusItem[];
   frictionLog: string;
   missedHabits: string[];
   foodLog: FoodEntry[];

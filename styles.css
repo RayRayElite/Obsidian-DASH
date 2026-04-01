@@ -71,13 +71,22 @@
   opacity: 0.9;
 }
 
+.daily-dashboard-hero-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+}
+
 .daily-dashboard-hero-copy {
   display: flex;
   flex-direction: column;
   gap: 8px;
   justify-content: flex-start;
   min-width: 0;
-  max-width: min(460px, 48%);
+  flex: 1 1 auto;
+  max-width: min(560px, 100%);
 }
 
 .daily-dashboard-kicker {
@@ -159,11 +168,13 @@
 
 .daily-dashboard-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: flex-start;
   gap: 6px;
-  padding-top: 2px;
-  max-width: 220px;
+  max-width: 420px;
+  margin-left: auto;
 }
 
 .daily-dashboard-primary-button,
@@ -569,6 +580,7 @@
 }
 
 .daily-dashboard-habit-row,
+.daily-dashboard-focus-row,
 .daily-dashboard-project-row,
 .daily-dashboard-completed-row,
 .daily-dashboard-food-row {
@@ -593,6 +605,7 @@
 }
 
 .daily-dashboard-habit-copy,
+.daily-dashboard-focus-copy,
 .daily-dashboard-project-row,
 .daily-dashboard-completed-row {
   min-width: 0;
@@ -630,12 +643,29 @@
   gap: 4px;
 }
 
+.daily-dashboard-focus-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.daily-dashboard-focus-row.is-working {
+  border-color: color-mix(in srgb, #7db7e8 26%, var(--background-modifier-border));
+  background: color-mix(in srgb, #7db7e8 10%, var(--background-primary));
+}
+
+.daily-dashboard-focus-row.is-done {
+  border-color: color-mix(in srgb, #7ace89 26%, var(--background-modifier-border));
+  background: color-mix(in srgb, #7ace89 10%, var(--background-primary));
+}
+
 .daily-dashboard-habit-meta {
   color: var(--text-muted);
   font-size: 0.88rem;
 }
 
-.daily-dashboard-habit-controls {
+.daily-dashboard-habit-controls,
+.daily-dashboard-focus-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1327,7 +1357,7 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-hero-copy {
-    max-width: min(560px, 60%);
+    max-width: min(560px, 70%);
   }
 
   .daily-dashboard-dayflow-grid {
@@ -1361,8 +1391,17 @@ input.daily-dashboard-input {
     padding: 18px;
   }
 
+  .daily-dashboard-hero-header {
+    flex-direction: column;
+  }
+
   .daily-dashboard-hero-copy {
     max-width: none;
+  }
+
+  .daily-dashboard-actions {
+    justify-content: flex-start;
+    margin-left: 0;
   }
 
   .daily-dashboard-dayflow-grid {
@@ -1415,10 +1454,15 @@ input.daily-dashboard-input {
   .daily-dashboard-ai-overview {
     grid-template-columns: 1fr;
   }
-}
+
   .daily-dashboard-habit-row,
+  .daily-dashboard-focus-row,
   .daily-dashboard-food-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .daily-dashboard-focus-controls {
+    justify-content: flex-start;
   }
 }

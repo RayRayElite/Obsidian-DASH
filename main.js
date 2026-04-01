@@ -347,6 +347,42 @@ function normalizeDayState(dayState, entries) {
     status
   };
 }
+function normalizeTodayFocusStatus(value) {
+  return value === "working" || value === "done" ? value : "pending";
+}
+function normalizeTodayFocusItems(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => normalizeTodayFocusItem(item)).filter((item) => item !== null).slice(0, 3);
+}
+function getTodayFocusTexts(items) {
+  return items.map((item) => item.text);
+}
+function normalizeTodayFocusItem(value) {
+  if (typeof value === "string") {
+    const text2 = value.trim();
+    return text2.length > 0 ? { text: text2, status: "pending", workSessions: [], completedAt: null } : null;
+  }
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const rawItem = value;
+  const text = typeof rawItem.text === "string" ? rawItem.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  const workSessions = Array.isArray(rawItem.workSessions) ? rawItem.workSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+    start: item.start,
+    end: typeof item.end === "string" ? item.end : null
+  })) : [];
+  return {
+    text,
+    status: normalizeTodayFocusStatus(rawItem.status),
+    workSessions,
+    completedAt: typeof rawItem.completedAt === "string" && rawItem.completedAt.trim().length > 0 ? rawItem.completedAt : null
+  };
+}
 function parseHabitDefinitions(value) {
   const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
   if (lines.length === 0) {
@@ -504,7 +540,7 @@ function buildAiSearchTerms(question, todayEntry, snapshot) {
   var _a;
   const rawTerms = [
     ...question ? question.toLowerCase().split(/[^a-z0-9]+/) : [],
-    ...todayEntry.todayFocus.flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
+    ...getTodayFocusTexts(todayEntry.todayFocus).flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
     ...(_a = snapshot == null ? void 0 : snapshot.projects.slice(0, 8).flatMap((project) => project.name.toLowerCase().split(/[^a-z0-9]+/))) != null ? _a : []
   ];
   return Array.from(new Set(rawTerms.filter((term) => term.length >= 3))).slice(0, 32);
@@ -608,7 +644,7 @@ function renderDailyLog(entry, habits, previousEntry) {
   });
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
-  const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item) => `- ${item}`) : ["- No focus items set"];
+  const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item) => renderTodayFocusLine(item)) : ["- No focus items set"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
     var _a2;
     return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
@@ -779,6 +815,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     }
   }
   const baseEntry = createEmptyEntry(date, habits);
+  const todayFocus = Array.isArray(parsedEntry.todayFocus) ? normalizeTodayFocusItems(parsedEntry.todayFocus) : focusLines.map((line) => parseTodayFocusLine(line)).filter((item) => item !== null).slice(0, 3);
   return {
     ...baseEntry,
     ...parsedEntry,
@@ -794,7 +831,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     anxietyScore: Number((_n = (_m = frontmatter.get("anxietyScore")) != null ? _m : parsedEntry.anxietyScore) != null ? _n : 0),
     habits: (_o = parsedEntry.habits) != null ? _o : baseEntry.habits,
     habitEvents: (_p = parsedEntry.habitEvents) != null ? _p : baseEntry.habitEvents,
-    todayFocus: Array.isArray(parsedEntry.todayFocus) ? parsedEntry.todayFocus : focusLines.filter((line) => line.length > 0 && line.toLowerCase() !== "no focus items set").slice(0, 3),
+    todayFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -984,7 +1021,7 @@ function renderWeeklyReview(input) {
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
   const averageMood = moodEntries.length > 0 ? (moodEntries.reduce((sum, entry) => sum + entry.moodScore, 0) / moodEntries.length).toFixed(1) : "n/a";
   const averageEnergy = energyEntries.length > 0 ? (energyEntries.reduce((sum, entry) => sum + entry.energyScore, 0) / energyEntries.length).toFixed(1) : "n/a";
-  const focusItems = Array.from(new Set(input.entries.flatMap((entry) => entry.todayFocus))).slice(0, 10);
+  const focusItems = Array.from(new Set(input.entries.flatMap((entry) => getTodayFocusTexts(entry.todayFocus)))).slice(0, 10);
   const frictionItems = input.entries.map((entry) => entry.frictionLog).filter(Boolean);
   const missedHabits = Array.from(new Set(input.entries.flatMap((entry) => entry.missedHabits)));
   const strongestProjects = [...(_b = (_a = input.todoSnapshot) == null ? void 0 : _a.projects) != null ? _b : []].sort((left, right) => right.completionsThisWeek - left.completionsThisWeek).slice(0, 5);
@@ -1030,6 +1067,38 @@ function getSleepMinutesForDay(entry, previousEntry) {
     return napMinutes;
   }
   return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+}
+function getTrackedTodayFocusMinutes(item) {
+  return getTrackedMinutes(item.workSessions);
+}
+function isTodayFocusItemActive(item) {
+  return item.workSessions.some((session) => session.end === null);
+}
+function renderTodayFocusLine(item) {
+  const workedMinutes = getTrackedTodayFocusMinutes(item);
+  const statusLabel = item.status === "working" ? "Working on" : item.status === "done" ? "Done" : "Queued";
+  const trackedSuffix = workedMinutes > 0 ? ` (tracked: ${formatMinutesAsHours(workedMinutes)})` : "";
+  return `- [${statusLabel}] ${item.text}${trackedSuffix}`;
+}
+function parseTodayFocusLine(line) {
+  var _a, _b, _c, _d, _e;
+  const normalized = line.trim();
+  if (!normalized || normalized.toLowerCase() === "no focus items set") {
+    return null;
+  }
+  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\(tracked:\s+.+\))?$/i);
+  const rawStatus = (_c = (_b = (_a = match == null ? void 0 : match.groups) == null ? void 0 : _a.status) == null ? void 0 : _b.trim().toLowerCase()) != null ? _c : "";
+  const text = ((_e = (_d = match == null ? void 0 : match.groups) == null ? void 0 : _d.text) != null ? _e : normalized).trim();
+  if (!text) {
+    return null;
+  }
+  const status = rawStatus === "working on" ? "working" : rawStatus === "done" ? "done" : "pending";
+  return {
+    text,
+    status,
+    workSessions: [],
+    completedAt: null
+  };
 }
 
 // src/dashboard-todo.ts
@@ -2062,10 +2131,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         hero.addClass("has-wallpaper");
         hero.style.setProperty("--daily-dashboard-wallpaper", `url("${wallpaperUrl}")`);
       }
-      const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
+      const heroHeader = hero.createDiv({ cls: "daily-dashboard-hero-header" });
+      const heroCopy = heroHeader.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
-      const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
+      const actions = heroHeader.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
@@ -2178,10 +2248,33 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
         todayEntry.todayFocus.forEach((item, index) => {
-          const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
-          row.createEl("span", { text: item });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Done" });
+          const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
+          const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
+          const trackedMinutes = getTrackedTodayFocusMinutes(item);
+          const isWorking = item.status === "working" && isTodayFocusItemActive(item);
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", {
+            cls: "daily-dashboard-habit-meta",
+            text: [
+              item.status === "done" ? "Done" : isWorking ? "Working on" : "Queued",
+              `${formatMinutesAsHours(trackedMinutes)} tracked`,
+              item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
+            ].filter((value) => value.length > 0).join(" \u2022 ")
+          });
+          const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
+          if (item.status === "done") {
+            createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(index), false, "rotate-ccw");
+          } else if (isWorking) {
+            createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(index), false, "pause");
+          } else {
+            createButton(controls, "Working on", async () => this.plugin.startTodayFocusItem(index), false, "play");
+          }
+          createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(index), item.status === "done", "check");
+          const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
           removeButton.type = "button";
+          removeButton.ariaLabel = `Remove focus item ${item.text}`;
+          removeButton.title = `Remove ${item.text}`;
+          (0, import_obsidian3.setIcon)(removeButton, "x");
           removeButton.addEventListener("click", () => {
             void this.plugin.removeTodayFocusItem(index);
           });
@@ -2251,7 +2344,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak`
+          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak \u2022 best ${this.plugin.getHabitBestStreak(habit.id)}`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
@@ -4070,6 +4163,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     if (!entry.sleepTime) {
       entry.sleepTime = timestamp;
     }
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     closeOpenWorkSessions(entry, timestamp);
     closeOpenNapSessions(entry, timestamp);
     closeOpenRelaxSessions(entry, timestamp);
@@ -4178,7 +4272,9 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       new import_obsidian4.Notice("No work session is currently active.");
       return;
     }
-    activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    activeSession.end = timestamp;
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     await this.persistEntry(entry);
     new import_obsidian4.Notice("Work session stopped.");
   }
@@ -4194,6 +4290,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.closeCompetingSessions(entry, timestamp, "nap");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -4222,6 +4319,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.closeCompetingSessions(entry, timestamp, "relax");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -4250,6 +4348,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.closeCompetingSessions(entry, timestamp, "break");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -4463,10 +4562,72 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       return;
     }
     const entry = this.getTodayEntry();
-    if (entry.todayFocus.includes(trimmedValue)) {
+    if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
       return;
     }
-    entry.todayFocus = [...entry.todayFocus, trimmedValue].slice(0, 3);
+    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)].slice(0, 3);
+    await this.persistEntry(entry);
+  }
+  async startTodayFocusItem(index) {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian4.Notice("Begin your logical day before tracking a Top 3 item.");
+      return;
+    }
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeOpenTodayFocusSessions(entry, timestamp, index);
+    item.status = "working";
+    item.completedAt = null;
+    if (!item.workSessions.some((session) => session.end === null)) {
+      item.workSessions = [...item.workSessions, { start: timestamp, end: null }];
+    }
+    await this.persistEntry(entry);
+  }
+  async stopTodayFocusItem(index) {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+    if (!activeSession && item.status !== "working") {
+      return;
+    }
+    if (activeSession) {
+      activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
+    }
+    if (item.status === "working") {
+      item.status = "pending";
+    }
+    await this.persistEntry(entry);
+  }
+  async completeTodayFocusItem(index) {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+    if (activeSession) {
+      activeSession.end = timestamp;
+    }
+    item.status = "done";
+    item.completedAt = timestamp;
+    await this.persistEntry(entry);
+  }
+  async reopenTodayFocusItem(index) {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+    item.status = "pending";
+    item.completedAt = null;
     await this.persistEntry(entry);
   }
   async removeTodayFocusItem(index) {
@@ -4760,7 +4921,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions()),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getPreviousEntry(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -4979,6 +5140,27 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     return streak;
   }
+  getHabitBestStreak(habitId) {
+    var _a;
+    const habitDefinition = this.getHabitDefinitions().find((candidate) => candidate.id === habitId);
+    if (!habitDefinition) {
+      return 0;
+    }
+    const dates = Object.keys(this.data.entries).sort();
+    let bestStreak = 0;
+    let currentStreak = 0;
+    for (const date of dates) {
+      const entry = this.data.entries[date];
+      const value = (_a = entry.habits[habitId]) != null ? _a : 0;
+      if (value >= habitDefinition.target) {
+        currentStreak += 1;
+        bestStreak = Math.max(bestStreak, currentStreak);
+        continue;
+      }
+      currentStreak = 0;
+    }
+    return bestStreak;
+  }
   refreshDashboardViews() {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DAILY_DASHBOARD);
     leaves.forEach((leaf) => {
@@ -5086,7 +5268,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       moodScore: clamp(Number((_a = entry.moodScore) != null ? _a : 0), 0, 5),
       energyScore: clamp(Number((_b = entry.energyScore) != null ? _b : 0), 0, 5),
       anxietyScore: clamp(Number((_c = entry.anxietyScore) != null ? _c : 0), 0, 5),
-      todayFocus: Array.isArray(entry.todayFocus) ? entry.todayFocus.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 3) : [],
+      todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => normalizeFoodEntry(item)).filter((item) => item !== null) : [],
@@ -5240,6 +5422,32 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   createEmptyEntry(date) {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+  createTodayFocusItem(text) {
+    return {
+      text,
+      status: "pending",
+      workSessions: [],
+      completedAt: null
+    };
+  }
+  closeOpenTodayFocusSessions(entry, timestamp, activeIndex = -1) {
+    let changed = false;
+    entry.todayFocus.forEach((item, index) => {
+      if (index === activeIndex || item.status === "done") {
+        return;
+      }
+      const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+      if (activeSession) {
+        activeSession.end = timestamp;
+        changed = true;
+      }
+      if (item.status === "working") {
+        item.status = "pending";
+        changed = true;
+      }
+    });
+    return changed;
   }
   closeCompetingSessions(entry, timestamp, keepOpen) {
     if (keepOpen !== "work") {

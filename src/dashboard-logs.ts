@@ -2,10 +2,12 @@ import {
   createEmptyEntry,
   formatDateKey,
   formatDateTimeKey,
+  getTodayFocusTexts,
   getEntryRecencyKey,
+  normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
-import type { DailyEntry, HabitDefinition, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { DailyEntry, HabitDefinition, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
 export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], previousEntry?: DailyEntry): string {
   const payload = JSON.stringify(entry, null, 2);
@@ -21,7 +23,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], pre
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
     : ["- No archived tasks today"];
   const focusLines = entry.todayFocus.length > 0
-    ? entry.todayFocus.map((item) => `- ${item}`)
+    ? entry.todayFocus.map((item) => renderTodayFocusLine(item))
     : ["- No focus items set"];
   const workSessionLines = entry.workSessions.length > 0
     ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
@@ -203,6 +205,13 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
   }
 
   const baseEntry = createEmptyEntry(date, habits);
+  const todayFocus = Array.isArray(parsedEntry.todayFocus)
+    ? normalizeTodayFocusItems(parsedEntry.todayFocus)
+    : focusLines
+        .map((line) => parseTodayFocusLine(line))
+        .filter((item): item is TodayFocusItem => item !== null)
+        .slice(0, 3);
+
   return {
     ...baseEntry,
     ...parsedEntry,
@@ -218,9 +227,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     anxietyScore: Number(frontmatter.get("anxietyScore") ?? parsedEntry.anxietyScore ?? 0),
     habits: parsedEntry.habits ?? baseEntry.habits,
     habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
-    todayFocus: Array.isArray(parsedEntry.todayFocus)
-      ? parsedEntry.todayFocus
-      : focusLines.filter((line) => line.length > 0 && line.toLowerCase() !== "no focus items set").slice(0, 3),
+    todayFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -443,7 +450,7 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
   const averageMood = moodEntries.length > 0 ? (moodEntries.reduce((sum, entry) => sum + entry.moodScore, 0) / moodEntries.length).toFixed(1) : "n/a";
   const averageEnergy = energyEntries.length > 0 ? (energyEntries.reduce((sum, entry) => sum + entry.energyScore, 0) / energyEntries.length).toFixed(1) : "n/a";
-  const focusItems = Array.from(new Set(input.entries.flatMap((entry) => entry.todayFocus))).slice(0, 10);
+  const focusItems = Array.from(new Set(input.entries.flatMap((entry) => getTodayFocusTexts(entry.todayFocus)))).slice(0, 10);
   const frictionItems = input.entries.map((entry) => entry.frictionLog).filter(Boolean);
   const missedHabits = Array.from(new Set(input.entries.flatMap((entry) => entry.missedHabits)));
   const strongestProjects = [...(input.todoSnapshot?.projects ?? [])]
@@ -506,4 +513,50 @@ export function getSleepMinutesForDay(entry: DailyEntry, previousEntry?: DailyEn
   }
 
   return napMinutes + getMinutesBetween(previousEntry.sleepTime, entry.wakeTime);
+}
+
+export function getTrackedTodayFocusMinutes(item: TodayFocusItem): number {
+  return getTrackedMinutes(item.workSessions);
+}
+
+export function isTodayFocusItemActive(item: TodayFocusItem): boolean {
+  return item.workSessions.some((session) => session.end === null);
+}
+
+function renderTodayFocusLine(item: TodayFocusItem): string {
+  const workedMinutes = getTrackedTodayFocusMinutes(item);
+  const statusLabel = item.status === "working"
+    ? "Working on"
+    : item.status === "done"
+      ? "Done"
+      : "Queued";
+  const trackedSuffix = workedMinutes > 0 ? ` (tracked: ${formatMinutesAsHours(workedMinutes)})` : "";
+  return `- [${statusLabel}] ${item.text}${trackedSuffix}`;
+}
+
+function parseTodayFocusLine(line: string): TodayFocusItem | null {
+  const normalized = line.trim();
+  if (!normalized || normalized.toLowerCase() === "no focus items set") {
+    return null;
+  }
+
+  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\(tracked:\s+.+\))?$/i);
+  const rawStatus = match?.groups?.status?.trim().toLowerCase() ?? "";
+  const text = (match?.groups?.text ?? normalized).trim();
+  if (!text) {
+    return null;
+  }
+
+  const status = rawStatus === "working on"
+    ? "working"
+    : rawStatus === "done"
+      ? "done"
+      : "pending";
+
+  return {
+    text,
+    status,
+    workSessions: [],
+    completedAt: null
+  };
 }

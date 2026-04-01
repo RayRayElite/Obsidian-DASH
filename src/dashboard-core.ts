@@ -12,6 +12,8 @@ import {
   type NoteIndexCache,
   type NoteIndexChunk,
   type NoteIndexEntry,
+  type TodayFocusItem,
+  type TodayFocusStatus,
   type TodoSnapshot
 } from "./dashboard-types";
 
@@ -362,6 +364,60 @@ export function normalizeDayState(dayState: Partial<DayLifecycleState> | undefin
   };
 }
 
+export function normalizeTodayFocusStatus(value: unknown): TodayFocusStatus {
+  return value === "working" || value === "done" ? value : "pending";
+}
+
+export function normalizeTodayFocusItems(value: unknown): TodayFocusItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeTodayFocusItem(item))
+    .filter((item): item is TodayFocusItem => item !== null)
+    .slice(0, 3);
+}
+
+export function getTodayFocusTexts(items: TodayFocusItem[]): string[] {
+  return items.map((item) => item.text);
+}
+
+function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text.length > 0
+      ? { text, status: "pending", workSessions: [], completedAt: null }
+      : null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawItem = value as Partial<TodayFocusItem> & { text?: unknown; workSessions?: unknown };
+  const text = typeof rawItem.text === "string" ? rawItem.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+
+  const workSessions = Array.isArray(rawItem.workSessions)
+    ? rawItem.workSessions
+        .filter((item): item is { start: string; end?: string | null } => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+        .map((item) => ({
+          start: item.start,
+          end: typeof item.end === "string" ? item.end : null
+        }))
+    : [];
+
+  return {
+    text,
+    status: normalizeTodayFocusStatus(rawItem.status),
+    workSessions,
+    completedAt: typeof rawItem.completedAt === "string" && rawItem.completedAt.trim().length > 0 ? rawItem.completedAt : null
+  };
+}
+
 export function parseHabitDefinitions(value: string): HabitDefinition[] {
   const lines = value
     .split(/\r?\n/)
@@ -551,7 +607,7 @@ export function renderAiRelevantNotes(notes: AiRelevantNote[]): string {
 export function buildAiSearchTerms(question: string | undefined, todayEntry: DailyEntry, snapshot: TodoSnapshot | null): string[] {
   const rawTerms = [
     ...(question ? question.toLowerCase().split(/[^a-z0-9]+/) : []),
-    ...todayEntry.todayFocus.flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
+    ...getTodayFocusTexts(todayEntry.todayFocus).flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
     ...(snapshot?.projects.slice(0, 8).flatMap((project) => project.name.toLowerCase().split(/[^a-z0-9]+/)) ?? [])
   ];
 

@@ -19,6 +19,7 @@ import {
   getRelevantIndexedNotes,
   normalizeFoodEntry,
   normalizeFolderPath,
+  normalizeTodayFocusItems,
   normalizeNoteIndexCache,
   normalizeDayState,
   renderAiRelevantNotes,
@@ -98,6 +99,7 @@ import {
   type ProjectReviewOption,
   type RetrievalIndexStatus,
   type TodoSnapshot,
+  type TodayFocusItem,
   type WallpaperOption,
   type WorkSession
 } from "./src/dashboard-types";
@@ -802,6 +804,7 @@ export default class DailyDashboardPlugin extends Plugin {
     if (!entry.sleepTime) {
       entry.sleepTime = timestamp;
     }
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     closeOpenWorkSessions(entry, timestamp);
     closeOpenNapSessions(entry, timestamp);
     closeOpenRelaxSessions(entry, timestamp);
@@ -925,7 +928,9 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    activeSession.end = formatDateTimeKey(new Date());
+    const timestamp = formatDateTimeKey(new Date());
+    activeSession.end = timestamp;
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     await this.persistEntry(entry);
     new Notice("Work session stopped.");
   }
@@ -944,6 +949,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "nap");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -977,6 +983,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "relax");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -1010,6 +1017,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "break");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
     entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
     await this.persistEntry(entry);
@@ -1264,11 +1272,83 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
-    if (entry.todayFocus.includes(trimmedValue)) {
+    if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
       return;
     }
 
-    entry.todayFocus = [...entry.todayFocus, trimmedValue].slice(0, 3);
+    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)].slice(0, 3);
+    await this.persistEntry(entry);
+  }
+
+  async startTodayFocusItem(index: number): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before tracking a Top 3 item.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeOpenTodayFocusSessions(entry, timestamp, index);
+    item.status = "working";
+    item.completedAt = null;
+    if (!item.workSessions.some((session) => session.end === null)) {
+      item.workSessions = [...item.workSessions, { start: timestamp, end: null }];
+    }
+    await this.persistEntry(entry);
+  }
+
+  async stopTodayFocusItem(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+    if (!activeSession && item.status !== "working") {
+      return;
+    }
+
+    if (activeSession) {
+      activeSession.end = formatDateTimeKey(new Date());
+    }
+    if (item.status === "working") {
+      item.status = "pending";
+    }
+    await this.persistEntry(entry);
+  }
+
+  async completeTodayFocusItem(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+    if (activeSession) {
+      activeSession.end = timestamp;
+    }
+    item.status = "done";
+    item.completedAt = timestamp;
+    await this.persistEntry(entry);
+  }
+
+  async reopenTodayFocusItem(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return;
+    }
+
+    item.status = "pending";
+    item.completedAt = null;
     await this.persistEntry(entry);
   }
 
@@ -1608,7 +1688,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions()),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getPreviousEntry(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -1878,6 +1958,31 @@ export default class DailyDashboardPlugin extends Plugin {
     return streak;
   }
 
+  getHabitBestStreak(habitId: string): number {
+    const habitDefinition = this.getHabitDefinitions().find((candidate) => candidate.id === habitId);
+    if (!habitDefinition) {
+      return 0;
+    }
+
+    const dates = Object.keys(this.data.entries).sort();
+    let bestStreak = 0;
+    let currentStreak = 0;
+
+    for (const date of dates) {
+      const entry = this.data.entries[date];
+      const value = entry.habits[habitId] ?? 0;
+      if (value >= habitDefinition.target) {
+        currentStreak += 1;
+        bestStreak = Math.max(bestStreak, currentStreak);
+        continue;
+      }
+
+      currentStreak = 0;
+    }
+
+    return bestStreak;
+  }
+
   refreshDashboardViews(): void {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DAILY_DASHBOARD);
     leaves.forEach((leaf) => {
@@ -2007,9 +2112,7 @@ export default class DailyDashboardPlugin extends Plugin {
       moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
       energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
       anxietyScore: clamp(Number(entry.anxietyScore ?? 0), 0, 5),
-      todayFocus: Array.isArray(entry.todayFocus)
-        ? entry.todayFocus.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 3)
-        : [],
+      todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog)
@@ -2207,6 +2310,38 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private createEmptyEntry(date: string): DailyEntry {
     return createEmptyEntry(date, this.getHabitDefinitions());
+  }
+
+  private createTodayFocusItem(text: string): TodayFocusItem {
+    return {
+      text,
+      status: "pending",
+      workSessions: [],
+      completedAt: null
+    };
+  }
+
+  private closeOpenTodayFocusSessions(entry: DailyEntry, timestamp: string, activeIndex = -1): boolean {
+    let changed = false;
+
+    entry.todayFocus.forEach((item, index) => {
+      if (index === activeIndex || item.status === "done") {
+        return;
+      }
+
+      const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+      if (activeSession) {
+        activeSession.end = timestamp;
+        changed = true;
+      }
+
+      if (item.status === "working") {
+        item.status = "pending";
+        changed = true;
+      }
+    });
+
+    return changed;
   }
 
   private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break"): void {

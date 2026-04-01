@@ -8,7 +8,7 @@ import {
   parseHabitDefinitions,
   renderScore
 } from "./dashboard-core";
-import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay } from "./dashboard-logs";
+import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedTodayFocusMinutes, isTodayFocusItemActive } from "./dashboard-logs";
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
@@ -157,11 +157,12 @@ export class DailyDashboardView extends ItemView {
         hero.style.setProperty("--daily-dashboard-wallpaper", `url("${wallpaperUrl}")`);
       }
 
-      const heroCopy = hero.createDiv({ cls: "daily-dashboard-hero-copy" });
+      const heroHeader = hero.createDiv({ cls: "daily-dashboard-hero-header" });
+      const heroCopy = heroHeader.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
 
-      const actions = heroCopy.createDiv({ cls: "daily-dashboard-actions" });
+      const actions = heroHeader.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
@@ -297,10 +298,34 @@ export class DailyDashboardView extends ItemView {
         createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
         todayEntry.todayFocus.forEach((item, index) => {
-          const row = focusList.createDiv({ cls: "daily-dashboard-food-row" });
-          row.createEl("span", { text: item });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Done" });
+          const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
+          const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
+          const trackedMinutes = getTrackedTodayFocusMinutes(item);
+          const isWorking = item.status === "working" && isTodayFocusItemActive(item);
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", {
+            cls: "daily-dashboard-habit-meta",
+            text: [
+              item.status === "done" ? "Done" : isWorking ? "Working on" : "Queued",
+              `${formatMinutesAsHours(trackedMinutes)} tracked`,
+              item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
+            ].filter((value) => value.length > 0).join(" • ")
+          });
+
+          const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
+          if (item.status === "done") {
+            createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(index), false, "rotate-ccw");
+          } else if (isWorking) {
+            createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(index), false, "pause");
+          } else {
+            createButton(controls, "Working on", async () => this.plugin.startTodayFocusItem(index), false, "play");
+          }
+          createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(index), item.status === "done", "check");
+          const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
           removeButton.type = "button";
+          removeButton.ariaLabel = `Remove focus item ${item.text}`;
+          removeButton.title = `Remove ${item.text}`;
+          setIcon(removeButton, "x");
           removeButton.addEventListener("click", () => {
             void this.plugin.removeTodayFocusItem(index);
           });
@@ -371,7 +396,7 @@ export class DailyDashboardView extends ItemView {
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak`
+          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak • best ${this.plugin.getHabitBestStreak(habit.id)}`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
