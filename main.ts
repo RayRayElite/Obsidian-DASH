@@ -89,6 +89,7 @@ import {
   type AiStructuredPayload,
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
+  type CalendarDocumentPayload,
   type CalendarEventEntry,
   type CalendarEventOccurrence,
   type CalendarRepeatCadence,
@@ -97,6 +98,7 @@ import {
   type DayRepairInput,
   type DailyEntry,
   type DashboardPluginData,
+  type DashboardFocusDisplayItem,
   type DashboardSettings,
   type DayLifecycleState,
   type FoodEntry,
@@ -142,6 +144,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async initializeWorkspaceArtifacts(): Promise<void> {
+    await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
@@ -434,6 +437,11 @@ export default class DailyDashboardPlugin extends Plugin {
         return;
       }
 
+      if (normalizedPath === normalizePath(this.data.settings.calendarDocumentPath)) {
+        void this.reloadCalendarDocumentFile(file);
+        return;
+      }
+
       if (this.isDailyLogPath(normalizedPath)) {
         void this.reloadDailyLogFile(file);
         return;
@@ -447,6 +455,10 @@ export default class DailyDashboardPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", (file) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
         return;
+      }
+
+      if (normalizePath(file.path) === normalizePath(this.data.settings.calendarDocumentPath)) {
+        void this.reloadCalendarDocumentFile(file);
       }
 
       if (this.isDailyLogPath(file.path)) {
@@ -472,6 +484,13 @@ export default class DailyDashboardPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
         return;
+      }
+
+      const normalizedPath = normalizePath(file.path);
+      const normalizedOldPath = normalizePath(oldPath);
+      const normalizedCalendarPath = normalizePath(this.data.settings.calendarDocumentPath);
+      if (normalizedPath === normalizedCalendarPath || normalizedOldPath === normalizedCalendarPath) {
+        void this.reloadCalendarDocumentFile(file);
       }
 
       if (this.isDailyLogPath(oldPath) || this.isDailyLogPath(file.path)) {
@@ -657,6 +676,45 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getCalendarOccurrencesForDate(date);
   }
 
+  getCalendarEventEntry(eventId: string): CalendarEventEntry | null {
+    return this.data.calendarEvents.find((event) => event.id === eventId) ?? null;
+  }
+
+  async updateCalendarEvent(eventId: string, input: {
+    title: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    notes: string;
+    repeatCadence: CalendarRepeatCadence;
+    repeatUntil: string;
+  }): Promise<void> {
+    const existingEvent = this.data.calendarEvents.find((event) => event.id === eventId);
+    if (!existingEvent) {
+      new Notice("That calendar event could not be found.");
+      return;
+    }
+
+    const normalized = this.validateCalendarEventInput(input);
+    if (!normalized) {
+      return;
+    }
+
+    this.data.calendarEvents = this.data.calendarEvents
+      .map((event) => event.id === eventId
+        ? {
+            ...event,
+            ...normalized,
+            updatedAt: formatPreciseDateTimeKey(new Date())
+          }
+        : event)
+      .sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
+    await this.syncCalendarArtifacts([existingEvent.date, normalized.date]);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    new Notice(`Updated calendar event for ${normalized.date}.`);
+  }
+
   async addCalendarEvent(input: {
     title: string;
     date: string;
@@ -666,51 +724,8 @@ export default class DailyDashboardPlugin extends Plugin {
     repeatCadence: CalendarRepeatCadence;
     repeatUntil: string;
   }): Promise<void> {
-    const title = input.title.trim();
-    const date = input.date.trim();
-    const startTime = input.startTime.trim();
-    const endTime = input.endTime.trim();
-    const notes = input.notes.trim();
-    const repeatCadence = input.repeatCadence;
-    const repeatUntil = input.repeatUntil.trim();
-
-    if (!title) {
-      new Notice("Calendar event title is required.");
-      return;
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      new Notice("Calendar event date must use YYYY-MM-DD.");
-      return;
-    }
-
-    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
-      new Notice("Start time must use HH:MM.");
-      return;
-    }
-
-    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
-      new Notice("End time must use HH:MM.");
-      return;
-    }
-
-    if (startTime && endTime && endTime < startTime) {
-      new Notice("End time must be after start time.");
-      return;
-    }
-
-    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
-      new Notice("Unsupported repeat cadence.");
-      return;
-    }
-
-    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
-      new Notice("Repeat-until must use YYYY-MM-DD.");
-      return;
-    }
-
-    if (repeatUntil && repeatUntil < date) {
-      new Notice("Repeat-until must be on or after the event date.");
+    const normalized = this.validateCalendarEventInput(input);
+    if (!normalized) {
       return;
     }
 
@@ -719,21 +734,15 @@ export default class DailyDashboardPlugin extends Plugin {
       ...this.data.calendarEvents,
       {
         id: `calendar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        title,
-        date,
-        startTime,
-        endTime,
-        notes,
-        repeatCadence,
-        repeatUntil,
+        ...normalized,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([date]);
+    await this.syncCalendarArtifacts([normalized.date]);
     await this.savePluginData();
     this.refreshDashboardViews();
-    new Notice(`Added calendar event for ${date}.`);
+    new Notice(`Added calendar event for ${normalized.date}.`);
   }
 
   async removeCalendarEvent(eventId: string): Promise<void> {
@@ -746,6 +755,43 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.syncCalendarArtifacts();
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+
+  getFocusDisplayItems(snapshot: CalendarSnapshot | null = null): DashboardFocusDisplayItem[] {
+    const entry = this.getTodayEntry();
+    const focusItems: DashboardFocusDisplayItem[] = entry.todayFocus.map((item, index) => ({
+      kind: "focus",
+      id: `focus-${index}-${item.text.toLowerCase()}`,
+      text: item.text,
+      status: item.status,
+      workSessions: item.workSessions,
+      completedAt: item.completedAt,
+      trackedMinutes: getTrackedMinutes(item.workSessions),
+      isActive: item.status === "working" && item.workSessions.some((session) => session.end === null)
+    }));
+
+    const reminderItems = (snapshot?.reminders ?? [])
+      .filter((reminder) => !entry.todayFocus.some((item) => item.text.trim().toLowerCase() === reminder.title.trim().toLowerCase()))
+      .map((reminder) => ({
+        kind: "reminder" as const,
+        id: `reminder-${reminder.id}-${reminder.start}`,
+        sourceEventId: reminder.id,
+        text: reminder.title,
+        status: "reminder" as const,
+        workSessions: [],
+        completedAt: null,
+        trackedMinutes: 0,
+        isActive: false,
+        calendarDate: reminder.date,
+        calendarStart: reminder.start,
+        calendarEnd: reminder.end,
+        allDay: reminder.allDay,
+        calendarNotes: reminder.notes,
+        repeatCadence: reminder.repeatCadence,
+        warningLevel: reminder.warningLevel
+      }));
+
+    return [...focusItems, ...reminderItems];
   }
 
   private toCalendarReminderItem(event: CalendarEventOccurrence): CalendarSnapshot["reminders"][number] {
@@ -1703,10 +1749,17 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const entry = this.getTodayEntry();
     if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
+      new Notice("That Top 3 item is already listed.");
       return;
     }
 
-    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)].slice(0, 3);
+    const activeFocusCount = entry.todayFocus.filter((item) => item.status !== "done").length;
+    if (activeFocusCount >= 3) {
+      new Notice("Top 3 already has three active items. Finish or remove one before adding another.");
+      return;
+    }
+
+    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)];
     await this.persistEntry(entry);
   }
 
@@ -2805,6 +2858,74 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
+  private validateCalendarEventInput(input: {
+    title: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    notes: string;
+    repeatCadence: CalendarRepeatCadence;
+    repeatUntil: string;
+  }): Omit<CalendarEventEntry, "id" | "createdAt" | "updatedAt"> | null {
+    const title = input.title.trim();
+    const date = input.date.trim();
+    const startTime = input.startTime.trim();
+    const endTime = input.endTime.trim();
+    const notes = input.notes.trim();
+    const repeatCadence = input.repeatCadence;
+    const repeatUntil = input.repeatUntil.trim();
+
+    if (!title) {
+      new Notice("Calendar event title is required.");
+      return null;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      new Notice("Calendar event date must use YYYY-MM-DD.");
+      return null;
+    }
+
+    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
+      new Notice("Start time must use HH:MM.");
+      return null;
+    }
+
+    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
+      new Notice("End time must use HH:MM.");
+      return null;
+    }
+
+    if (startTime && endTime && endTime < startTime) {
+      new Notice("End time must be after start time.");
+      return null;
+    }
+
+    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
+      new Notice("Unsupported repeat cadence.");
+      return null;
+    }
+
+    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
+      new Notice("Repeat-until must use YYYY-MM-DD.");
+      return null;
+    }
+
+    if (repeatUntil && repeatUntil < date) {
+      new Notice("Repeat-until must be on or after the event date.");
+      return null;
+    }
+
+    return {
+      title,
+      date,
+      startTime,
+      endTime,
+      notes,
+      repeatCadence,
+      repeatUntil
+    };
+  }
+
   private createTodayFocusItem(text: string): TodayFocusItem {
     return {
       text,
@@ -3227,6 +3348,83 @@ export default class DailyDashboardPlugin extends Plugin {
   private async syncCalendarDocument(): Promise<void> {
     const content = this.renderCalendarDocument();
     await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+  }
+
+  private async importCalendarEventsFromMarkdown(): Promise<void> {
+    const payload = await this.readCalendarDocumentPayload();
+    if (!payload) {
+      return;
+    }
+
+    const mergedEvents = this.mergeCalendarEvents(this.data.calendarEvents, payload.events);
+    if (!this.haveCalendarEventsChanged(this.data.calendarEvents, mergedEvents)) {
+      return;
+    }
+
+    this.data.calendarEvents = mergedEvents;
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  private async reloadCalendarDocumentFile(file: TFile): Promise<void> {
+    if (normalizePath(file.path) !== normalizePath(this.data.settings.calendarDocumentPath)) {
+      return;
+    }
+
+    await this.importCalendarEventsFromMarkdown();
+  }
+
+  private async readCalendarDocumentPayload(): Promise<CalendarDocumentPayload | null> {
+    const file = this.app.vault.getAbstractFileByPath(normalizePath(this.data.settings.calendarDocumentPath));
+    if (!(file instanceof TFile)) {
+      return null;
+    }
+
+    const content = await this.app.vault.read(file);
+    const match = content.match(/## Calendar Payload\s+```json\s*([\s\S]*?)\s*```/i);
+    if (!match) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(match[1]) as Partial<CalendarEventEntry>[];
+      const events = Array.isArray(parsed)
+        ? parsed
+            .map((event) => this.normalizeCalendarEvent(event))
+            .filter((event): event is CalendarEventEntry => event !== null)
+        : [];
+      return {
+        updatedAt: "",
+        eventCount: events.length,
+        events
+      };
+    } catch (error) {
+      console.error("Daily Dashboard could not parse calendar document payload", error);
+      return null;
+    }
+  }
+
+  private mergeCalendarEvents(primary: CalendarEventEntry[], secondary: CalendarEventEntry[]): CalendarEventEntry[] {
+    const merged = new Map<string, CalendarEventEntry>();
+    [...primary, ...secondary].forEach((event) => {
+      const existing = merged.get(event.id);
+      if (!existing) {
+        merged.set(event.id, event);
+        return;
+      }
+
+      const existingUpdatedAt = existing.updatedAt || existing.createdAt || "";
+      const eventUpdatedAt = event.updatedAt || event.createdAt || "";
+      if (eventUpdatedAt >= existingUpdatedAt) {
+        merged.set(event.id, event);
+      }
+    });
+
+    return Array.from(merged.values()).sort((left, right) => `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.date} ${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+
+  private haveCalendarEventsChanged(left: CalendarEventEntry[], right: CalendarEventEntry[]): boolean {
+    return JSON.stringify(left) !== JSON.stringify(right);
   }
 
   private renderCalendarDocument(): string {

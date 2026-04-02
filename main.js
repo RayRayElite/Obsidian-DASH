@@ -1121,9 +1121,6 @@ function getSleepMinutesForDay(entry, nextEntry) {
 function getTrackedTodayFocusMinutes(item) {
   return getTrackedMinutes(item.workSessions);
 }
-function isTodayFocusItemActive(item) {
-  return item.workSessions.some((session) => session.end === null);
-}
 function renderTodayFocusLine(item) {
   const workedMinutes = getTrackedTodayFocusMinutes(item);
   const statusLabel = item.status === "working" ? "Working on" : item.status === "done" ? "Done" : "Queued";
@@ -2225,6 +2222,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         if (day.isToday) {
           column.addClass("is-today");
         }
+        if (day.isActiveLogicalDay) {
+          column.addClass("is-active-logical-day");
+          column.createDiv({ cls: "daily-dashboard-week-active-indicator", text: "Active" });
+        }
         const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
         this.renderWeekBarSegment(cylinder, "unknown", day.unknownMinutes);
         this.renderWeekBarSegment(cylinder, "relax", day.relaxMinutes);
@@ -2304,44 +2305,56 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tone: "focus",
         tag: "Focus"
       });
+      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot);
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
-      if (todayEntry.todayFocus.length === 0) {
+      if (focusDisplayItems.length === 0) {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
-        todayEntry.todayFocus.forEach((item, index) => {
+        focusDisplayItems.forEach((item) => {
           const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
+          if (item.kind === "reminder") {
+            row.addClass("is-reminder");
+            if (item.warningLevel) {
+              row.addClass(`is-${item.warningLevel}`);
+            }
+          }
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          const trackedMinutes = getTrackedTodayFocusMinutes(item);
-          const isWorking = item.status === "working" && isTodayFocusItemActive(item);
           copy.createEl("strong", { text: item.text });
           copy.createEl("span", {
             cls: "daily-dashboard-habit-meta",
-            text: [
-              item.status === "done" ? "Done" : isWorking ? "Working on" : "Queued",
-              `${formatMinutesAsHours(trackedMinutes)} tracked`,
-              item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
-            ].filter((value) => value.length > 0).join(" \u2022 ")
+            text: this.getFocusDisplayMeta(item)
           });
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
-          if (item.status === "done") {
-            createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(index), false, "rotate-ccw");
-          } else if (isWorking) {
-            createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(index), false, "pause");
+          if (item.kind === "focus") {
+            const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
+            if (focusIndex < 0) {
+              return;
+            }
+            if (item.status === "done") {
+              createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(focusIndex), false, "rotate-ccw");
+            } else if (item.isActive) {
+              createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
+            } else {
+              createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
+            }
+            createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
+            const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
+            removeButton.type = "button";
+            removeButton.ariaLabel = `Remove focus item ${item.text}`;
+            removeButton.title = `Remove ${item.text}`;
+            (0, import_obsidian3.setIcon)(removeButton, "x");
+            removeButton.addEventListener("click", () => {
+              void this.plugin.removeTodayFocusItem(focusIndex);
+            });
           } else {
-            createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(index), false, "play");
+            createButton(controls, "Calendar", async () => {
+              var _a2, _b2;
+              new CalendarEventModal(this.app, this.plugin, (_a2 = item.calendarDate) != null ? _a2 : todayEntry.date, (_b2 = item.sourceEventId) != null ? _b2 : null).open();
+            }, false, "calendar-days");
           }
-          createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(index), item.status === "done", "check");
-          const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
-          removeButton.type = "button";
-          removeButton.ariaLabel = `Remove focus item ${item.text}`;
-          removeButton.title = `Remove ${item.text}`;
-          (0, import_obsidian3.setIcon)(removeButton, "x");
-          removeButton.addEventListener("click", () => {
-            void this.plugin.removeTodayFocusItem(index);
-          });
         });
       }
       const focusAddRow = focusCard.createDiv({ cls: "daily-dashboard-inline-form" });
@@ -2368,7 +2381,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
-      this.renderReminderBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
       this.renderMonthlyCalendar(focusCard, todayEntry.date, settings.calendarEnabled);
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -2885,6 +2897,21 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
     });
   }
+  getFocusDisplayMeta(item) {
+    if (item.kind === "reminder") {
+      const timeLabel = item.calendarStart && item.calendarEnd ? this.formatCalendarTimeLabel(new Date(item.calendarStart), new Date(item.calendarEnd), Boolean(item.allDay)) : "Scheduled";
+      return [
+        item.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
+        timeLabel,
+        item.calendarNotes || "From calendar"
+      ].filter((value) => value.length > 0).join(" \u2022 ");
+    }
+    return [
+      item.status === "done" ? "Done" : item.isActive ? "Working on" : "Queued",
+      `${formatMinutesAsHours(item.trackedMinutes)} tracked`,
+      item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
+    ].filter((value) => value.length > 0).join(" \u2022 ");
+  }
   renderMonthlyCalendar(parent, todayKey, remindersEnabled) {
     const shell = parent.createDiv({ cls: "daily-dashboard-calendar-panel" });
     const shellHeader = shell.createDiv({ cls: "daily-dashboard-calendar-panel-header" });
@@ -2915,18 +2942,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     ["M", "T", "W", "T", "F", "S", "S"].forEach((label) => {
       weekHeader.createEl("span", { text: label });
     });
-    const eventMap = /* @__PURE__ */ new Map();
-    this.plugin.getCalendarEvents().forEach((event) => {
-      var _a;
-      const list2 = (_a = eventMap.get(event.date)) != null ? _a : [];
-      list2.push(event);
-      eventMap.set(event.date, list2);
-    });
     const grid = shell.createDiv({ cls: "daily-dashboard-calendar-grid" });
     this.getCalendarMonthDays(currentMonth).forEach((date) => {
-      var _a;
       const dateKey = formatDateKey(date);
-      const events = (_a = eventMap.get(dateKey)) != null ? _a : [];
+      const events = this.plugin.getCalendarEventsForDate(dateKey);
       const cell = grid.createEl("button", { cls: "daily-dashboard-calendar-day" });
       cell.type = "button";
       if (date.getMonth() !== currentMonth.getMonth()) {
@@ -2982,6 +3001,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
       const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(actions, event.isRecurring ? "Edit series" : "Edit", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId).open(), false, "pencil");
       createButton(actions, event.isRecurring ? "Delete series" : "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
     });
   }
@@ -3061,6 +3081,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   getCurrentWeekTimeBoard() {
     const today = /* @__PURE__ */ new Date();
     const currentDayIndex = (today.getDay() + 6) % 7;
+    const dayState = this.plugin.getDayState();
+    const activeLogicalDate = dayState.status === "in-progress" ? dayState.activeDate : "";
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
     start.setDate(start.getDate() - currentDayIndex);
@@ -3088,7 +3110,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         relaxMinutes,
         poopMinutes,
         unknownMinutes,
-        isToday: dateKey === formatDateKey(today)
+        isToday: dateKey === formatDateKey(today),
+        isActiveLogicalDay: dateKey === activeLogicalDate
       };
     });
   }
@@ -3123,7 +3146,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
 _DailyDashboardView.AUTO_REFRESH_MS = 30 * 60 * 1e3;
 var DailyDashboardView = _DailyDashboardView;
 var CalendarEventModal = class extends import_obsidian3.Modal {
-  constructor(app, plugin, date) {
+  constructor(app, plugin, date, editingEventId = null) {
     super(app);
     this.titleValue = "";
     this.startTimeValue = "";
@@ -3133,8 +3156,11 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.repeatUntilValue = "";
     this.plugin = plugin;
     this.date = date;
+    this.initialDate = date;
+    this.editingEventId = editingEventId;
   }
   onOpen() {
+    this.hydrateEditingState();
     this.setTitle(`Calendar Events \u2022 ${this.date}`);
     this.renderContent();
   }
@@ -3154,19 +3180,44 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
           event.notes
         ].filter((value) => value.length > 0).join(" \u2022 ")).addButton((button) => {
+          button.setButtonText(event.isRecurring ? "Edit series" : "Edit").onClick(() => {
+            const sourceEvent = this.plugin.getCalendarEventEntry(event.sourceEventId);
+            if (!sourceEvent) {
+              return;
+            }
+            this.editingEventId = sourceEvent.id;
+            this.date = sourceEvent.date;
+            this.titleValue = sourceEvent.title;
+            this.startTimeValue = sourceEvent.startTime;
+            this.endTimeValue = sourceEvent.endTime;
+            this.notesValue = sourceEvent.notes;
+            this.repeatCadenceValue = sourceEvent.repeatCadence;
+            this.repeatUntilValue = sourceEvent.repeatUntil;
+            this.renderContent();
+          });
+        }).addButton((button) => {
           button.setButtonText(event.isRecurring ? "Delete series" : "Delete").onClick(async () => {
             await this.plugin.removeCalendarEvent(event.sourceEventId);
+            if (this.editingEventId === event.sourceEventId) {
+              this.clearEditingState();
+            }
             this.renderContent();
           });
         });
       });
     }
-    contentEl.createEl("h3", { text: "Add event" });
+    contentEl.createEl("h3", { text: this.editingEventId ? "Edit event" : "Add event" });
     new import_obsidian3.Setting(contentEl).setName("Title").setDesc("Required").addText((text) => {
       text.setPlaceholder("Appointment, reminder, call, errand").setValue(this.titleValue).onChange((value) => {
         this.titleValue = value;
       });
       window.setTimeout(() => text.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Date").setDesc("YYYY-MM-DD").addText((text) => {
+      text.setPlaceholder("2026-04-01").setValue(this.date).onChange((value) => {
+        this.date = value.trim();
+      });
+      text.inputEl.type = "date";
     });
     new import_obsidian3.Setting(contentEl).setName("Start time").setDesc("Leave blank for all-day events.").addText((text) => {
       text.setPlaceholder("09:30").setValue(this.startTimeValue).onChange((value) => {
@@ -3207,8 +3258,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       });
     }
     new import_obsidian3.Setting(contentEl).addButton((button) => {
-      button.setButtonText("Add event").setCta().onClick(async () => {
-        await this.plugin.addCalendarEvent({
+      button.setButtonText(this.editingEventId ? "Save changes" : "Add event").setCta().onClick(async () => {
+        const input = {
           title: this.titleValue,
           date: this.date,
           startTime: this.startTimeValue,
@@ -3216,13 +3267,18 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           notes: this.notesValue,
           repeatCadence: this.repeatCadenceValue,
           repeatUntil: this.repeatUntilValue
-        });
-        this.titleValue = "";
-        this.startTimeValue = "";
-        this.endTimeValue = "";
-        this.notesValue = "";
-        this.repeatCadenceValue = "none";
-        this.repeatUntilValue = "";
+        };
+        if (this.editingEventId) {
+          await this.plugin.updateCalendarEvent(this.editingEventId, input);
+        } else {
+          await this.plugin.addCalendarEvent(input);
+        }
+        this.clearEditingState();
+        this.renderContent();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("rotate-ccw").setTooltip("Reset form").onClick(() => {
+        this.clearEditingState();
         this.renderContent();
       });
     }).addExtraButton((button) => {
@@ -3230,6 +3286,33 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         this.close();
       });
     });
+  }
+  hydrateEditingState() {
+    if (!this.editingEventId) {
+      return;
+    }
+    const event = this.plugin.getCalendarEventEntry(this.editingEventId);
+    if (!event) {
+      this.clearEditingState();
+      return;
+    }
+    this.date = event.date;
+    this.titleValue = event.title;
+    this.startTimeValue = event.startTime;
+    this.endTimeValue = event.endTime;
+    this.notesValue = event.notes;
+    this.repeatCadenceValue = event.repeatCadence;
+    this.repeatUntilValue = event.repeatUntil;
+  }
+  clearEditingState() {
+    this.editingEventId = null;
+    this.date = this.initialDate;
+    this.titleValue = "";
+    this.startTimeValue = "";
+    this.endTimeValue = "";
+    this.notesValue = "";
+    this.repeatCadenceValue = "none";
+    this.repeatUntilValue = "";
   }
 };
 var CreateProjectModal = class extends import_obsidian3.Modal {
@@ -4030,6 +4113,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return String(error);
   }
   async initializeWorkspaceArtifacts() {
+    await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
@@ -4282,6 +4366,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         this.refreshDashboardViews();
         return;
       }
+      if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath)) {
+        void this.reloadCalendarDocumentFile(file);
+        return;
+      }
       if (this.isDailyLogPath(normalizedPath)) {
         void this.reloadDailyLogFile(file);
         return;
@@ -4293,6 +4381,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.registerEvent(this.app.vault.on("create", (file) => {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
         return;
+      }
+      if ((0, import_obsidian4.normalizePath)(file.path) === (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath)) {
+        void this.reloadCalendarDocumentFile(file);
       }
       if (this.isDailyLogPath(file.path)) {
         void this.reloadDailyLogFile(file);
@@ -4312,6 +4403,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
         return;
+      }
+      const normalizedPath = (0, import_obsidian4.normalizePath)(file.path);
+      const normalizedOldPath = (0, import_obsidian4.normalizePath)(oldPath);
+      const normalizedCalendarPath = (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath);
+      if (normalizedPath === normalizedCalendarPath || normalizedOldPath === normalizedCalendarPath) {
+        void this.reloadCalendarDocumentFile(file);
       }
       if (this.isDailyLogPath(oldPath) || this.isDailyLogPath(file.path)) {
         this.removeDailyLogEntry(oldPath);
@@ -4457,44 +4554,33 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   getCalendarEventsForDate(date) {
     return this.getCalendarOccurrencesForDate(date);
   }
+  getCalendarEventEntry(eventId) {
+    var _a;
+    return (_a = this.data.calendarEvents.find((event) => event.id === eventId)) != null ? _a : null;
+  }
+  async updateCalendarEvent(eventId, input) {
+    const existingEvent = this.data.calendarEvents.find((event) => event.id === eventId);
+    if (!existingEvent) {
+      new import_obsidian4.Notice("That calendar event could not be found.");
+      return;
+    }
+    const normalized = this.validateCalendarEventInput(input);
+    if (!normalized) {
+      return;
+    }
+    this.data.calendarEvents = this.data.calendarEvents.map((event) => event.id === eventId ? {
+      ...event,
+      ...normalized,
+      updatedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
+    } : event).sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
+    await this.syncCalendarArtifacts([existingEvent.date, normalized.date]);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    new import_obsidian4.Notice(`Updated calendar event for ${normalized.date}.`);
+  }
   async addCalendarEvent(input) {
-    const title = input.title.trim();
-    const date = input.date.trim();
-    const startTime = input.startTime.trim();
-    const endTime = input.endTime.trim();
-    const notes = input.notes.trim();
-    const repeatCadence = input.repeatCadence;
-    const repeatUntil = input.repeatUntil.trim();
-    if (!title) {
-      new import_obsidian4.Notice("Calendar event title is required.");
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      new import_obsidian4.Notice("Calendar event date must use YYYY-MM-DD.");
-      return;
-    }
-    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
-      new import_obsidian4.Notice("Start time must use HH:MM.");
-      return;
-    }
-    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
-      new import_obsidian4.Notice("End time must use HH:MM.");
-      return;
-    }
-    if (startTime && endTime && endTime < startTime) {
-      new import_obsidian4.Notice("End time must be after start time.");
-      return;
-    }
-    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
-      new import_obsidian4.Notice("Unsupported repeat cadence.");
-      return;
-    }
-    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
-      new import_obsidian4.Notice("Repeat-until must use YYYY-MM-DD.");
-      return;
-    }
-    if (repeatUntil && repeatUntil < date) {
-      new import_obsidian4.Notice("Repeat-until must be on or after the event date.");
+    const normalized = this.validateCalendarEventInput(input);
+    if (!normalized) {
       return;
     }
     const timestamp = formatPreciseDateTimeKey(/* @__PURE__ */ new Date());
@@ -4502,21 +4588,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...this.data.calendarEvents,
       {
         id: `calendar-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        title,
-        date,
-        startTime,
-        endTime,
-        notes,
-        repeatCadence,
-        repeatUntil,
+        ...normalized,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([date]);
+    await this.syncCalendarArtifacts([normalized.date]);
     await this.savePluginData();
     this.refreshDashboardViews();
-    new import_obsidian4.Notice(`Added calendar event for ${date}.`);
+    new import_obsidian4.Notice(`Added calendar event for ${normalized.date}.`);
   }
   async removeCalendarEvent(eventId) {
     const nextEvents = this.data.calendarEvents.filter((event) => event.id !== eventId);
@@ -4527,6 +4607,39 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.syncCalendarArtifacts();
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+  getFocusDisplayItems(snapshot = null) {
+    var _a;
+    const entry = this.getTodayEntry();
+    const focusItems = entry.todayFocus.map((item, index) => ({
+      kind: "focus",
+      id: `focus-${index}-${item.text.toLowerCase()}`,
+      text: item.text,
+      status: item.status,
+      workSessions: item.workSessions,
+      completedAt: item.completedAt,
+      trackedMinutes: getTrackedMinutes(item.workSessions),
+      isActive: item.status === "working" && item.workSessions.some((session) => session.end === null)
+    }));
+    const reminderItems = ((_a = snapshot == null ? void 0 : snapshot.reminders) != null ? _a : []).filter((reminder) => !entry.todayFocus.some((item) => item.text.trim().toLowerCase() === reminder.title.trim().toLowerCase())).map((reminder) => ({
+      kind: "reminder",
+      id: `reminder-${reminder.id}-${reminder.start}`,
+      sourceEventId: reminder.id,
+      text: reminder.title,
+      status: "reminder",
+      workSessions: [],
+      completedAt: null,
+      trackedMinutes: 0,
+      isActive: false,
+      calendarDate: reminder.date,
+      calendarStart: reminder.start,
+      calendarEnd: reminder.end,
+      allDay: reminder.allDay,
+      calendarNotes: reminder.notes,
+      repeatCadence: reminder.repeatCadence,
+      warningLevel: reminder.warningLevel
+    }));
+    return [...focusItems, ...reminderItems];
   }
   toCalendarReminderItem(event) {
     const startDate = this.getCalendarOccurrenceStartDate(event);
@@ -5339,9 +5452,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const entry = this.getTodayEntry();
     if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
+      new import_obsidian4.Notice("That Top 3 item is already listed.");
       return;
     }
-    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)].slice(0, 3);
+    const activeFocusCount = entry.todayFocus.filter((item) => item.status !== "done").length;
+    if (activeFocusCount >= 3) {
+      new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before adding another.");
+      return;
+    }
+    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)];
     await this.persistEntry(entry);
   }
   async startTodayFocusItem(index) {
@@ -6243,6 +6362,56 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       updatedAt: typeof event.updatedAt === "string" ? event.updatedAt : ""
     };
   }
+  validateCalendarEventInput(input) {
+    const title = input.title.trim();
+    const date = input.date.trim();
+    const startTime = input.startTime.trim();
+    const endTime = input.endTime.trim();
+    const notes = input.notes.trim();
+    const repeatCadence = input.repeatCadence;
+    const repeatUntil = input.repeatUntil.trim();
+    if (!title) {
+      new import_obsidian4.Notice("Calendar event title is required.");
+      return null;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      new import_obsidian4.Notice("Calendar event date must use YYYY-MM-DD.");
+      return null;
+    }
+    if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
+      new import_obsidian4.Notice("Start time must use HH:MM.");
+      return null;
+    }
+    if (endTime && !/^\d{2}:\d{2}$/.test(endTime)) {
+      new import_obsidian4.Notice("End time must use HH:MM.");
+      return null;
+    }
+    if (startTime && endTime && endTime < startTime) {
+      new import_obsidian4.Notice("End time must be after start time.");
+      return null;
+    }
+    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
+      new import_obsidian4.Notice("Unsupported repeat cadence.");
+      return null;
+    }
+    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
+      new import_obsidian4.Notice("Repeat-until must use YYYY-MM-DD.");
+      return null;
+    }
+    if (repeatUntil && repeatUntil < date) {
+      new import_obsidian4.Notice("Repeat-until must be on or after the event date.");
+      return null;
+    }
+    return {
+      title,
+      date,
+      startTime,
+      endTime,
+      notes,
+      repeatCadence,
+      repeatUntil
+    };
+  }
   createTodayFocusItem(text) {
     return {
       text,
@@ -6591,6 +6760,67 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   async syncCalendarDocument() {
     const content = this.renderCalendarDocument();
     await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+  }
+  async importCalendarEventsFromMarkdown() {
+    const payload = await this.readCalendarDocumentPayload();
+    if (!payload) {
+      return;
+    }
+    const mergedEvents = this.mergeCalendarEvents(this.data.calendarEvents, payload.events);
+    if (!this.haveCalendarEventsChanged(this.data.calendarEvents, mergedEvents)) {
+      return;
+    }
+    this.data.calendarEvents = mergedEvents;
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async reloadCalendarDocumentFile(file) {
+    if ((0, import_obsidian4.normalizePath)(file.path) !== (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath)) {
+      return;
+    }
+    await this.importCalendarEventsFromMarkdown();
+  }
+  async readCalendarDocumentPayload() {
+    const file = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath));
+    if (!(file instanceof import_obsidian4.TFile)) {
+      return null;
+    }
+    const content = await this.app.vault.read(file);
+    const match = content.match(/## Calendar Payload\s+```json\s*([\s\S]*?)\s*```/i);
+    if (!match) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(match[1]);
+      const events = Array.isArray(parsed) ? parsed.map((event) => this.normalizeCalendarEvent(event)).filter((event) => event !== null) : [];
+      return {
+        updatedAt: "",
+        eventCount: events.length,
+        events
+      };
+    } catch (error) {
+      console.error("Daily Dashboard could not parse calendar document payload", error);
+      return null;
+    }
+  }
+  mergeCalendarEvents(primary, secondary) {
+    const merged = /* @__PURE__ */ new Map();
+    [...primary, ...secondary].forEach((event) => {
+      const existing = merged.get(event.id);
+      if (!existing) {
+        merged.set(event.id, event);
+        return;
+      }
+      const existingUpdatedAt = existing.updatedAt || existing.createdAt || "";
+      const eventUpdatedAt = event.updatedAt || event.createdAt || "";
+      if (eventUpdatedAt >= existingUpdatedAt) {
+        merged.set(event.id, event);
+      }
+    });
+    return Array.from(merged.values()).sort((left, right) => `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.date} ${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+  haveCalendarEventsChanged(left, right) {
+    return JSON.stringify(left) !== JSON.stringify(right);
   }
   renderCalendarDocument() {
     const payload = JSON.stringify(this.data.calendarEvents, null, 2);

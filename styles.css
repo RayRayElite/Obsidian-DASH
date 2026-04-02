@@ -665,6 +665,17 @@
   background: color-mix(in srgb, #7ace89 10%, var(--background-primary));
 }
 
+.daily-dashboard-focus-row.is-reminder {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 24%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 6%, var(--background-primary));
+}
+
+.daily-dashboard-focus-row.is-reminder.is-warning {
+  border-color: color-mix(in srgb, #f0b66b 30%, var(--background-modifier-border));
+  background: color-mix(in srgb, #f0b66b 10%, var(--background-primary));
+}
+
 .daily-dashboard-habit-meta {
   color: var(--text-muted);
   font-size: 0.88rem;
@@ -1223,6 +1234,25 @@ input.daily-dashboard-input {
   align-items: center;
   gap: 16px;
   min-width: 0;
+  position: relative;
+}
+
+.daily-dashboard-week-active-indicator {
+  position: absolute;
+  top: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 22%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .daily-dashboard-week-cylinder {
@@ -1253,6 +1283,15 @@ input.daily-dashboard-input {
 
 .daily-dashboard-week-column.is-today .daily-dashboard-week-labels strong {
   color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 55%, white);
+}
+
+.daily-dashboard-week-column.is-active-logical-day .daily-dashboard-week-cylinder {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 34%, rgba(255, 255, 255, 0.14));
+  box-shadow:
+    inset -6px 0 16px rgba(0, 0, 0, 0.42),
+    inset 6px 0 16px rgba(255, 255, 255, 0.16),
+    0 0 0 1px color-mix(in srgb, var(--daily-dashboard-accent) 14%, transparent),
+    0 12px 24px rgba(0, 0, 0, 0.44);
 }
 
 .daily-dashboard-week-cylinder-overlay {

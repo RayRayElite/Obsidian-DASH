@@ -57,6 +57,31 @@ export interface CalendarEventOccurrence {
   isRecurring: boolean;
 }
 
+export interface CalendarDocumentPayload {
+  updatedAt: string;
+  eventCount: number;
+  events: CalendarEventEntry[];
+}
+
+export interface DashboardFocusDisplayItem {
+  kind: "focus" | "reminder";
+  id: string;
+  sourceEventId?: string;
+  text: string;
+  status: TodayFocusStatus | "reminder";
+  workSessions: WorkSession[];
+  completedAt: string | null;
+  trackedMinutes: number;
+  isActive: boolean;
+  calendarDate?: string;
+  calendarStart?: string;
+  calendarEnd?: string;
+  allDay?: boolean;
+  calendarNotes?: string;
+  repeatCadence?: CalendarRepeatCadence;
+  warningLevel?: "warning" | "upcoming";
+}
+
 export interface TodayFocusItem {
   text: string;
   status: TodayFocusStatus;

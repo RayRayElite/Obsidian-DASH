@@ -8,19 +8,19 @@ import {
   parseHabitDefinitions,
   renderScore
 } from "./dashboard-core";
-import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedTodayFocusMinutes, isTodayFocusItemActive } from "./dashboard-logs";
+import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay } from "./dashboard-logs";
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
-  type CalendarEventEntry,
   type CalendarEventOccurrence,
   type CalendarRepeatCadence,
   type CalendarSnapshot,
   type CardVisualOptions,
   type CreateProjectInput,
   type DayRepairInput,
+  type DashboardFocusDisplayItem,
   type DashboardTone,
   type ProjectReviewOption,
   type QuickAddState,
@@ -209,6 +209,10 @@ export class DailyDashboardView extends ItemView {
         if (day.isToday) {
           column.addClass("is-today");
         }
+        if (day.isActiveLogicalDay) {
+          column.addClass("is-active-logical-day");
+          column.createDiv({ cls: "daily-dashboard-week-active-indicator", text: "Active" });
+        }
 
         const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
         this.renderWeekBarSegment(cylinder, "unknown", day.unknownMinutes);
@@ -310,45 +314,56 @@ export class DailyDashboardView extends ItemView {
         tone: "focus",
         tag: "Focus"
       });
+      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot);
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
-      if (todayEntry.todayFocus.length === 0) {
+      if (focusDisplayItems.length === 0) {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
       } else {
-        todayEntry.todayFocus.forEach((item, index) => {
+        focusDisplayItems.forEach((item) => {
           const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
+          if (item.kind === "reminder") {
+            row.addClass("is-reminder");
+            if (item.warningLevel) {
+              row.addClass(`is-${item.warningLevel}`);
+            }
+          }
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          const trackedMinutes = getTrackedTodayFocusMinutes(item);
-          const isWorking = item.status === "working" && isTodayFocusItemActive(item);
           copy.createEl("strong", { text: item.text });
           copy.createEl("span", {
             cls: "daily-dashboard-habit-meta",
-            text: [
-              item.status === "done" ? "Done" : isWorking ? "Working on" : "Queued",
-              `${formatMinutesAsHours(trackedMinutes)} tracked`,
-              item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
-            ].filter((value) => value.length > 0).join(" • ")
+            text: this.getFocusDisplayMeta(item)
           });
 
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
-          if (item.status === "done") {
-            createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(index), false, "rotate-ccw");
-          } else if (isWorking) {
-            createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(index), false, "pause");
+          if (item.kind === "focus") {
+            const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
+            if (focusIndex < 0) {
+              return;
+            }
+            if (item.status === "done") {
+              createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(focusIndex), false, "rotate-ccw");
+            } else if (item.isActive) {
+              createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
+            } else {
+              createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
+            }
+            createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
+            const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
+            removeButton.type = "button";
+            removeButton.ariaLabel = `Remove focus item ${item.text}`;
+            removeButton.title = `Remove ${item.text}`;
+            setIcon(removeButton, "x");
+            removeButton.addEventListener("click", () => {
+              void this.plugin.removeTodayFocusItem(focusIndex);
+            });
           } else {
-            createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(index), false, "play");
+            createButton(controls, "Calendar", async () => {
+              new CalendarEventModal(this.app, this.plugin, item.calendarDate ?? todayEntry.date, item.sourceEventId ?? null).open();
+            }, false, "calendar-days");
           }
-          createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(index), item.status === "done", "check");
-          const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
-          removeButton.type = "button";
-          removeButton.ariaLabel = `Remove focus item ${item.text}`;
-          removeButton.title = `Remove ${item.text}`;
-          setIcon(removeButton, "x");
-          removeButton.addEventListener("click", () => {
-            void this.plugin.removeTodayFocusItem(index);
-          });
         });
       }
       const focusAddRow = focusCard.createDiv({ cls: "daily-dashboard-inline-form" });
@@ -375,7 +390,6 @@ export class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
-      this.renderReminderBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
       this.renderMonthlyCalendar(focusCard, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
@@ -929,6 +943,25 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
+  private getFocusDisplayMeta(item: DashboardFocusDisplayItem): string {
+    if (item.kind === "reminder") {
+      const timeLabel = item.calendarStart && item.calendarEnd
+        ? this.formatCalendarTimeLabel(new Date(item.calendarStart), new Date(item.calendarEnd), Boolean(item.allDay))
+        : "Scheduled";
+      return [
+        item.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
+        timeLabel,
+        item.calendarNotes || "From calendar"
+      ].filter((value) => value.length > 0).join(" • ");
+    }
+
+    return [
+      item.status === "done" ? "Done" : item.isActive ? "Working on" : "Queued",
+      `${formatMinutesAsHours(item.trackedMinutes)} tracked`,
+      item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
+    ].filter((value) => value.length > 0).join(" • ");
+  }
+
   private renderMonthlyCalendar(parent: HTMLElement, todayKey: string, remindersEnabled: boolean): void {
     const shell = parent.createDiv({ cls: "daily-dashboard-calendar-panel" });
     const shellHeader = shell.createDiv({ cls: "daily-dashboard-calendar-panel-header" });
@@ -964,17 +997,10 @@ export class DailyDashboardView extends ItemView {
       weekHeader.createEl("span", { text: label });
     });
 
-    const eventMap = new Map<string, CalendarEventEntry[]>();
-    this.plugin.getCalendarEvents().forEach((event) => {
-      const list = eventMap.get(event.date) ?? [];
-      list.push(event);
-      eventMap.set(event.date, list);
-    });
-
     const grid = shell.createDiv({ cls: "daily-dashboard-calendar-grid" });
     this.getCalendarMonthDays(currentMonth).forEach((date) => {
       const dateKey = formatDateKey(date);
-      const events = eventMap.get(dateKey) ?? [];
+      const events = this.plugin.getCalendarEventsForDate(dateKey);
       const cell = grid.createEl("button", { cls: "daily-dashboard-calendar-day" });
       cell.type = "button";
       if (date.getMonth() !== currentMonth.getMonth()) {
@@ -1037,6 +1063,7 @@ export class DailyDashboardView extends ItemView {
       copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
 
       const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(actions, event.isRecurring ? "Edit series" : "Edit", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId).open(), false, "pencil");
       createButton(actions, event.isRecurring ? "Delete series" : "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
     });
   }
@@ -1143,9 +1170,12 @@ export class DailyDashboardView extends ItemView {
     poopMinutes: number;
     unknownMinutes: number;
     isToday: boolean;
+    isActiveLogicalDay: boolean;
   }> {
     const today = new Date();
     const currentDayIndex = (today.getDay() + 6) % 7;
+    const dayState = this.plugin.getDayState();
+    const activeLogicalDate = dayState.status === "in-progress" ? dayState.activeDate : "";
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
     start.setDate(start.getDate() - currentDayIndex);
@@ -1175,7 +1205,8 @@ export class DailyDashboardView extends ItemView {
         relaxMinutes,
         poopMinutes,
         unknownMinutes,
-        isToday: dateKey === formatDateKey(today)
+        isToday: dateKey === formatDateKey(today),
+        isActiveLogicalDay: dateKey === activeLogicalDate
       };
     });
   }
@@ -1218,6 +1249,8 @@ export class DailyDashboardView extends ItemView {
 export class CalendarEventModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private date: string;
+  private readonly initialDate: string;
+  private editingEventId: string | null;
   private titleValue = "";
   private startTimeValue = "";
   private endTimeValue = "";
@@ -1225,13 +1258,16 @@ export class CalendarEventModal extends Modal {
   private repeatCadenceValue: CalendarRepeatCadence = "none";
   private repeatUntilValue = "";
 
-  constructor(app: App, plugin: DailyDashboardPlugin, date: string) {
+  constructor(app: App, plugin: DailyDashboardPlugin, date: string, editingEventId: string | null = null) {
     super(app);
     this.plugin = plugin;
     this.date = date;
+    this.initialDate = date;
+    this.editingEventId = editingEventId;
   }
 
   onOpen(): void {
+    this.hydrateEditingState();
     this.setTitle(`Calendar Events • ${this.date}`);
     this.renderContent();
   }
@@ -1257,15 +1293,36 @@ export class CalendarEventModal extends Modal {
             event.notes
           ].filter((value) => value.length > 0).join(" • "))
           .addButton((button) => {
+            button.setButtonText(event.isRecurring ? "Edit series" : "Edit").onClick(() => {
+              const sourceEvent = this.plugin.getCalendarEventEntry(event.sourceEventId);
+              if (!sourceEvent) {
+                return;
+              }
+
+              this.editingEventId = sourceEvent.id;
+              this.date = sourceEvent.date;
+              this.titleValue = sourceEvent.title;
+              this.startTimeValue = sourceEvent.startTime;
+              this.endTimeValue = sourceEvent.endTime;
+              this.notesValue = sourceEvent.notes;
+              this.repeatCadenceValue = sourceEvent.repeatCadence;
+              this.repeatUntilValue = sourceEvent.repeatUntil;
+              this.renderContent();
+            });
+          })
+          .addButton((button) => {
             button.setButtonText(event.isRecurring ? "Delete series" : "Delete").onClick(async () => {
               await this.plugin.removeCalendarEvent(event.sourceEventId);
+              if (this.editingEventId === event.sourceEventId) {
+                this.clearEditingState();
+              }
               this.renderContent();
             });
           });
       });
     }
 
-    contentEl.createEl("h3", { text: "Add event" });
+    contentEl.createEl("h3", { text: this.editingEventId ? "Edit event" : "Add event" });
 
     new Setting(contentEl)
       .setName("Title")
@@ -1278,6 +1335,19 @@ export class CalendarEventModal extends Modal {
             this.titleValue = value;
           });
         window.setTimeout(() => text.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Date")
+      .setDesc("YYYY-MM-DD")
+      .addText((text) => {
+        text
+          .setPlaceholder("2026-04-01")
+          .setValue(this.date)
+          .onChange((value) => {
+            this.date = value.trim();
+          });
+        text.inputEl.type = "date";
       });
 
     new Setting(contentEl)
@@ -1352,8 +1422,8 @@ export class CalendarEventModal extends Modal {
 
     new Setting(contentEl)
       .addButton((button) => {
-        button.setButtonText("Add event").setCta().onClick(async () => {
-          await this.plugin.addCalendarEvent({
+        button.setButtonText(this.editingEventId ? "Save changes" : "Add event").setCta().onClick(async () => {
+          const input = {
             title: this.titleValue,
             date: this.date,
             startTime: this.startTimeValue,
@@ -1361,13 +1431,20 @@ export class CalendarEventModal extends Modal {
             notes: this.notesValue,
             repeatCadence: this.repeatCadenceValue,
             repeatUntil: this.repeatUntilValue
-          });
-          this.titleValue = "";
-          this.startTimeValue = "";
-          this.endTimeValue = "";
-          this.notesValue = "";
-          this.repeatCadenceValue = "none";
-          this.repeatUntilValue = "";
+          };
+
+          if (this.editingEventId) {
+            await this.plugin.updateCalendarEvent(this.editingEventId, input);
+          } else {
+            await this.plugin.addCalendarEvent(input);
+          }
+          this.clearEditingState();
+          this.renderContent();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("rotate-ccw").setTooltip("Reset form").onClick(() => {
+          this.clearEditingState();
           this.renderContent();
         });
       })
@@ -1376,6 +1453,37 @@ export class CalendarEventModal extends Modal {
           this.close();
         });
       });
+  }
+
+  private hydrateEditingState(): void {
+    if (!this.editingEventId) {
+      return;
+    }
+
+    const event = this.plugin.getCalendarEventEntry(this.editingEventId);
+    if (!event) {
+      this.clearEditingState();
+      return;
+    }
+
+    this.date = event.date;
+    this.titleValue = event.title;
+    this.startTimeValue = event.startTime;
+    this.endTimeValue = event.endTime;
+    this.notesValue = event.notes;
+    this.repeatCadenceValue = event.repeatCadence;
+    this.repeatUntilValue = event.repeatUntil;
+  }
+
+  private clearEditingState(): void {
+    this.editingEventId = null;
+    this.date = this.initialDate;
+    this.titleValue = "";
+    this.startTimeValue = "";
+    this.endTimeValue = "";
+    this.notesValue = "";
+    this.repeatCadenceValue = "none";
+    this.repeatUntilValue = "";
   }
 }
 
