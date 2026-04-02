@@ -180,7 +180,7 @@ function normalizeNoteIndexCache(cache) {
         id: typeof chunk.id === "string" ? chunk.id : `${(0, import_obsidian.normalizePath)(path)}#${index + 1}`,
         heading: typeof chunk.heading === "string" ? chunk.heading : "",
         text: chunk.text,
-        keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item2) => typeof item2 === "string") : extractKeywords(chunk.text),
+        keywords: Array.isArray(chunk.keywords) ? chunk.keywords.filter((item) => typeof item === "string") : extractKeywords(chunk.text),
         embedding: Array.isArray(chunk.embedding) ? chunk.embedding.filter((value) => typeof value === "number" && Number.isFinite(value)) : void 0
       })) : [];
       result.push([(0, import_obsidian.normalizePath)(path), {
@@ -188,7 +188,7 @@ function normalizeNoteIndexCache(cache) {
         mtime: Number((_a2 = entry.mtime) != null ? _a2 : 0),
         size: Number((_b = entry.size) != null ? _b : 0),
         title: typeof entry.title === "string" ? entry.title : (_c = (0, import_obsidian.normalizePath)(path).split("/").pop()) != null ? _c : (0, import_obsidian.normalizePath)(path),
-        keywords: Array.isArray(entry.keywords) ? entry.keywords.filter((item2) => typeof item2 === "string") : [],
+        keywords: Array.isArray(entry.keywords) ? entry.keywords.filter((item) => typeof item === "string") : [],
         chunks: normalizedChunks
       }]);
       return result;
@@ -202,7 +202,7 @@ function normalizeNoteIndexCache(cache) {
   };
 }
 function getIndexedFolderList(settings) {
-  return settings.aiIndexedFolders.split(/\r?\n/).map((item2) => normalizeFolderPath(item2)).filter((item2, index, array) => item2.length > 0 && array.indexOf(item2) === index);
+  return settings.aiIndexedFolders.split(/\r?\n/).map((item) => normalizeFolderPath(item)).filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
 }
 function shouldRebuildAiIndex(previous, next) {
   return previous.aiIndexEnabled !== next.aiIndexEnabled || previous.aiIndexedFolders !== next.aiIndexedFolders || previous.aiChunkCharLimit !== next.aiChunkCharLimit || previous.aiEmbeddingsEnabled !== next.aiEmbeddingsEnabled || previous.aiEmbeddingModel !== next.aiEmbeddingModel || previous.masterTodoPath !== next.masterTodoPath;
@@ -423,16 +423,16 @@ function normalizeTodayFocusItems(value) {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.map((item2) => normalizeTodayFocusItem(item2)).filter((item2) => item2 !== null).slice(0, 3);
+  return value.map((item) => normalizeTodayFocusItem(item)).filter((item) => item !== null).slice(0, 3);
 }
 function normalizeNextUpFocusItems(value) {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.map((item2) => normalizeNextUpFocusItem(item2)).filter((item2) => item2 !== null).slice(0, 9);
+  return value.map((item) => normalizeNextUpFocusItem(item)).filter((item) => item !== null).slice(0, 9);
 }
 function getTodayFocusTexts(items) {
-  return items.map((item2) => item2.text);
+  return items.map((item) => item.text);
 }
 function normalizeTodayFocusItem(value) {
   if (typeof value === "string") {
@@ -447,10 +447,10 @@ function normalizeTodayFocusItem(value) {
   if (!text) {
     return null;
   }
-  const workSessions = Array.isArray(rawItem.workSessions) ? rawItem.workSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-    start: item2.start,
-    end: typeof item2.end === "string" ? item2.end : null,
-    tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+  const workSessions = Array.isArray(rawItem.workSessions) ? rawItem.workSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+    start: item.start,
+    end: typeof item.end === "string" ? item.end : null,
+    tag: typeof item.tag === "string" ? item.tag.trim() : ""
   })) : [];
   return {
     text,
@@ -598,10 +598,10 @@ function extractAiStructuredPayload(value) {
   try {
     const parsed = JSON.parse(match[1]);
     return {
-      suggestedFocus: Array.isArray(parsed.suggestedFocus) ? parsed.suggestedFocus.filter((item2) => typeof item2 === "string").slice(0, 3) : [],
-      nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions.filter((item2) => typeof item2 === "string").slice(0, 8) : [],
-      keyRisks: Array.isArray(parsed.keyRisks) ? parsed.keyRisks.filter((item2) => typeof item2 === "string").slice(0, 8) : [],
-      followUpQuestions: Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions.filter((item2) => typeof item2 === "string").slice(0, 6) : []
+      suggestedFocus: Array.isArray(parsed.suggestedFocus) ? parsed.suggestedFocus.filter((item) => typeof item === "string").slice(0, 3) : [],
+      nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions.filter((item) => typeof item === "string").slice(0, 8) : [],
+      keyRisks: Array.isArray(parsed.keyRisks) ? parsed.keyRisks.filter((item) => typeof item === "string").slice(0, 8) : [],
+      followUpQuestions: Array.isArray(parsed.followUpQuestions) ? parsed.followUpQuestions.filter((item) => typeof item === "string").slice(0, 6) : []
     };
   } catch (e) {
     return {
@@ -631,9 +631,9 @@ function renderTodoSnapshotForAi(snapshot) {
     project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
   ].filter((line) => line.length > 0).join("\n"));
   const staleLines = snapshot.staleProjects.slice(0, 6).map((project) => `- ${project.name}: ${project.staleDays} stale days`);
-  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item2) => `- ${item2}`);
-  const dueLines = snapshot.overdueTasks.slice(0, 6).map((item2) => `- ${item2.project}: ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`);
-  const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item2) => `- ${item2.project}: ${item2.task.text}${item2.task.blockedReason ? ` (${item2.task.blockedReason})` : ""}`);
+  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item}`);
+  const dueLines = snapshot.overdueTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
+  const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`);
   return [
     `Open tasks: ${snapshot.totalOpen}`,
     `Archived tasks: ${snapshot.totalArchived}`,
@@ -662,21 +662,21 @@ function renderRoutineSignalsForAi(entries, habits) {
     const timestamps = entries.flatMap((entry) => {
       var _a;
       return (_a = entry.habitEvents[habit.id]) != null ? _a : [];
-    }).map((item2) => item2.slice(11));
+    }).map((item) => item.slice(11));
     const averageCount = (entries.reduce((sum, entry) => {
       var _a;
       return sum + ((_a = entry.habits[habit.id]) != null ? _a : 0);
     }, 0) / entries.length).toFixed(1);
-    const missNotes = entries.map((entry) => entry.habitMissNotes[habit.id]).filter((item2) => typeof item2 === "string" && item2.trim().length > 0);
+    const missNotes = entries.map((entry) => entry.habitMissNotes[habit.id]).filter((item) => typeof item === "string" && item.trim().length > 0);
     return `- ${habit.label}: avg ${averageCount}/${habit.target}, window ${formatHabitWindowLabel(habit.completionWindow)}, weight ${habit.difficultyWeight}/3, recent times ${timestamps.slice(-8).join(", ") || "none"}, miss notes ${missNotes.slice(-3).join(" | ") || "none"}`;
   });
-  const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item2) => item2.loggedAt.slice(11))).filter((item2) => item2.length > 0);
-  const intakeLines = entries.flatMap((entry) => entry.intakeLog.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.kind} ${item2.amount} ${item2.unit} ${item2.label}`));
-  const symptomLines = entries.flatMap((entry) => entry.symptomLog.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.symptom} ${item2.severity}/5${item2.note ? ` ${item2.note}` : ""}`));
+  const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
+  const intakeLines = entries.flatMap((entry) => entry.intakeLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.kind} ${item.amount} ${item.unit} ${item.label}`));
+  const symptomLines = entries.flatMap((entry) => entry.symptomLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.symptom} ${item.severity}/5${item.note ? ` ${item.note}` : ""}`));
   const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
   const wakeQualityValues = entries.filter((entry) => entry.wakeQualityScore > 0).map((entry) => entry.wakeQualityScore);
-  const energyCheckInLines = entries.flatMap((entry) => entry.energyCheckIns.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.score}/5${item2.note ? ` ${item2.note}` : ""}`));
-  const reflectionLines = entries.flatMap((entry) => [entry.helpedToday ? `${entry.date} helped: ${entry.helpedToday}` : "", entry.hurtToday ? `${entry.date} hurt: ${entry.hurtToday}` : ""]).filter((item2) => item2.length > 0);
+  const energyCheckInLines = entries.flatMap((entry) => entry.energyCheckIns.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.score}/5${item.note ? ` ${item.note}` : ""}`));
+  const reflectionLines = entries.flatMap((entry) => [entry.helpedToday ? `${entry.date} helped: ${entry.helpedToday}` : "", entry.hurtToday ? `${entry.date} hurt: ${entry.hurtToday}` : ""]).filter((item) => item.length > 0);
   return [
     "Habit timing:",
     ...habitLines,
@@ -704,7 +704,7 @@ function buildAiSearchTerms(question, todayEntry, snapshot) {
   var _a;
   const rawTerms = [
     ...question ? question.toLowerCase().split(/[^a-z0-9]+/) : [],
-    ...getTodayFocusTexts(todayEntry.todayFocus).flatMap((item2) => item2.toLowerCase().split(/[^a-z0-9]+/)),
+    ...getTodayFocusTexts(todayEntry.todayFocus).flatMap((item) => item.toLowerCase().split(/[^a-z0-9]+/)),
     ...(_a = snapshot == null ? void 0 : snapshot.projects.slice(0, 8).flatMap((project) => project.name.toLowerCase().split(/[^a-z0-9]+/))) != null ? _a : []
   ];
   return Array.from(new Set(rawTerms.filter((term) => term.length >= 3))).slice(0, 32);
@@ -799,11 +799,11 @@ function getEntryRecencyKey(entry) {
     typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
     typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
     typeof entry.wakeTime === "string" ? entry.wakeTime : "",
-    ...Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.map((item2) => item2.loggedAt) : [],
+    ...Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.map((item) => item.loggedAt) : [],
     typeof entry.sleepTime === "string" ? entry.sleepTime : "",
-    ...Array.isArray(entry.foodLog) ? entry.foodLog.map((item2) => item2.loggedAt) : [],
-    ...Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item2) => item2.loggedAt) : [],
-    ...Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item2) => item2.loggedAt) : [],
+    ...Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : [],
+    ...Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item) => item.loggedAt) : [],
+    ...Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item) => item.loggedAt) : [],
     ...Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => {
       var _a2;
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
@@ -824,9 +824,9 @@ function getEntryRecencyKey(entry) {
       var _a2;
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
     }) : [],
-    ...Array.isArray(entry.todayFocus) ? entry.todayFocus.flatMap((item2) => {
+    ...Array.isArray(entry.todayFocus) ? entry.todayFocus.flatMap((item) => {
       var _a2;
-      return [(_a2 = item2.completedAt) != null ? _a2 : "", ...item2.workSessions.flatMap((session) => {
+      return [(_a2 = item.completedAt) != null ? _a2 : "", ...item.workSessions.flatMap((session) => {
         var _a3;
         return [session.start, (_a3 = session.end) != null ? _a3 : ""];
       })];
@@ -848,9 +848,9 @@ function computeMissedHabits(habits, definitions) {
 function parseRoutineTemplates(value) {
   const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
   return lines.map((line, index) => {
-    const [rawLabel, rawStart, rawEnd] = line.split("|").map((item2) => {
+    const [rawLabel, rawStart, rawEnd] = line.split("|").map((item) => {
       var _a;
-      return (_a = item2 == null ? void 0 : item2.trim()) != null ? _a : "";
+      return (_a = item == null ? void 0 : item.trim()) != null ? _a : "";
     });
     if (!rawLabel || !/^\d{2}:\d{2}$/.test(rawStart) || !/^\d{2}:\d{2}$/.test(rawEnd) || rawStart >= rawEnd) {
       return null;
@@ -861,7 +861,7 @@ function parseRoutineTemplates(value) {
       startTime: rawStart,
       endTime: rawEnd
     };
-  }).filter((item2) => item2 !== null);
+  }).filter((item) => item !== null);
 }
 function parseAiPromptTemplates(value) {
   const templates = {};
@@ -900,7 +900,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   const habitLines = habits.map((habit) => {
     var _a2, _b2;
     const events = (_a2 = entry.habitEvents[habit.id]) != null ? _a2 : [];
-    const timing = events.length > 0 ? ` at ${events.map((item2) => item2.slice(11)).join(", ")}` : "";
+    const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
     const inWindowCount = countHabitEventsInWindow(events, habit.completionWindow);
     return `- ${habit.label}: ${(_b2 = entry.habits[habit.id]) != null ? _b2 : 0}/${habit.target}${timing} \u2022 ${formatHabitWindowLabel(habit.completionWindow)} \u2022 difficulty ${habit.difficultyWeight}/3 \u2022 in window ${inWindowCount}/${events.length || 0}`;
   });
@@ -908,13 +908,13 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     var _a2;
     return ((_a2 = entry.habitMissNotes[habit.id]) != null ? _a2 : "").trim().length > 0;
   }).map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
-  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.amount > 1 ? `${item2.amount}x ` : ""}${item2.text}`) : ["- None logged"];
-  const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.kind} \u2022 ${item2.amount} ${item2.unit} ${item2.label}${item2.note ? ` - ${item2.note}` : ""}`) : ["- None logged"];
-  const symptomLines = entry.symptomLog.length > 0 ? entry.symptomLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.symptom} \u2022 ${item2.severity}/5${item2.note ? ` - ${item2.note}` : ""}`) : ["- None logged"];
-  const energyCheckInLines = entry.energyCheckIns.length > 0 ? entry.energyCheckIns.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.score}/5${item2.note ? ` - ${item2.note}` : ""}`) : ["- No energy check-ins logged"];
+  const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
+  const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} \u2022 ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
+  const symptomLines = entry.symptomLog.length > 0 ? entry.symptomLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.symptom} \u2022 ${item.severity}/5${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
+  const energyCheckInLines = entry.energyCheckIns.length > 0 ? entry.energyCheckIns.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.score}/5${item.note ? ` - ${item.note}` : ""}`) : ["- No energy check-ins logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
-  const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item2) => renderTodayFocusLine(item2)) : ["- No focus items set"];
-  const nextUpLines = entry.nextUpFocus.length > 0 ? entry.nextUpFocus.map((item2) => renderNextUpFocusLine(item2)) : ["- No queued items"];
+  const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item) => renderTodayFocusLine(item)) : ["- No focus items set"];
+  const nextUpLines = entry.nextUpFocus.length > 0 ? entry.nextUpFocus.map((item) => renderNextUpFocusLine(item)) : ["- No queued items"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => renderSessionLine(session)) : ["- No tracked work sessions"];
   const napSessionLines = entry.napSessions.length > 0 ? entry.napSessions.map((session) => renderSessionLine(session)) : ["- No tracked naps"];
   const relaxSessionLines = entry.relaxSessions.length > 0 ? entry.relaxSessions.map((session) => renderSessionLine(session)) : ["- No tracked relaxing sessions"];
@@ -1135,8 +1135,8 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     }
   }
   const baseEntry = createEmptyEntry(date, habits);
-  const todayFocus = Array.isArray(parsedEntry.todayFocus) ? normalizeTodayFocusItems(parsedEntry.todayFocus) : focusLines.map((line) => parseTodayFocusLine(line)).filter((item2) => item2 !== null).slice(0, 3);
-  const nextUpFocus = Array.isArray(parsedEntry.nextUpFocus) ? parsedEntry.nextUpFocus.map((item2) => parseNextUpFocusItem(typeof item2 === "string" ? item2 : renderNextUpFocusLine(item2))).filter((item2) => item2 !== null) : nextUpLines.map((line) => parseNextUpFocusItem(line)).filter((item2) => item2 !== null);
+  const todayFocus = Array.isArray(parsedEntry.todayFocus) ? normalizeTodayFocusItems(parsedEntry.todayFocus) : focusLines.map((line) => parseTodayFocusLine(line)).filter((item) => item !== null).slice(0, 3);
+  const nextUpFocus = Array.isArray(parsedEntry.nextUpFocus) ? parsedEntry.nextUpFocus.map((item) => parseNextUpFocusItem(typeof item === "string" ? item : renderNextUpFocusLine(item))).filter((item) => item !== null) : nextUpLines.map((line) => parseNextUpFocusItem(line)).filter((item) => item !== null);
   return {
     ...baseEntry,
     ...parsedEntry,
@@ -1156,7 +1156,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     todayFocus,
     nextUpFocus,
     calendarFollowThroughCompleted: Array.from(/* @__PURE__ */ new Set([
-      ...Array.isArray(parsedEntry.calendarFollowThroughCompleted) ? parsedEntry.calendarFollowThroughCompleted.filter((item2) => typeof item2 === "string" && item2.trim().length > 0) : [],
+      ...Array.isArray(parsedEntry.calendarFollowThroughCompleted) ? parsedEntry.calendarFollowThroughCompleted.filter((item) => typeof item === "string" && item.trim().length > 0) : [],
       ...Array.from(calendarFollowThroughCompleted)
     ])).sort(),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
@@ -1441,13 +1441,13 @@ function renderWeeklyReview(input) {
     `- Days captured: ${input.entries.length}`,
     "",
     "## Top Focus",
-    ...focusItems.length > 0 ? focusItems.map((item2) => `- ${item2}`) : ["- No focus items recorded."],
+    ...focusItems.length > 0 ? focusItems.map((item) => `- ${item}`) : ["- No focus items recorded."],
     "",
     "## Friction Log",
-    ...frictionItems.length > 0 ? frictionItems.map((item2) => `- ${item2}`) : ["- No friction logged."],
+    ...frictionItems.length > 0 ? frictionItems.map((item) => `- ${item}`) : ["- No friction logged."],
     "",
     "## Missed Habits",
-    ...missedHabits.length > 0 ? missedHabits.map((item2) => `- ${item2}`) : ["- No recurring misses."],
+    ...missedHabits.length > 0 ? missedHabits.map((item) => `- ${item}`) : ["- No recurring misses."],
     "",
     "## Personal Trends",
     ...renderPersonalTrendSectionLines(personalTrends),
@@ -1495,22 +1495,22 @@ function buildPersonalTrendSummary(entries, habits) {
   const secondMood = averageEntryScore(secondHalf, "moodScore");
   const firstRecovery = buildSleepInsights(firstHalf, void 0, habits).averageRecoveryScore;
   const secondRecovery = buildSleepInsights(secondHalf, void 0, habits).averageRecoveryScore;
-  const waterDays = orderedEntries.filter((entry) => entry.intakeLog.some((item2) => item2.kind === "water")).length;
-  const caffeineDays = orderedEntries.filter((entry) => entry.intakeLog.some((item2) => item2.kind === "caffeine")).length;
+  const waterDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "water")).length;
+  const caffeineDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "caffeine")).length;
   const helpedDays = orderedEntries.filter((entry) => entry.helpedToday.trim().length > 0).length;
   const hurtDays = orderedEntries.filter((entry) => entry.hurtToday.trim().length > 0).length;
   const missCounts = /* @__PURE__ */ new Map();
   orderedEntries.forEach((entry) => {
-    entry.missedHabits.forEach((item2) => {
+    entry.missedHabits.forEach((item) => {
       var _a;
-      return missCounts.set(item2, ((_a = missCounts.get(item2)) != null ? _a : 0) + 1);
+      return missCounts.set(item, ((_a = missCounts.get(item)) != null ? _a : 0) + 1);
     });
   });
   const symptomCounts = /* @__PURE__ */ new Map();
   orderedEntries.forEach((entry) => {
-    entry.symptomLog.forEach((item2) => {
+    entry.symptomLog.forEach((item) => {
       var _a;
-      return symptomCounts.set(item2.symptom, ((_a = symptomCounts.get(item2.symptom)) != null ? _a : 0) + 1);
+      return symptomCounts.set(item.symptom, ((_a = symptomCounts.get(item.symptom)) != null ? _a : 0) + 1);
     });
   });
   return {
@@ -1520,19 +1520,19 @@ function buildPersonalTrendSummary(entries, habits) {
       secondRecovery > firstRecovery ? `Recovery improved from ${firstRecovery}/100 to ${secondRecovery}/100 across the period.` : "",
       waterDays > 0 ? `Hydration was logged on ${waterDays}/${orderedEntries.length} days.` : "",
       helpedDays > 0 ? `Positive reflections were captured on ${helpedDays}/${orderedEntries.length} days.` : ""
-    ].filter((item2) => item2.length > 0),
+    ].filter((item) => item.length > 0),
     driftSignals: [
       secondEnergy < firstEnergy ? `Energy drifted down from ${firstEnergy.toFixed(1)}/5 to ${secondEnergy.toFixed(1)}/5.` : "",
       secondMood < firstMood ? `Mood drifted down from ${firstMood.toFixed(1)}/5 to ${secondMood.toFixed(1)}/5.` : "",
       secondRecovery < firstRecovery ? `Recovery drifted from ${firstRecovery}/100 to ${secondRecovery}/100.` : "",
       caffeineDays > Math.ceil(orderedEntries.length / 2) ? `Caffeine showed up on ${caffeineDays}/${orderedEntries.length} days.` : "",
       hurtDays > Math.ceil(orderedEntries.length / 2) ? `Negative reflections were logged on ${hurtDays}/${orderedEntries.length} days.` : ""
-    ].filter((item2) => item2.length > 0),
+    ].filter((item) => item.length > 0),
     repeatedMisses: Array.from(missCounts.entries()).sort((left, right) => right[1] - left[1]).slice(0, 4).map(([label, count]) => `${label} missed on ${count} day${count === 1 ? "" : "s"}.`),
     symptomSignals: Array.from(symptomCounts.entries()).sort((left, right) => right[1] - left[1]).slice(0, 4).map(([label, count]) => `${label} logged on ${count} day${count === 1 ? "" : "s"}.`),
     reflectionSignals: [
-      orderedEntries.map((entry) => entry.helpedToday.trim()).filter((item2) => item2.length > 0).slice(-3).map((item2) => `Helped: ${item2}`),
-      orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item2) => item2.length > 0).slice(-3).map((item2) => `Hurt: ${item2}`)
+      orderedEntries.map((entry) => entry.helpedToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Helped: ${item}`),
+      orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Hurt: ${item}`)
     ].flat()
   };
 }
@@ -1557,16 +1557,16 @@ function renderWinsArchive(input) {
 function renderPersonalTrendSectionLines(summary) {
   return [
     "Strongest signals:",
-    ...summary.strongestSignals.length > 0 ? summary.strongestSignals.map((item2) => `- ${item2}`) : ["- No strong positive trend stood out in this range."],
+    ...summary.strongestSignals.length > 0 ? summary.strongestSignals.map((item) => `- ${item}`) : ["- No strong positive trend stood out in this range."],
     "",
     "Drift signals:",
-    ...summary.driftSignals.length > 0 ? summary.driftSignals.map((item2) => `- ${item2}`) : ["- No major negative drift stood out in this range."],
+    ...summary.driftSignals.length > 0 ? summary.driftSignals.map((item) => `- ${item}`) : ["- No major negative drift stood out in this range."],
     "",
     "Repeated misses:",
-    ...summary.repeatedMisses.length > 0 ? summary.repeatedMisses.map((item2) => `- ${item2}`) : ["- No repeated habit misses stood out."],
+    ...summary.repeatedMisses.length > 0 ? summary.repeatedMisses.map((item) => `- ${item}`) : ["- No repeated habit misses stood out."],
     "",
     "Symptoms and reflections:",
-    ...summary.symptomSignals.length > 0 || summary.reflectionSignals.length > 0 ? [...summary.symptomSignals, ...summary.reflectionSignals].map((item2) => `- ${item2}`) : ["- No persistent symptom or reflection pattern stood out."]
+    ...summary.symptomSignals.length > 0 || summary.reflectionSignals.length > 0 ? [...summary.symptomSignals, ...summary.reflectionSignals].map((item) => `- ${item}`) : ["- No persistent symptom or reflection pattern stood out."]
   ];
 }
 function buildGamificationSummary(entries, habits, todoSnapshot) {
@@ -1695,7 +1695,7 @@ function buildGamificationCategories(entries, habits, todoSnapshot) {
   const totalTasks = entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
   const totalWorkMinutes = entries.reduce((sum, entry) => sum + getTrackedWorkMinutes(entry), 0);
   const totalFocus = entries.reduce((sum, entry) => sum + entry.todayFocus.length, 0);
-  const completedFocus = entries.reduce((sum, entry) => sum + entry.todayFocus.filter((item2) => item2.status === "done").length, 0);
+  const completedFocus = entries.reduce((sum, entry) => sum + entry.todayFocus.filter((item) => item.status === "done").length, 0);
   const focusCompletionRate = totalFocus > 0 ? completedFocus / totalFocus : 0;
   const activeDays = entries.filter((entry) => entry.completedTasks.length > 0 || getTrackedWorkMinutes(entry) > 0).length;
   const executionScore = clamp(Math.round(
@@ -1774,20 +1774,20 @@ function averageEntryScore(entries, key) {
 function buildBlockerPatternLines(entries) {
   const counts = /* @__PURE__ */ new Map();
   entries.forEach((entry) => {
-    splitPatternItems(entry.frictionLog).forEach((item2) => {
+    splitPatternItems(entry.frictionLog).forEach((item) => {
       var _a, _b;
-      const key = normalizePatternKey(item2);
+      const key = normalizePatternKey(item);
       if (!key) {
         return;
       }
       const current = counts.get(key);
       counts.set(key, {
-        label: (_a = current == null ? void 0 : current.label) != null ? _a : item2,
+        label: (_a = current == null ? void 0 : current.label) != null ? _a : item,
         count: ((_b = current == null ? void 0 : current.count) != null ? _b : 0) + 1
       });
     });
   });
-  return Array.from(counts.values()).sort((left, right) => right.count - left.count).slice(0, 6).map((item2) => `- ${item2.label}: showed up on ${item2.count} day${item2.count === 1 ? "" : "s"}.`);
+  return Array.from(counts.values()).sort((left, right) => right.count - left.count).slice(0, 6).map((item) => `- ${item.label}: showed up on ${item.count} day${item.count === 1 ? "" : "s"}.`);
 }
 function buildAccomplishmentSectionLines(entries) {
   const workByProject = /* @__PURE__ */ new Map();
@@ -1810,12 +1810,12 @@ function buildMissedHabitPatternLines(entries, habits) {
     const notes = entries.map((entry) => {
       var _a, _b;
       return (_b = (_a = entry.habitMissNotes[habit.id]) == null ? void 0 : _a.trim()) != null ? _b : "";
-    }).filter((item2) => item2.length > 0).slice(-3);
+    }).filter((item) => item.length > 0).slice(-3);
     if (missedCount === 0 && notes.length === 0) {
       return "";
     }
     return `- ${habit.label}: missed on ${missedCount} day${missedCount === 1 ? "" : "s"}${notes.length > 0 ? ` \u2022 recent notes: ${notes.join(" | ")}` : ""}`;
-  }).filter((item2) => item2.length > 0);
+  }).filter((item) => item.length > 0);
   return lines;
 }
 function buildNarrativeSectionLines(entries, sleepInsights, personalTrends, gamification, todoSnapshot) {
@@ -1829,13 +1829,13 @@ function buildNarrativeSectionLines(entries, sleepInsights, personalTrends, gami
     `- Execution closed ${totalTasks} archived task${totalTasks === 1 ? "" : "s"} across the period, with ${gamification.week.score}/100 weekly-style execution momentum and ${gamification.month.score}/100 monthly momentum.`,
     `- Recovery averaged ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100` : "no scored recovery yet"}, while sleep consistency landed at ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100` : "no consistency score"}.`,
     `- The strongest visible accomplishment pattern was ${topProject}`,
-    `- The loudest drag signals were ${blockerPatterns.length > 0 ? blockerPatterns.slice(0, 2).map((item2) => item2.replace(/^-\s*/, "")).join(" and ") : "not repeated often enough to form a pattern"}.`,
+    `- The loudest drag signals were ${blockerPatterns.length > 0 ? blockerPatterns.slice(0, 2).map((item) => item.replace(/^-\s*/, "")).join(" and ") : "not repeated often enough to form a pattern"}.`,
     `- Trend read: ${(_d = personalTrends.strongestSignals[0]) != null ? _d : "No strong positive signal clearly dominated."} ${(_e = personalTrends.driftSignals[0]) != null ? _e : "No single drift signal dominated the period."}`,
     `- Portfolio pressure: ${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"} remain visible at period end.`
   ];
 }
 function splitPatternItems(value) {
-  return value.split(/\r?\n|[.;]/).map((item2) => item2.replace(/^[-*]\s*/, "").trim()).filter((item2) => item2.length >= 4);
+  return value.split(/\r?\n|[.;]/).map((item) => item.replace(/^[-*]\s*/, "").trim()).filter((item) => item.length >= 4);
 }
 function normalizePatternKey(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -1853,7 +1853,7 @@ function getSleepMinutesForDay(entry, nextEntry) {
 }
 function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTES, habits = []) {
   const orderedEntries = [...entries].sort((left, right) => left.date.localeCompare(right.date));
-  const recentNights = orderedEntries.map((entry, index) => buildSleepNightSnapshot(entry, orderedEntries[index + 1], targetMinutes, habits)).filter((item2) => item2 !== null).slice(-7);
+  const recentNights = orderedEntries.map((entry, index) => buildSleepNightSnapshot(entry, orderedEntries[index + 1], targetMinutes, habits)).filter((item) => item !== null).slice(-7);
   if (recentNights.length === 0) {
     return {
       targetMinutes,
@@ -1869,11 +1869,11 @@ function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTE
       recentNights: []
     };
   }
-  const averageSleepMinutes = Math.round(recentNights.reduce((sum, item2) => sum + item2.sleepMinutes, 0) / recentNights.length);
-  const averageRecoveryScore = Math.round(recentNights.reduce((sum, item2) => sum + item2.recoveryScore, 0) / recentNights.length);
-  const debtMinutes = Math.max(0, recentNights.reduce((sum, item2) => sum + Math.max(0, targetMinutes - item2.sleepMinutes), 0));
-  const bedtimeValues = recentNights.map((item2) => normalizeBedtimeMinutes(item2.bedtime)).filter((value) => value !== null);
-  const wakeValues = recentNights.map((item2) => parseClockMinutes(item2.wakeTime)).filter((value) => value !== null);
+  const averageSleepMinutes = Math.round(recentNights.reduce((sum, item) => sum + item.sleepMinutes, 0) / recentNights.length);
+  const averageRecoveryScore = Math.round(recentNights.reduce((sum, item) => sum + item.recoveryScore, 0) / recentNights.length);
+  const debtMinutes = Math.max(0, recentNights.reduce((sum, item) => sum + Math.max(0, targetMinutes - item.sleepMinutes), 0));
+  const bedtimeValues = recentNights.map((item) => normalizeBedtimeMinutes(item.bedtime)).filter((value) => value !== null);
+  const wakeValues = recentNights.map((item) => parseClockMinutes(item.wakeTime)).filter((value) => value !== null);
   const bedtimeDeviation = getAverageDeviation(bedtimeValues);
   const wakeDeviation = getAverageDeviation(wakeValues);
   const consistencyScore = Math.max(0, 100 - Math.round((bedtimeDeviation + wakeDeviation) / 3));
@@ -1962,21 +1962,21 @@ function formatAverageClock(values, bedtime) {
   const minutes = average % 60;
   return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}`;
 }
-function getTrackedTodayFocusMinutes(item2) {
-  return getTrackedMinutes(item2.workSessions);
+function getTrackedTodayFocusMinutes(item) {
+  return getTrackedMinutes(item.workSessions);
 }
-function renderTodayFocusLine(item2) {
+function renderTodayFocusLine(item) {
   var _a, _b;
-  const workedMinutes = getTrackedTodayFocusMinutes(item2);
-  const sessionTag = (_b = (_a = [...item2.workSessions].reverse().find((session) => session.tag.trim().length > 0)) == null ? void 0 : _a.tag) != null ? _b : "";
-  const statusLabel = item2.status === "working" ? "Working on" : item2.status === "done" ? "Done" : "Queued";
+  const workedMinutes = getTrackedTodayFocusMinutes(item);
+  const sessionTag = (_b = (_a = [...item.workSessions].reverse().find((session) => session.tag.trim().length > 0)) == null ? void 0 : _a.tag) != null ? _b : "";
+  const statusLabel = item.status === "working" ? "Working on" : item.status === "done" ? "Done" : "Queued";
   const detailParts = [
     sessionTag ? `tag: ${sessionTag}` : "",
-    item2.estimateMinutes && item2.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item2.estimateMinutes)}` : "",
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
     workedMinutes > 0 ? `tracked: ${formatMinutesAsHours(workedMinutes)}` : "",
-    item2.notes ? `notes: ${item2.notes}` : ""
+    item.notes ? `notes: ${item.notes}` : ""
   ].filter((value) => value.length > 0);
-  return `- [${statusLabel}] ${item2.text}${detailParts.length > 0 ? ` (${detailParts.join(" | ")})` : ""}`;
+  return `- [${statusLabel}] ${item.text}${detailParts.length > 0 ? ` (${detailParts.join(" | ")})` : ""}`;
 }
 function parseTodayFocusLine(line) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i;
@@ -2010,12 +2010,12 @@ function renderSessionLine(session) {
   const tagSuffix = session.tag.trim().length > 0 ? ` [${session.tag.trim()}]` : "";
   return `- ${session.start} -> ${(_a = session.end) != null ? _a : "Still active"}${tagSuffix}`;
 }
-function renderNextUpFocusLine(item2) {
+function renderNextUpFocusLine(item) {
   const details = [
-    item2.estimateMinutes && item2.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item2.estimateMinutes)}` : "",
-    item2.notes ? `notes: ${item2.notes}` : ""
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
+    item.notes ? `notes: ${item.notes}` : ""
   ].filter((value) => value.length > 0);
-  return `- ${item2.text}${details.length > 0 ? ` (${details.join(" | ")})` : ""}`;
+  return `- ${item.text}${details.length > 0 ? ` (${details.join(" | ")})` : ""}`;
 }
 function parseNextUpFocusItem(line) {
   var _a, _b, _c, _d, _e, _f, _g;
@@ -2176,7 +2176,7 @@ function parseTodoSnapshot(content) {
           status = meta.value;
         }
         if (meta.key === "relationships") {
-          meta.value.split(/[,;]+/).map((item2) => item2.trim()).filter(Boolean).forEach((item2) => relationships.add(item2));
+          meta.value.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => relationships.add(item));
         }
         extractNoteLinks(meta.value).forEach((link) => noteLinks.add(link));
       }
@@ -3873,7 +3873,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
       statePill.addClass("is-compact");
       if (dashboardNotifications.length > 0) {
-        const noticePill = createStatPill(heroMeta, `${dashboardNotifications.length} alerts`, "bell-ring", dashboardNotifications.some((item2) => item2.tone === "alert") ? "alert" : "focus");
+        const noticePill = createStatPill(heroMeta, `${dashboardNotifications.length} alerts`, "bell-ring", dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : "focus");
         noticePill.addClass("is-compact");
       }
       if (hiddenLayoutCardCount > 0) {
@@ -3980,37 +3980,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             });
           });
           if (day.events.length > 3) {
-            const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
-              icon: "bell-ring",
-              eyebrow: "Triage",
-              tone: dashboardNotifications.some((item2) => item2.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
-              tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
-            });
-            const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
-            createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item2) => item2.source === "calendar").length} reminders`, dashboardNotifications.some((item2) => item2.source === "calendar") ? "focus" : "neutral");
-            createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item2) => item2.source === "system").length} system`, dashboardNotifications.some((item2) => item2.source === "system") ? "state" : "neutral");
-            createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item2) => item2.source === "tasks").length} task`, dashboardNotifications.some((item2) => item2.source === "tasks") ? "alert" : "neutral");
-            const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
-            if (dashboardNotifications.length === 0) {
-              notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
-            } else {
-              dashboardNotifications.slice(0, 8).forEach((notification) => {
-                const row2 = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
-                row2.addClass(`is-${notification.tone}`);
-                const copy2 = row2.createDiv({ cls: "daily-dashboard-stack" });
-                const chipRow2 = copy2.createDiv({ cls: "daily-dashboard-chip-row" });
-                createSemanticChip(chipRow2, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
-                copy2.createEl("strong", { text: notification.title });
-                copy2.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
-                const actions3 = row2.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-                if (notification.action) {
-                  createButton(actions3, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
-                }
-                if (notification.dismissible) {
-                  createButton(actions3, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
-                }
-              });
-            }
             copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${day.events.length - 3} more item${day.events.length - 3 === 1 ? "" : "s"}` });
           }
         }
@@ -4019,6 +3988,37 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           new CalendarEventModal(this.app, this.plugin, day.date).open();
         }, false, "plus-circle");
       });
+      const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
+        icon: "bell-ring",
+        eyebrow: "Triage",
+        tone: dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
+        tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
+      });
+      const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
+      const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (dashboardNotifications.length === 0) {
+        notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
+      } else {
+        dashboardNotifications.slice(0, 8).forEach((notification) => {
+          const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
+          row.addClass(`is-${notification.tone}`);
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
+          copy.createEl("strong", { text: notification.title });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
+          const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          if (notification.action) {
+            createButton(actions2, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
+          }
+          if (notification.dismissible) {
+            createButton(actions2, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
+          }
+        });
+      }
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
@@ -4037,7 +4037,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const activeBreakSession = (_l = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _l : null;
       const activePoopSession = (_m = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _m : null;
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || "";
-      const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item2) => sum + item2.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
+      const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
         ...todayEntry.napSessions,
@@ -4166,8 +4166,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       });
       if (tagSummary.length > 0) {
         const tagSummaryList = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item2) => {
-          createSemanticChip(tagSummaryList, `${item2.tag} ${formatMinutesAsHours(item2.minutes)}`, this.getSessionTagTone(item2.tag));
+        tagSummary.forEach((item) => {
+          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
         });
       } else {
         dayFlowTagSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No tagged sessions recorded yet today." });
@@ -4223,8 +4223,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tag: "Focus"
       });
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
-      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot).filter((item2) => item2.kind !== "reminder" || !dismissedReminderIds.has(item2.id));
-      const activeFocusCount = todayEntry.todayFocus.filter((item2) => item2.status !== "done").length;
+      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot).filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
+      const activeFocusCount = todayEntry.todayFocus.filter((item) => item.status !== "done").length;
       if (suggestedTop3.length > 0) {
         const suggestedSection = this.createCollapsibleSubsection(focusCard, "focus-suggestions", "Suggested Top 3", "Generate today from calendar commitments, stale projects, and due work instead of staring at a blank list.");
         const suggestionActions = suggestedSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
@@ -4290,16 +4290,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(emptyActions, "AI morning brief", async () => this.plugin.generateAiMorningStartupBrief(), false, "sparkles");
       } else {
-        focusDisplayItems.forEach((item2) => {
-          const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item2.status}` });
-          if (item2.kind === "reminder") {
+        focusDisplayItems.forEach((item) => {
+          const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
+          if (item.kind === "reminder") {
             row.addClass("is-reminder");
-            if (item2.warningLevel) {
-              row.addClass(`is-${item2.warningLevel}`);
+            if (item.warningLevel) {
+              row.addClass(`is-${item.warningLevel}`);
             }
           }
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          const isEditingFocus = item2.kind === "focus" && this.editingFocusIndex === todayEntry.todayFocus.findIndex((candidate) => candidate.text === item2.text);
+          const isEditingFocus = item.kind === "focus" && this.editingFocusIndex === todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
           if (isEditingFocus) {
             const editInput = copy.createEl("input", {
               cls: "daily-dashboard-input",
@@ -4312,7 +4312,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             editInput.addEventListener("keydown", (event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item2.text);
+                const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
                 if (focusIndex >= 0) {
                   void this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText).then((saved) => {
                     if (!saved) {
@@ -4326,25 +4326,25 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             });
             window.setTimeout(() => editInput.focus(), 0);
           } else {
-            copy.createEl("strong", { text: item2.text });
+            copy.createEl("strong", { text: item.text });
             copy.createEl("span", {
               cls: "daily-dashboard-habit-meta",
-              text: this.getFocusDisplayMeta(item2)
+              text: this.getFocusDisplayMeta(item)
             });
-            if (item2.notes) {
+            if (item.notes) {
               copy.createEl("span", {
                 cls: "daily-dashboard-row-meta",
-                text: item2.notes
+                text: item.notes
               });
             }
           }
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
-          if (item2.kind === "focus") {
-            const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item2.text);
+          if (item.kind === "focus") {
+            const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
             if (focusIndex < 0) {
               return;
             }
-            const latestTag = this.getLatestSessionTag(item2.workSessions);
+            const latestTag = this.getLatestSessionTag(item.workSessions);
             if (latestTag && !isEditingFocus) {
               const tagChipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
               createSemanticChip(tagChipRow, latestTag, this.getSessionTagTone(latestTag));
@@ -4403,9 +4403,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
                 this.stopEditingFocusItem();
                 await this.render();
               }, false, "x");
-            } else if (item2.status === "done") {
+            } else if (item.status === "done") {
               createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(focusIndex), false, "rotate-ccw");
-            } else if (item2.isActive) {
+            } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
               createButton(controls, `Start \u2022 ${this.selectedSessionTag}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag), false, "play");
@@ -4416,9 +4416,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
                 new FocusCaptureModal(this.app, {
                   mode: "edit",
                   todayHasTop3Capacity: true,
-                  initialText: item2.text,
-                  initialNotes: (_a2 = item2.notes) != null ? _a2 : "",
-                  initialEstimateMinutes: (_b2 = item2.estimateMinutes) != null ? _b2 : null,
+                  initialText: item.text,
+                  initialNotes: (_a2 = item.notes) != null ? _a2 : "",
+                  initialEstimateMinutes: (_b2 = item.estimateMinutes) != null ? _b2 : null,
                   initialDestination: "top3",
                   onSubmit: async (payload) => {
                     const saved = await this.plugin.updateTodayFocusDetails(focusIndex, payload);
@@ -4430,27 +4430,27 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               }, false, "notebook-pen");
               createButton(controls, "Block", async () => {
                 await this.plugin.addFocusBlockToCalendar({
-                  text: item2.text,
-                  notes: item2.notes,
-                  estimateMinutes: item2.estimateMinutes,
+                  text: item.text,
+                  notes: item.notes,
+                  estimateMinutes: item.estimateMinutes,
                   date: todayEntry.date
                 });
                 await this.render();
-              }, item2.status === "done", "calendar-plus");
+              }, item.status === "done", "calendar-plus");
               createButton(controls, "Edit", async () => {
-                this.startEditingFocusItem(focusIndex, item2.text);
+                this.startEditingFocusItem(focusIndex, item.text);
                 await this.render();
               }, false, "pencil");
-              createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item2.status === "done", "check");
+              createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
               const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
               removeButton.type = "button";
-              removeButton.ariaLabel = `Remove focus item ${item2.text}`;
-              removeButton.title = `Remove ${item2.text}`;
+              removeButton.ariaLabel = `Remove focus item ${item.text}`;
+              removeButton.title = `Remove ${item.text}`;
               (0, import_obsidian3.setIcon)(removeButton, "x");
               removeButton.addEventListener("click", () => {
-                const removedItem = cloneTodayFocusItem(item2);
+                const removedItem = cloneTodayFocusItem(item);
                 void this.runDestructiveAction(
-                  `Removed Top 3 item "${item2.text}".`,
+                  `Removed Top 3 item "${item.text}".`,
                   async () => this.plugin.removeTodayFocusItem(focusIndex),
                   async () => this.plugin.restoreTodayFocusItem(removedItem, focusIndex)
                 );
@@ -4458,17 +4458,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             }
           } else {
             createButton(controls, "Accept", async () => {
-              await this.plugin.addTodayFocusItem(item2.text);
-              clearDismissedReminder(todayEntry.date, item2.id);
+              await this.plugin.addTodayFocusItem(item.text);
+              clearDismissedReminder(todayEntry.date, item.id);
               await this.render();
             }, true, "plus-circle");
             createButton(controls, "Dismiss", async () => {
-              setDismissedReminder(todayEntry.date, item2.id);
+              setDismissedReminder(todayEntry.date, item.id);
               await this.render();
             }, false, "bell-off");
             createButton(controls, "Calendar", async () => {
               var _a2, _b2;
-              new CalendarEventModal(this.app, this.plugin, (_a2 = item2.calendarDate) != null ? _a2 : todayEntry.date, (_b2 = item2.sourceEventId) != null ? _b2 : null).open();
+              new CalendarEventModal(this.app, this.plugin, (_a2 = item.calendarDate) != null ? _a2 : todayEntry.date, (_b2 = item.sourceEventId) != null ? _b2 : null).open();
             }, false, "calendar-days");
           }
         });
@@ -4521,19 +4521,19 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
       } else {
         const nextUpList = nextUpSection.createDiv({ cls: "daily-dashboard-focus-list" });
-        nextUpItems.forEach((item2, index) => {
+        nextUpItems.forEach((item, index) => {
           const row = nextUpList.createDiv({ cls: "daily-dashboard-focus-row is-pending" });
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          copy.createEl("strong", { text: item2.text });
+          copy.createEl("strong", { text: item.text });
           copy.createEl("span", {
             cls: "daily-dashboard-habit-meta",
             text: [
-              item2.estimateMinutes ? `Estimate ${formatMinutesAsHours(item2.estimateMinutes)}` : "No estimate",
-              item2.notes ? "Queued note" : "Queued"
+              item.estimateMinutes ? `Estimate ${formatMinutesAsHours(item.estimateMinutes)}` : "No estimate",
+              item.notes ? "Queued note" : "Queued"
             ].join(" \u2022 ")
           });
-          if (item2.notes) {
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item2.notes });
+          if (item.notes) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.notes });
           }
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
           createButton(controls, "Promote", async () => {
@@ -4544,9 +4544,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           }, false, "arrow-up-circle");
           createButton(controls, "Block", async () => {
             await this.plugin.addFocusBlockToCalendar({
-              text: item2.text,
-              notes: item2.notes,
-              estimateMinutes: item2.estimateMinutes,
+              text: item.text,
+              notes: item.notes,
+              estimateMinutes: item.estimateMinutes,
               date: todayEntry.date
             });
             await this.render();
@@ -4555,9 +4555,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             new FocusCaptureModal(this.app, {
               mode: "capture",
               todayHasTop3Capacity: true,
-              initialText: item2.text,
-              initialNotes: item2.notes,
-              initialEstimateMinutes: item2.estimateMinutes,
+              initialText: item.text,
+              initialNotes: item.notes,
+              initialEstimateMinutes: item.estimateMinutes,
               initialDestination: "next-up",
               submitLabel: "Save queued item",
               onSubmit: async (payload) => {
@@ -4568,9 +4568,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             }).open();
           }, false, "pencil");
           createButton(controls, "Remove", async () => {
-            const removedItem = cloneNextUpFocusItem(item2);
+            const removedItem = cloneNextUpFocusItem(item);
             await this.runDestructiveAction(
-              `Removed queued item "${item2.text}".`,
+              `Removed queued item "${item.text}".`,
               async () => this.plugin.removeNextUpFocusItem(index),
               async () => this.plugin.restoreNextUpFocusItem(removedItem, index)
             );
@@ -4627,16 +4627,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         energyTimelineSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No energy timeline yet. Use the 1-5 buttons to log the current state with an optional note." });
       } else {
         const energyList = energyTimelineSection.createDiv({ cls: "daily-dashboard-food-list" });
-        todayEntry.energyCheckIns.slice(0, 6).forEach((item2, index) => {
+        todayEntry.energyCheckIns.slice(0, 6).forEach((item, index) => {
           const row = energyList.createDiv({ cls: "daily-dashboard-food-row daily-dashboard-food-row--energy" });
           const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-          copy.createEl("strong", { text: `${item2.score}/5 energy` });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item2.loggedAt || "Time unknown" });
-          if (item2.note) {
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item2.note });
+          copy.createEl("strong", { text: `${item.score}/5 energy` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          if (item.note) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.note });
           }
           const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
-          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: renderScore(item2.score) });
+          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: renderScore(item.score) });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
@@ -4709,7 +4709,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         if (habitEvents.length > 0) {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Today at ${habitEvents.map((item2) => item2.slice(11)).join(", ")} \u2022 in-window ${inWindowCount}/${habitEvents.length}`
+            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")} \u2022 in-window ${inWindowCount}/${habitEvents.length}`
           });
         } else {
           copy.createEl("span", {
@@ -4852,15 +4852,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         createButton(emptyActions, "Lunch", async () => this.plugin.addFoodEntry("Lunch", 1), false, "utensils-crossed");
         createButton(emptyActions, "Dinner", async () => this.plugin.addFoodEntry("Dinner", 1), false, "moon-star");
       } else {
-        todayEntry.foodLog.forEach((item2, index) => {
+        todayEntry.foodLog.forEach((item, index) => {
           const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
           const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-          copy.createEl("strong", { text: item2.text });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item2.loggedAt || "Time unknown" });
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
           const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
           const amountInput = amountSlot.createEl("input", {
             cls: "daily-dashboard-amount-input",
-            attr: { type: "number", min: "1", max: "24", value: `${item2.amount}`, ariaLabel: `Amount for ${item2.text}` }
+            attr: { type: "number", min: "1", max: "24", value: `${item.amount}`, ariaLabel: `Amount for ${item.text}` }
           });
           amountInput.addEventListener("change", () => {
             void this.plugin.updateFoodEntryAmount(index, Number(amountInput.value));
@@ -4868,9 +4868,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            const removedItem = { ...item2 };
+            const removedItem = { ...item };
             void this.runDestructiveAction(
-              `Removed food entry "${item2.text}".`,
+              `Removed food entry "${item.text}".`,
               async () => this.plugin.removeFoodEntry(index),
               async () => this.plugin.restoreFoodEntry(removedItem, index)
             );
@@ -4908,16 +4908,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       if (todayEntry.intakeLog.length === 0) {
         intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
       } else {
-        todayEntry.intakeLog.slice(0, 10).forEach((item2, index) => {
+        todayEntry.intakeLog.slice(0, 10).forEach((item, index) => {
           const row = intakeList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item2.kind} \u2022 ${item2.label}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item2.amount} ${item2.unit} \u2022 ${item2.loggedAt}${item2.note ? ` \u2022 ${item2.note}` : ""}` });
+          row.createEl("strong", { text: `${item.kind} \u2022 ${item.label}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} \u2022 ${item.loggedAt}${item.note ? ` \u2022 ${item.note}` : ""}` });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            const removedItem = { ...item2 };
+            const removedItem = { ...item };
             void this.runDestructiveAction(
-              `Removed intake entry "${item2.label}".`,
+              `Removed intake entry "${item.label}".`,
               async () => this.plugin.removeIntakeEntry(index),
               async () => this.plugin.restoreIntakeEntry(removedItem, index)
             );
@@ -4946,16 +4946,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       if (todayEntry.symptomLog.length === 0) {
         symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
       } else {
-        todayEntry.symptomLog.slice(0, 10).forEach((item2, index) => {
+        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
           const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item2.symptom} \u2022 ${item2.severity}/5` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item2.loggedAt}${item2.note ? ` \u2022 ${item2.note}` : ""}` });
+          row.createEl("strong", { text: `${item.symptom} \u2022 ${item.severity}/5` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` \u2022 ${item.note}` : ""}` });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            const removedItem = { ...item2 };
+            const removedItem = { ...item };
             void this.runDestructiveAction(
-              `Removed symptom entry "${item2.symptom}".`,
+              `Removed symptom entry "${item.symptom}".`,
               async () => this.plugin.removeSymptomEntry(index),
               async () => this.plugin.restoreSymptomEntry(removedItem, index)
             );
@@ -5123,17 +5123,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         { key: "session", label: "Sessions" },
         { key: "calendar", label: "Calendar" },
         { key: "log", label: "Logs" }
-      ].forEach((item2) => {
+      ].forEach((item) => {
         const button = timelineKindRow.createEl("button", {
-          cls: this.timelineFilters.kinds.includes(item2.key) ? "daily-dashboard-filter-chip is-active" : "daily-dashboard-filter-chip",
-          text: item2.label
+          cls: this.timelineFilters.kinds.includes(item.key) ? "daily-dashboard-filter-chip is-active" : "daily-dashboard-filter-chip",
+          text: item.label
         });
         button.type = "button";
         button.addEventListener("click", () => {
-          if (this.timelineFilters.kinds.includes(item2.key)) {
-            this.timelineFilters.kinds = this.timelineFilters.kinds.filter((candidate) => candidate !== item2.key);
+          if (this.timelineFilters.kinds.includes(item.key)) {
+            this.timelineFilters.kinds = this.timelineFilters.kinds.filter((candidate) => candidate !== item.key);
           } else {
-            this.timelineFilters.kinds = [...this.timelineFilters.kinds, item2.key];
+            this.timelineFilters.kinds = [...this.timelineFilters.kinds, item.key];
           }
           if (this.timelineFilters.kinds.length === 0) {
             this.timelineFilters.kinds = ["task", "session", "calendar", "log"];
@@ -5142,10 +5142,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
       });
       const timelineSummary = timelineCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(timelineSummary, `${timelineResults.filter((item2) => item2.kind === "task").length} tasks`, timelineResults.some((item2) => item2.kind === "task") ? "done" : "neutral");
-      createSemanticChip(timelineSummary, `${timelineResults.filter((item2) => item2.kind === "session").length} sessions`, timelineResults.some((item2) => item2.kind === "session") ? "capture" : "neutral");
-      createSemanticChip(timelineSummary, `${timelineResults.filter((item2) => item2.kind === "calendar").length} calendar`, timelineResults.some((item2) => item2.kind === "calendar") ? "focus" : "neutral");
-      createSemanticChip(timelineSummary, `${timelineResults.filter((item2) => item2.kind === "log").length} logs`, timelineResults.some((item2) => item2.kind === "log") ? "log" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "task").length} tasks`, timelineResults.some((item) => item.kind === "task") ? "done" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "session").length} sessions`, timelineResults.some((item) => item.kind === "session") ? "capture" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
       const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (timelineResults.length === 0) {
         timelineList.createDiv({ cls: "daily-dashboard-empty-state", text: "No timeline entries match the current filters." });
@@ -5302,21 +5302,21 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         if (latestArtifact.nextActions.length > 0) {
           latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Concrete actions" });
           const nextActionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
-          latestArtifact.nextActions.forEach((item2) => {
+          latestArtifact.nextActions.forEach((item) => {
             const row = nextActionList.createDiv({ cls: "daily-dashboard-project-row" });
-            row.createEl("span", { text: item2 });
+            row.createEl("span", { text: item });
           });
         }
         if (latestArtifact.suggestedFocus.length > 0) {
           latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
           const suggestionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
-          latestArtifact.suggestedFocus.forEach((item2) => {
+          latestArtifact.suggestedFocus.forEach((item) => {
             const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
-            row.createEl("span", { text: item2 });
+            row.createEl("span", { text: item });
             const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
             addButton.type = "button";
             addButton.addEventListener("click", () => {
-              void this.plugin.addTodayFocusItem(item2);
+              void this.plugin.addTodayFocusItem(item);
             });
           });
         }
@@ -5379,11 +5379,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const alertsExpanded = this.isSectionExpanded("cleanup-details");
       const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
       const alertLines = [
-        ...overdueTasks.slice(0, 5).map((item2) => `Overdue: ${item2.project} -> ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`),
-        ...dueSoonTasks.slice(0, 5).map((item2) => `Due soon: ${item2.project} -> ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`),
-        ...blockedTasks.slice(0, 5).map((item2) => `Blocked: ${item2.project} -> ${item2.task.text}${item2.task.blockedReason ? ` (${item2.task.blockedReason})` : ""}`),
+        ...overdueTasks.slice(0, 5).map((item) => `Overdue: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
+        ...dueSoonTasks.slice(0, 5).map((item) => `Due soon: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
+        ...blockedTasks.slice(0, 5).map((item) => `Blocked: ${item.project} -> ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`),
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
-        ...breakdownCandidates.slice(0, 5).map((item2) => `Needs breakdown: ${item2.project} -> ${item2.task}`),
+        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
         ...cleanupSuggestions.slice(0, 5)
       ];
       if (alertLines.length === 0 && cleanupProjects.length === 0) {
@@ -5551,20 +5551,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
     });
   }
-  getFocusDisplayMeta(item2) {
-    if (item2.kind === "reminder") {
-      const timeLabel = item2.calendarStart && item2.calendarEnd ? this.formatCalendarTimeLabel(new Date(item2.calendarStart), new Date(item2.calendarEnd), Boolean(item2.allDay)) : "Scheduled";
+  getFocusDisplayMeta(item) {
+    if (item.kind === "reminder") {
+      const timeLabel = item.calendarStart && item.calendarEnd ? this.formatCalendarTimeLabel(new Date(item.calendarStart), new Date(item.calendarEnd), Boolean(item.allDay)) : "Scheduled";
       return [
-        item2.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
+        item.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
         timeLabel,
-        item2.calendarLeadSummary || "",
-        item2.calendarNotes || "From calendar"
+        item.calendarLeadSummary || "",
+        item.calendarNotes || "From calendar"
       ].filter((value) => value.length > 0).join(" \u2022 ");
     }
     return [
-      item2.status === "done" ? "Done" : item2.isActive ? "Working on" : "Queued",
-      `${formatMinutesAsHours(item2.trackedMinutes)} tracked`,
-      item2.completedAt ? `completed ${item2.completedAt.slice(11)}` : ""
+      item.status === "done" ? "Done" : item.isActive ? "Working on" : "Queued",
+      `${formatMinutesAsHours(item.trackedMinutes)} tracked`,
+      item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
     ].filter((value) => value.length > 0).join(" \u2022 ");
   }
   getSuggestedTop3SourceLabel(candidate) {
@@ -5609,11 +5609,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     });
     const header = shell.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
     const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
-    const sessionTag = this.getLatestSessionTag(item.workSessions);
     const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
     title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
     const controls = header.createDiv({ cls: "daily-dashboard-calendar-nav" });
-    sessionTag ? `Tag ${sessionTag}` : "", createButton(controls, "Prev", async () => {
+    createButton(controls, "Prev", async () => {
       this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
       await this.render();
     }, false, "chevron-left");
@@ -5816,9 +5815,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       { kind: "relax", label: "Relax", tone: "health" },
       { kind: "break", label: "Break", tone: "alert" },
       { kind: "poop", label: "Poop", tone: "log" }
-    ].forEach((item2) => {
-      if (parsedSessions.some((session) => session.kind === item2.kind)) {
-        createSemanticChip(legend, item2.label, item2.tone);
+    ].forEach((item) => {
+      if (parsedSessions.some((session) => session.kind === item.kind)) {
+        createSemanticChip(legend, item.label, item.tone);
       }
     });
     const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
@@ -5886,43 +5885,43 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.pushTimelineLogResult(results, entry.date, "notes", "Daily notes", entry.notes, "neutral");
       this.pushTimelineLogResult(results, entry.date, "helped", "What helped today", entry.helpedToday, "done");
       this.pushTimelineLogResult(results, entry.date, "hurt", "What hurt today", entry.hurtToday, "alert");
-      entry.symptomLog.forEach((item2, index) => {
+      entry.symptomLog.forEach((item, index) => {
         results.push({
-          id: `symptom-${entry.date}-${index}-${item2.loggedAt}`,
+          id: `symptom-${entry.date}-${index}-${item.loggedAt}`,
           date: entry.date,
-          sortKey: item2.loggedAt || `${entry.date} 23:59`,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
           kind: "log",
-          title: `Symptom \u2022 ${item2.symptom}`,
-          summary: `Severity ${item2.severity}/5`,
-          detail: item2.note.trim(),
-          tone: item2.severity >= 4 ? "alert" : "log",
+          title: `Symptom \u2022 ${item.symptom}`,
+          summary: `Severity ${item.severity}/5`,
+          detail: item.note.trim(),
+          tone: item.severity >= 4 ? "alert" : "log",
           project: "",
           tag: ""
         });
       });
-      entry.intakeLog.forEach((item2, index) => {
+      entry.intakeLog.forEach((item, index) => {
         results.push({
-          id: `intake-${entry.date}-${index}-${item2.loggedAt}`,
+          id: `intake-${entry.date}-${index}-${item.loggedAt}`,
           date: entry.date,
-          sortKey: item2.loggedAt || `${entry.date} 23:59`,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
           kind: "log",
-          title: `Intake \u2022 ${item2.label}`,
-          summary: `${item2.kind} \u2022 ${item2.amount} ${item2.unit}`,
-          detail: item2.note.trim(),
-          tone: item2.kind === "caffeine" ? "alert" : "health",
+          title: `Intake \u2022 ${item.label}`,
+          summary: `${item.kind} \u2022 ${item.amount} ${item.unit}`,
+          detail: item.note.trim(),
+          tone: item.kind === "caffeine" ? "alert" : "health",
           project: "",
           tag: ""
         });
       });
-      entry.foodLog.forEach((item2, index) => {
+      entry.foodLog.forEach((item, index) => {
         results.push({
-          id: `food-${entry.date}-${index}-${item2.loggedAt}`,
+          id: `food-${entry.date}-${index}-${item.loggedAt}`,
           date: entry.date,
-          sortKey: item2.loggedAt || `${entry.date} 23:59`,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
           kind: "log",
-          title: `Food \u2022 ${item2.text}`,
-          summary: `${item2.amount} serving${item2.amount === 1 ? "" : "s"}`,
-          detail: item2.loggedAt ? `Logged ${item2.loggedAt.slice(11, 16)}` : "",
+          title: `Food \u2022 ${item.text}`,
+          summary: `${item.amount} serving${item.amount === 1 ? "" : "s"}`,
+          detail: item.loggedAt ? `Logged ${item.loggedAt.slice(11, 16)}` : "",
           tone: "health",
           project: "",
           tag: ""
@@ -6039,13 +6038,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     header.createEl("strong", { text: title });
     header.createEl("span", { cls: "daily-dashboard-row-meta", text: description });
     const grid = section.createDiv({ cls: "daily-dashboard-heatmap-grid" });
-    values.forEach((item2) => {
-      const cell = grid.createDiv({ cls: this.getHeatmapCellClass(item2.value) });
-      cell.title = `${item2.date} \u2022 ${item2.label}`;
+    values.forEach((item) => {
+      const cell = grid.createDiv({ cls: this.getHeatmapCellClass(item.value) });
+      cell.title = `${item.date} \u2022 ${item.label}`;
     });
     const summary = section.createDiv({ cls: "daily-dashboard-chip-row" });
-    const average = values.length > 0 ? Math.round(values.reduce((sum, item2) => sum + item2.value, 0) / values.length * 100) : 0;
-    const strongest = values.reduce((best, item2) => item2.value > best.value ? item2 : best, (_a = values[0]) != null ? _a : { date: "", value: 0, label: "No data" });
+    const average = values.length > 0 ? Math.round(values.reduce((sum, item) => sum + item.value, 0) / values.length * 100) : 0;
+    const strongest = values.reduce((best, item) => item.value > best.value ? item : best, (_a = values[0]) != null ? _a : { date: "", value: 0, label: "No data" });
     createSemanticChip(summary, `Average ${average}%`, average >= 60 ? "done" : average >= 35 ? "focus" : "neutral");
     createSemanticChip(summary, strongest.date ? `Peak ${strongest.date}` : "No peak", strongest.value >= 0.7 ? "capture" : "neutral");
   }
@@ -6090,7 +6089,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (!name) {
       return;
     }
-    const filters = getSavedDashboardFilters().filter((item2) => item2.name !== name);
+    const filters = getSavedDashboardFilters().filter((item) => item.name !== name);
     filters.push({
       name,
       workLogFilters: { ...this.workLogFilters },
@@ -6104,7 +6103,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     setDashboardSelectedFilterName(name);
   }
   applySavedDashboardFilter(name) {
-    const filter = getSavedDashboardFilters().find((item2) => item2.name === name);
+    const filter = getSavedDashboardFilters().find((item) => item.name === name);
     if (!filter) {
       return;
     }
@@ -6120,7 +6119,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (!this.selectedSavedFilterName) {
       return;
     }
-    const nextFilters = getSavedDashboardFilters().filter((item2) => item2.name !== this.selectedSavedFilterName);
+    const nextFilters = getSavedDashboardFilters().filter((item) => item.name !== this.selectedSavedFilterName);
     setSavedDashboardFilters(nextFilters);
     this.selectedSavedFilterName = "";
     setDashboardSelectedFilterName("");
@@ -6192,9 +6191,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     }
   }
   renderWeekLegendItem(parent, label, tone) {
-    const item2 = parent.createDiv({ cls: "daily-dashboard-week-legend-item" });
-    item2.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
-    item2.createEl("span", { text: label });
+    const item = parent.createDiv({ cls: "daily-dashboard-week-legend-item" });
+    item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    item.createEl("span", { text: label });
   }
   formatWeekBarValue(minutes) {
     if (minutes <= 0) {
@@ -7806,8 +7805,8 @@ function renderGamificationSnapshotCard(parent, snapshot) {
   header.createEl("strong", { text: `${snapshot.label} \u2022 ${snapshot.score}/100 ${snapshot.grade}` });
   header.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.comparisonText });
   const chipRow = card.createDiv({ cls: "daily-dashboard-chip-row" });
-  snapshot.highlights.slice(0, 3).forEach((item2) => createSemanticChip(chipRow, item2, "done"));
-  snapshot.cautions.slice(0, 3).forEach((item2) => createSemanticChip(chipRow, item2, "alert"));
+  snapshot.highlights.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "done"));
+  snapshot.cautions.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "alert"));
   const categoryList = card.createDiv({ cls: "daily-dashboard-momentum" });
   snapshot.categories.forEach((category) => {
     const row = categoryList.createDiv({ cls: "daily-dashboard-gamification-row" });
@@ -7852,7 +7851,7 @@ function getCollapsedCardState() {
       return /* @__PURE__ */ new Set();
     }
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? new Set(parsed.filter((item2) => typeof item2 === "string")) : /* @__PURE__ */ new Set();
+    return Array.isArray(parsed) ? new Set(parsed.filter((item) => typeof item === "string")) : /* @__PURE__ */ new Set();
   } catch (e) {
     return /* @__PURE__ */ new Set();
   }
@@ -7876,7 +7875,7 @@ function getDashboardExpandedSections() {
       return /* @__PURE__ */ new Set();
     }
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? new Set(parsed.filter((item2) => typeof item2 === "string")) : /* @__PURE__ */ new Set();
+    return Array.isArray(parsed) ? new Set(parsed.filter((item) => typeof item === "string")) : /* @__PURE__ */ new Set();
   } catch (e) {
     return /* @__PURE__ */ new Set();
   }
@@ -7954,27 +7953,27 @@ function getSavedDashboardFilters() {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.name === "string")).map((item2) => {
+    return parsed.filter((item) => Boolean(item && typeof item === "object" && typeof item.name === "string")).map((item) => {
       var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L;
       return {
-        name: item2.name.trim(),
+        name: item.name.trim(),
         workLogFilters: {
-          project: (_d = (_c = (_b = (_a = item2.workLogFilters) == null ? void 0 : _a.project) == null ? void 0 : _b.trim) == null ? void 0 : _c.call(_b)) != null ? _d : "",
-          keyword: (_h = (_g = (_f = (_e = item2.workLogFilters) == null ? void 0 : _e.keyword) == null ? void 0 : _f.trim) == null ? void 0 : _g.call(_f)) != null ? _h : "",
-          fromDate: (_l = (_k = (_j = (_i = item2.workLogFilters) == null ? void 0 : _i.fromDate) == null ? void 0 : _j.trim) == null ? void 0 : _k.call(_j)) != null ? _l : "",
-          toDate: (_p = (_o = (_n = (_m = item2.workLogFilters) == null ? void 0 : _m.toDate) == null ? void 0 : _n.trim) == null ? void 0 : _o.call(_n)) != null ? _p : ""
+          project: (_d = (_c = (_b = (_a = item.workLogFilters) == null ? void 0 : _a.project) == null ? void 0 : _b.trim) == null ? void 0 : _c.call(_b)) != null ? _d : "",
+          keyword: (_h = (_g = (_f = (_e = item.workLogFilters) == null ? void 0 : _e.keyword) == null ? void 0 : _f.trim) == null ? void 0 : _g.call(_f)) != null ? _h : "",
+          fromDate: (_l = (_k = (_j = (_i = item.workLogFilters) == null ? void 0 : _i.fromDate) == null ? void 0 : _j.trim) == null ? void 0 : _k.call(_j)) != null ? _l : "",
+          toDate: (_p = (_o = (_n = (_m = item.workLogFilters) == null ? void 0 : _m.toDate) == null ? void 0 : _n.trim) == null ? void 0 : _o.call(_n)) != null ? _p : ""
         },
         timelineFilters: {
-          keyword: (_t = (_s = (_r = (_q = item2.timelineFilters) == null ? void 0 : _q.keyword) == null ? void 0 : _r.trim) == null ? void 0 : _s.call(_r)) != null ? _t : "",
-          project: (_x = (_w = (_v = (_u = item2.timelineFilters) == null ? void 0 : _u.project) == null ? void 0 : _v.trim) == null ? void 0 : _w.call(_v)) != null ? _x : "",
-          tag: (_B = (_A = (_z = (_y = item2.timelineFilters) == null ? void 0 : _y.tag) == null ? void 0 : _z.trim) == null ? void 0 : _A.call(_z)) != null ? _B : "",
-          kinds: Array.isArray((_C = item2.timelineFilters) == null ? void 0 : _C.kinds) ? item2.timelineFilters.kinds.filter((kind) => kind === "task" || kind === "session" || kind === "calendar" || kind === "log") : ["task", "session", "calendar", "log"],
-          fromDate: (_G = (_F = (_E = (_D = item2.timelineFilters) == null ? void 0 : _D.fromDate) == null ? void 0 : _E.trim) == null ? void 0 : _F.call(_E)) != null ? _G : "",
-          toDate: (_K = (_J = (_I = (_H = item2.timelineFilters) == null ? void 0 : _H.toDate) == null ? void 0 : _I.trim) == null ? void 0 : _J.call(_I)) != null ? _K : "",
-          onlyWithNotes: Boolean((_L = item2.timelineFilters) == null ? void 0 : _L.onlyWithNotes)
+          keyword: (_t = (_s = (_r = (_q = item.timelineFilters) == null ? void 0 : _q.keyword) == null ? void 0 : _r.trim) == null ? void 0 : _s.call(_r)) != null ? _t : "",
+          project: (_x = (_w = (_v = (_u = item.timelineFilters) == null ? void 0 : _u.project) == null ? void 0 : _v.trim) == null ? void 0 : _w.call(_v)) != null ? _x : "",
+          tag: (_B = (_A = (_z = (_y = item.timelineFilters) == null ? void 0 : _y.tag) == null ? void 0 : _z.trim) == null ? void 0 : _A.call(_z)) != null ? _B : "",
+          kinds: Array.isArray((_C = item.timelineFilters) == null ? void 0 : _C.kinds) ? item.timelineFilters.kinds.filter((kind) => kind === "task" || kind === "session" || kind === "calendar" || kind === "log") : ["task", "session", "calendar", "log"],
+          fromDate: (_G = (_F = (_E = (_D = item.timelineFilters) == null ? void 0 : _D.fromDate) == null ? void 0 : _E.trim) == null ? void 0 : _F.call(_E)) != null ? _G : "",
+          toDate: (_K = (_J = (_I = (_H = item.timelineFilters) == null ? void 0 : _H.toDate) == null ? void 0 : _I.trim) == null ? void 0 : _J.call(_I)) != null ? _K : "",
+          onlyWithNotes: Boolean((_L = item.timelineFilters) == null ? void 0 : _L.onlyWithNotes)
         }
       };
-    }).filter((item2) => item2.name.length > 0);
+    }).filter((item) => item.name.length > 0);
   } catch (e) {
     return [];
   }
@@ -8042,15 +8041,15 @@ function sortDashboardLayoutCards(cards) {
 function sortDashboardLayoutCardsByOrder(cards) {
   return [...cards].sort((left, right) => left.order - right.order || left.title.localeCompare(right.title));
 }
-function cloneTodayFocusItem(item2) {
+function cloneTodayFocusItem(item) {
   return {
-    ...item2,
-    workSessions: item2.workSessions.map((session) => ({ ...session }))
+    ...item,
+    workSessions: item.workSessions.map((session) => ({ ...session }))
   };
 }
-function cloneNextUpFocusItem(item2) {
+function cloneNextUpFocusItem(item) {
   return {
-    ...item2
+    ...item
   };
 }
 function getCollapsedSubsectionState() {
@@ -8060,7 +8059,7 @@ function getCollapsedSubsectionState() {
       return /* @__PURE__ */ new Set();
     }
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? new Set(parsed.filter((item2) => typeof item2 === "string")) : /* @__PURE__ */ new Set();
+    return Array.isArray(parsed) ? new Set(parsed.filter((item) => typeof item === "string")) : /* @__PURE__ */ new Set();
   } catch (e) {
     return /* @__PURE__ */ new Set();
   }
@@ -8236,7 +8235,7 @@ function getDismissedReminderState(date) {
     }
     const parsed = JSON.parse(stored);
     const values = Array.isArray(parsed == null ? void 0 : parsed[date]) ? parsed[date] : [];
-    return new Set(values.filter((item2) => typeof item2 === "string"));
+    return new Set(values.filter((item) => typeof item === "string"));
   } catch (e) {
     return /* @__PURE__ */ new Set();
   }
@@ -8274,7 +8273,7 @@ function getDismissedRoutineState(date) {
     }
     const parsed = JSON.parse(stored);
     const values = Array.isArray(parsed == null ? void 0 : parsed[date]) ? parsed[date] : [];
-    return new Set(values.filter((item2) => typeof item2 === "string"));
+    return new Set(values.filter((item) => typeof item === "string"));
   } catch (e) {
     return /* @__PURE__ */ new Set();
   }
@@ -8972,9 +8971,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         enabled: false
       };
     }
-    const reminders = this.getCalendarOccurrencesInRange(now, new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3)).map((event) => this.toCalendarReminderItem(event)).filter((item2) => this.isCalendarReminderVisible(item2, now)).map((item2) => ({
-      ...item2,
-      warningLevel: this.getCalendarReminderWarningLevel(item2, now)
+    const reminders = this.getCalendarOccurrencesInRange(now, new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3)).map((event) => this.toCalendarReminderItem(event)).filter((item) => this.isCalendarReminderVisible(item, now)).map((item) => ({
+      ...item,
+      warningLevel: this.getCalendarReminderWarningLevel(item, now)
     })).sort((left, right) => left.start.localeCompare(right.start));
     const snapshot = {
       reminders,
@@ -9029,8 +9028,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     var _a, _b, _c, _d, _e;
     const entry = this.getTodayEntry();
     const existing = /* @__PURE__ */ new Set([
-      ...entry.todayFocus.map((item2) => item2.text.toLowerCase()),
-      ...entry.nextUpFocus.map((item2) => item2.text.toLowerCase())
+      ...entry.todayFocus.map((item) => item.text.toLowerCase()),
+      ...entry.nextUpFocus.map((item) => item.text.toLowerCase())
     ]);
     const seen = /* @__PURE__ */ new Set();
     const candidates = [];
@@ -9324,19 +9323,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   getFocusDisplayItems(snapshot = null) {
     var _a;
     const entry = this.getTodayEntry();
-    const focusItems = entry.todayFocus.map((item2, index) => ({
+    const focusItems = entry.todayFocus.map((item, index) => ({
       kind: "focus",
-      id: `focus-${index}-${item2.text.toLowerCase()}`,
-      text: item2.text,
-      notes: item2.notes,
-      estimateMinutes: item2.estimateMinutes,
-      status: item2.status,
-      workSessions: item2.workSessions,
-      completedAt: item2.completedAt,
-      trackedMinutes: getTrackedMinutes(item2.workSessions),
-      isActive: item2.status === "working" && item2.workSessions.some((session) => session.end === null)
+      id: `focus-${index}-${item.text.toLowerCase()}`,
+      text: item.text,
+      notes: item.notes,
+      estimateMinutes: item.estimateMinutes,
+      status: item.status,
+      workSessions: item.workSessions,
+      completedAt: item.completedAt,
+      trackedMinutes: getTrackedMinutes(item.workSessions),
+      isActive: item.status === "working" && item.workSessions.some((session) => session.end === null)
     }));
-    const reminderItems = ((_a = snapshot == null ? void 0 : snapshot.reminders) != null ? _a : []).filter((reminder) => !entry.todayFocus.some((item2) => item2.text.trim().toLowerCase() === reminder.title.trim().toLowerCase())).map((reminder) => ({
+    const reminderItems = ((_a = snapshot == null ? void 0 : snapshot.reminders) != null ? _a : []).filter((reminder) => !entry.todayFocus.some((item) => item.text.trim().toLowerCase() === reminder.title.trim().toLowerCase())).map((reminder) => ({
       kind: "reminder",
       id: `reminder-${reminder.id}-${reminder.start}`,
       sourceEventId: reminder.id,
@@ -9367,13 +9366,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (!previousEntry) {
       return [];
     }
-    const existingTexts = new Set(entry.todayFocus.map((item2) => item2.text.trim().toLowerCase()));
-    return previousEntry.todayFocus.filter((item2) => item2.status !== "done").map((item2) => item2.text.trim()).filter((text) => text.length > 0).filter((text) => !existingTexts.has(text.toLowerCase()));
+    const existingTexts = new Set(entry.todayFocus.map((item) => item.text.trim().toLowerCase()));
+    return previousEntry.todayFocus.filter((item) => item.status !== "done").map((item) => item.text.trim()).filter((text) => text.length > 0).filter((text) => !existingTexts.has(text.toLowerCase()));
   }
   async carryForwardUnfinishedFocusItems() {
     const entry = this.getTodayEntry();
     const candidates = this.getCarryForwardFocusCandidates(entry.date);
-    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item2) => item2.status !== "done").length);
+    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item) => item.status !== "done").length);
     const accepted = candidates.slice(0, availableSlots);
     if (accepted.length === 0) {
       new import_obsidian4.Notice(candidates.length > 0 ? "No Top 3 slots are available for carry-forward items." : "No unfinished Top 3 items were found on the previous logical day.");
@@ -9584,12 +9583,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     return next;
   }
-  isCalendarReminderVisible(item2, now) {
-    const start = new Date(item2.start);
-    const end = new Date(item2.end);
-    const reminderAt = new Date(item2.reminderAt);
+  isCalendarReminderVisible(item, now) {
+    const start = new Date(item.start);
+    const end = new Date(item.end);
+    const reminderAt = new Date(item.reminderAt);
     const lookaheadMs = this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3;
-    if (item2.allDay) {
+    if (item.allDay) {
       const endOfDay = this.startOfToday(end);
       return endOfDay.getTime() >= this.startOfToday(now).getTime() && reminderAt.getTime() <= now.getTime() + lookaheadMs;
     }
@@ -9850,10 +9849,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.intakeLog = entry.intakeLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
-  async restoreIntakeEntry(item2, index) {
+  async restoreIntakeEntry(item, index) {
     const entry = this.getTodayEntry();
     const nextLog = [...entry.intakeLog];
-    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
     entry.intakeLog = nextLog.slice(0, 40);
     await this.persistEntry(entry);
   }
@@ -9876,10 +9875,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.symptomLog = entry.symptomLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
-  async restoreSymptomEntry(item2, index) {
+  async restoreSymptomEntry(item, index) {
     const entry = this.getTodayEntry();
     const nextLog = [...entry.symptomLog];
-    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
     entry.symptomLog = nextLog.slice(0, 30);
     await this.persistEntry(entry);
   }
@@ -9897,10 +9896,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
-  async restoreFoodEntry(item2, index) {
+  async restoreFoodEntry(item, index) {
     const entry = this.getTodayEntry();
     const nextLog = [...entry.foodLog];
-    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
     entry.foodLog = nextLog;
     await this.persistEntry(entry);
   }
@@ -9967,7 +9966,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.isAiBusy = true;
     this.refreshDashboardViews();
     try {
-      const foodLines = entry.foodLog.map((item2) => `${item2.loggedAt}: ${item2.amount}x ${item2.text}`).join("\n");
+      const foodLines = entry.foodLog.map((item) => `${item.loggedAt}: ${item.amount}x ${item.text}`).join("\n");
       const response = await this.requestAiCompletion(
         [
           "You are a concise nutrition estimation assistant for a personal dashboard.",
@@ -10618,10 +10617,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         dismissible: true
       });
     }
-    const activeDismissibleIds = items.filter((item2) => item2.dismissible).map((item2) => item2.id);
+    const activeDismissibleIds = items.filter((item) => item.dismissible).map((item) => item.id);
     this.reconcileDismissedNotificationIds(activeDismissibleIds);
     const dismissed = new Set(this.data.uiState.dismissedNotificationIds);
-    return items.filter((item2) => !item2.dismissible || !dismissed.has(item2.id));
+    return items.filter((item) => !item.dismissible || !dismissed.has(item.id));
   }
   async getCalendarProjectOptions() {
     const snapshot = await this.getTodoSnapshot();
@@ -10734,11 +10733,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return;
     }
     const entry = this.getTodayEntry();
-    if (entry.todayFocus.some((item2) => item2.text.toLowerCase() === trimmedValue.toLowerCase())) {
+    if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
       new import_obsidian4.Notice("That Top 3 item is already listed.");
       return;
     }
-    const activeFocusCount = entry.todayFocus.filter((item2) => item2.status !== "done").length;
+    const activeFocusCount = entry.todayFocus.filter((item) => item.status !== "done").length;
     if (activeFocusCount >= 3) {
       new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before adding another.");
       return;
@@ -10761,15 +10760,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return false;
     }
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
       new import_obsidian4.Notice("That Top 3 item is already listed.");
       return false;
     }
-    item2.text = trimmedValue;
+    item.text = trimmedValue;
     await this.persistEntry(entry);
     return true;
   }
@@ -10780,17 +10779,17 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return false;
     }
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
       new import_obsidian4.Notice("That Top 3 item is already listed.");
       return false;
     }
-    item2.text = trimmedValue;
-    item2.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
-    item2.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes)) ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440) : null;
+    item.text = trimmedValue;
+    item.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
+    item.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes)) ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440) : null;
     await this.persistEntry(entry);
     return true;
   }
@@ -10799,13 +10798,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (fromIndex === toIndex) {
       return false;
     }
-    const item2 = entry.todayFocus[fromIndex];
-    if (!item2 || toIndex < 0 || toIndex >= entry.todayFocus.length) {
+    const item = entry.todayFocus[fromIndex];
+    if (!item || toIndex < 0 || toIndex >= entry.todayFocus.length) {
       return false;
     }
     const reordered = [...entry.todayFocus];
     reordered.splice(fromIndex, 1);
-    reordered.splice(toIndex, 0, item2);
+    reordered.splice(toIndex, 0, item);
     entry.todayFocus = reordered;
     await this.persistEntry(entry);
     return true;
@@ -10816,60 +10815,60 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return;
     }
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return;
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
     this.closeOpenTodayFocusSessions(entry, timestamp, index);
-    item2.status = "working";
-    item2.completedAt = null;
-    if (!item2.workSessions.some((session) => session.end === null)) {
-      item2.workSessions = [...item2.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    item.status = "working";
+    item.completedAt = null;
+    if (!item.workSessions.some((session) => session.end === null)) {
+      item.workSessions = [...item.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
     }
     await this.persistEntry(entry);
   }
   async stopTodayFocusItem(index) {
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return;
     }
-    const activeSession = [...item2.workSessions].reverse().find((session) => session.end === null);
-    if (!activeSession && item2.status !== "working") {
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
+    if (!activeSession && item.status !== "working") {
       return;
     }
     if (activeSession) {
       activeSession.end = formatDateTimeKey(/* @__PURE__ */ new Date());
     }
-    if (item2.status === "working") {
-      item2.status = "pending";
+    if (item.status === "working") {
+      item.status = "pending";
     }
     await this.persistEntry(entry);
   }
   async completeTodayFocusItem(index) {
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return;
     }
     const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
-    const activeSession = [...item2.workSessions].reverse().find((session) => session.end === null);
+    const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
     if (activeSession) {
       activeSession.end = timestamp;
     }
-    item2.status = "done";
-    item2.completedAt = timestamp;
+    item.status = "done";
+    item.completedAt = timestamp;
     await this.persistEntry(entry);
   }
   async reopenTodayFocusItem(index) {
     const entry = this.getTodayEntry();
-    const item2 = entry.todayFocus[index];
-    if (!item2) {
+    const item = entry.todayFocus[index];
+    if (!item) {
       return;
     }
-    item2.status = "pending";
-    item2.completedAt = null;
+    item.status = "pending";
+    item.completedAt = null;
     await this.persistEntry(entry);
   }
   async removeTodayFocusItem(index) {
@@ -10877,12 +10876,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
-  async restoreTodayFocusItem(item2, index) {
+  async restoreTodayFocusItem(item, index) {
     const entry = this.getTodayEntry();
     const nextFocus = [...entry.todayFocus];
     nextFocus.splice(clamp(index, 0, nextFocus.length), 0, {
-      ...item2,
-      workSessions: item2.workSessions.map((session) => ({ ...session }))
+      ...item,
+      workSessions: item.workSessions.map((session) => ({ ...session }))
     });
     entry.todayFocus = nextFocus;
     await this.persistEntry(entry);
@@ -10893,7 +10892,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const entry = this.getTodayEntry();
-    const alreadyExists = [...entry.todayFocus.map((item2) => item2.text), ...entry.nextUpFocus.map((item2) => item2.text)].some((candidate) => candidate.toLowerCase() === text.toLowerCase());
+    const alreadyExists = [...entry.todayFocus.map((item) => item.text), ...entry.nextUpFocus.map((item) => item.text)].some((candidate) => candidate.toLowerCase() === text.toLowerCase());
     if (alreadyExists) {
       new import_obsidian4.Notice("That item is already listed in Top 3 or Next Up.");
       return false;
@@ -10911,8 +10910,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   async promoteNextUpFocusItem(index) {
     const entry = this.getTodayEntry();
-    const item2 = entry.nextUpFocus[index];
-    if (!item2) {
+    const item = entry.nextUpFocus[index];
+    if (!item) {
       return false;
     }
     const activeFocusCount = entry.todayFocus.filter((candidate) => candidate.status !== "done").length;
@@ -10920,8 +10919,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before promoting Next Up.");
       return false;
     }
-    if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item2.text.toLowerCase())) {
-      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item2.text, item2.notes, item2.estimateMinutes)];
+    if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
+      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.notes, item.estimateMinutes)];
     }
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
@@ -10932,10 +10931,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
-  async restoreNextUpFocusItem(item2, index) {
+  async restoreNextUpFocusItem(item, index) {
     const entry = this.getTodayEntry();
     const nextFocus = [...entry.nextUpFocus];
-    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, { ...item2 });
+    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, { ...item });
     entry.nextUpFocus = nextFocus;
     await this.persistEntry(entry);
   }
@@ -11052,7 +11051,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       `# Master Task Hub Cleanup Suggestions - ${formatDateKey(/* @__PURE__ */ new Date())}`,
       "",
       "## Portfolio Summary",
-      ...suggestions.length > 0 ? suggestions.map((item2) => `- ${item2}`) : ["- No cleanup issues detected."],
+      ...suggestions.length > 0 ? suggestions.map((item) => `- ${item}`) : ["- No cleanup issues detected."],
       "",
       ...projectSections.length > 0 ? projectSections : ["## Projects", "- No project-level cleanup issues detected.", ""],
       ""
@@ -11287,7 +11286,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.refreshDashboardViews();
     try {
       await this.ensureAiNoteIndexReady();
-      const retrievalQuery = [input.kind, input.userPrompt, (_a = input.question) != null ? _a : ""].filter((item2) => item2.trim().length > 0).join("\n\n");
+      const retrievalQuery = [input.kind, input.userPrompt, (_a = input.question) != null ? _a : ""].filter((item) => item.trim().length > 0).join("\n\n");
       const context = await this.buildAiContext(input.includeMasterTodoRaw, input.question, (_b = input.includeActiveNote) != null ? _b : false, retrievalQuery, (_c = input.extraContextSections) != null ? _c : []);
       const rawResponse = await this.requestAiCompletion(this.applyAiPromptTemplate(input.systemPrompt, input.templateKey), `${input.userPrompt}
 
@@ -11381,9 +11380,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return [systemPrompt, `Additional local workflow instructions for ${templateKey}: ${template}`].join(" ");
   }
   renderAiCalendarContext(snapshot, agenda) {
-    const reminders = snapshot.reminders.slice(0, 8).map((item2) => {
-      const lead = item2.leadSummary ? ` (${item2.leadSummary})` : "";
-      return `- ${item2.date} ${item2.start}-${item2.end} ${item2.title}${lead}${item2.notes ? ` :: ${truncateText(item2.notes, 120)}` : ""}`;
+    const reminders = snapshot.reminders.slice(0, 8).map((item) => {
+      const lead = item.leadSummary ? ` (${item.leadSummary})` : "";
+      return `- ${item.date} ${item.start}-${item.end} ${item.title}${lead}${item.notes ? ` :: ${truncateText(item.notes, 120)}` : ""}`;
     });
     const agendaLines = agenda.filter((day) => day.events.length > 0).slice(0, 7).map((day) => `- ${day.label}: ${day.events.slice(0, 3).map((event) => `${event.title}${event.allDay ? " (all day)" : ` ${event.startTime}-${event.endTime}`}`).join(" | ")}`);
     return [
@@ -11484,9 +11483,9 @@ No entries available.`;
       return content;
     }
     if (Array.isArray(content)) {
-      const text = content.filter((item2) => item2.type === "text" && typeof item2.text === "string").map((item2) => {
+      const text = content.filter((item) => item.type === "text" && typeof item.text === "string").map((item) => {
         var _a2;
-        return (_a2 = item2.text) != null ? _a2 : "";
+        return (_a2 = item.text) != null ? _a2 : "";
       }).join("\n").trim();
       if (text.length > 0) {
         return text;
@@ -11533,11 +11532,11 @@ No entries available.`;
       throw new Error(data.error.message);
     }
     const result = /* @__PURE__ */ new Map();
-    (_b = data.data) == null ? void 0 : _b.forEach((item2, index) => {
+    (_b = data.data) == null ? void 0 : _b.forEach((item, index) => {
       var _a2;
-      const vector = Array.isArray(item2.embedding) ? item2.embedding.filter((value) => typeof value === "number" && Number.isFinite(value)) : [];
+      const vector = Array.isArray(item.embedding) ? item.embedding.filter((value) => typeof value === "number" && Number.isFinite(value)) : [];
       if (vector.length > 0) {
-        const chunk = chunks[(_a2 = item2.index) != null ? _a2 : index];
+        const chunk = chunks[(_a2 = item.index) != null ? _a2 : index];
         if (chunk) {
           result.set(chunk.id, vector);
         }
@@ -11569,7 +11568,7 @@ No entries available.`;
       "```",
       "",
       "## Concrete Actions",
-      ...concreteActions.length > 0 ? concreteActions.map((item2) => `- ${item2}`) : ["- No concrete actions were extracted from this response."],
+      ...concreteActions.length > 0 ? concreteActions.map((item) => `- ${item}`) : ["- No concrete actions were extracted from this response."],
       ""
     ].filter((line) => line !== "").join("\n");
     await this.ensureFolder(folder);
@@ -11816,7 +11815,7 @@ No entries available.`;
     return {
       onboardingCompleted: Boolean(state == null ? void 0 : state.onboardingCompleted),
       onboardingDeferredUntil: typeof (state == null ? void 0 : state.onboardingDeferredUntil) === "string" ? state.onboardingDeferredUntil : "",
-      dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item2) => typeof item2 === "string" && item2.trim().length > 0).slice(0, 200) : []
+      dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : []
     };
   }
   async loadPluginData() {
@@ -11833,7 +11832,7 @@ No entries available.`;
     const normalizedHabitEvents = {};
     settings.habitDefinitions.forEach((habit) => {
       var _a2, _b2, _c2, _d2, _e, _f;
-      const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d2 = (_c2 = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c2.filter((item2) => typeof item2 === "string" && item2.trim().length > 0)) != null ? _d2 : [] : [];
+      const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d2 = (_c2 = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c2.filter((item) => typeof item === "string" && item.trim().length > 0)) != null ? _d2 : [] : [];
       const normalizedCount = clamp(Number((_f = (_e = entry.habits) == null ? void 0 : _e[habit.id]) != null ? _f : rawEvents.length), 0, habit.target);
       normalizedHabits[habit.id] = normalizedCount;
       normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
@@ -11854,19 +11853,19 @@ No entries available.`;
       anxietyScore: clamp(Number((_d = entry.anxietyScore) != null ? _d : 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
-      calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted) ? entry.calendarFollowThroughCompleted.filter((item2) => typeof item2 === "string" && item2.trim().length > 0) : [],
+      calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted) ? entry.calendarFollowThroughCompleted.filter((item) => typeof item === "string" && item.trim().length > 0) : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
-      habitMissNotes: entry.habitMissNotes && typeof entry.habitMissNotes === "object" ? Object.fromEntries(Object.entries(entry.habitMissNotes).filter((item2) => typeof item2[0] === "string" && typeof item2[1] === "string" && item2[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
-      foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item2) => normalizeFoodEntry(item2)).filter((item2) => item2 !== null) : [],
-      intakeLog: Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item2) => normalizeIntakeEntry(item2)).filter((item2) => item2 !== null) : [],
-      symptomLog: Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item2) => normalizeSymptomEntry(item2)).filter((item2) => item2 !== null) : [],
-      energyCheckIns: Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.loggedAt === "string")).map((item2) => {
+      habitMissNotes: entry.habitMissNotes && typeof entry.habitMissNotes === "object" ? Object.fromEntries(Object.entries(entry.habitMissNotes).filter((item) => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
+      foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => normalizeFoodEntry(item)).filter((item) => item !== null) : [],
+      intakeLog: Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item) => normalizeIntakeEntry(item)).filter((item) => item !== null) : [],
+      symptomLog: Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item) => normalizeSymptomEntry(item)).filter((item) => item !== null) : [],
+      energyCheckIns: Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.filter((item) => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string")).map((item) => {
         var _a2;
         return {
-          loggedAt: item2.loggedAt,
-          score: clamp(Number((_a2 = item2.score) != null ? _a2 : 0), 1, 5),
-          note: typeof item2.note === "string" ? item2.note.trim() : ""
+          loggedAt: item.loggedAt,
+          score: clamp(Number((_a2 = item.score) != null ? _a2 : 0), 1, 5),
+          note: typeof item.note === "string" ? item.note.trim() : ""
         };
       }) : [],
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
@@ -11875,43 +11874,43 @@ No entries available.`;
       helpedToday: typeof entry.helpedToday === "string" ? entry.helpedToday : "",
       hurtToday: typeof entry.hurtToday === "string" ? entry.hurtToday : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
-      workSessions: Array.isArray(entry.workSessions) ? entry.workSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-        start: item2.start,
-        end: typeof item2.end === "string" ? item2.end : null,
-        tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+      workSessions: Array.isArray(entry.workSessions) ? entry.workSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null,
+        tag: typeof item.tag === "string" ? item.tag.trim() : ""
       })) : [],
       workMinutesOverride: Number.isFinite(Number(entry.workMinutesOverride)) ? clamp(Number(entry.workMinutesOverride), 0, 1440) : null,
-      napSessions: Array.isArray(entry.napSessions) ? entry.napSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-        start: item2.start,
-        end: typeof item2.end === "string" ? item2.end : null,
-        tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+      napSessions: Array.isArray(entry.napSessions) ? entry.napSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null,
+        tag: typeof item.tag === "string" ? item.tag.trim() : ""
       })) : [],
       napMinutesOverride: Number.isFinite(Number(entry.napMinutesOverride)) ? clamp(Number(entry.napMinutesOverride), 0, 1440) : null,
-      relaxSessions: Array.isArray(entry.relaxSessions) ? entry.relaxSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-        start: item2.start,
-        end: typeof item2.end === "string" ? item2.end : null,
-        tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+      relaxSessions: Array.isArray(entry.relaxSessions) ? entry.relaxSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null,
+        tag: typeof item.tag === "string" ? item.tag.trim() : ""
       })) : [],
       relaxMinutesOverride: Number.isFinite(Number(entry.relaxMinutesOverride)) ? clamp(Number(entry.relaxMinutesOverride), 0, 1440) : null,
-      breakSessions: Array.isArray(entry.breakSessions) ? entry.breakSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-        start: item2.start,
-        end: typeof item2.end === "string" ? item2.end : null,
-        tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+      breakSessions: Array.isArray(entry.breakSessions) ? entry.breakSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null,
+        tag: typeof item.tag === "string" ? item.tag.trim() : ""
       })) : [],
       breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
-      poopSessions: Array.isArray(entry.poopSessions) ? entry.poopSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
-        start: item2.start,
-        end: typeof item2.end === "string" ? item2.end : null,
-        tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
+      poopSessions: Array.isArray(entry.poopSessions) ? entry.poopSessions.filter((item) => Boolean(item && typeof item === "object" && typeof item.start === "string")).map((item) => ({
+        start: item.start,
+        end: typeof item.end === "string" ? item.end : null,
+        tag: typeof item.tag === "string" ? item.tag.trim() : ""
       })) : [],
-      poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object" ? Object.fromEntries(Object.entries(entry.poopQualityByStart).filter((item2) => typeof item2[0] === "string" && typeof item2[1] === "string" && item2[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
-      completedTasks: Array.isArray(entry.completedTasks) ? entry.completedTasks.filter((item2) => Boolean(item2 && typeof item2 === "object")).map((item2) => ({
-        project: typeof item2.project === "string" ? item2.project : "Unknown Project",
-        section: typeof item2.section === "string" ? item2.section : "General",
-        text: typeof item2.text === "string" ? item2.text : "",
-        archivedAt: typeof item2.archivedAt === "string" ? item2.archivedAt : date,
-        note: typeof item2.note === "string" ? item2.note : ""
-      })).filter((item2) => item2.text.trim().length > 0) : []
+      poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object" ? Object.fromEntries(Object.entries(entry.poopQualityByStart).filter((item) => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
+      completedTasks: Array.isArray(entry.completedTasks) ? entry.completedTasks.filter((item) => Boolean(item && typeof item === "object")).map((item) => ({
+        project: typeof item.project === "string" ? item.project : "Unknown Project",
+        section: typeof item.section === "string" ? item.section : "General",
+        text: typeof item.text === "string" ? item.text : "",
+        archivedAt: typeof item.archivedAt === "string" ? item.archivedAt : date,
+        note: typeof item.note === "string" ? item.note : ""
+      })).filter((item) => item.text.trim().length > 0) : []
     };
   }
   getOrCreateEntry(date) {
@@ -11992,14 +11991,14 @@ No entries available.`;
       ...entry.relaxSessions.map((session) => session.start),
       ...entry.breakSessions.map((session) => session.start),
       ...entry.poopSessions.map((session) => session.start),
-      ...entry.todayFocus.flatMap((item2) => item2.workSessions.map((session) => session.start)),
-      ...entry.foodLog.map((item2) => {
+      ...entry.todayFocus.flatMap((item) => item.workSessions.map((session) => session.start)),
+      ...entry.foodLog.map((item) => {
         var _a2;
-        return (_a2 = item2.loggedAt) != null ? _a2 : "";
+        return (_a2 = item.loggedAt) != null ? _a2 : "";
       }),
-      ...entry.energyCheckIns.map((item2) => {
+      ...entry.energyCheckIns.map((item) => {
         var _a2;
-        return (_a2 = item2.loggedAt) != null ? _a2 : "";
+        return (_a2 = item.loggedAt) != null ? _a2 : "";
       }),
       ...Object.values(entry.habitEvents).flat(),
       entry.dayEndedAt,
@@ -12114,22 +12113,22 @@ No entries available.`;
     const projectNotePath = typeof event.projectNotePath === "string" && event.projectNotePath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(event.projectNotePath.trim()) : "";
     const repeatCadence = event.repeatCadence === "daily" || event.repeatCadence === "weekly" || event.repeatCadence === "monthly" || event.repeatCadence === "yearly" ? event.repeatCadence : "none";
     const repeatUntil = typeof event.repeatUntil === "string" ? event.repeatUntil.trim() : "";
-    const occurrenceExceptions = Array.isArray(event.occurrenceExceptions) ? event.occurrenceExceptions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.originalDate === "string")).map((item2) => ({
-      originalDate: item2.originalDate.trim(),
-      kind: item2.kind === "skip" || item2.kind === "cancel" ? item2.kind : "move",
-      date: typeof item2.date === "string" ? item2.date.trim() : item2.originalDate.trim(),
-      endDate: typeof item2.endDate === "string" && item2.endDate.trim().length > 0 ? item2.endDate.trim() : typeof item2.date === "string" ? item2.date.trim() : item2.originalDate.trim(),
-      startTime: typeof item2.startTime === "string" ? item2.startTime.trim() : "",
-      endTime: typeof item2.endTime === "string" ? item2.endTime.trim() : "",
-      prepMinutes: Number.isFinite(Number(item2.prepMinutes)) ? clamp(Number(item2.prepMinutes), 0, 720) : prepMinutes,
-      travelMinutes: Number.isFinite(Number(item2.travelMinutes)) ? clamp(Number(item2.travelMinutes), 0, 720) : travelMinutes,
-      category: item2.category === "work" || item2.category === "health" || item2.category === "errands" || item2.category === "social" ? item2.category : category,
-      title: typeof item2.title === "string" ? item2.title : title,
-      projectName: typeof item2.projectName === "string" ? item2.projectName.trim() : projectName,
-      projectNotePath: typeof item2.projectNotePath === "string" && item2.projectNotePath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(item2.projectNotePath.trim()) : projectNotePath,
-      notes: typeof item2.notes === "string" ? item2.notes : "",
-      updatedAt: typeof item2.updatedAt === "string" ? item2.updatedAt : ""
-    })).filter((item2) => /^\d{4}-\d{2}-\d{2}$/.test(item2.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item2.date) && /^\d{4}-\d{2}-\d{2}$/.test(item2.endDate)) : [];
+    const occurrenceExceptions = Array.isArray(event.occurrenceExceptions) ? event.occurrenceExceptions.filter((item) => Boolean(item && typeof item === "object" && typeof item.originalDate === "string")).map((item) => ({
+      originalDate: item.originalDate.trim(),
+      kind: item.kind === "skip" || item.kind === "cancel" ? item.kind : "move",
+      date: typeof item.date === "string" ? item.date.trim() : item.originalDate.trim(),
+      endDate: typeof item.endDate === "string" && item.endDate.trim().length > 0 ? item.endDate.trim() : typeof item.date === "string" ? item.date.trim() : item.originalDate.trim(),
+      startTime: typeof item.startTime === "string" ? item.startTime.trim() : "",
+      endTime: typeof item.endTime === "string" ? item.endTime.trim() : "",
+      prepMinutes: Number.isFinite(Number(item.prepMinutes)) ? clamp(Number(item.prepMinutes), 0, 720) : prepMinutes,
+      travelMinutes: Number.isFinite(Number(item.travelMinutes)) ? clamp(Number(item.travelMinutes), 0, 720) : travelMinutes,
+      category: item.category === "work" || item.category === "health" || item.category === "errands" || item.category === "social" ? item.category : category,
+      title: typeof item.title === "string" ? item.title : title,
+      projectName: typeof item.projectName === "string" ? item.projectName.trim() : projectName,
+      projectNotePath: typeof item.projectNotePath === "string" && item.projectNotePath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(item.projectNotePath.trim()) : projectNotePath,
+      notes: typeof item.notes === "string" ? item.notes : "",
+      updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : ""
+    })).filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && /^\d{4}-\d{2}-\d{2}$/.test(item.endDate)) : [];
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < date) {
       return null;
     }
@@ -12247,7 +12246,7 @@ No entries available.`;
   async openQuickCaptureFocusFlow() {
     new FocusCaptureModal(this.app, {
       mode: "capture",
-      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item2) => item2.status !== "done").length < 3,
+      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
       onSubmit: async (payload) => {
         if (payload.destination === "top3") {
           await this.addTodayFocusItemWithDetails(payload);
@@ -12259,17 +12258,17 @@ No entries available.`;
   }
   closeOpenTodayFocusSessions(entry, timestamp, activeIndex = -1) {
     let changed = false;
-    entry.todayFocus.forEach((item2, index) => {
-      if (index === activeIndex || item2.status === "done") {
+    entry.todayFocus.forEach((item, index) => {
+      if (index === activeIndex || item.status === "done") {
         return;
       }
-      const activeSession = [...item2.workSessions].reverse().find((session) => session.end === null);
+      const activeSession = [...item.workSessions].reverse().find((session) => session.end === null);
       if (activeSession) {
         activeSession.end = timestamp;
         changed = true;
       }
-      if (item2.status === "working") {
-        item2.status = "pending";
+      if (item.status === "working") {
+        item.status = "pending";
         changed = true;
       }
     });
@@ -12602,10 +12601,10 @@ No entries available.`;
     return getEntryRecencyKey(entry);
   }
   hasActiveLogicalDaySessions(entry) {
-    return entry.workSessions.some((session) => session.end === null) || entry.napSessions.some((session) => session.end === null) || entry.relaxSessions.some((session) => session.end === null) || entry.breakSessions.some((session) => session.end === null) || entry.poopSessions.some((session) => session.end === null) || entry.todayFocus.some((item2) => item2.workSessions.some((session) => session.end === null));
+    return entry.workSessions.some((session) => session.end === null) || entry.napSessions.some((session) => session.end === null) || entry.relaxSessions.some((session) => session.end === null) || entry.breakSessions.some((session) => session.end === null) || entry.poopSessions.some((session) => session.end === null) || entry.todayFocus.some((item) => item.workSessions.some((session) => session.end === null));
   }
   hasMeaningfulLogicalDayActivity(entry) {
-    return entry.workSessions.length > 0 || entry.napSessions.length > 0 || entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 || entry.poopSessions.length > 0 || entry.foodLog.length > 0 || entry.completedTasks.length > 0 || entry.todayFocus.some((item2) => item2.workSessions.length > 0 || item2.status === "done") || Object.values(entry.habitEvents).some((events) => events.length > 0) || entry.notes.trim().length > 0 || entry.frictionLog.trim().length > 0;
+    return entry.workSessions.length > 0 || entry.napSessions.length > 0 || entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 || entry.poopSessions.length > 0 || entry.foodLog.length > 0 || entry.completedTasks.length > 0 || entry.todayFocus.some((item) => item.workSessions.length > 0 || item.status === "done") || Object.values(entry.habitEvents).some((events) => events.length > 0) || entry.notes.trim().length > 0 || entry.frictionLog.trim().length > 0;
   }
   parseDashboardDateTime(value) {
     const trimmed = value.trim();

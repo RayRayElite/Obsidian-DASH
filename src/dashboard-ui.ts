@@ -701,38 +701,6 @@ export class DailyDashboardView extends ItemView {
             });
           });
           if (day.events.length > 3) {
-
-        const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
-          icon: "bell-ring",
-          eyebrow: "Triage",
-          tone: dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
-          tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
-        });
-        const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
-        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
-        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
-        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
-        const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
-        if (dashboardNotifications.length === 0) {
-          notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
-        } else {
-          dashboardNotifications.slice(0, 8).forEach((notification) => {
-            const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
-            row.addClass(`is-${notification.tone}`);
-            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
-            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
-            createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
-            copy.createEl("strong", { text: notification.title });
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
-            const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-            if (notification.action) {
-              createButton(actions, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
-            }
-            if (notification.dismissible) {
-              createButton(actions, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
-            }
-          });
-        }
             copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${day.events.length - 3} more item${day.events.length - 3 === 1 ? "" : "s"}` });
           }
         }
@@ -742,6 +710,38 @@ export class DailyDashboardView extends ItemView {
           new CalendarEventModal(this.app, this.plugin, day.date).open();
         }, false, "plus-circle");
       });
+
+      const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
+        icon: "bell-ring",
+        eyebrow: "Triage",
+        tone: dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
+        tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
+      });
+      const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
+      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
+      const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (dashboardNotifications.length === 0) {
+        notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
+      } else {
+        dashboardNotifications.slice(0, 8).forEach((notification) => {
+          const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
+          row.addClass(`is-${notification.tone}`);
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
+          copy.createEl("strong", { text: notification.title });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
+          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          if (notification.action) {
+            createButton(actions, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
+          }
+          if (notification.dismissible) {
+            createButton(actions, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
+          }
+        });
+      }
 
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
@@ -2430,11 +2430,9 @@ export class DailyDashboardView extends ItemView {
 
     const header = shell.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
     const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
-        const sessionTag = this.getLatestSessionTag(item.workSessions);
     const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
     title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
     const controls = header.createDiv({ cls: "daily-dashboard-calendar-nav" });
-          sessionTag ? `Tag ${sessionTag}` : "",
     createButton(controls, "Prev", async () => {
       this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
       await this.render();
