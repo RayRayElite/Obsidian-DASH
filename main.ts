@@ -89,6 +89,7 @@ import {
   CreateProjectModal,
   DailyDashboardSettingTab,
   DailyDashboardView,
+  FirstRunSetupWizardModal,
   FocusCaptureModal,
   LogicalDayRepairModal,
   ProjectReviewModal,
@@ -117,8 +118,10 @@ import {
   type DailyEntry,
   type DashboardPluginData,
   type DashboardFocusDisplayItem,
+  type DashboardNotificationItem,
   type DashboardSettings,
   type DayLifecycleState,
+  type DashboardUiState,
   type EnergyCheckIn,
   type FoodEntry,
   type GamificationSummary,
@@ -158,7 +161,11 @@ export default class DailyDashboardPlugin extends Plugin {
       lastInactivityPromptActivityAt: "",
       lastLateNightWarningKey: ""
     },
-    noteIndex: createEmptyNoteIndexCache()
+    noteIndex: createEmptyNoteIndexCache(),
+    uiState: {
+      onboardingCompleted: false,
+      dismissedNotificationIds: []
+    }
   };
   private wallpaperOptions: WallpaperOption[] = [];
   private autoArchiveDebounceId: number | null = null;
@@ -207,6 +214,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open dashboard",
       callback: () => {
         void this.activateDashboardView();
+      }
+    });
+
+    this.addCommand({
+      id: "open-first-run-setup-wizard",
+      name: "Open first-run setup wizard",
+      callback: () => {
+        void this.openFirstRunSetupWizard();
       }
     });
 
@@ -618,6 +633,17 @@ export default class DailyDashboardPlugin extends Plugin {
     window.setTimeout(() => {
       void this.rebuildAiNoteIndex(false);
     }, 2500);
+
+    this.app.workspace.onLayoutReady(() => {
+      if (!this.isFirstRunSetupPending()) {
+        return;
+      }
+
+      window.setTimeout(() => {
+        void this.activateDashboardView();
+        void this.openFirstRunSetupWizard();
+      }, 500);
+    });
   }
 
   async onunload(): Promise<void> {
@@ -2711,6 +2737,141 @@ export default class DailyDashboardPlugin extends Plugin {
     return parseTodoSnapshot(content);
   }
 
+  isFirstRunSetupPending(): boolean {
+    return !this.data.uiState.onboardingCompleted;
+  }
+
+  async openFirstRunSetupWizard(): Promise<void> {
+    new FirstRunSetupWizardModal(this.app, this).open();
+  }
+
+  async completeFirstRunSetupWizard(): Promise<void> {
+    if (this.data.uiState.onboardingCompleted) {
+      return;
+    }
+
+    this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async dismissDashboardNotification(id: string): Promise<void> {
+    if (!id.trim() || this.data.uiState.dismissedNotificationIds.includes(id)) {
+      return;
+    }
+
+    this.data.uiState.dismissedNotificationIds = [...this.data.uiState.dismissedNotificationIds, id].slice(-200);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  getDashboardNotifications(todoSnapshot: TodoSnapshot | null, calendarSnapshot: CalendarSnapshot, referenceDate: Date = new Date()): DashboardNotificationItem[] {
+    const items: DashboardNotificationItem[] = [];
+    const todayKey = formatDateKey(referenceDate);
+
+    if (this.isFirstRunSetupPending()) {
+      items.push({
+        id: "system:onboarding",
+        source: "system",
+        title: "Finish first-run setup",
+        description: "Use the guided setup wizard to confirm your dashboard title, task hub, logs, calendar, and AI defaults before you start relying on the dashboard.",
+        tone: "focus",
+        action: { kind: "open-setup", label: "Open wizard" },
+        dismissible: false
+      });
+    }
+
+    if (!this.getMasterTodoFile()) {
+      items.push({
+        id: "system:master-todo-missing",
+        source: "system",
+        title: "Master task hub is not configured",
+        description: `The configured master todo path \"${this.data.settings.masterTodoPath}\" is missing. Project health, task promotion, and cleanup workflows will stay limited until you point the plugin at a real hub note.`,
+        tone: "alert",
+        action: { kind: "open-setup", label: "Fix setup" },
+        dismissible: false
+      });
+    }
+
+    if (!this.data.settings.calendarEnabled) {
+      items.push({
+        id: "system:calendar-disabled",
+        source: "system",
+        title: "Calendar reminders are disabled",
+        description: "Enable the dashboard calendar if you want upcoming events and lead-time reminders to land in the notification center and execution flow.",
+        tone: "neutral",
+        action: { kind: "open-setup", label: "Review setup" },
+        dismissible: true
+      });
+    }
+
+    calendarSnapshot.reminders.slice(0, 4).forEach((reminder) => {
+      items.push({
+        id: `calendar:${reminder.id}:${reminder.reminderAt}`,
+        source: "calendar",
+        title: reminder.title,
+        description: [reminder.date, reminder.leadSummary, reminder.projectName || "", reminder.notes].filter((value) => value.length > 0).join(" • "),
+        tone: reminder.warningLevel === "warning" ? "alert" : "focus",
+        dismissible: true
+      });
+    });
+
+    this.getLogicalDayInsights(referenceDate).prompts.forEach((prompt) => {
+      items.push({
+        id: `logical-day:${prompt.id}`,
+        source: "logical-day",
+        title: prompt.title,
+        description: prompt.description,
+        tone: prompt.tone,
+        action: { kind: prompt.kind === "end-day-suggestion" ? "end-day" : "repair-day", label: prompt.kind === "end-day-suggestion" ? "End day" : "Repair day" },
+        dismissible: true
+      });
+    });
+
+    if (todoSnapshot && todoSnapshot.overdueTasks.length > 0) {
+      items.push({
+        id: `tasks:overdue:${todayKey}:${todoSnapshot.overdueTasks.length}`,
+        source: "tasks",
+        title: `${todoSnapshot.overdueTasks.length} overdue task${todoSnapshot.overdueTasks.length === 1 ? "" : "s"}`,
+        description: todoSnapshot.overdueTasks.slice(0, 2).map(({ project, task }) => `${project} • ${task.text}`).join(" • "),
+        tone: "alert",
+        action: { kind: "open-master-todo", label: "Open hub" },
+        dismissible: true
+      });
+    }
+
+    if (todoSnapshot && todoSnapshot.blockedTasks.length > 0) {
+      items.push({
+        id: `tasks:blocked:${todayKey}:${todoSnapshot.blockedTasks.length}`,
+        source: "tasks",
+        title: `${todoSnapshot.blockedTasks.length} blocked task${todoSnapshot.blockedTasks.length === 1 ? "" : "s"}`,
+        description: todoSnapshot.blockedTasks.slice(0, 2).map(({ project, task }) => `${project} • ${task.text}${task.blockedReason ? ` (${task.blockedReason})` : ""}`).join(" • "),
+        tone: "state",
+        action: { kind: "open-master-todo", label: "Open hub" },
+        dismissible: true
+      });
+    }
+
+    if (todoSnapshot && (todoSnapshot.cleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
+      items.push({
+        id: `tasks:cleanup:${todayKey}:${todoSnapshot.cleanupSuggestions.length}:${todoSnapshot.staleProjects.length}`,
+        source: "tasks",
+        title: "Cleanup and stale work need review",
+        description: [
+          todoSnapshot.staleProjects.length > 0 ? `${todoSnapshot.staleProjects.length} stale project${todoSnapshot.staleProjects.length === 1 ? "" : "s"}` : "",
+          todoSnapshot.cleanupSuggestions[0] ?? ""
+        ].filter((value) => value.length > 0).join(" • "),
+        tone: "alert",
+        action: { kind: "open-cleanup-note", label: "Open cleanup note" },
+        dismissible: true
+      });
+    }
+
+    const dismissed = new Set(this.data.uiState.dismissedNotificationIds);
+    return items.filter((item) => !item.dismissible || !dismissed.has(item.id));
+  }
+
   async getCalendarProjectOptions(): Promise<Array<{ name: string; notePath: string; wikiLink: string }>> {
     const snapshot = await this.getTodoSnapshot();
     if (!snapshot) {
@@ -4118,7 +4279,17 @@ export default class DailyDashboardPlugin extends Plugin {
       entries,
       calendarEvents,
       dayState,
-      noteIndex: normalizeNoteIndexCache(loaded?.noteIndex)
+      noteIndex: normalizeNoteIndexCache(loaded?.noteIndex),
+      uiState: this.normalizeUiState(loaded?.uiState)
+    };
+  }
+
+  private normalizeUiState(state: Partial<DashboardUiState> | null | undefined): DashboardUiState {
+    return {
+      onboardingCompleted: Boolean(state?.onboardingCompleted),
+      dismissedNotificationIds: Array.isArray(state?.dismissedNotificationIds)
+        ? state.dismissedNotificationIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 200)
+        : []
     };
   }
 
@@ -4984,7 +5155,8 @@ export default class DailyDashboardPlugin extends Plugin {
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
       dayState: this.data.dayState,
-      noteIndex: this.data.noteIndex
+      noteIndex: this.data.noteIndex,
+      uiState: this.data.uiState
     });
   }
 

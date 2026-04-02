@@ -27,6 +27,8 @@ import {
   type CreateProjectInput,
   type DayRepairInput,
   type DashboardFocusDisplayItem,
+  type DashboardNotificationItem,
+  type DashboardSettings,
   type DashboardTone,
   type DashboardViewMode,
   type FoodEntry,
@@ -296,6 +298,37 @@ export class DailyDashboardView extends ItemView {
     new DashboardShortcutHelpModal(this.app).open();
   }
 
+  private async handleNotificationAction(notification: DashboardNotificationItem): Promise<void> {
+    const action = notification.action;
+    if (!action) {
+      return;
+    }
+
+    switch (action.kind) {
+      case "open-setup":
+        await this.plugin.openFirstRunSetupWizard();
+        return;
+      case "open-master-todo":
+        await this.plugin.openMasterTodo();
+        return;
+      case "open-cleanup-note":
+        await this.plugin.showCleanupSuggestions();
+        return;
+      case "end-day":
+        await this.plugin.endLogicalDay();
+        return;
+      case "repair-day":
+        await this.plugin.openLogicalDayRepairFlow();
+        return;
+      default:
+        return;
+    }
+  }
+
+  private async dismissNotification(notificationId: string): Promise<void> {
+    await this.plugin.dismissDashboardNotification(notificationId);
+  }
+
   private async runDestructiveAction(label: string, action: () => Promise<void>, undo: () => Promise<void>): Promise<void> {
     await action();
     this.pendingUndoAction = { label, undo };
@@ -488,6 +521,7 @@ export class DailyDashboardView extends ItemView {
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
       const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
+      const dashboardNotifications = this.plugin.getDashboardNotifications(todoSnapshot, calendarSnapshot);
       const weeklyAgenda = this.plugin.getWeeklyAgenda(todayEntry.date);
       const suggestedTop3 = this.plugin.getSuggestedTop3Candidates(todoSnapshot, calendarSnapshot);
       const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
@@ -551,6 +585,10 @@ export class DailyDashboardView extends ItemView {
       stalePill.addClass("is-compact");
       const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
       statePill.addClass("is-compact");
+      if (dashboardNotifications.length > 0) {
+        const noticePill = createStatPill(heroMeta, `${dashboardNotifications.length} alerts`, "bell-ring", dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : "focus");
+        noticePill.addClass("is-compact");
+      }
       if (hiddenLayoutCardCount > 0) {
         const hiddenPill = createStatPill(heroMeta, `${hiddenLayoutCardCount} hidden`, "layout-dashboard", "log");
         hiddenPill.addClass("is-compact");
@@ -656,6 +694,38 @@ export class DailyDashboardView extends ItemView {
             });
           });
           if (day.events.length > 3) {
+
+        const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
+          icon: "bell-ring",
+          eyebrow: "Triage",
+          tone: dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
+          tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
+        });
+        const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
+        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
+        createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
+        const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
+        if (dashboardNotifications.length === 0) {
+          notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
+        } else {
+          dashboardNotifications.slice(0, 8).forEach((notification) => {
+            const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
+            row.addClass(`is-${notification.tone}`);
+            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
+            copy.createEl("strong", { text: notification.title });
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
+            const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+            if (notification.action) {
+              createButton(actions, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
+            }
+            if (notification.dismissible) {
+              createButton(actions, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
+            }
+          });
+        }
             copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${day.events.length - 3} more item${day.events.length - 3 === 1 ? "" : "s"}` });
           }
         }
@@ -3630,6 +3700,268 @@ export class DashboardShortcutHelpModal extends Modal {
   }
 }
 
+export class FirstRunSetupWizardModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private stepIndex = 0;
+  private settingsValue: DashboardSettings;
+
+  constructor(app: App, plugin: DailyDashboardPlugin) {
+    super(app);
+    this.plugin = plugin;
+    this.settingsValue = { ...plugin.getSettings() };
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-setup-modal");
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-setup-modal");
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.setTitle(`First-Run Setup • Step ${this.stepIndex + 1} of 4`);
+
+    const intro = contentEl.createDiv({ cls: "daily-dashboard-setup-intro" });
+    intro.createEl("strong", { text: FIRST_RUN_SETUP_STEPS[this.stepIndex].title });
+    intro.createEl("span", { cls: "daily-dashboard-row-meta", text: FIRST_RUN_SETUP_STEPS[this.stepIndex].description });
+
+    const progress = contentEl.createDiv({ cls: "daily-dashboard-chip-row" });
+    FIRST_RUN_SETUP_STEPS.forEach((step, index) => {
+      createSemanticChip(progress, `${index + 1}. ${step.shortLabel}`, index === this.stepIndex ? "focus" : index < this.stepIndex ? "done" : "neutral");
+    });
+
+    switch (this.stepIndex) {
+      case 0:
+        this.renderIdentityStep(contentEl);
+        break;
+      case 1:
+        this.renderProjectWorkflowStep(contentEl);
+        break;
+      case 2:
+        this.renderTrackingStep(contentEl);
+        break;
+      default:
+        this.renderAiStep(contentEl);
+        break;
+    }
+
+    const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(footer, "Close for now", async () => {
+      this.close();
+    }, false, "x");
+    if (this.stepIndex > 0) {
+      createButton(footer, "Back", async () => {
+        this.stepIndex -= 1;
+        this.renderContent();
+      }, false, "arrow-left");
+    }
+    if (this.stepIndex < FIRST_RUN_SETUP_STEPS.length - 1) {
+      createButton(footer, "Next", async () => {
+        this.stepIndex += 1;
+        this.renderContent();
+      }, true, "arrow-right");
+    } else {
+      createButton(footer, "Save and open dashboard", async () => {
+        await this.plugin.updateSettings(this.settingsValue);
+        await this.plugin.completeFirstRunSetupWizard();
+        await this.plugin.activateDashboardView();
+        this.close();
+      }, true, "check");
+    }
+  }
+
+  private renderIdentityStep(parent: HTMLElement): void {
+    new Setting(parent)
+      .setName("Dashboard title")
+      .setDesc("Shown in the hero area at the top of the dashboard.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.dashboardTitle)
+          .setValue(this.settingsValue.dashboardTitle)
+          .onChange((value) => {
+            this.settingsValue.dashboardTitle = value.trim() || DEFAULT_SETTINGS.dashboardTitle;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Daily log folder")
+      .setDesc("Where readable per-day markdown logs are written.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.dailyLogFolder)
+          .setValue(this.settingsValue.dailyLogFolder)
+          .onChange((value) => {
+            this.settingsValue.dailyLogFolder = value.trim() || DEFAULT_SETTINGS.dailyLogFolder;
+          });
+      });
+  }
+
+  private renderProjectWorkflowStep(parent: HTMLElement): void {
+    new Setting(parent)
+      .setName("Master task hub path")
+      .setDesc("The markdown note used for project health, quick add, promotion, and cleanup workflows.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.masterTodoPath)
+          .setValue(this.settingsValue.masterTodoPath)
+          .onChange((value) => {
+            this.settingsValue.masterTodoPath = value.trim() || DEFAULT_SETTINGS.masterTodoPath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Project notes folder")
+      .setDesc("Where new project notes will be created by the dashboard intake flow.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.projectNotesFolder)
+          .setValue(this.settingsValue.projectNotesFolder)
+          .onChange((value) => {
+            this.settingsValue.projectNotesFolder = value.trim() || DEFAULT_SETTINGS.projectNotesFolder;
+          });
+      });
+
+    const tips = parent.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+    [
+      "Point the plugin at the same master task hub you already use for active project checklists.",
+      "If you do not have one yet, keep the default path and create the note later from the dashboard flows."
+    ].forEach((tip) => {
+      const row = tips.createDiv({ cls: "daily-dashboard-project-row" });
+      row.createEl("span", { text: tip });
+    });
+  }
+
+  private renderTrackingStep(parent: HTMLElement): void {
+    new Setting(parent)
+      .setName("Weekly report folder")
+      .setDesc("Where generated weekly summaries should be written.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.weeklyReportFolder)
+          .setValue(this.settingsValue.weeklyReportFolder)
+          .onChange((value) => {
+            this.settingsValue.weeklyReportFolder = value.trim() || DEFAULT_SETTINGS.weeklyReportFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Monthly report folder")
+      .setDesc("Where generated monthly summaries should be written.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.monthlyReportFolder)
+          .setValue(this.settingsValue.monthlyReportFolder)
+          .onChange((value) => {
+            this.settingsValue.monthlyReportFolder = value.trim() || DEFAULT_SETTINGS.monthlyReportFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Export folder")
+      .setDesc("Where markdown and CSV dashboard exports should land.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.exportFolder)
+          .setValue(this.settingsValue.exportFolder)
+          .onChange((value) => {
+            this.settingsValue.exportFolder = value.trim() || DEFAULT_SETTINGS.exportFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Enable calendar")
+      .setDesc("Turns on recurring events, reminders, and agenda cards.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.settingsValue.calendarEnabled).onChange((value) => {
+          this.settingsValue.calendarEnabled = value;
+        });
+      });
+
+    new Setting(parent)
+      .setName("Calendar document path")
+      .setDesc("Markdown file used to mirror dashboard calendar data for review and AI context.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.calendarDocumentPath)
+          .setValue(this.settingsValue.calendarDocumentPath)
+          .onChange((value) => {
+            this.settingsValue.calendarDocumentPath = value.trim() || DEFAULT_SETTINGS.calendarDocumentPath;
+          });
+      });
+  }
+
+  private renderAiStep(parent: HTMLElement): void {
+    new Setting(parent)
+      .setName("AI output folder")
+      .setDesc("Where AI-generated markdown notes should be written.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiOutputFolder)
+          .setValue(this.settingsValue.aiOutputFolder)
+          .onChange((value) => {
+            this.settingsValue.aiOutputFolder = value.trim() || DEFAULT_SETTINGS.aiOutputFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("AI key source")
+      .setDesc("Environment variable is safer if you already keep the key outside plugin data.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("settings", "Stored in plugin settings");
+        dropdown.addOption("env", "Environment variable");
+        dropdown.setValue(this.settingsValue.aiApiKeySource);
+        dropdown.onChange((value) => {
+          this.settingsValue.aiApiKeySource = value === "env" ? "env" : "settings";
+          this.renderContent();
+        });
+      });
+
+    if (this.settingsValue.aiApiKeySource === "env") {
+      new Setting(parent)
+        .setName("Environment variable name")
+        .setDesc("The environment variable the plugin will read for the API key.")
+        .addText((text) => {
+          text
+            .setPlaceholder(DEFAULT_SETTINGS.aiApiKeyEnvVar)
+            .setValue(this.settingsValue.aiApiKeyEnvVar)
+            .onChange((value) => {
+              this.settingsValue.aiApiKeyEnvVar = value.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar;
+            });
+        });
+    } else {
+      new Setting(parent)
+        .setName("AI API key")
+        .setDesc("Optional. Leave blank if you want to configure AI later.")
+        .addText((text) => {
+          text
+            .setPlaceholder("sk-...")
+            .setValue(this.settingsValue.aiApiKey)
+            .onChange((value) => {
+              this.settingsValue.aiApiKey = value.trim();
+            });
+          text.inputEl.type = "password";
+        });
+    }
+
+    new Setting(parent)
+      .setName("AI model")
+      .setDesc("Default chat model for dashboard AI workflows.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiModel)
+          .setValue(this.settingsValue.aiModel)
+          .onChange((value) => {
+            this.settingsValue.aiModel = value.trim() || DEFAULT_SETTINGS.aiModel;
+          });
+      });
+  }
+}
+
 export class CreateProjectModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private categories: string[];
@@ -4338,6 +4670,15 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
     containerEl.createEl("h2", { text: "Daily Dashboard" });
 
     new Setting(containerEl)
+      .setName("Setup wizard")
+      .setDesc("Launch the guided setup flow again if you want to re-walk the initial dashboard configuration.")
+      .addButton((button) => {
+        button.setButtonText("Open wizard").setCta().onClick(() => {
+          void this.plugin.openFirstRunSetupWizard();
+        });
+      });
+
+    new Setting(containerEl)
       .setName("Dashboard title")
       .setDesc("Displayed at the top of the custom dashboard tab.")
       .addText((text) => {
@@ -4853,6 +5194,12 @@ type DashboardUndoAction = {
   undo: () => Promise<void>;
 };
 
+type FirstRunSetupStep = {
+  shortLabel: string;
+  title: string;
+  description: string;
+};
+
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
@@ -4866,22 +5213,23 @@ const DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
 
 const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
-  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false },
-  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
-  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
-  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
-  { key: "quick-add-to-project", title: "Quick Add To Project", order: 6, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 7, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 8, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
-  { key: "searchable-work-log", title: "Searchable Work Log", order: 12, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 13, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+  { key: "notification-center", title: "Notification Center", order: 1, hidden: false, pinned: false },
+  { key: "day-flow", title: "Day Flow", order: 2, hidden: false, pinned: true },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 3, hidden: false, pinned: false },
+  { key: "state-and-friction", title: "State And Friction", order: 4, hidden: false, pinned: false },
+  { key: "gamification-center", title: "Gamification Center", order: 5, hidden: false, pinned: false },
+  { key: "habits", title: "Habits", order: 6, hidden: false, pinned: false },
+  { key: "quick-add-to-project", title: "Quick Add To Project", order: 7, hidden: false, pinned: false },
+  { key: "food-log", title: "Food Log", order: 8, hidden: false, pinned: false },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 9, hidden: false, pinned: false },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 10, hidden: false, pinned: false },
+  { key: "timeline-search", title: "Timeline Search", order: 11, hidden: false, pinned: false },
+  { key: "heatmaps", title: "Heatmaps", order: 12, hidden: false, pinned: false },
+  { key: "searchable-work-log", title: "Searchable Work Log", order: 13, hidden: false, pinned: false },
+  { key: "ai-workspace", title: "AI Workspace", order: 14, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 15, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 16, hidden: false, pinned: false },
+  { key: "completed-today", title: "Completed Today", order: 17, hidden: false, pinned: false }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -4894,6 +5242,29 @@ const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
   { keys: "Alt+Shift+A", label: "Ask AI", description: "Open the dashboard ask-AI modal." },
   { keys: "Alt+Shift+S", label: "Sync repeating tasks", description: "Run repeating-task sync against the project hub." },
   { keys: "Alt+Shift+?", label: "Show shortcut help", description: "Open this shortcut list." }
+];
+
+const FIRST_RUN_SETUP_STEPS: FirstRunSetupStep[] = [
+  {
+    shortLabel: "Identity",
+    title: "Name the dashboard and log destination",
+    description: "Start with the title and daily-log location so the dashboard writes somewhere intentional from day one."
+  },
+  {
+    shortLabel: "Projects",
+    title: "Connect the project workflow",
+    description: "Point the plugin at the master task hub and project-notes folder used for health, quick add, and cleanup flows."
+  },
+  {
+    shortLabel: "Tracking",
+    title: "Confirm reporting and calendar paths",
+    description: "Set the output folders for weekly, monthly, and export files, then decide whether the calendar should be active immediately."
+  },
+  {
+    shortLabel: "AI",
+    title: "Choose the AI defaults",
+    description: "Pick where AI notes go and whether the plugin should read its key from settings or an environment variable."
+  }
 ];
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {

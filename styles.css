@@ -313,6 +313,7 @@
 }
 
 .daily-dashboard-card--weekly-agenda,
+.daily-dashboard-card--notification-center,
 .daily-dashboard-card--top-3-for-today,
 .daily-dashboard-card--state-and-friction,
 .daily-dashboard-card--gamification-center,
@@ -699,6 +700,7 @@
   grid-column: span 18;
 }
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--weekly-agenda,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--notification-center,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--gamification-center,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--timeline-search,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--heatmaps {
@@ -1252,6 +1254,22 @@
   gap: 16px;
 }
 
+.daily-dashboard-setup-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.daily-dashboard-setup-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--daily-dashboard-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+}
+
 .daily-dashboard-layout-list {
   display: flex;
   flex-direction: column;
@@ -1285,6 +1303,19 @@
   opacity: 0.45;
   cursor: default;
   pointer-events: none;
+}
+
+.daily-dashboard-notification-row {
+  align-items: flex-start;
+}
+
+.daily-dashboard-notification-row.is-alert {
+  border-color: color-mix(in srgb, #ff8b7d 28%, var(--background-modifier-border));
+}
+
+.daily-dashboard-notification-row.is-focus,
+.daily-dashboard-notification-row.is-state {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 22%, var(--background-modifier-border));
 }
 
 .daily-dashboard-date-pill.is-compact,

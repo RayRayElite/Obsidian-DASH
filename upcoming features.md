@@ -117,8 +117,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add nested collapsible subsections inside cards for finer-grained control.
 - [x] Add keyboard shortcuts for major dashboard actions.
 - [x] Add undo for destructive actions.
-- [ ] Add notification center for reminders and system notices.
-- [ ] Add first-run setup wizard.
+- [x] Add notification center for reminders and system notices.
+- [x] Add first-run setup wizard.
 
 ## Suggested Implementation Order
 

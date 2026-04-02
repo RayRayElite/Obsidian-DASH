@@ -434,6 +434,7 @@ export interface DashboardPluginData {
   calendarEvents: CalendarEventEntry[];
   dayState: DayLifecycleState;
   noteIndex: NoteIndexCache;
+  uiState: DashboardUiState;
 }
 
 export interface NoteIndexChunk {
@@ -569,6 +570,28 @@ export interface SavedDashboardFilter {
   name: string;
   workLogFilters: WorkLogFilters;
   timelineFilters: TimelineSearchFilters;
+}
+
+export interface DashboardUiState {
+  onboardingCompleted: boolean;
+  dismissedNotificationIds: string[];
+}
+
+export type DashboardNotificationActionKind = "open-setup" | "open-master-todo" | "open-cleanup-note" | "end-day" | "repair-day";
+
+export interface DashboardNotificationAction {
+  kind: DashboardNotificationActionKind;
+  label: string;
+}
+
+export interface DashboardNotificationItem {
+  id: string;
+  source: "calendar" | "logical-day" | "tasks" | "system";
+  title: string;
+  description: string;
+  tone: DashboardTone;
+  action?: DashboardNotificationAction;
+  dismissible: boolean;
 }
 
 export interface QuickAddState {
