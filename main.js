@@ -335,6 +335,7 @@ function createEmptyEntry(date, habits) {
     energyScore: 0,
     anxietyScore: 0,
     todayFocus: [],
+    nextUpFocus: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
@@ -373,13 +374,19 @@ function normalizeTodayFocusItems(value) {
   }
   return value.map((item) => normalizeTodayFocusItem(item)).filter((item) => item !== null).slice(0, 3);
 }
+function normalizeNextUpFocusItems(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => normalizeNextUpFocusItem(item)).filter((item) => item !== null).slice(0, 9);
+}
 function getTodayFocusTexts(items) {
   return items.map((item) => item.text);
 }
 function normalizeTodayFocusItem(value) {
   if (typeof value === "string") {
     const text2 = value.trim();
-    return text2.length > 0 ? { text: text2, status: "pending", workSessions: [], completedAt: null } : null;
+    return text2.length > 0 ? { text: text2, notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null } : null;
   }
   if (!value || typeof value !== "object") {
     return null;
@@ -395,9 +402,30 @@ function normalizeTodayFocusItem(value) {
   })) : [];
   return {
     text,
+    notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
+    estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null,
     status: normalizeTodayFocusStatus(rawItem.status),
     workSessions,
     completedAt: typeof rawItem.completedAt === "string" && rawItem.completedAt.trim().length > 0 ? rawItem.completedAt : null
+  };
+}
+function normalizeNextUpFocusItem(value) {
+  if (typeof value === "string") {
+    const text2 = value.trim();
+    return text2.length > 0 ? { text: text2, notes: "", estimateMinutes: null } : null;
+  }
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const rawItem = value;
+  const text = typeof rawItem.text === "string" ? rawItem.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  return {
+    text,
+    notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
+    estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null
   };
 }
 function parseHabitDefinitions(value) {
@@ -662,6 +690,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`) : ["- None logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
   const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item) => renderTodayFocusLine(item)) : ["- No focus items set"];
+  const nextUpLines = entry.nextUpFocus.length > 0 ? entry.nextUpFocus.map((item) => renderNextUpFocusLine(item)) : ["- No queued items"];
   const workSessionLines = entry.workSessions.length > 0 ? entry.workSessions.map((session) => {
     var _a2;
     return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
@@ -745,6 +774,9 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "## Top 3 For Today",
     ...focusLines,
     "",
+    "## Next Up",
+    ...nextUpLines,
+    "",
     "## Calendar Events",
     ...calendarEventLines,
     "",
@@ -821,6 +853,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
   }
   const payloadLines = [];
   const focusLines = [];
+  const nextUpLines = [];
   let currentSection = "";
   let inPayload = false;
   for (; index < lines.length; index += 1) {
@@ -831,6 +864,10 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     }
     if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
       focusLines.push(trimmed.slice(2).trim());
+      continue;
+    }
+    if (currentSection === "next up" && trimmed.startsWith("- ")) {
+      nextUpLines.push(trimmed.slice(2).trim());
       continue;
     }
     if (currentSection !== "entry payload") {
@@ -858,6 +895,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
   }
   const baseEntry = createEmptyEntry(date, habits);
   const todayFocus = Array.isArray(parsedEntry.todayFocus) ? normalizeTodayFocusItems(parsedEntry.todayFocus) : focusLines.map((line) => parseTodayFocusLine(line)).filter((item) => item !== null).slice(0, 3);
+  const nextUpFocus = Array.isArray(parsedEntry.nextUpFocus) ? parsedEntry.nextUpFocus.map((item) => parseNextUpFocusItem(typeof item === "string" ? item : renderNextUpFocusLine(item))).filter((item) => item !== null) : nextUpLines.map((line) => parseNextUpFocusItem(line)).filter((item) => item !== null);
   return {
     ...baseEntry,
     ...parsedEntry,
@@ -874,6 +912,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     habits: (_o = parsedEntry.habits) != null ? _o : baseEntry.habits,
     habitEvents: (_p = parsedEntry.habitEvents) != null ? _p : baseEntry.habitEvents,
     todayFocus,
+    nextUpFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -1135,28 +1174,87 @@ function getTrackedTodayFocusMinutes(item) {
 function renderTodayFocusLine(item) {
   const workedMinutes = getTrackedTodayFocusMinutes(item);
   const statusLabel = item.status === "working" ? "Working on" : item.status === "done" ? "Done" : "Queued";
-  const trackedSuffix = workedMinutes > 0 ? ` (tracked: ${formatMinutesAsHours(workedMinutes)})` : "";
-  return `- [${statusLabel}] ${item.text}${trackedSuffix}`;
+  const detailParts = [
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
+    workedMinutes > 0 ? `tracked: ${formatMinutesAsHours(workedMinutes)}` : "",
+    item.notes ? `notes: ${item.notes}` : ""
+  ].filter((value) => value.length > 0);
+  return `- [${statusLabel}] ${item.text}${detailParts.length > 0 ? ` (${detailParts.join(" | ")})` : ""}`;
 }
 function parseTodayFocusLine(line) {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i;
   const normalized = line.trim();
   if (!normalized || normalized.toLowerCase() === "no focus items set") {
     return null;
   }
-  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\(tracked:\s+.+\))?$/i);
+  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\((?<details>.+)\))?$/i);
   const rawStatus = (_c = (_b = (_a = match == null ? void 0 : match.groups) == null ? void 0 : _a.status) == null ? void 0 : _b.trim().toLowerCase()) != null ? _c : "";
   const text = ((_e = (_d = match == null ? void 0 : match.groups) == null ? void 0 : _d.text) != null ? _e : normalized).trim();
+  const details = (_h = (_g = (_f = match == null ? void 0 : match.groups) == null ? void 0 : _f.details) == null ? void 0 : _g.trim()) != null ? _h : "";
   if (!text) {
     return null;
   }
   const status = rawStatus === "working on" ? "working" : rawStatus === "done" ? "done" : "pending";
   return {
     text,
+    notes: (_i = extractFocusDetail(details, "notes")) != null ? _i : "",
+    estimateMinutes: parseDurationLabel(extractFocusDetail(details, "estimate")),
     status,
     workSessions: [],
     completedAt: null
   };
+}
+function renderNextUpFocusLine(item) {
+  const details = [
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
+    item.notes ? `notes: ${item.notes}` : ""
+  ].filter((value) => value.length > 0);
+  return `- ${item.text}${details.length > 0 ? ` (${details.join(" | ")})` : ""}`;
+}
+function parseNextUpFocusItem(line) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  const normalized = line.trim();
+  if (!normalized || normalized.toLowerCase() === "no queued items") {
+    return null;
+  }
+  const match = normalized.match(/^(?<text>.+?)(?:\s+\((?<details>.+)\))?$/i);
+  const text = (_c = (_b = (_a = match == null ? void 0 : match.groups) == null ? void 0 : _a.text) == null ? void 0 : _b.trim()) != null ? _c : normalized;
+  const details = (_f = (_e = (_d = match == null ? void 0 : match.groups) == null ? void 0 : _d.details) == null ? void 0 : _e.trim()) != null ? _f : "";
+  if (!text) {
+    return null;
+  }
+  return {
+    text,
+    notes: (_g = extractFocusDetail(details, "notes")) != null ? _g : "",
+    estimateMinutes: parseDurationLabel(extractFocusDetail(details, "estimate"))
+  };
+}
+function extractFocusDetail(details, label) {
+  if (!details) {
+    return null;
+  }
+  const segment = details.split("|").map((part) => part.trim()).find((part) => part.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+  if (!segment) {
+    return null;
+  }
+  return segment.slice(label.length + 1).trim();
+}
+function parseDurationLabel(value) {
+  var _a, _b;
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  const hourMatch = normalized.match(/^(?<hours>\d+(?:\.\d+)?)h$/);
+  if ((_a = hourMatch == null ? void 0 : hourMatch.groups) == null ? void 0 : _a.hours) {
+    return Math.round(Number(hourMatch.groups.hours) * 60);
+  }
+  const minuteMatch = normalized.match(/^(?<minutes>\d+)m$/);
+  if ((_b = minuteMatch == null ? void 0 : minuteMatch.groups) == null ? void 0 : _b.minutes) {
+    return Number(minuteMatch.groups.minutes);
+  }
+  const plainNumber = Number(normalized);
+  return Number.isFinite(plainNumber) ? Math.round(plainNumber) : null;
 }
 
 // src/dashboard-todo.ts
@@ -2436,6 +2534,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               cls: "daily-dashboard-habit-meta",
               text: this.getFocusDisplayMeta(item)
             });
+            if (item.notes) {
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: item.notes
+              });
+            }
           }
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
           if (item.kind === "focus") {
@@ -2464,6 +2568,23 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
             }
             if (!isEditingFocus) {
+              createButton(controls, "Details", async () => {
+                var _a2, _b2;
+                new FocusCaptureModal(this.app, {
+                  mode: "edit",
+                  todayHasTop3Capacity: true,
+                  initialText: item.text,
+                  initialNotes: (_a2 = item.notes) != null ? _a2 : "",
+                  initialEstimateMinutes: (_b2 = item.estimateMinutes) != null ? _b2 : null,
+                  initialDestination: "top3",
+                  onSubmit: async (payload) => {
+                    const saved = await this.plugin.updateTodayFocusDetails(focusIndex, payload);
+                    if (saved) {
+                      await this.render();
+                    }
+                  }
+                }).open();
+              }, false, "notebook-pen");
               createButton(controls, "Edit", async () => {
                 this.startEditingFocusItem(focusIndex, item.text);
                 await this.render();
@@ -2519,6 +2640,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
+      const focusUtilityActions = focusCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(focusUtilityActions, "Quick capture", async () => this.plugin.openQuickCaptureFocusFlow(), false, "rocket");
+      createButton(focusUtilityActions, "Pause all -> break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause-circle");
       const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
       const carryForwardCandidates = this.plugin.getCarryForwardFocusCandidates(todayEntry.date);
       if (carryForwardCandidates.length > 0) {
@@ -2531,6 +2655,71 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           await this.render();
         }, false, "arrow-down-to-line");
       }
+      const nextUpItems = this.plugin.getNextUpFocusItems(todayEntry.date);
+      const nextUpSection = this.createCollapsibleSubsection(focusCard, "focus-next-up", "Next Up", "Keep overflow queued without overfilling the Top 3.");
+      if (nextUpItems.length === 0) {
+        nextUpSection.createDiv({
+          cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+          text: "No queued follow-up items yet."
+        });
+      } else {
+        const nextUpList = nextUpSection.createDiv({ cls: "daily-dashboard-focus-list" });
+        nextUpItems.forEach((item, index) => {
+          const row = nextUpList.createDiv({ cls: "daily-dashboard-focus-row is-pending" });
+          const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", {
+            cls: "daily-dashboard-habit-meta",
+            text: [
+              item.estimateMinutes ? `Estimate ${formatMinutesAsHours(item.estimateMinutes)}` : "No estimate",
+              item.notes ? "Queued note" : "Queued"
+            ].join(" \u2022 ")
+          });
+          if (item.notes) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.notes });
+          }
+          const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
+          createButton(controls, "Promote", async () => {
+            const promoted = await this.plugin.promoteNextUpFocusItem(index);
+            if (promoted) {
+              await this.render();
+            }
+          }, false, "arrow-up-circle");
+          createButton(controls, "Edit", async () => {
+            new FocusCaptureModal(this.app, {
+              mode: "capture",
+              todayHasTop3Capacity: true,
+              initialText: item.text,
+              initialNotes: item.notes,
+              initialEstimateMinutes: item.estimateMinutes,
+              initialDestination: "next-up",
+              submitLabel: "Save queued item",
+              onSubmit: async (payload) => {
+                await this.plugin.removeNextUpFocusItem(index);
+                await this.plugin.addNextUpFocusItem(payload);
+                await this.render();
+              }
+            }).open();
+          }, false, "pencil");
+          createButton(controls, "Remove", async () => {
+            await this.plugin.removeNextUpFocusItem(index);
+            await this.render();
+          }, false, "x");
+        });
+      }
+      const nextUpActions = nextUpSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(nextUpActions, "Add next up", async () => {
+        new FocusCaptureModal(this.app, {
+          mode: "capture",
+          todayHasTop3Capacity: true,
+          initialDestination: "next-up",
+          submitLabel: "Queue item",
+          onSubmit: async (payload) => {
+            await this.plugin.addNextUpFocusItem(payload);
+            await this.render();
+          }
+        }).open();
+      }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -4234,6 +4423,97 @@ function setCollapsedSubsectionState(sectionKey, collapsed) {
 function toClassSlug(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
+var FocusCaptureModal = class extends import_obsidian3.Modal {
+  constructor(app, options) {
+    var _a, _b, _c;
+    super(app);
+    this.options = options;
+    this.textValue = (_a = options.initialText) != null ? _a : "";
+    this.notesValue = (_b = options.initialNotes) != null ? _b : "";
+    this.estimateValue = options.initialEstimateMinutes && options.initialEstimateMinutes > 0 ? `${options.initialEstimateMinutes}` : "";
+    this.destinationValue = (_c = options.initialDestination) != null ? _c : options.todayHasTop3Capacity ? "top3" : "next-up";
+  }
+  onOpen() {
+    this.setTitle(this.options.mode === "edit" ? "Edit Focus Item" : "Quick Capture Focus Item");
+    this.renderContent();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  renderContent() {
+    var _a;
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian3.Setting(contentEl).setName("Title").setDesc("The concrete task or outcome you want to track.").addText((text) => {
+      text.setPlaceholder("Ship dashboard notes UI").setValue(this.textValue).onChange((value) => {
+        this.textValue = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Estimate minutes").setDesc("Optional rough effort estimate for comparing plan versus actual.").addText((text) => {
+      text.setPlaceholder("45").setValue(this.estimateValue).onChange((value) => {
+        this.estimateValue = value;
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
+      text.inputEl.step = "5";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Destination").setDesc(this.options.todayHasTop3Capacity ? "Choose whether this belongs in the active Top 3 or the Next Up queue." : "Top 3 is full, so new captures will usually go to Next Up.").addDropdown((dropdown) => {
+      dropdown.addOption("top3", "Top 3");
+      dropdown.addOption("next-up", "Next Up");
+      dropdown.setValue(this.destinationValue);
+      if (!this.options.todayHasTop3Capacity && this.destinationValue === "top3") {
+        dropdown.setValue("next-up");
+        this.destinationValue = "next-up";
+      }
+      dropdown.onChange((value) => {
+        this.destinationValue = value === "top3" ? "top3" : "next-up";
+      });
+    });
+    contentEl.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes" });
+    const notesArea = contentEl.createEl("textarea", { cls: "daily-dashboard-textarea" });
+    notesArea.rows = 5;
+    notesArea.placeholder = "Context, definition of done, blockers, or follow-up details.";
+    notesArea.value = this.notesValue;
+    notesArea.addEventListener("input", () => {
+      this.notesValue = notesArea.value;
+    });
+    const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    const submitButton = actions.createEl("button", {
+      cls: "daily-dashboard-primary-button",
+      text: (_a = this.options.submitLabel) != null ? _a : this.options.mode === "edit" ? "Save changes" : "Capture"
+    });
+    submitButton.type = "button";
+    submitButton.addEventListener("click", () => {
+      void this.submit();
+    });
+    const cancelButton = actions.createEl("button", { cls: "daily-dashboard-secondary-button", text: "Cancel" });
+    cancelButton.type = "button";
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  async submit() {
+    const text = this.textValue.trim();
+    if (!text) {
+      new import_obsidian3.Notice("Focus item text is required.");
+      return;
+    }
+    const estimateMinutes = this.estimateValue.trim().length > 0 ? Number(this.estimateValue) : null;
+    if (estimateMinutes !== null && (!Number.isFinite(estimateMinutes) || estimateMinutes < 0)) {
+      new import_obsidian3.Notice("Estimate minutes must be a valid non-negative number.");
+      return;
+    }
+    if (this.destinationValue === "top3" && !this.options.todayHasTop3Capacity && this.options.mode !== "edit") {
+      new import_obsidian3.Notice("Top 3 is full. Capture this into Next Up instead.");
+      return;
+    }
+    await this.options.onSubmit({
+      text,
+      notes: this.notesValue.trim(),
+      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes),
+      destination: this.destinationValue
+    });
+    this.close();
+  }
+};
 var AddHabitModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
@@ -4535,6 +4815,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "End break",
       callback: () => {
         void this.stopBreakSession();
+      }
+    });
+    this.addCommand({
+      id: "pause-all-and-start-break",
+      name: "Pause everything and start break",
+      callback: () => {
+        void this.pauseAllAndStartBreak();
+      }
+    });
+    this.addCommand({
+      id: "quick-capture-focus-item",
+      name: "Quick capture focus item",
+      callback: () => {
+        void this.openQuickCaptureFocusFlow();
       }
     });
     this.addCommand({
@@ -4849,6 +5143,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       kind: "focus",
       id: `focus-${index}-${item.text.toLowerCase()}`,
       text: item.text,
+      notes: item.notes,
+      estimateMinutes: item.estimateMinutes,
       status: item.status,
       workSessions: item.workSessions,
       completedAt: item.completedAt,
@@ -4874,6 +5170,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       warningLevel: reminder.warningLevel
     }));
     return [...focusItems, ...reminderItems];
+  }
+  getNextUpFocusItems(date = this.getTodayEntry().date) {
+    const entry = this.getOrCreateEntry(date);
+    return [...entry.nextUpFocus];
   }
   getCarryForwardFocusCandidates(date = this.getTodayEntry().date) {
     const entry = this.getOrCreateEntry(date);
@@ -5471,6 +5771,24 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.persistEntry(entry);
     new import_obsidian4.Notice("Break started.");
   }
+  async pauseAllAndStartBreak() {
+    if (this.data.dayState.status !== "in-progress") {
+      new import_obsidian4.Notice("Begin your logical day before starting a break.");
+      return;
+    }
+    const entry = this.getTodayEntry();
+    if (entry.breakSessions.some((session) => session.end === null)) {
+      new import_obsidian4.Notice("A break is already active.");
+      return;
+    }
+    const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+    this.closeCompetingSessions(entry, timestamp, "break");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice("Paused active sessions and started a break.");
+  }
   async stopBreakSession() {
     const entry = this.getTodayEntry();
     const activeSession = [...entry.breakSessions].reverse().find((session) => session.end === null);
@@ -5703,7 +6021,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
   }
   async addTodayFocusItem(value) {
-    const trimmedValue = value.trim();
+    await this.addTodayFocusItemWithDetails({ text: value });
+  }
+  async addTodayFocusItemWithDetails(input) {
+    const trimmedValue = input.text.trim();
     if (!trimmedValue) {
       return;
     }
@@ -5717,7 +6038,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before adding another.");
       return;
     }
-    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)];
+    const normalizedEstimate = Number.isFinite(Number(input.estimateMinutes)) ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440) : null;
+    entry.todayFocus = [
+      ...entry.todayFocus,
+      this.createTodayFocusItem(
+        trimmedValue,
+        typeof input.notes === "string" ? input.notes.trim() : "",
+        normalizedEstimate
+      )
+    ];
     await this.persistEntry(entry);
   }
   async updateTodayFocusItem(index, value) {
@@ -5736,6 +6065,27 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     item.text = trimmedValue;
+    await this.persistEntry(entry);
+    return true;
+  }
+  async updateTodayFocusDetails(index, updates) {
+    const trimmedValue = updates.text.trim();
+    if (!trimmedValue) {
+      new import_obsidian4.Notice("Top 3 item text is required.");
+      return false;
+    }
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return false;
+    }
+    if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
+      new import_obsidian4.Notice("That Top 3 item is already listed.");
+      return false;
+    }
+    item.text = trimmedValue;
+    item.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
+    item.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes)) ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440) : null;
     await this.persistEntry(entry);
     return true;
   }
@@ -5804,6 +6154,51 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async removeTodayFocusItem(index) {
     const entry = this.getTodayEntry();
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+  async addNextUpFocusItem(input) {
+    const text = input.text.trim();
+    if (!text) {
+      return false;
+    }
+    const entry = this.getTodayEntry();
+    const alreadyExists = [...entry.todayFocus.map((item) => item.text), ...entry.nextUpFocus.map((item) => item.text)].some((candidate) => candidate.toLowerCase() === text.toLowerCase());
+    if (alreadyExists) {
+      new import_obsidian4.Notice("That item is already listed in Top 3 or Next Up.");
+      return false;
+    }
+    entry.nextUpFocus = [
+      ...entry.nextUpFocus,
+      {
+        text,
+        notes: typeof input.notes === "string" ? input.notes.trim() : "",
+        estimateMinutes: Number.isFinite(Number(input.estimateMinutes)) ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440) : null
+      }
+    ];
+    await this.persistEntry(entry);
+    return true;
+  }
+  async promoteNextUpFocusItem(index) {
+    const entry = this.getTodayEntry();
+    const item = entry.nextUpFocus[index];
+    if (!item) {
+      return false;
+    }
+    const activeFocusCount = entry.todayFocus.filter((candidate) => candidate.status !== "done").length;
+    if (activeFocusCount >= 3) {
+      new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before promoting Next Up.");
+      return false;
+    }
+    if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
+      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.notes, item.estimateMinutes)];
+    }
+    entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+    return true;
+  }
+  async removeNextUpFocusItem(index) {
+    const entry = this.getTodayEntry();
+    entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
   async updateFrictionLog(value) {
@@ -6447,6 +6842,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       energyScore: clamp(Number((_b = entry.energyScore) != null ? _b : 0), 0, 5),
       anxietyScore: clamp(Number((_c = entry.anxietyScore) != null ? _c : 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
+      nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => normalizeFoodEntry(item)).filter((item) => item !== null) : [],
@@ -6688,13 +7084,28 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       repeatUntil
     };
   }
-  createTodayFocusItem(text) {
+  createTodayFocusItem(text, notes = "", estimateMinutes = null) {
     return {
       text,
+      notes,
+      estimateMinutes,
       status: "pending",
       workSessions: [],
       completedAt: null
     };
+  }
+  async openQuickCaptureFocusFlow() {
+    new FocusCaptureModal(this.app, {
+      mode: "capture",
+      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
+      onSubmit: async (payload) => {
+        if (payload.destination === "top3") {
+          await this.addTodayFocusItemWithDetails(payload);
+          return;
+        }
+        await this.addNextUpFocusItem(payload);
+      }
+    }).open();
   }
   closeOpenTodayFocusSessions(entry, timestamp, activeIndex = -1) {
     let changed = false;

@@ -7,7 +7,7 @@ import {
   normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
-import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, NextUpFocusItem, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
 export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry, calendarEvents: CalendarEventOccurrence[] = []): string {
   const payload = JSON.stringify(entry, null, 2);
@@ -25,6 +25,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const focusLines = entry.todayFocus.length > 0
     ? entry.todayFocus.map((item) => renderTodayFocusLine(item))
     : ["- No focus items set"];
+  const nextUpLines = entry.nextUpFocus.length > 0
+    ? entry.nextUpFocus.map((item) => renderNextUpFocusLine(item))
+    : ["- No queued items"];
   const workSessionLines = entry.workSessions.length > 0
     ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked work sessions"];
@@ -110,6 +113,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "## Top 3 For Today",
     ...focusLines,
     "",
+    "## Next Up",
+    ...nextUpLines,
+    "",
     "## Calendar Events",
     ...calendarEventLines,
     "",
@@ -191,6 +197,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
 
   const payloadLines: string[] = [];
   const focusLines: string[] = [];
+  const nextUpLines: string[] = [];
   let currentSection = "";
   let inPayload = false;
 
@@ -203,6 +210,11 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
 
     if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
       focusLines.push(trimmed.slice(2).trim());
+      continue;
+    }
+
+    if (currentSection === "next up" && trimmed.startsWith("- ")) {
+      nextUpLines.push(trimmed.slice(2).trim());
       continue;
     }
 
@@ -241,6 +253,13 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
         .map((line) => parseTodayFocusLine(line))
         .filter((item): item is TodayFocusItem => item !== null)
         .slice(0, 3);
+  const nextUpFocus = Array.isArray(parsedEntry.nextUpFocus)
+    ? parsedEntry.nextUpFocus
+        .map((item) => parseNextUpFocusItem(typeof item === "string" ? item : renderNextUpFocusLine(item as NextUpFocusItem)))
+        .filter((item): item is NextUpFocusItem => item !== null)
+    : nextUpLines
+        .map((line) => parseNextUpFocusItem(line))
+        .filter((item): item is NextUpFocusItem => item !== null);
 
   return {
     ...baseEntry,
@@ -258,6 +277,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     habits: parsedEntry.habits ?? baseEntry.habits,
     habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
     todayFocus,
+    nextUpFocus,
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -582,8 +602,12 @@ function renderTodayFocusLine(item: TodayFocusItem): string {
     : item.status === "done"
       ? "Done"
       : "Queued";
-  const trackedSuffix = workedMinutes > 0 ? ` (tracked: ${formatMinutesAsHours(workedMinutes)})` : "";
-  return `- [${statusLabel}] ${item.text}${trackedSuffix}`;
+  const detailParts = [
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
+    workedMinutes > 0 ? `tracked: ${formatMinutesAsHours(workedMinutes)}` : "",
+    item.notes ? `notes: ${item.notes}` : ""
+  ].filter((value) => value.length > 0);
+  return `- [${statusLabel}] ${item.text}${detailParts.length > 0 ? ` (${detailParts.join(" | ")})` : ""}`;
 }
 
 function parseTodayFocusLine(line: string): TodayFocusItem | null {
@@ -592,9 +616,10 @@ function parseTodayFocusLine(line: string): TodayFocusItem | null {
     return null;
   }
 
-  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\(tracked:\s+.+\))?$/i);
+  const match = normalized.match(/^\[(?<status>[^\]]+)\]\s+(?<text>.+?)(?:\s+\((?<details>.+)\))?$/i);
   const rawStatus = match?.groups?.status?.trim().toLowerCase() ?? "";
   const text = (match?.groups?.text ?? normalized).trim();
+  const details = match?.groups?.details?.trim() ?? "";
   if (!text) {
     return null;
   }
@@ -607,8 +632,74 @@ function parseTodayFocusLine(line: string): TodayFocusItem | null {
 
   return {
     text,
+    notes: extractFocusDetail(details, "notes") ?? "",
+    estimateMinutes: parseDurationLabel(extractFocusDetail(details, "estimate")),
     status,
     workSessions: [],
     completedAt: null
   };
+}
+
+function renderNextUpFocusLine(item: NextUpFocusItem): string {
+  const details = [
+    item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
+    item.notes ? `notes: ${item.notes}` : ""
+  ].filter((value) => value.length > 0);
+  return `- ${item.text}${details.length > 0 ? ` (${details.join(" | ")})` : ""}`;
+}
+
+function parseNextUpFocusItem(line: string): NextUpFocusItem | null {
+  const normalized = line.trim();
+  if (!normalized || normalized.toLowerCase() === "no queued items") {
+    return null;
+  }
+
+  const match = normalized.match(/^(?<text>.+?)(?:\s+\((?<details>.+)\))?$/i);
+  const text = match?.groups?.text?.trim() ?? normalized;
+  const details = match?.groups?.details?.trim() ?? "";
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    notes: extractFocusDetail(details, "notes") ?? "",
+    estimateMinutes: parseDurationLabel(extractFocusDetail(details, "estimate"))
+  };
+}
+
+function extractFocusDetail(details: string, label: string): string | null {
+  if (!details) {
+    return null;
+  }
+
+  const segment = details
+    .split("|")
+    .map((part) => part.trim())
+    .find((part) => part.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+  if (!segment) {
+    return null;
+  }
+
+  return segment.slice(label.length + 1).trim();
+}
+
+function parseDurationLabel(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const hourMatch = normalized.match(/^(?<hours>\d+(?:\.\d+)?)h$/);
+  if (hourMatch?.groups?.hours) {
+    return Math.round(Number(hourMatch.groups.hours) * 60);
+  }
+
+  const minuteMatch = normalized.match(/^(?<minutes>\d+)m$/);
+  if (minuteMatch?.groups?.minutes) {
+    return Number(minuteMatch.groups.minutes);
+  }
+
+  const plainNumber = Number(normalized);
+  return Number.isFinite(plainNumber) ? Math.round(plainNumber) : null;
 }

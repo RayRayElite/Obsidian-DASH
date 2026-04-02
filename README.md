@@ -5,7 +5,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 ## What It Does
 
 - tracks repeat daily habits with per-day counts
-- stores mood, energy, Top 3 focus, friction log, timestamped food entries, sleep log, dream log, and daily notes
+- stores mood, energy, a richer Top 3 focus list with notes and effort estimates, a Next Up queue, friction log, timestamped food entries, sleep log, dream log, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration inside the active logical day for more accurate sleep and activity history
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, surface upcoming reminders below the Execution block, and sync events into markdown for later AI analysis
@@ -14,7 +14,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - can call OpenAI for AI-powered today planning, end-of-day review, weekly coaching, project triage, and freeform questions grounded in dashboard context
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
-- lets you quick-add tasks into project sections, promote project tasks into today focus, search archived work history, sync repeating tasks, and offload project references into project notes
+- lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
 - includes switchable mobile, compact, and widescreen dashboard modes plus collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 

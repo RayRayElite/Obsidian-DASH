@@ -69,6 +69,8 @@ export interface DashboardFocusDisplayItem {
   id: string;
   sourceEventId?: string;
   text: string;
+  notes?: string;
+  estimateMinutes?: number | null;
   status: TodayFocusStatus | "reminder";
   workSessions: WorkSession[];
   completedAt: string | null;
@@ -85,9 +87,17 @@ export interface DashboardFocusDisplayItem {
 
 export interface TodayFocusItem {
   text: string;
+  notes: string;
+  estimateMinutes: number | null;
   status: TodayFocusStatus;
   workSessions: WorkSession[];
   completedAt: string | null;
+}
+
+export interface NextUpFocusItem {
+  text: string;
+  notes: string;
+  estimateMinutes: number | null;
 }
 
 export interface FoodEntry {
@@ -110,6 +120,7 @@ export interface DailyEntry {
   energyScore: number;
   anxietyScore: number;
   todayFocus: TodayFocusItem[];
+  nextUpFocus: NextUpFocusItem[];
   frictionLog: string;
   missedHabits: string[];
   foodLog: FoodEntry[];

@@ -453,6 +453,12 @@ export class DailyDashboardView extends ItemView {
               cls: "daily-dashboard-habit-meta",
               text: this.getFocusDisplayMeta(item)
             });
+            if (item.notes) {
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: item.notes
+              });
+            }
           }
 
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
@@ -483,6 +489,22 @@ export class DailyDashboardView extends ItemView {
               createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
             }
             if (!isEditingFocus) {
+              createButton(controls, "Details", async () => {
+                new FocusCaptureModal(this.app, {
+                  mode: "edit",
+                  todayHasTop3Capacity: true,
+                  initialText: item.text,
+                  initialNotes: item.notes ?? "",
+                  initialEstimateMinutes: item.estimateMinutes ?? null,
+                  initialDestination: "top3",
+                  onSubmit: async (payload) => {
+                    const saved = await this.plugin.updateTodayFocusDetails(focusIndex, payload);
+                    if (saved) {
+                      await this.render();
+                    }
+                  }
+                }).open();
+              }, false, "notebook-pen");
               createButton(controls, "Edit", async () => {
                 this.startEditingFocusItem(focusIndex, item.text);
                 await this.render();
@@ -537,6 +559,9 @@ export class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
+      const focusUtilityActions = focusCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(focusUtilityActions, "Quick capture", async () => this.plugin.openQuickCaptureFocusFlow(), false, "rocket");
+      createButton(focusUtilityActions, "Pause all -> break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause-circle");
       const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
         const carryForwardCandidates = this.plugin.getCarryForwardFocusCandidates(todayEntry.date);
         if (carryForwardCandidates.length > 0) {
@@ -549,6 +574,72 @@ export class DailyDashboardView extends ItemView {
             await this.render();
           }, false, "arrow-down-to-line");
         }
+      const nextUpItems = this.plugin.getNextUpFocusItems(todayEntry.date);
+      const nextUpSection = this.createCollapsibleSubsection(focusCard, "focus-next-up", "Next Up", "Keep overflow queued without overfilling the Top 3.");
+      if (nextUpItems.length === 0) {
+        nextUpSection.createDiv({
+          cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
+          text: "No queued follow-up items yet."
+        });
+      } else {
+        const nextUpList = nextUpSection.createDiv({ cls: "daily-dashboard-focus-list" });
+        nextUpItems.forEach((item, index) => {
+          const row = nextUpList.createDiv({ cls: "daily-dashboard-focus-row is-pending" });
+          const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
+          copy.createEl("strong", { text: item.text });
+          copy.createEl("span", {
+            cls: "daily-dashboard-habit-meta",
+            text: [
+              item.estimateMinutes ? `Estimate ${formatMinutesAsHours(item.estimateMinutes)}` : "No estimate",
+              item.notes ? "Queued note" : "Queued"
+            ].join(" • ")
+          });
+          if (item.notes) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.notes });
+          }
+
+          const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
+          createButton(controls, "Promote", async () => {
+            const promoted = await this.plugin.promoteNextUpFocusItem(index);
+            if (promoted) {
+              await this.render();
+            }
+          }, false, "arrow-up-circle");
+          createButton(controls, "Edit", async () => {
+            new FocusCaptureModal(this.app, {
+              mode: "capture",
+              todayHasTop3Capacity: true,
+              initialText: item.text,
+              initialNotes: item.notes,
+              initialEstimateMinutes: item.estimateMinutes,
+              initialDestination: "next-up",
+              submitLabel: "Save queued item",
+              onSubmit: async (payload) => {
+                await this.plugin.removeNextUpFocusItem(index);
+                await this.plugin.addNextUpFocusItem(payload);
+                await this.render();
+              }
+            }).open();
+          }, false, "pencil");
+          createButton(controls, "Remove", async () => {
+            await this.plugin.removeNextUpFocusItem(index);
+            await this.render();
+          }, false, "x");
+        });
+      }
+      const nextUpActions = nextUpSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(nextUpActions, "Add next up", async () => {
+        new FocusCaptureModal(this.app, {
+          mode: "capture",
+          todayHasTop3Capacity: true,
+          initialDestination: "next-up",
+          submitLabel: "Queue item",
+          onSubmit: async (payload) => {
+            await this.plugin.addNextUpFocusItem(payload);
+            await this.render();
+          }
+        }).open();
+      }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
@@ -2769,6 +2860,155 @@ function toClassSlug(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+type FocusCaptureDestination = "top3" | "next-up";
+
+type FocusCapturePayload = {
+  text: string;
+  notes?: string;
+  estimateMinutes?: number | null;
+  destination: FocusCaptureDestination;
+};
+
+type FocusCaptureModalOptions = {
+  mode: "capture" | "edit";
+  todayHasTop3Capacity: boolean;
+  initialText?: string;
+  initialNotes?: string;
+  initialEstimateMinutes?: number | null;
+  initialDestination?: FocusCaptureDestination;
+  submitLabel?: string;
+  onSubmit: (payload: FocusCapturePayload) => Promise<void>;
+};
+
+export class FocusCaptureModal extends Modal {
+  private options: FocusCaptureModalOptions;
+  private textValue: string;
+  private notesValue: string;
+  private estimateValue: string;
+  private destinationValue: FocusCaptureDestination;
+
+  constructor(app: App, options: FocusCaptureModalOptions) {
+    super(app);
+    this.options = options;
+    this.textValue = options.initialText ?? "";
+    this.notesValue = options.initialNotes ?? "";
+    this.estimateValue = options.initialEstimateMinutes && options.initialEstimateMinutes > 0
+      ? `${options.initialEstimateMinutes}`
+      : "";
+    this.destinationValue = options.initialDestination ?? (options.todayHasTop3Capacity ? "top3" : "next-up");
+  }
+
+  onOpen(): void {
+    this.setTitle(this.options.mode === "edit" ? "Edit Focus Item" : "Quick Capture Focus Item");
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Title")
+      .setDesc("The concrete task or outcome you want to track.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Ship dashboard notes UI")
+          .setValue(this.textValue)
+          .onChange((value) => {
+            this.textValue = value;
+          });
+      });
+
+    new Setting(contentEl)
+      .setName("Estimate minutes")
+      .setDesc("Optional rough effort estimate for comparing plan versus actual.")
+      .addText((text) => {
+        text
+          .setPlaceholder("45")
+          .setValue(this.estimateValue)
+          .onChange((value) => {
+            this.estimateValue = value;
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.step = "5";
+      });
+
+    new Setting(contentEl)
+      .setName("Destination")
+      .setDesc(this.options.todayHasTop3Capacity
+        ? "Choose whether this belongs in the active Top 3 or the Next Up queue."
+        : "Top 3 is full, so new captures will usually go to Next Up.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("top3", "Top 3");
+        dropdown.addOption("next-up", "Next Up");
+        dropdown.setValue(this.destinationValue);
+        if (!this.options.todayHasTop3Capacity && this.destinationValue === "top3") {
+          dropdown.setValue("next-up");
+          this.destinationValue = "next-up";
+        }
+        dropdown.onChange((value) => {
+          this.destinationValue = value === "top3" ? "top3" : "next-up";
+        });
+      });
+
+    contentEl.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes" });
+    const notesArea = contentEl.createEl("textarea", { cls: "daily-dashboard-textarea" });
+    notesArea.rows = 5;
+    notesArea.placeholder = "Context, definition of done, blockers, or follow-up details.";
+    notesArea.value = this.notesValue;
+    notesArea.addEventListener("input", () => {
+      this.notesValue = notesArea.value;
+    });
+
+    const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    const submitButton = actions.createEl("button", {
+      cls: "daily-dashboard-primary-button",
+      text: this.options.submitLabel ?? (this.options.mode === "edit" ? "Save changes" : "Capture")
+    });
+    submitButton.type = "button";
+    submitButton.addEventListener("click", () => {
+      void this.submit();
+    });
+    const cancelButton = actions.createEl("button", { cls: "daily-dashboard-secondary-button", text: "Cancel" });
+    cancelButton.type = "button";
+    cancelButton.addEventListener("click", () => this.close());
+  }
+
+  private async submit(): Promise<void> {
+    const text = this.textValue.trim();
+    if (!text) {
+      new Notice("Focus item text is required.");
+      return;
+    }
+
+    const estimateMinutes = this.estimateValue.trim().length > 0
+      ? Number(this.estimateValue)
+      : null;
+    if (estimateMinutes !== null && (!Number.isFinite(estimateMinutes) || estimateMinutes < 0)) {
+      new Notice("Estimate minutes must be a valid non-negative number.");
+      return;
+    }
+
+    if (this.destinationValue === "top3" && !this.options.todayHasTop3Capacity && this.options.mode !== "edit") {
+      new Notice("Top 3 is full. Capture this into Next Up instead.");
+      return;
+    }
+
+    await this.options.onSubmit({
+      text,
+      notes: this.notesValue.trim(),
+      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes),
+      destination: this.destinationValue
+    });
+    this.close();
+  }
 }
 
 export class AddHabitModal extends Modal {

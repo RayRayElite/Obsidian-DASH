@@ -9,6 +9,7 @@ import {
   type DayLifecycleState,
   type FoodEntry,
   type HabitDefinition,
+  type NextUpFocusItem,
   type NoteIndexCache,
   type NoteIndexChunk,
   type NoteIndexEntry,
@@ -340,6 +341,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     energyScore: 0,
     anxietyScore: 0,
     todayFocus: [],
+    nextUpFocus: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
@@ -390,6 +392,17 @@ export function normalizeTodayFocusItems(value: unknown): TodayFocusItem[] {
     .slice(0, 3);
 }
 
+export function normalizeNextUpFocusItems(value: unknown): NextUpFocusItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeNextUpFocusItem(item))
+    .filter((item): item is NextUpFocusItem => item !== null)
+    .slice(0, 9);
+}
+
 export function getTodayFocusTexts(items: TodayFocusItem[]): string[] {
   return items.map((item) => item.text);
 }
@@ -398,7 +411,7 @@ function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
   if (typeof value === "string") {
     const text = value.trim();
     return text.length > 0
-      ? { text, status: "pending", workSessions: [], completedAt: null }
+      ? { text, notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null }
       : null;
   }
 
@@ -423,9 +436,36 @@ function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
 
   return {
     text,
+    notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
+    estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null,
     status: normalizeTodayFocusStatus(rawItem.status),
     workSessions,
     completedAt: typeof rawItem.completedAt === "string" && rawItem.completedAt.trim().length > 0 ? rawItem.completedAt : null
+  };
+}
+
+function normalizeNextUpFocusItem(value: unknown): NextUpFocusItem | null {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text.length > 0
+      ? { text, notes: "", estimateMinutes: null }
+      : null;
+  }
+
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rawItem = value as Partial<NextUpFocusItem> & { text?: unknown };
+  const text = typeof rawItem.text === "string" ? rawItem.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
+    estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null
   };
 }
 

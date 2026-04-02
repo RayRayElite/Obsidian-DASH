@@ -19,6 +19,7 @@ import {
   getRelevantIndexedNotes,
   normalizeFoodEntry,
   normalizeFolderPath,
+  normalizeNextUpFocusItems,
   normalizeTodayFocusItems,
   normalizeNoteIndexCache,
   normalizeDayState,
@@ -76,6 +77,7 @@ import {
   CreateProjectModal,
   DailyDashboardSettingTab,
   DailyDashboardView,
+  FocusCaptureModal,
   LogicalDayRepairModal,
   ProjectReviewModal,
   PromoteTaskModal
@@ -105,6 +107,7 @@ import {
   type FoodEntry,
   type HabitDefinition,
   type NoteIndexEntry,
+  type NextUpFocusItem,
   type ProjectReviewOption,
   type RetrievalIndexStatus,
   type TodoSnapshot,
@@ -365,6 +368,22 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "End break",
       callback: () => {
         void this.stopBreakSession();
+      }
+    });
+
+    this.addCommand({
+      id: "pause-all-and-start-break",
+      name: "Pause everything and start break",
+      callback: () => {
+        void this.pauseAllAndStartBreak();
+      }
+    });
+
+    this.addCommand({
+      id: "quick-capture-focus-item",
+      name: "Quick capture focus item",
+      callback: () => {
+        void this.openQuickCaptureFocusFlow();
       }
     });
 
@@ -768,6 +787,8 @@ export default class DailyDashboardPlugin extends Plugin {
       kind: "focus",
       id: `focus-${index}-${item.text.toLowerCase()}`,
       text: item.text,
+      notes: item.notes,
+      estimateMinutes: item.estimateMinutes,
       status: item.status,
       workSessions: item.workSessions,
       completedAt: item.completedAt,
@@ -797,6 +818,11 @@ export default class DailyDashboardPlugin extends Plugin {
       }));
 
     return [...focusItems, ...reminderItems];
+  }
+
+  getNextUpFocusItems(date: string = this.getTodayEntry().date): NextUpFocusItem[] {
+    const entry = this.getOrCreateEntry(date);
+    return [...entry.nextUpFocus];
   }
 
   getCarryForwardFocusCandidates(date: string = this.getTodayEntry().date): string[] {
@@ -1505,6 +1531,27 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Break started.");
   }
 
+  async pauseAllAndStartBreak(): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before starting a break.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    if (entry.breakSessions.some((session) => session.end === null)) {
+      new Notice("A break is already active.");
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "break");
+    this.closeOpenTodayFocusSessions(entry, timestamp);
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    await this.persistEntry(entry);
+    new Notice("Paused active sessions and started a break.");
+  }
+
   async stopBreakSession(): Promise<void> {
     const entry = this.getTodayEntry();
     const activeSession = [...entry.breakSessions].reverse().find((session) => session.end === null);
@@ -1781,7 +1828,15 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async addTodayFocusItem(value: string): Promise<void> {
-    const trimmedValue = value.trim();
+    await this.addTodayFocusItemWithDetails({ text: value });
+  }
+
+  async addTodayFocusItemWithDetails(input: {
+    text: string;
+    notes?: string;
+    estimateMinutes?: number | null;
+  }): Promise<void> {
+    const trimmedValue = input.text.trim();
     if (!trimmedValue) {
       return;
     }
@@ -1798,7 +1853,17 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(trimmedValue)];
+    const normalizedEstimate = Number.isFinite(Number(input.estimateMinutes))
+      ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440)
+      : null;
+    entry.todayFocus = [
+      ...entry.todayFocus,
+      this.createTodayFocusItem(
+        trimmedValue,
+        typeof input.notes === "string" ? input.notes.trim() : "",
+        normalizedEstimate
+      )
+    ];
     await this.persistEntry(entry);
   }
 
@@ -1821,6 +1886,37 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     item.text = trimmedValue;
+    await this.persistEntry(entry);
+    return true;
+  }
+
+  async updateTodayFocusDetails(index: number, updates: {
+    text: string;
+    notes?: string;
+    estimateMinutes?: number | null;
+  }): Promise<boolean> {
+    const trimmedValue = updates.text.trim();
+    if (!trimmedValue) {
+      new Notice("Top 3 item text is required.");
+      return false;
+    }
+
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return false;
+    }
+
+    if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
+      new Notice("That Top 3 item is already listed.");
+      return false;
+    }
+
+    item.text = trimmedValue;
+    item.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
+    item.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes))
+      ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440)
+      : null;
     await this.persistEntry(entry);
     return true;
   }
@@ -1900,6 +1996,65 @@ export default class DailyDashboardPlugin extends Plugin {
   async removeTodayFocusItem(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async addNextUpFocusItem(input: {
+    text: string;
+    notes?: string;
+    estimateMinutes?: number | null;
+  }): Promise<boolean> {
+    const text = input.text.trim();
+    if (!text) {
+      return false;
+    }
+
+    const entry = this.getTodayEntry();
+    const alreadyExists = [...entry.todayFocus.map((item) => item.text), ...entry.nextUpFocus.map((item) => item.text)]
+      .some((candidate) => candidate.toLowerCase() === text.toLowerCase());
+    if (alreadyExists) {
+      new Notice("That item is already listed in Top 3 or Next Up.");
+      return false;
+    }
+
+    entry.nextUpFocus = [
+      ...entry.nextUpFocus,
+      {
+        text,
+        notes: typeof input.notes === "string" ? input.notes.trim() : "",
+        estimateMinutes: Number.isFinite(Number(input.estimateMinutes))
+          ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440)
+          : null
+      }
+    ];
+    await this.persistEntry(entry);
+    return true;
+  }
+
+  async promoteNextUpFocusItem(index: number): Promise<boolean> {
+    const entry = this.getTodayEntry();
+    const item = entry.nextUpFocus[index];
+    if (!item) {
+      return false;
+    }
+
+    const activeFocusCount = entry.todayFocus.filter((candidate) => candidate.status !== "done").length;
+    if (activeFocusCount >= 3) {
+      new Notice("Top 3 already has three active items. Finish or remove one before promoting Next Up.");
+      return false;
+    }
+
+    if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
+      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.notes, item.estimateMinutes)];
+    }
+    entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+    return true;
+  }
+
+  async removeNextUpFocusItem(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
 
@@ -2670,6 +2825,7 @@ export default class DailyDashboardPlugin extends Plugin {
       energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
       anxietyScore: clamp(Number(entry.anxietyScore ?? 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
+      nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog)
@@ -2988,13 +3144,30 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  private createTodayFocusItem(text: string): TodayFocusItem {
+  private createTodayFocusItem(text: string, notes = "", estimateMinutes: number | null = null): TodayFocusItem {
     return {
       text,
+      notes,
+      estimateMinutes,
       status: "pending",
       workSessions: [],
       completedAt: null
     };
+  }
+
+  async openQuickCaptureFocusFlow(): Promise<void> {
+    new FocusCaptureModal(this.app, {
+      mode: "capture",
+      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
+      onSubmit: async (payload) => {
+        if (payload.destination === "top3") {
+          await this.addTodayFocusItemWithDetails(payload);
+          return;
+        }
+
+        await this.addNextUpFocusItem(payload);
+      }
+    }).open();
   }
 
   private closeOpenTodayFocusSessions(entry: DailyEntry, timestamp: string, activeIndex = -1): boolean {
