@@ -1202,7 +1202,7 @@ input.daily-dashboard-input {
   position: absolute;
   left: var(--daily-dashboard-week-stage-padding);
   right: var(--daily-dashboard-week-stage-padding);
-  bottom: 18px;
+  bottom: 10px;
   width: auto;
   min-width: calc(var(--daily-dashboard-week-stage-min-width) - (var(--daily-dashboard-week-stage-padding) * 2));
   height: 82px;
@@ -1211,8 +1211,9 @@ input.daily-dashboard-input {
   border-radius: 6px;
   background: linear-gradient(to bottom, rgba(58, 58, 58, 0.95) 0%, rgba(27, 27, 27, 0.98) 22%, rgba(10, 10, 12, 1) 100%);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.56),
-    inset 0 2px 0 rgba(255, 255, 255, 0.08);
+    0 10px 20px rgba(0, 0, 0, 0.42),
+    0 22px 26px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   pointer-events: none;
 }
 
@@ -1375,7 +1376,7 @@ input.daily-dashboard-input {
   flex-wrap: wrap;
   justify-content: center;
   gap: 18px;
-  margin-top: -2px;
+  margin-top: 6px;
   color: var(--text-muted);
   font-size: 0.86rem;
 }
