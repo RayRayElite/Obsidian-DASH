@@ -2837,6 +2837,14 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : `Start relaxing \u2022 ${this.selectedSessionTag}`, async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(this.selectedSessionTag), false, activeRelaxSession ? "square" : "coffee");
       createButton(dayFlowActions, activeBreakSession ? "End break" : `Start break \u2022 ${this.selectedSessionTag}`, async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(this.selectedSessionTag), false, activeBreakSession ? "square" : "pause");
       createButton(dayFlowActions, activePoopSession ? "Finish poop" : `Start poop \u2022 ${this.selectedSessionTag}`, async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(this.selectedSessionTag), false, activePoopSession ? "square" : "bath");
+      const timelineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-live-strip", "Live timeline", "See the current logical day as a strip of tracked sessions so gaps and overlaps are obvious immediately.");
+      this.renderTimelineStrip(
+        timelineSection,
+        this.buildTimelineSessions(todayEntry),
+        todayEntry.date,
+        dayState.status === "in-progress" && dayState.activeDate === todayEntry.date ? formatDateTimeKey(/* @__PURE__ */ new Date()) : todayEntry.dayEndedAt || todayEntry.sleepTime || formatDateTimeKey(/* @__PURE__ */ new Date()),
+        "No tracked sessions yet for this logical day."
+      );
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
@@ -3901,6 +3909,73 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     metric.createEl("strong", { text: value });
     return metric;
   }
+  buildTimelineSessions(entry) {
+    return [
+      ...entry.workSessions.map((session, index) => {
+        var _a;
+        return { id: `work-${index}-${session.start}`, kind: "work", start: session.start, end: (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date()), tag: session.tag };
+      }),
+      ...entry.napSessions.map((session, index) => {
+        var _a;
+        return { id: `nap-${index}-${session.start}`, kind: "nap", start: session.start, end: (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date()), tag: session.tag };
+      }),
+      ...entry.relaxSessions.map((session, index) => {
+        var _a;
+        return { id: `relax-${index}-${session.start}`, kind: "relax", start: session.start, end: (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date()), tag: session.tag };
+      }),
+      ...entry.breakSessions.map((session, index) => {
+        var _a;
+        return { id: `break-${index}-${session.start}`, kind: "break", start: session.start, end: (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date()), tag: session.tag };
+      }),
+      ...entry.poopSessions.map((session, index) => {
+        var _a;
+        return { id: `poop-${index}-${session.start}`, kind: "poop", start: session.start, end: (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date()), tag: session.tag };
+      })
+    ].sort((left, right) => left.start.localeCompare(right.start));
+  }
+  renderTimelineStrip(parent, sessions, date, fallbackEnd, emptyText) {
+    if (sessions.length === 0) {
+      parent.createDiv({ cls: "daily-dashboard-row-meta", text: emptyText });
+      return;
+    }
+    const parsedSessions = sessions.map((session) => ({
+      ...session,
+      startDate: new Date(session.start.replace(" ", "T")),
+      endDate: new Date((session.end || fallbackEnd).replace(" ", "T"))
+    })).filter((session) => !Number.isNaN(session.startDate.getTime()) && !Number.isNaN(session.endDate.getTime()) && session.endDate.getTime() > session.startDate.getTime());
+    if (parsedSessions.length === 0) {
+      parent.createDiv({ cls: "daily-dashboard-row-meta", text: emptyText });
+      return;
+    }
+    const startBoundary = /* @__PURE__ */ new Date(`${date}T00:00:00`);
+    const endBoundary = /* @__PURE__ */ new Date(`${date}T23:59:00`);
+    const totalSpan = endBoundary.getTime() - startBoundary.getTime();
+    const legend = parent.createDiv({ cls: "daily-dashboard-chip-row" });
+    [
+      { kind: "work", label: "Work", tone: "capture" },
+      { kind: "nap", label: "Nap", tone: "health" },
+      { kind: "relax", label: "Relax", tone: "health" },
+      { kind: "break", label: "Break", tone: "alert" },
+      { kind: "poop", label: "Poop", tone: "log" }
+    ].forEach((item2) => {
+      if (parsedSessions.some((session) => session.kind === item2.kind)) {
+        createSemanticChip(legend, item2.label, item2.tone);
+      }
+    });
+    const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
+    parsedSessions.forEach((session) => {
+      const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
+      const left = (session.startDate.getTime() - startBoundary.getTime()) / totalSpan * 100;
+      const width = (session.endDate.getTime() - session.startDate.getTime()) / totalSpan * 100;
+      segment.style.left = `${Math.max(0, left)}%`;
+      segment.style.width = `${Math.max(0.75, width)}%`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
+    });
+    const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
+    ["00:00", "06:00", "12:00", "18:00", "24:00"].forEach((label) => {
+      scale.createEl("span", { text: label });
+    });
+  }
   getFilteredWorkLogEntries() {
     const entries = this.plugin.getAllEntries().flatMap((entry) => entry.completedTasks).sort((left, right) => right.archivedAt.localeCompare(left.archivedAt));
     return entries.filter((entry) => {
@@ -4418,6 +4493,13 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
     this.addScoreSetting(contentEl, "Anxiety", this.state.anxietyScore, (value) => {
       this.state.anxietyScore = value;
     });
+    const timelineSection = contentEl.createDiv({ cls: "daily-dashboard-repair-timeline" });
+    timelineSection.createEl("h3", { text: "Manual timeline editor" });
+    timelineSection.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Edit the actual tracked sessions for work, naps, relax, breaks, and bowel tracking. When a session exists here, its minute override is cleared on apply so reports use the repaired timeline."
+    });
+    this.renderRepairTimelineEditor(timelineSection);
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Reset to today").onClick(async () => {
         this.state = this.plugin.getDayRepairInput(formatDateKey(/* @__PURE__ */ new Date()));
@@ -4478,6 +4560,120 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
       return "";
     }
     return value.replace(" ", "T").slice(0, 16);
+  }
+  renderTimelineStrip(parent, sessions, date, fallbackEnd, emptyText) {
+    if (sessions.length === 0) {
+      parent.createDiv({ cls: "daily-dashboard-row-meta", text: emptyText });
+      return;
+    }
+    const parsedSessions = sessions.map((session) => ({
+      ...session,
+      startDate: new Date(session.start.replace(" ", "T")),
+      endDate: new Date((session.end || fallbackEnd).replace(" ", "T"))
+    })).filter((session) => !Number.isNaN(session.startDate.getTime()) && !Number.isNaN(session.endDate.getTime()) && session.endDate.getTime() > session.startDate.getTime());
+    if (parsedSessions.length === 0) {
+      parent.createDiv({ cls: "daily-dashboard-row-meta", text: emptyText });
+      return;
+    }
+    const startBoundary = /* @__PURE__ */ new Date(`${date}T00:00:00`);
+    const endBoundary = /* @__PURE__ */ new Date(`${date}T23:59:00`);
+    const totalSpan = endBoundary.getTime() - startBoundary.getTime();
+    const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
+    parsedSessions.forEach((session) => {
+      const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
+      const left = (session.startDate.getTime() - startBoundary.getTime()) / totalSpan * 100;
+      const width = (session.endDate.getTime() - session.startDate.getTime()) / totalSpan * 100;
+      segment.style.left = `${Math.max(0, left)}%`;
+      segment.style.width = `${Math.max(0.75, width)}%`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
+    });
+    const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
+    ["00:00", "06:00", "12:00", "18:00", "24:00"].forEach((label) => {
+      scale.createEl("span", { text: label });
+    });
+  }
+  renderRepairTimelineEditor(parent) {
+    const sessionKinds = [
+      { kind: "work", label: "Work", tone: "capture" },
+      { kind: "nap", label: "Nap", tone: "health" },
+      { kind: "relax", label: "Relax", tone: "health" },
+      { kind: "break", label: "Break", tone: "alert" },
+      { kind: "poop", label: "Poop", tone: "log" }
+    ];
+    const groupedSessions = sessionKinds.map((config) => ({
+      ...config,
+      sessions: this.state.timelineSessions.filter((session) => session.kind === config.kind)
+    }));
+    this.renderTimelineStrip(
+      parent,
+      this.state.timelineSessions.map((session) => ({ ...session, end: session.end || session.start })),
+      this.state.date,
+      this.state.dayEndedAt || this.state.sleepTime || this.state.dayStartedAt || this.state.wakeTime,
+      "No timeline sessions in this repair draft yet."
+    );
+    groupedSessions.forEach((group) => {
+      const block = parent.createDiv({ cls: "daily-dashboard-score-block" });
+      const header = block.createDiv({ cls: "daily-dashboard-score-header" });
+      header.createEl("strong", { text: group.label });
+      createSemanticChip(header, `${group.sessions.length} session${group.sessions.length === 1 ? "" : "s"}`, group.tone);
+      if (group.sessions.length === 0) {
+        block.createDiv({ cls: "daily-dashboard-row-meta", text: `No ${group.label.toLowerCase()} sessions in this repair draft.` });
+      }
+      group.sessions.forEach((session) => {
+        const row = block.createDiv({ cls: "daily-dashboard-repair-session-row" });
+        const startInput = row.createEl("input", {
+          cls: "daily-dashboard-input",
+          attr: { type: "datetime-local" }
+        });
+        startInput.value = this.toDateTimeLocalValue(session.start);
+        startInput.addEventListener("change", () => {
+          session.start = startInput.value.trim();
+        });
+        const endInput = row.createEl("input", {
+          cls: "daily-dashboard-input",
+          attr: { type: "datetime-local" }
+        });
+        endInput.value = this.toDateTimeLocalValue(session.end);
+        endInput.addEventListener("change", () => {
+          session.end = endInput.value.trim();
+        });
+        const tagInput = row.createEl("input", {
+          cls: "daily-dashboard-input",
+          attr: { type: "text", placeholder: "Optional tag" }
+        });
+        tagInput.value = session.tag;
+        tagInput.addEventListener("change", () => {
+          session.tag = tagInput.value.trim();
+        });
+        const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+        removeButton.type = "button";
+        removeButton.addEventListener("click", () => {
+          this.state.timelineSessions = this.state.timelineSessions.filter((candidate) => candidate.id !== session.id);
+          this.onOpen();
+        });
+      });
+      const addButtonRow = block.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(addButtonRow, `Add ${group.label}`, async () => {
+        this.state.timelineSessions = [
+          ...this.state.timelineSessions,
+          this.createRepairTimelineSession(group.kind)
+        ];
+        this.onOpen();
+      }, false, "plus");
+    });
+  }
+  createRepairTimelineSession(kind) {
+    const baseStart = this.state.dayStartedAt || this.state.wakeTime || `${this.state.date} 09:00`;
+    const [datePart, timePart = "09:00"] = baseStart.split(" ");
+    const [hourText, minuteText] = timePart.split(":");
+    const nextHour = `${Math.min(23, Number(hourText) + 1)}`.padStart(2, "0");
+    return {
+      id: `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      kind,
+      start: `${datePart} ${`${hourText != null ? hourText : "09"}`.padStart(2, "0")}:${`${minuteText != null ? minuteText : "00"}`.padStart(2, "0")}`,
+      end: `${datePart} ${nextHour}:${`${minuteText != null ? minuteText : "00"}`.padStart(2, "0")}`,
+      tag: ""
+    };
   }
 };
 var PromoteTaskModal = class extends import_obsidian3.Modal {
@@ -6525,7 +6721,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       breakMinutesOverride: getTrackedBreakMinutes(entry),
       moodScore: entry.moodScore,
       energyScore: entry.energyScore,
-      anxietyScore: entry.anxietyScore
+      anxietyScore: entry.anxietyScore,
+      timelineSessions: this.getRepairTimelineSessionsForEntry(entry)
     };
   }
   async repairLogicalDay(date, status) {
@@ -6556,18 +6753,29 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     this.data.dayState = {
       activeDate: normalizedDate,
-      status: input.status
+      status: input.status,
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
+    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate);
+    if (normalizedTimelineSessions === null) {
+      return false;
+    }
     const entry = this.getOrCreateEntry(normalizedDate);
     entry.dayStartedAt = dayStartedAt;
     entry.dayEndedAt = dayEndedAt;
     entry.wakeTime = wakeTime;
     entry.sleepTime = sleepTime;
     entry.sleepMinutesOverride = clamp(Math.round(input.sleepMinutesOverride), 0, 1440);
-    entry.workMinutesOverride = clamp(Math.round(input.workMinutesOverride), 0, 1440);
-    entry.napMinutesOverride = clamp(Math.round(input.napMinutesOverride), 0, 1440);
-    entry.relaxMinutesOverride = clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
-    entry.breakMinutesOverride = clamp(Math.round(input.breakMinutesOverride), 0, 1440);
+    entry.workSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "work");
+    entry.napSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "nap");
+    entry.relaxSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "relax");
+    entry.breakSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "break");
+    entry.poopSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "poop");
+    entry.workMinutesOverride = entry.workSessions.length > 0 ? null : clamp(Math.round(input.workMinutesOverride), 0, 1440);
+    entry.napMinutesOverride = entry.napSessions.length > 0 ? null : clamp(Math.round(input.napMinutesOverride), 0, 1440);
+    entry.relaxMinutesOverride = entry.relaxSessions.length > 0 ? null : clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
+    entry.breakMinutesOverride = entry.breakSessions.length > 0 ? null : clamp(Math.round(input.breakMinutesOverride), 0, 1440);
     entry.moodScore = clamp(Math.round(input.moodScore), 0, 5);
     entry.energyScore = clamp(Math.round(input.energyScore), 0, 5);
     entry.anxietyScore = clamp(Math.round(input.anxietyScore), 0, 5);
@@ -7916,6 +8124,65 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       entry.sleepTime
     ].filter((value) => Boolean(value) && (!minimumTimestamp || value >= minimumTimestamp));
     return (_a = timestamps.sort()[0]) != null ? _a : null;
+  }
+  getRepairTimelineSessionsForEntry(entry) {
+    return [
+      ...this.buildRepairTimelineSessions(entry.workSessions, "work"),
+      ...this.buildRepairTimelineSessions(entry.napSessions, "nap"),
+      ...this.buildRepairTimelineSessions(entry.relaxSessions, "relax"),
+      ...this.buildRepairTimelineSessions(entry.breakSessions, "break"),
+      ...this.buildRepairTimelineSessions(entry.poopSessions, "poop")
+    ].sort((left, right) => `${left.start}|${left.kind}`.localeCompare(`${right.start}|${right.kind}`));
+  }
+  buildRepairTimelineSessions(sessions, kind) {
+    return sessions.map((session, index) => {
+      var _a, _b;
+      return {
+        id: `${kind}-${index}-${session.start}-${(_a = session.end) != null ? _a : "open"}`,
+        kind,
+        start: session.start,
+        end: (_b = session.end) != null ? _b : "",
+        tag: session.tag
+      };
+    });
+  }
+  normalizeRepairTimelineSessions(sessions, date) {
+    const normalized = [];
+    for (const [index, session] of sessions.entries()) {
+      const label = `${session.kind} session ${index + 1}`;
+      const start = this.normalizeRepairTimestamp(session.start, `${label} start`);
+      const end = this.normalizeRepairTimestamp(session.end, `${label} end`);
+      if (start === null || end === null) {
+        return null;
+      }
+      if (!start || !end) {
+        new import_obsidian4.Notice(`${label} needs both a start and end time.`);
+        return null;
+      }
+      if (start.slice(0, 10) !== date || end.slice(0, 10) !== date) {
+        new import_obsidian4.Notice(`${label} must stay on ${date}. Use the correct logical date before applying the repair.`);
+        return null;
+      }
+      if (end <= start) {
+        new import_obsidian4.Notice(`${label} must end after it starts.`);
+        return null;
+      }
+      normalized.push({
+        id: session.id || `${session.kind}-${index}-${start}`,
+        kind: session.kind,
+        start,
+        end,
+        tag: session.tag.trim()
+      });
+    }
+    return normalized.sort((left, right) => `${left.start}|${left.kind}`.localeCompare(`${right.start}|${right.kind}`));
+  }
+  extractRepairTimelineSessions(sessions, kind) {
+    return sessions.filter((session) => session.kind === kind).map((session) => ({
+      start: session.start,
+      end: session.end,
+      tag: session.tag.trim()
+    }));
   }
   ensureWakeAndDayStartFromActivity(entry, timestamp) {
     var _a, _b;

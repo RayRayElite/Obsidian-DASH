@@ -185,6 +185,17 @@ export interface DayRepairInput {
   moodScore: number;
   energyScore: number;
   anxietyScore: number;
+  timelineSessions: RepairTimelineSession[];
+}
+
+export type RepairTimelineSessionKind = "work" | "nap" | "relax" | "break" | "poop";
+
+export interface RepairTimelineSession {
+  id: string;
+  kind: RepairTimelineSessionKind;
+  start: string;
+  end: string;
+  tag: string;
 }
 
 export interface DayLifecycleState {

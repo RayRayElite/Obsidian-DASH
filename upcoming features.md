@@ -37,8 +37,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add wake quality check-ins.
 - [x] Add energy timeline check-ins during the day.
 - [x] Add better unknown-time diagnosis.
-- [ ] Add manual day timeline editor for repair workflows.
-- [ ] Add live session timeline strip for the current day.
+- [x] Add manual day timeline editor for repair workflows.
+- [x] Add live session timeline strip for the current day.
 - [x] Add "What did I spend today on?" grouped summaries.
 - [ ] Add recurring routine templates tied to time windows.
 
@@ -130,5 +130,6 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add automatic day-end suggestions and rollover warnings before deeper sleep analytics.
 - [x] Add sleep debt, consistency, wake quality, and energy timeline tracking before timeline-editor work.
 - [x] Add time-allocation grouping and unknown-time diagnosis before timeline-editor work.
+- [x] Add manual session repair and live timeline strip before recurring routine templates.
 - [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

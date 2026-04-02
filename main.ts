@@ -115,6 +115,8 @@ import {
   type NoteIndexEntry,
   type NextUpFocusItem,
   type ProjectReviewOption,
+  type RepairTimelineSession,
+  type RepairTimelineSessionKind,
   type RetrievalIndexStatus,
   type SleepInsights,
   type TimeAllocationBucket,
@@ -1679,7 +1681,8 @@ export default class DailyDashboardPlugin extends Plugin {
       breakMinutesOverride: getTrackedBreakMinutes(entry),
       moodScore: entry.moodScore,
       energyScore: entry.energyScore,
-      anxietyScore: entry.anxietyScore
+      anxietyScore: entry.anxietyScore,
+      timelineSessions: this.getRepairTimelineSessionsForEntry(entry)
     };
   }
 
@@ -1715,8 +1718,15 @@ export default class DailyDashboardPlugin extends Plugin {
 
     this.data.dayState = {
       activeDate: normalizedDate,
-      status: input.status
+      status: input.status,
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
+
+    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate);
+    if (normalizedTimelineSessions === null) {
+      return false;
+    }
 
     const entry = this.getOrCreateEntry(normalizedDate);
     entry.dayStartedAt = dayStartedAt;
@@ -1724,10 +1734,15 @@ export default class DailyDashboardPlugin extends Plugin {
     entry.wakeTime = wakeTime;
     entry.sleepTime = sleepTime;
     entry.sleepMinutesOverride = clamp(Math.round(input.sleepMinutesOverride), 0, 1440);
-    entry.workMinutesOverride = clamp(Math.round(input.workMinutesOverride), 0, 1440);
-    entry.napMinutesOverride = clamp(Math.round(input.napMinutesOverride), 0, 1440);
-    entry.relaxMinutesOverride = clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
-    entry.breakMinutesOverride = clamp(Math.round(input.breakMinutesOverride), 0, 1440);
+    entry.workSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "work");
+    entry.napSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "nap");
+    entry.relaxSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "relax");
+    entry.breakSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "break");
+    entry.poopSessions = this.extractRepairTimelineSessions(normalizedTimelineSessions, "poop");
+    entry.workMinutesOverride = entry.workSessions.length > 0 ? null : clamp(Math.round(input.workMinutesOverride), 0, 1440);
+    entry.napMinutesOverride = entry.napSessions.length > 0 ? null : clamp(Math.round(input.napMinutesOverride), 0, 1440);
+    entry.relaxMinutesOverride = entry.relaxSessions.length > 0 ? null : clamp(Math.round(input.relaxMinutesOverride), 0, 1440);
+    entry.breakMinutesOverride = entry.breakSessions.length > 0 ? null : clamp(Math.round(input.breakMinutesOverride), 0, 1440);
     entry.moodScore = clamp(Math.round(input.moodScore), 0, 5);
     entry.energyScore = clamp(Math.round(input.energyScore), 0, 5);
     entry.anxietyScore = clamp(Math.round(input.anxietyScore), 0, 5);
@@ -3360,6 +3375,71 @@ export default class DailyDashboardPlugin extends Plugin {
     ].filter((value): value is string => Boolean(value) && (!minimumTimestamp || value >= minimumTimestamp));
 
     return timestamps.sort()[0] ?? null;
+  }
+
+  private getRepairTimelineSessionsForEntry(entry: DailyEntry): RepairTimelineSession[] {
+    return [
+      ...this.buildRepairTimelineSessions(entry.workSessions, "work"),
+      ...this.buildRepairTimelineSessions(entry.napSessions, "nap"),
+      ...this.buildRepairTimelineSessions(entry.relaxSessions, "relax"),
+      ...this.buildRepairTimelineSessions(entry.breakSessions, "break"),
+      ...this.buildRepairTimelineSessions(entry.poopSessions, "poop")
+    ].sort((left, right) => `${left.start}|${left.kind}`.localeCompare(`${right.start}|${right.kind}`));
+  }
+
+  private buildRepairTimelineSessions(sessions: WorkSession[], kind: RepairTimelineSessionKind): RepairTimelineSession[] {
+    return sessions.map((session, index) => ({
+      id: `${kind}-${index}-${session.start}-${session.end ?? "open"}`,
+      kind,
+      start: session.start,
+      end: session.end ?? "",
+      tag: session.tag
+    }));
+  }
+
+  private normalizeRepairTimelineSessions(sessions: RepairTimelineSession[], date: string): RepairTimelineSession[] | null {
+    const normalized: RepairTimelineSession[] = [];
+
+    for (const [index, session] of sessions.entries()) {
+      const label = `${session.kind} session ${index + 1}`;
+      const start = this.normalizeRepairTimestamp(session.start, `${label} start`);
+      const end = this.normalizeRepairTimestamp(session.end, `${label} end`);
+      if (start === null || end === null) {
+        return null;
+      }
+      if (!start || !end) {
+        new Notice(`${label} needs both a start and end time.`);
+        return null;
+      }
+      if (start.slice(0, 10) !== date || end.slice(0, 10) !== date) {
+        new Notice(`${label} must stay on ${date}. Use the correct logical date before applying the repair.`);
+        return null;
+      }
+      if (end <= start) {
+        new Notice(`${label} must end after it starts.`);
+        return null;
+      }
+
+      normalized.push({
+        id: session.id || `${session.kind}-${index}-${start}`,
+        kind: session.kind,
+        start,
+        end,
+        tag: session.tag.trim()
+      });
+    }
+
+    return normalized.sort((left, right) => `${left.start}|${left.kind}`.localeCompare(`${right.start}|${right.kind}`));
+  }
+
+  private extractRepairTimelineSessions(sessions: RepairTimelineSession[], kind: RepairTimelineSessionKind): WorkSession[] {
+    return sessions
+      .filter((session) => session.kind === kind)
+      .map((session) => ({
+        start: session.start,
+        end: session.end,
+        tag: session.tag.trim()
+      }));
   }
 
   private ensureWakeAndDayStartFromActivity(entry: DailyEntry, timestamp: string): void {

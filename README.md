@@ -49,6 +49,8 @@ The recovery block now adds a wake-quality score, a rolling sleep debt summary, 
 
 The Day Flow card now also includes a grouped time-allocation summary for the current logical day, plus unknown-time diagnostics that call out missing timestamps, active days, and likely timer gaps. That makes the old generic "unknown" bucket actionable instead of just vague leftover time.
 
+The logical day repair flow now includes a manual timeline editor for work, nap, relax, break, and bowel sessions, plus the Day Flow card shows a live session strip for the current logical day. That makes it possible to repair bad timer history directly instead of only patching totals.
+
 Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
 
 ## AI Integration
