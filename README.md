@@ -15,6 +15,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, search archived work history, sync repeating tasks, and offload project references into project notes
+- includes switchable mobile, compact, and widescreen dashboard modes plus collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
 ## Master Todo Workflow

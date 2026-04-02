@@ -23,60 +23,39 @@
 }
 
 .daily-dashboard-hero,
-.daily-dashboard-card {
+  padding: 24px;
   border: 1px solid var(--daily-dashboard-border);
   border-radius: 24px;
   box-shadow: var(--daily-dashboard-shadow);
-  backdrop-filter: blur(14px);
-}
+  max-width: 1280px;
+  gap: 22px;
 
 .daily-dashboard-hero {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: auto 1fr auto;
-  gap: 10px;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  max-height: 300px;
   padding: 18px 18px 14px;
   aspect-ratio: 16 / 9;
   min-height: 0;
   max-height: 300px;
-  position: relative;
-  overflow: hidden;
-}
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 
 .daily-dashboard-hero.has-wallpaper::before {
   content: "";
   position: absolute;
-  inset: 0;
-  background:
+  justify-content: flex-end;
+  margin-left: auto;
     linear-gradient(115deg, rgba(8, 11, 17, 0.82), rgba(8, 11, 17, 0.58)),
     var(--daily-dashboard-wallpaper) center/cover no-repeat;
-  opacity: 0.96;
-}
 
-.daily-dashboard-hero > * {
-  position: relative;
-  z-index: 1;
-}
-
-.daily-dashboard-hero::after {
-  content: "";
-  position: absolute;
-  right: -8%;
-  top: 8%;
-  width: 280px;
-  height: 280px;
-  border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--daily-dashboard-accent-soft) 20%, transparent), transparent 68%);
-  filter: blur(4px);
-  opacity: 0.9;
-}
-
-.daily-dashboard-hero-header {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
-  min-width: 0;
+  --daily-dashboard-week-stage-padding: 24px;
+  --daily-dashboard-week-stage-min-width: 700px;
 }
 
 .daily-dashboard-hero-copy {
@@ -551,6 +530,50 @@
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+.daily-dashboard-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 10%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 72%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 4%);
+}
+.daily-dashboard-subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.daily-dashboard-subsection-header:focus-visible {
+  outline: none;
+}
+.daily-dashboard-subsection-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.daily-dashboard-subsection-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 14%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  flex: 0 0 auto;
+}
+.daily-dashboard-subsection-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.daily-dashboard-subsection.is-collapsed .daily-dashboard-subsection-body {
+  display: none;
+}
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -567,6 +590,119 @@
 .daily-dashboard-card.is-collapsed .daily-dashboard-card-header p,
 .daily-dashboard-card.is-collapsed > :not(.daily-dashboard-card-header) {
   display: none;
+}
+.daily-dashboard-view.is-view-compact {
+  padding: 18px;
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-page {
+  gap: 16px;
+  max-width: 1180px;
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-hero {
+  max-height: 252px;
+  padding: 14px 14px 12px;
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-grid {
+  gap: 14px;
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-card {
+  gap: 12px;
+  padding: 16px;
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-dayflow-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.daily-dashboard-view.is-view-compact .daily-dashboard-primary-button,
+.daily-dashboard-view.is-view-compact .daily-dashboard-secondary-button,
+.daily-dashboard-view.is-view-compact .daily-dashboard-ghost-button,
+.daily-dashboard-view.is-view-compact .daily-dashboard-remove-button,
+.daily-dashboard-view.is-view-compact .daily-dashboard-step,
+.daily-dashboard-view.is-view-compact .daily-dashboard-input,
+.daily-dashboard-view.is-view-compact .daily-dashboard-textarea,
+.daily-dashboard-view.is-view-compact .daily-dashboard-amount-input {
+  min-height: 38px;
+}
+.daily-dashboard-view.is-view-mobile {
+  padding: 18px;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-page {
+  max-width: 760px;
+  gap: 18px;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-hero {
+  aspect-ratio: auto;
+  min-height: 340px;
+  max-height: none;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-hero-header,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-hero-footer {
+  grid-template-columns: 1fr;
+  flex-direction: column;
+  align-items: stretch;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-actions,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-hero-utility-actions {
+  justify-content: flex-start;
+  margin-left: 0;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--top-3-for-today,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--state-and-friction,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--habits,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--food-log,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--sleep-and-notes,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--quick-add-to-project,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--completed-today,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--searchable-work-log,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--project-health,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--stale-work-and-cleanup,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--day-flow,
+.daily-dashboard-view.is-view-mobile .daily-dashboard-card--ai-workspace {
+  grid-column: 1 / -1;
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-dayflow-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.daily-dashboard-view.is-view-mobile .daily-dashboard-week-stage {
+  --daily-dashboard-week-stage-padding: 12px;
+  --daily-dashboard-week-stage-min-width: 640px;
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-page {
+  max-width: 1640px;
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-hero {
+  aspect-ratio: 21 / 6;
+  max-height: 264px;
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-grid {
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--week-at-a-glance,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--ai-workspace,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--day-flow {
+  grid-column: span 18;
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--top-3-for-today,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--state-and-friction,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--habits,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--food-log,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--sleep-and-notes,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--quick-add-to-project,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--completed-today,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--searchable-work-log,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--project-health,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--stale-work-and-cleanup {
+  grid-column: span 6;
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-dayflow-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-ai-overview,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-ai-lower {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .daily-dashboard-habit-list,

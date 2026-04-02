@@ -1768,6 +1768,29 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async updateTodayFocusItem(index: number, value: string): Promise<boolean> {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      new Notice("Top 3 item text is required.");
+      return false;
+    }
+
+    const entry = this.getTodayEntry();
+    const item = entry.todayFocus[index];
+    if (!item) {
+      return false;
+    }
+
+    if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
+      new Notice("That Top 3 item is already listed.");
+      return false;
+    }
+
+    item.text = trimmedValue;
+    await this.persistEntry(entry);
+    return true;
+  }
+
   async startTodayFocusItem(index: number): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before tracking a Top 3 item.");

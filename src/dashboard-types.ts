@@ -26,6 +26,7 @@ export interface WorkSession {
 }
 
 export type AiApiKeySource = "settings" | "env";
+export type DashboardViewMode = "mobile" | "compact" | "widescreen";
 
 export type TodayFocusStatus = "pending" | "working" | "done";
 

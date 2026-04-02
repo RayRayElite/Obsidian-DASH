@@ -22,6 +22,7 @@ import {
   type DayRepairInput,
   type DashboardFocusDisplayItem,
   type DashboardTone,
+  type DashboardViewMode,
   type ProjectReviewOption,
   type QuickAddState,
   type TodoProjectSummary,
@@ -47,6 +48,8 @@ export class DailyDashboardView extends ItemView {
     sectionName: "Add",
     taskText: ""
   };
+  private editingFocusIndex: number | null = null;
+  private editingFocusText = "";
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
 
@@ -134,6 +137,81 @@ export class DailyDashboardView extends ItemView {
     await this.render();
   }
 
+  private getViewMode(): DashboardViewMode {
+    return getDashboardViewMode();
+  }
+
+  private async cycleViewMode(): Promise<void> {
+    const current = this.getViewMode();
+    const next = current === "mobile"
+      ? "compact"
+      : current === "compact"
+        ? "widescreen"
+        : "mobile";
+    setDashboardViewMode(next);
+    await this.render();
+  }
+
+  private getViewModeMeta(mode: DashboardViewMode): { label: string; icon: string; nextLabel: string } {
+    if (mode === "compact") {
+      return { label: "Compact", icon: "minimize-2", nextLabel: "Widescreen" };
+    }
+
+    if (mode === "widescreen") {
+      return { label: "Widescreen", icon: "monitor", nextLabel: "Mobile" };
+    }
+
+    return { label: "Mobile", icon: "smartphone", nextLabel: "Compact" };
+  }
+
+  private createCollapsibleSubsection(parent: HTMLElement, sectionKey: string, title: string, description: string): HTMLElement {
+    const section = parent.createDiv({ cls: "daily-dashboard-subsection" });
+    const collapsed = getCollapsedSubsectionState().has(sectionKey);
+    section.toggleClass("is-collapsed", collapsed);
+
+    const header = section.createDiv({ cls: "daily-dashboard-subsection-header" });
+    header.role = "button";
+    header.tabIndex = 0;
+    header.ariaExpanded = collapsed ? "false" : "true";
+    const copy = header.createDiv({ cls: "daily-dashboard-subsection-copy" });
+    copy.createEl("strong", { text: title });
+    if (description) {
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: description });
+    }
+    const toggle = header.createSpan({ cls: "daily-dashboard-subsection-toggle" });
+    setIcon(toggle, collapsed ? "chevron-down" : "chevron-up");
+
+    const toggleCollapsed = (): void => {
+      const nextCollapsed = !section.hasClass("is-collapsed");
+      section.toggleClass("is-collapsed", nextCollapsed);
+      header.ariaExpanded = nextCollapsed ? "false" : "true";
+      setIcon(toggle, nextCollapsed ? "chevron-down" : "chevron-up");
+      setCollapsedSubsectionState(sectionKey, nextCollapsed);
+    };
+
+    header.addEventListener("click", () => {
+      toggleCollapsed();
+    });
+    header.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleCollapsed();
+      }
+    });
+
+    return section.createDiv({ cls: "daily-dashboard-subsection-body" });
+  }
+
+  private startEditingFocusItem(index: number, value: string): void {
+    this.editingFocusIndex = index;
+    this.editingFocusText = value;
+  }
+
+  private stopEditingFocusItem(): void {
+    this.editingFocusIndex = null;
+    this.editingFocusText = "";
+  }
+
   async render(): Promise<void> {
     try {
       const { contentEl } = this;
@@ -148,6 +226,8 @@ export class DailyDashboardView extends ItemView {
       const cleanupSuggestions = todoSnapshot?.cleanupSuggestions ?? [];
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
+      const viewMode = this.getViewMode();
+      const viewModeMeta = this.getViewModeMeta(viewMode);
       if (!this.selectedCalendarDate) {
         this.selectedCalendarDate = todayEntry.date;
       }
@@ -158,6 +238,8 @@ export class DailyDashboardView extends ItemView {
 
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
+      contentEl.removeClass("is-view-mobile", "is-view-compact", "is-view-widescreen");
+      contentEl.addClass(`is-view-${viewMode}`);
 
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
 
@@ -189,6 +271,7 @@ export class DailyDashboardView extends ItemView {
       statePill.addClass("is-compact");
 
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
+      createIconButton(utilityActions, viewModeMeta.icon, `View mode ${viewModeMeta.label}. Switch to ${viewModeMeta.nextLabel}.`, async () => this.cycleViewMode());
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
@@ -282,7 +365,8 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
       createSemanticChip(dayFlowStatus, activePoopSession ? "Poop tracked" : "No poop active", activePoopSession ? "alert" : "neutral");
 
-      const dayFlowGrid = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-grid" });
+      const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and bowel tracking for the active logical day.");
+      const dayFlowGrid = dayFlowMetrics.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
       this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
@@ -302,7 +386,8 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
 
-      const dayFlowActions = dayFlowCard.createDiv({ cls: "daily-dashboard-dayflow-actions" });
+      const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
+      const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
@@ -333,11 +418,40 @@ export class DailyDashboardView extends ItemView {
             }
           }
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          copy.createEl("strong", { text: item.text });
-          copy.createEl("span", {
-            cls: "daily-dashboard-habit-meta",
-            text: this.getFocusDisplayMeta(item)
-          });
+          const isEditingFocus = item.kind === "focus" && this.editingFocusIndex === todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
+          if (isEditingFocus) {
+            const editInput = copy.createEl("input", {
+              cls: "daily-dashboard-input",
+              attr: { type: "text", placeholder: "Edit focus item" }
+            });
+            editInput.value = this.editingFocusText;
+            editInput.addEventListener("input", () => {
+              this.editingFocusText = editInput.value;
+            });
+            editInput.addEventListener("keydown", (event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
+                if (focusIndex >= 0) {
+                  void this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText).then((saved) => {
+                    if (!saved) {
+                      return;
+                    }
+
+                    this.stopEditingFocusItem();
+                    void this.render();
+                  });
+                }
+              }
+            });
+            window.setTimeout(() => editInput.focus(), 0);
+          } else {
+            copy.createEl("strong", { text: item.text });
+            copy.createEl("span", {
+              cls: "daily-dashboard-habit-meta",
+              text: this.getFocusDisplayMeta(item)
+            });
+          }
 
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
           if (item.kind === "focus") {
@@ -345,22 +459,42 @@ export class DailyDashboardView extends ItemView {
             if (focusIndex < 0) {
               return;
             }
-            if (item.status === "done") {
+            if (isEditingFocus) {
+              createButton(controls, "Save", async () => {
+                const saved = await this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText);
+                if (!saved) {
+                  return;
+                }
+
+                this.stopEditingFocusItem();
+                await this.render();
+              }, true, "check");
+              createButton(controls, "Cancel", async () => {
+                this.stopEditingFocusItem();
+                await this.render();
+              }, false, "x");
+            } else if (item.status === "done") {
               createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(focusIndex), false, "rotate-ccw");
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
               createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
             }
-            createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
-            const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
-            removeButton.type = "button";
-            removeButton.ariaLabel = `Remove focus item ${item.text}`;
-            removeButton.title = `Remove ${item.text}`;
-            setIcon(removeButton, "x");
-            removeButton.addEventListener("click", () => {
-              void this.plugin.removeTodayFocusItem(focusIndex);
-            });
+            if (!isEditingFocus) {
+              createButton(controls, "Edit", async () => {
+                this.startEditingFocusItem(focusIndex, item.text);
+                await this.render();
+              }, false, "pencil");
+              createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
+              const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
+              removeButton.type = "button";
+              removeButton.ariaLabel = `Remove focus item ${item.text}`;
+              removeButton.title = `Remove ${item.text}`;
+              setIcon(removeButton, "x");
+              removeButton.addEventListener("click", () => {
+                void this.plugin.removeTodayFocusItem(focusIndex);
+              });
+            }
           } else {
             createButton(controls, "Calendar", async () => {
               new CalendarEventModal(this.app, this.plugin, item.calendarDate ?? todayEntry.date, item.sourceEventId ?? null).open();
@@ -392,7 +526,8 @@ export class DailyDashboardView extends ItemView {
       focusButton.addEventListener("click", () => {
         void submitFocus();
       });
-      this.renderMonthlyCalendar(focusCard, todayEntry.date, settings.calendarEnabled);
+      const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
+      this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -669,7 +804,8 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(aiChipRow, aiStatus.busy ? "Request in progress" : "Idle", aiStatus.busy ? "focus" : "neutral");
       createSemanticChip(aiChipRow, aiStatus.indexStatus.embeddingsEnabled ? `Embeddings ${aiStatus.indexStatus.embeddingModel}` : "Keyword retrieval", aiStatus.indexStatus.embeddingsEnabled ? "focus" : "neutral");
 
-      const aiOverview = aiShell.createDiv({ cls: "daily-dashboard-ai-overview" });
+      const aiOverviewSection = this.createCollapsibleSubsection(aiShell, "ai-workspace-overview", "Plan and retrieve", "Workflow shortcuts and retrieval-index status for the current vault.");
+      const aiOverview = aiOverviewSection.createDiv({ cls: "daily-dashboard-ai-overview" });
       const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiActionsPanel.createEl("strong", { text: "Workflows" });
       aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run a focused workflow for planning, review, project triage, coaching, or active-note analysis." });
@@ -703,7 +839,8 @@ export class DailyDashboardView extends ItemView {
         aiFoldersRow.createEl("span", { cls: "daily-dashboard-row-meta", text: aiStatus.indexStatus.indexedFolders.join(" • ") });
       }
 
-      const aiLower = aiShell.createDiv({ cls: "daily-dashboard-ai-lower" });
+      const aiLowerSection = this.createCollapsibleSubsection(aiShell, "ai-workspace-ask", "Ask and latest output", "Direct questions plus the newest AI artifact and suggested focus items.");
+      const aiLower = aiLowerSection.createDiv({ cls: "daily-dashboard-ai-lower" });
       const aiAskPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
       aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
       const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
@@ -2396,6 +2533,8 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
+const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
+const DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -2549,6 +2688,54 @@ function setDashboardSectionExpanded(sectionKey: string, expanded: boolean): voi
     }
 
     window.localStorage.setItem(DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY, JSON.stringify(Array.from(current)));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getDashboardViewMode(): DashboardViewMode {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_VIEW_MODE_STORAGE_KEY);
+    return stored === "compact" || stored === "widescreen" ? stored : "mobile";
+  } catch {
+    return "mobile";
+  }
+}
+
+function setDashboardViewMode(mode: DashboardViewMode): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_VIEW_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getCollapsedSubsectionState(): Set<string> {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY);
+    if (!stored) {
+      return new Set<string>();
+    }
+
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? new Set(parsed.filter((item): item is string => typeof item === "string"))
+      : new Set<string>();
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function setCollapsedSubsectionState(sectionKey: string, collapsed: boolean): void {
+  try {
+    const current = getCollapsedSubsectionState();
+    if (collapsed) {
+      current.add(sectionKey);
+    } else {
+      current.delete(sectionKey);
+    }
+
+    window.localStorage.setItem(DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY, JSON.stringify(Array.from(current)));
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }

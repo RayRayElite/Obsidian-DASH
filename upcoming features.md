@@ -18,7 +18,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## Execution And Focus
 
-- [ ] Edit Top 3 items inline without deleting and recreating them.
+- [x] Edit Top 3 items inline without deleting and recreating them.
 - [ ] Drag to reorder Top 3 items.
 - [ ] Carry forward unfinished Top 3 items into the next logical day with confirmation.
 - [ ] Let calendar reminders become real temporary focus rows with accept / dismiss actions.
@@ -108,13 +108,13 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## View Modes, Layout, And UX
 
-- [ ] Add impactful compact mode with denser cards, reduced chrome, and preserved readability.
-- [ ] Add mobile mode tuned for the current vertical 9:16 layout.
-- [ ] Add horizontal / widescreen mode designed intentionally instead of stretched mobile layout.
-- [ ] Add a lower-right hero control button for switching view modes.
+- [x] Add impactful compact mode with denser cards, reduced chrome, and preserved readability.
+- [x] Add mobile mode tuned for the current vertical 9:16 layout.
+- [x] Add horizontal / widescreen mode designed intentionally instead of stretched mobile layout.
+- [x] Add a lower-right hero control button for switching view modes.
 - [ ] Keep all modes visually balanced and as symmetrical as possible.
 - [ ] Add layout customization for card order, hidden cards, and pinned cards.
-- [ ] Add nested collapsible subsections inside cards for finer-grained control.
+- [x] Add nested collapsible subsections inside cards for finer-grained control.
 - [ ] Add keyboard shortcuts for major dashboard actions.
 - [ ] Add undo for destructive actions.
 - [ ] Add notification center for reminders and system notices.
@@ -123,7 +123,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 ## Suggested Implementation Order
 
 - [x] Track bowel movement count.
-- [ ] Build the view-mode foundation before adding compact, mobile, and widescreen variants.
+- [x] Build the view-mode foundation before adding compact, mobile, and widescreen variants.
 - [ ] Expand calendar recurrence editing and exception handling.
 - [ ] Improve Top 3 editing, carry-forward, and reminder acceptance.
 - [ ] Add due dates / blocked states to project workflow.
