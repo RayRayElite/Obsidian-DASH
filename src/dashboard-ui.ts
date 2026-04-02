@@ -1456,8 +1456,13 @@ export class DailyDashboardView extends ItemView {
             const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
             createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 75 ? "focus" : project.healthScore >= 50 ? "state" : "alert");
             createSemanticChip(chipRow, project.trend, project.trend === "up" ? "done" : project.trend === "down" ? "alert" : "neutral");
+            createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
             row.createEl("strong", { text: `${project.name} • ${project.healthScore}` });
-            row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend}` });
+            row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend} • ${project.status}` });
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+            if (projectsExpanded && project.healthReasons.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why: ${project.healthReasons.join(" • ")}` });
+            }
             if (projectsExpanded && project.overdueTasks.length > 0) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" • ")}` });
             }
@@ -2566,7 +2571,7 @@ export class CreateProjectModal extends Modal {
       .setName("Status")
       .setDesc("Initial status written to the master todo and project note.")
       .addDropdown((dropdown) => {
-        ["Planning", "Active", "Parked", "Blocked"].forEach((status) => dropdown.addOption(status, status));
+        ["Planning", "Active", "Parked", "Blocked", "Incubating", "Someday"].forEach((status) => dropdown.addOption(status, status));
         dropdown.setValue(this.state.status);
         dropdown.onChange((value) => {
           this.state.status = value;

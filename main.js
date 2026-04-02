@@ -1502,6 +1502,7 @@ function parseTodoSnapshot(content) {
     let archivedCount = 0;
     let currentSection = "General";
     let focus = "";
+    let status = "";
     let categoryName = "Projects";
     let lastCompletedAt = null;
     let completionsThisWeek = 0;
@@ -1534,6 +1535,9 @@ function parseTodoSnapshot(content) {
       if (meta) {
         if (meta.key === "focus") {
           focus = meta.value;
+        }
+        if (meta.key === "status") {
+          status = meta.value;
         }
         if (meta.key === "relationships") {
           meta.value.split(/[,;]+/).map((item2) => item2.trim()).filter(Boolean).forEach((item2) => relationships.add(item2));
@@ -1608,7 +1612,33 @@ function parseTodoSnapshot(content) {
     }
     const staleDays = lastCompletedAt ? daysBetween(lastCompletedAt, formatDateKey(now)) : null;
     const trend = completionsThisWeek > completionsPreviousWeek ? "up" : completionsThisWeek < completionsPreviousWeek ? "down" : "flat";
+    const projectState = inferProjectState(status);
+    const nextAction = selectProjectNextAction({
+      projectName: project.name,
+      projectState,
+      overdueTasks: overdueTasks2,
+      dueSoonTasks: dueSoonTasks2,
+      nowTaskDetails,
+      nextTaskDetails,
+      dueRepeatingTaskDetails,
+      laterTaskDetails
+    });
+    const healthReasons = buildProjectHealthReasons({
+      projectName: project.name,
+      projectState,
+      staleDays,
+      overdueTasks: overdueTasks2,
+      dueSoonTasks: dueSoonTasks2,
+      blockedTasks: blockedTasks2,
+      duplicateTasks,
+      breakdownTasks,
+      emptySections,
+      nowTaskDetails,
+      nextTaskDetails,
+      nextAction
+    });
     const healthScore = computeHealthScore({
+      projectState,
       openCount,
       staleDays,
       completionsThisWeek,
@@ -1623,6 +1653,8 @@ function parseTodoSnapshot(content) {
     return {
       name: project.name,
       categoryName,
+      status: status || (projectState === "someday" ? "Someday" : projectState === "incubating" ? "Incubating" : "Active"),
+      projectState,
       openCount,
       archivedCount,
       completionRate: openCount + archivedCount > 0 ? Math.round(archivedCount / (openCount + archivedCount) * 100) : 0,
@@ -1641,8 +1673,10 @@ function parseTodoSnapshot(content) {
       completionsPreviousWeek,
       completionsThisMonth,
       trend,
+      nextAction,
       healthScore,
       healthLabel: describeHealthScore(healthScore),
+      healthReasons,
       relationships: Array.from(relationships),
       nowTaskDetails,
       nextTaskDetails,
@@ -1654,7 +1688,7 @@ function parseTodoSnapshot(content) {
     };
   });
   const breakdownCandidates = projects.flatMap((project) => project.breakdownTasks.map((task) => ({ project: project.name, task })));
-  const staleProjects = projects.filter((project) => project.staleDays !== null && project.staleDays >= 7).sort((left, right) => {
+  const staleProjects = projects.filter((project) => project.projectState === "active" && project.staleDays !== null && project.staleDays >= 7).sort((left, right) => {
     var _a, _b;
     return ((_a = right.staleDays) != null ? _a : 0) - ((_b = left.staleDays) != null ? _b : 0);
   });
@@ -2371,12 +2405,18 @@ function daysBetween(startDateKey, endDateKey) {
 }
 function computeHealthScore(input) {
   var _a;
-  let score = 100;
-  score -= Math.min(input.openCount * 2, 30);
-  score -= Math.min((_a = input.staleDays) != null ? _a : 0, 25);
-  score += Math.min(input.completionsThisWeek * 4, 16);
-  score += Math.min(input.nowCount * 3, 9);
-  score += Math.min(input.nextCount * 1, 4);
+  let score = input.projectState === "active" ? 100 : input.projectState === "incubating" ? 82 : 78;
+  if (input.projectState === "active") {
+    score -= Math.min(input.openCount * 2, 30);
+    score -= Math.min((_a = input.staleDays) != null ? _a : 0, 25);
+    score += Math.min(input.completionsThisWeek * 4, 16);
+    score += Math.min(input.nowCount * 3, 9);
+    score += Math.min(input.nextCount * 1, 4);
+  } else {
+    score += Math.min(input.completionsThisWeek * 2, 8);
+    score += input.nowCount > 0 ? 2 : 0;
+    score += input.nextCount > 0 ? 1 : 0;
+  }
   score -= input.dueSoonCount * 2;
   score -= input.overdueCount * 7;
   score -= input.blockedCount * 5;
@@ -2398,7 +2438,7 @@ function describeHealthScore(score) {
 }
 function buildCleanupSuggestions(project) {
   const suggestions = [];
-  if (project.staleDays !== null && project.staleDays >= 14) {
+  if (project.projectState === "active" && project.staleDays !== null && project.staleDays >= 14) {
     suggestions.push(`${project.name}: review stale backlog or re-scope the project.`);
   }
   if (project.duplicateTasks.length > 0) {
@@ -2417,6 +2457,71 @@ function buildCleanupSuggestions(project) {
     suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
   }
   return suggestions;
+}
+function inferProjectState(status) {
+  const normalized = status.trim().toLowerCase();
+  if (normalized.includes("someday")) {
+    return "someday";
+  }
+  if (normalized.includes("incubat")) {
+    return "incubating";
+  }
+  return "active";
+}
+function selectProjectNextAction(input) {
+  const actionableTask = [
+    ...input.overdueTasks,
+    ...input.dueSoonTasks,
+    ...input.nowTaskDetails,
+    ...input.nextTaskDetails,
+    ...input.dueRepeatingTaskDetails,
+    ...input.laterTaskDetails
+  ].find((task) => !task.isBlocked && task.text.trim().length > 0);
+  if (actionableTask) {
+    return actionableTask.text;
+  }
+  if (input.projectState === "someday") {
+    return "Incubating in someday. Promote one concrete task when ready.";
+  }
+  if (input.projectState === "incubating") {
+    return "Define the first real next step before activating this project.";
+  }
+  return `Define the next action for ${input.projectName}.`;
+}
+function buildProjectHealthReasons(input) {
+  const reasons = [];
+  if (input.projectState !== "active") {
+    reasons.push(input.projectState === "someday" ? "Parked as someday work." : "Marked incubating until it is ready for active execution.");
+  }
+  if (input.overdueTasks.length > 0) {
+    reasons.push(`${input.overdueTasks.length} overdue task${input.overdueTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (input.dueSoonTasks.length > 0) {
+    reasons.push(`${input.dueSoonTasks.length} due soon.`);
+  }
+  if (input.blockedTasks.length > 0) {
+    reasons.push(`${input.blockedTasks.length} blocked task${input.blockedTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (input.projectState === "active" && input.staleDays !== null && input.staleDays >= 7) {
+    reasons.push(`No completion for ${input.staleDays} day${input.staleDays === 1 ? "" : "s"}.`);
+  }
+  if (input.nowTaskDetails.length === 0 && input.projectState === "active") {
+    reasons.push("No task in Now.");
+  }
+  if (input.nextTaskDetails.length === 0 && input.projectState === "active") {
+    reasons.push("No task in Next.");
+  }
+  if (input.breakdownTasks.length > 0) {
+    reasons.push(`${input.breakdownTasks.length} task${input.breakdownTasks.length === 1 ? " looks" : "s look"} too large.`);
+  }
+  if (input.duplicateTasks.size > 0) {
+    reasons.push(`${input.duplicateTasks.size} duplicate task${input.duplicateTasks.size === 1 ? "" : "s"}.`);
+  }
+  if (input.emptySections.size > 0) {
+    reasons.push(`Empty sections: ${Array.from(input.emptySections).join(", ")}.`);
+  }
+  reasons.push(`Next action: ${input.nextAction}`);
+  return reasons.slice(0, 6);
 }
 function parseTodoTaskSummary(rawText, section, now) {
   const dueDate = extractTaskAnnotation(rawText, "due");
@@ -3778,8 +3883,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
           createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 75 ? "focus" : project.healthScore >= 50 ? "state" : "alert");
           createSemanticChip(chipRow, project.trend, project.trend === "up" ? "done" : project.trend === "down" ? "alert" : "neutral");
+          createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
           row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
-          row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend}` });
+          row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend} \u2022 ${project.status}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+          if (projectsExpanded && project.healthReasons.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why: ${project.healthReasons.join(" \u2022 ")}` });
+          }
           if (projectsExpanded && project.overdueTasks.length > 0) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" \u2022 ")}` });
           }
@@ -4683,7 +4793,7 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
       });
     });
     new import_obsidian3.Setting(contentEl).setName("Status").setDesc("Initial status written to the master todo and project note.").addDropdown((dropdown) => {
-      ["Planning", "Active", "Parked", "Blocked"].forEach((status) => dropdown.addOption(status, status));
+      ["Planning", "Active", "Parked", "Blocked", "Incubating", "Someday"].forEach((status) => dropdown.addOption(status, status));
       dropdown.setValue(this.state.status);
       dropdown.onChange((value) => {
         this.state.status = value;

@@ -429,6 +429,8 @@ export interface TodoProjectRange {
 export interface TodoProjectSummary {
   name: string;
   categoryName: string;
+  status: string;
+  projectState: "active" | "incubating" | "someday";
   openCount: number;
   archivedCount: number;
   completionRate: number;
@@ -447,8 +449,10 @@ export interface TodoProjectSummary {
   completionsPreviousWeek: number;
   completionsThisMonth: number;
   trend: "up" | "down" | "flat";
+  nextAction: string;
   healthScore: number;
   healthLabel: string;
+  healthReasons: string[];
   relationships: string[];
   nowTaskDetails: TodoTaskSummary[];
   nextTaskDetails: TodoTaskSummary[];

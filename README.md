@@ -32,6 +32,8 @@ This gives you a work-history trail without deleting finished tasks.
 
 The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
 
+Project health now surfaces a visible next action for every project, explains the reasons behind each health score, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
+
 ## Logical Day Tracking
 
 The dashboard now separates your real day from the calendar date.

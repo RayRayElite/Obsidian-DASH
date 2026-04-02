@@ -38,6 +38,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     let archivedCount = 0;
     let currentSection = "General";
     let focus = "";
+    let status = "";
     let categoryName = "Projects";
     let lastCompletedAt: string | null = null;
     let completionsThisWeek = 0;
@@ -72,6 +73,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       if (meta) {
         if (meta.key === "focus") {
           focus = meta.value;
+        }
+        if (meta.key === "status") {
+          status = meta.value;
         }
         if (meta.key === "relationships") {
           meta.value.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => relationships.add(item));
@@ -153,7 +157,33 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
 
     const staleDays = lastCompletedAt ? daysBetween(lastCompletedAt, formatDateKey(now)) : null;
     const trend: TodoProjectSummary["trend"] = completionsThisWeek > completionsPreviousWeek ? "up" : completionsThisWeek < completionsPreviousWeek ? "down" : "flat";
+    const projectState = inferProjectState(status);
+    const nextAction = selectProjectNextAction({
+      projectName: project.name,
+      projectState,
+      overdueTasks,
+      dueSoonTasks,
+      nowTaskDetails,
+      nextTaskDetails,
+      dueRepeatingTaskDetails,
+      laterTaskDetails
+    });
+    const healthReasons = buildProjectHealthReasons({
+      projectName: project.name,
+      projectState,
+      staleDays,
+      overdueTasks,
+      dueSoonTasks,
+      blockedTasks,
+      duplicateTasks,
+      breakdownTasks,
+      emptySections,
+      nowTaskDetails,
+      nextTaskDetails,
+      nextAction
+    });
     const healthScore = computeHealthScore({
+      projectState,
       openCount,
       staleDays,
       completionsThisWeek,
@@ -169,6 +199,8 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     return {
       name: project.name,
       categoryName,
+      status: status || (projectState === "someday" ? "Someday" : projectState === "incubating" ? "Incubating" : "Active"),
+      projectState,
       openCount,
       archivedCount,
       completionRate: openCount + archivedCount > 0 ? Math.round((archivedCount / (openCount + archivedCount)) * 100) : 0,
@@ -187,8 +219,10 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       completionsPreviousWeek,
       completionsThisMonth,
       trend,
+      nextAction,
       healthScore,
       healthLabel: describeHealthScore(healthScore),
+      healthReasons,
       relationships: Array.from(relationships),
       nowTaskDetails,
       nextTaskDetails,
@@ -202,7 +236,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
 
   const breakdownCandidates = projects.flatMap((project) => project.breakdownTasks.map((task) => ({ project: project.name, task })));
   const staleProjects = projects
-    .filter((project) => project.staleDays !== null && project.staleDays >= 7)
+    .filter((project) => project.projectState === "active" && project.staleDays !== null && project.staleDays >= 7)
     .sort((left, right) => (right.staleDays ?? 0) - (left.staleDays ?? 0));
   const cleanupSuggestions = projects.flatMap((project) => buildCleanupSuggestions(project));
   const dueSoonTasks = projects.flatMap((project) => project.dueSoonTasks.map((task) => ({ project: project.name, task })));
@@ -1037,6 +1071,7 @@ export function daysBetween(startDateKey: string, endDateKey: string): number {
 }
 
 export function computeHealthScore(input: {
+  projectState: "active" | "incubating" | "someday";
   openCount: number;
   staleDays: number | null;
   completionsThisWeek: number;
@@ -1048,12 +1083,19 @@ export function computeHealthScore(input: {
   breakdownCount: number;
   duplicateCount: number;
 }): number {
-  let score = 100;
-  score -= Math.min(input.openCount * 2, 30);
-  score -= Math.min((input.staleDays ?? 0), 25);
-  score += Math.min(input.completionsThisWeek * 4, 16);
-  score += Math.min(input.nowCount * 3, 9);
-  score += Math.min(input.nextCount * 1, 4);
+  let score = input.projectState === "active" ? 100 : input.projectState === "incubating" ? 82 : 78;
+  if (input.projectState === "active") {
+    score -= Math.min(input.openCount * 2, 30);
+    score -= Math.min((input.staleDays ?? 0), 25);
+    score += Math.min(input.completionsThisWeek * 4, 16);
+    score += Math.min(input.nowCount * 3, 9);
+    score += Math.min(input.nextCount * 1, 4);
+  } else {
+    score += Math.min(input.completionsThisWeek * 2, 8);
+    score += input.nowCount > 0 ? 2 : 0;
+    score += input.nextCount > 0 ? 1 : 0;
+  }
+
   score -= input.dueSoonCount * 2;
   score -= input.overdueCount * 7;
   score -= input.blockedCount * 5;
@@ -1077,7 +1119,7 @@ export function describeHealthScore(score: number): string {
 
 export function buildCleanupSuggestions(project: TodoProjectSummary): string[] {
   const suggestions: string[] = [];
-  if (project.staleDays !== null && project.staleDays >= 14) {
+  if (project.projectState === "active" && project.staleDays !== null && project.staleDays >= 14) {
     suggestions.push(`${project.name}: review stale backlog or re-scope the project.`);
   }
   if (project.duplicateTasks.length > 0) {
@@ -1096,6 +1138,100 @@ export function buildCleanupSuggestions(project: TodoProjectSummary): string[] {
     suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
   }
   return suggestions;
+}
+
+function inferProjectState(status: string): TodoProjectSummary["projectState"] {
+  const normalized = status.trim().toLowerCase();
+  if (normalized.includes("someday")) {
+    return "someday";
+  }
+  if (normalized.includes("incubat")) {
+    return "incubating";
+  }
+  return "active";
+}
+
+function selectProjectNextAction(input: {
+  projectName: string;
+  projectState: TodoProjectSummary["projectState"];
+  overdueTasks: TodoTaskSummary[];
+  dueSoonTasks: TodoTaskSummary[];
+  nowTaskDetails: TodoTaskSummary[];
+  nextTaskDetails: TodoTaskSummary[];
+  dueRepeatingTaskDetails: TodoTaskSummary[];
+  laterTaskDetails: TodoTaskSummary[];
+}): string {
+  const actionableTask = [
+    ...input.overdueTasks,
+    ...input.dueSoonTasks,
+    ...input.nowTaskDetails,
+    ...input.nextTaskDetails,
+    ...input.dueRepeatingTaskDetails,
+    ...input.laterTaskDetails
+  ].find((task) => !task.isBlocked && task.text.trim().length > 0);
+
+  if (actionableTask) {
+    return actionableTask.text;
+  }
+
+  if (input.projectState === "someday") {
+    return "Incubating in someday. Promote one concrete task when ready.";
+  }
+
+  if (input.projectState === "incubating") {
+    return "Define the first real next step before activating this project.";
+  }
+
+  return `Define the next action for ${input.projectName}.`;
+}
+
+function buildProjectHealthReasons(input: {
+  projectName: string;
+  projectState: TodoProjectSummary["projectState"];
+  staleDays: number | null;
+  overdueTasks: TodoTaskSummary[];
+  dueSoonTasks: TodoTaskSummary[];
+  blockedTasks: TodoTaskSummary[];
+  duplicateTasks: Set<string>;
+  breakdownTasks: string[];
+  emptySections: Set<string>;
+  nowTaskDetails: TodoTaskSummary[];
+  nextTaskDetails: TodoTaskSummary[];
+  nextAction: string;
+}): string[] {
+  const reasons: string[] = [];
+  if (input.projectState !== "active") {
+    reasons.push(input.projectState === "someday" ? "Parked as someday work." : "Marked incubating until it is ready for active execution.");
+  }
+  if (input.overdueTasks.length > 0) {
+    reasons.push(`${input.overdueTasks.length} overdue task${input.overdueTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (input.dueSoonTasks.length > 0) {
+    reasons.push(`${input.dueSoonTasks.length} due soon.`);
+  }
+  if (input.blockedTasks.length > 0) {
+    reasons.push(`${input.blockedTasks.length} blocked task${input.blockedTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (input.projectState === "active" && input.staleDays !== null && input.staleDays >= 7) {
+    reasons.push(`No completion for ${input.staleDays} day${input.staleDays === 1 ? "" : "s"}.`);
+  }
+  if (input.nowTaskDetails.length === 0 && input.projectState === "active") {
+    reasons.push("No task in Now.");
+  }
+  if (input.nextTaskDetails.length === 0 && input.projectState === "active") {
+    reasons.push("No task in Next.");
+  }
+  if (input.breakdownTasks.length > 0) {
+    reasons.push(`${input.breakdownTasks.length} task${input.breakdownTasks.length === 1 ? " looks" : "s look"} too large.`);
+  }
+  if (input.duplicateTasks.size > 0) {
+    reasons.push(`${input.duplicateTasks.size} duplicate task${input.duplicateTasks.size === 1 ? "" : "s"}.`);
+  }
+  if (input.emptySections.size > 0) {
+    reasons.push(`Empty sections: ${Array.from(input.emptySections).join(", ")}.`);
+  }
+  reasons.push(`Next action: ${input.nextAction}`);
+  return reasons.slice(0, 6);
 }
 
 function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
