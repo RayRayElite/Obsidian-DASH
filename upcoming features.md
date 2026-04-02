@@ -83,16 +83,16 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## AI Layer
 
-- [ ] Add AI morning startup brief.
-- [ ] Add AI shutdown summary with carry-forward recommendations.
-- [ ] Add AI weekly planning assistant.
-- [ ] Add AI project risk scanner.
-- [ ] Add AI anomaly detection for mood, sleep, work time, and habits.
-- [ ] Add AI period comparison reports.
-- [ ] Add AI project synthesis from dashboard + calendar + logs + notes.
-- [ ] Add "Ask why today felt off" analysis.
-- [ ] Force AI coaching outputs to end with concrete actions.
-- [ ] Add local prompt templates for different AI modes.
+- [x] Add AI morning startup brief.
+- [x] Add AI shutdown summary with carry-forward recommendations.
+- [x] Add AI weekly planning assistant.
+- [x] Add AI project risk scanner.
+- [x] Add AI anomaly detection for mood, sleep, work time, and habits.
+- [x] Add AI period comparison reports.
+- [x] Add AI project synthesis from dashboard + calendar + logs + notes.
+- [x] Add "Ask why today felt off" analysis.
+- [x] Force AI coaching outputs to end with concrete actions.
+- [x] Add local prompt templates for different AI modes.
 
 ## Search, Review, And Reporting
 
@@ -133,4 +133,4 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add manual session repair and live timeline strip before recurring routine templates.
 - [x] Add routine-window templates before moving into the next planning cluster.
 - [x] Build the Gamification Center once the underlying metrics are richer and more stable.
-- [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.
+- [x] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

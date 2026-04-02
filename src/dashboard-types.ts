@@ -328,6 +328,7 @@ export interface DashboardSettings {
   aiModel: string;
   aiBaseUrl: string;
   aiOutputFolder: string;
+  aiPromptTemplates: string;
   aiContextDays: number;
   aiRelatedNotesLimit: number;
   aiIndexEnabled: boolean;
@@ -649,6 +650,7 @@ export interface AiArtifact {
   notePath: string;
   summary: string;
   suggestedFocus: string[];
+  nextActions: string[];
 }
 
 export interface AiStatus {
@@ -694,6 +696,37 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
+  aiPromptTemplates: [
+    "[morning-startup-brief]",
+    "Favor direct prioritization, realistic pacing, and explicit first actions.",
+    "",
+    "[shutdown-summary]",
+    "Lean hard on carry-forward decisions, shutdown steps, and what should be set up for tomorrow.",
+    "",
+    "[weekly-planning-assistant]",
+    "Prefer a small realistic priority stack over an aspirational one.",
+    "",
+    "[project-risk-scanner]",
+    "Call out dependency, stale-task, due-date, and blocked-work risks before generic project commentary.",
+    "",
+    "[anomaly-detection]",
+    "Treat unusual mood, sleep, work, and habit changes as hypotheses to test, not certainties.",
+    "",
+    "[period-comparison-report]",
+    "Explain what materially changed between periods and what those changes imply operationally.",
+    "",
+    "[project-synthesis]",
+    "Synthesize project notes, dashboard behavior, calendar pressure, and archived output into one operating picture.",
+    "",
+    "[why-today-felt-off]",
+    "Look for mismatches between plan, energy, mood, interruptions, symptoms, and workload.",
+    "",
+    "[vault-question]",
+    "Answer directly first, then move to signals and actions.",
+    "",
+    "[active-note-analysis]",
+    "Surface the note's practical implications and the next decision it enables."
+  ].join("\n"),
   aiContextDays: 14,
   aiRelatedNotesLimit: 6,
   aiIndexEnabled: true,

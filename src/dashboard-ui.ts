@@ -748,7 +748,7 @@ export class DailyDashboardView extends ItemView {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "AI today plan", async () => this.plugin.generateAiTodayPlan(), false, "sparkles");
+        createButton(emptyActions, "AI morning brief", async () => this.plugin.generateAiMorningStartupBrief(), false, "sparkles");
       } else {
         focusDisplayItems.forEach((item) => {
           const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
@@ -1529,12 +1529,16 @@ export class DailyDashboardView extends ItemView {
       const aiOverview = aiOverviewSection.createDiv({ cls: "daily-dashboard-ai-overview" });
       const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiActionsPanel.createEl("strong", { text: "Workflows" });
-      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run a focused workflow for planning, review, project triage, coaching, or active-note analysis." });
+      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run focused planning, diagnostic, synthesis, and comparison workflows without leaving the dashboard." });
       const aiActions = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-action-grid" });
-      createButton(aiActions, "Today plan", async () => this.plugin.generateAiTodayPlan(), false, "sunrise");
-      createButton(aiActions, "End day review", async () => this.plugin.generateAiEndOfDayReview(), false, "moon-star");
-      createButton(aiActions, "Project triage", async () => this.plugin.generateAiProjectTriage(), false, "triangle-alert");
-      createButton(aiActions, "Weekly coach", async () => this.plugin.generateAiWeeklyCoachNote(), false, "bar-chart-3");
+      createButton(aiActions, "Morning brief", async () => this.plugin.generateAiMorningStartupBrief(), false, "sunrise");
+      createButton(aiActions, "Shutdown summary", async () => this.plugin.generateAiShutdownSummary(), false, "moon-star");
+      createButton(aiActions, "Weekly planning", async () => this.plugin.generateAiWeeklyPlanningAssistant(), false, "bar-chart-3");
+      createButton(aiActions, "Risk scan", async () => this.plugin.generateAiProjectRiskScanner(), false, "triangle-alert");
+      createButton(aiActions, "Anomalies", async () => this.plugin.generateAiAnomalyDetectionReport(), false, "activity");
+      createButton(aiActions, "Compare periods", async () => this.plugin.generateAiPeriodComparisonReport(), false, "git-compare-arrows");
+      createButton(aiActions, "Project synthesis", async () => this.plugin.generateAiProjectSynthesis(), false, "network");
+      createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
 
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
@@ -1583,6 +1587,15 @@ export class DailyDashboardView extends ItemView {
 
         const latestActions = latestPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
         createButton(latestActions, "Open latest AI note", async () => this.plugin.openAiArtifact(latestArtifact), false, "file-text");
+
+        if (latestArtifact.nextActions.length > 0) {
+          latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Concrete actions" });
+          const nextActionList = latestPanel.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+          latestArtifact.nextActions.forEach((item) => {
+            const row = nextActionList.createDiv({ cls: "daily-dashboard-project-row" });
+            row.createEl("span", { text: item });
+          });
+        }
 
         if (latestArtifact.suggestedFocus.length > 0) {
           latestPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Suggested focus items" });
@@ -3670,6 +3683,24 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
               aiOutputFolder: value.trim() || DEFAULT_SETTINGS.aiOutputFolder
             });
           });
+      });
+
+    new Setting(containerEl)
+      .setName("AI prompt templates")
+      .setDesc("Optional local workflow instructions. Use [workflow-key] headings such as [morning-startup-brief] or [project-risk-scanner], then write the extra instructions below each heading.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder(DEFAULT_SETTINGS.aiPromptTemplates)
+          .setValue(settings.aiPromptTemplates)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiPromptTemplates: value
+            });
+          });
+
+        textArea.inputEl.rows = 14;
+        textArea.inputEl.cols = 36;
       });
 
     new Setting(containerEl)

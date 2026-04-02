@@ -51,6 +51,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiModel: settings.aiModel?.trim() || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
+    aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
     aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
     aiRelatedNotesLimit: clamp(Number(settings.aiRelatedNotesLimit ?? DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
     aiIndexEnabled: settings.aiIndexEnabled ?? DEFAULT_SETTINGS.aiIndexEnabled,
@@ -937,4 +938,37 @@ export function parseRoutineTemplates(value: string): RoutineTemplateDefinition[
       };
     })
     .filter((item): item is RoutineTemplateDefinition => item !== null);
+}
+
+export function parseAiPromptTemplates(value: string): Record<string, string> {
+  const templates: Record<string, string> = {};
+  let currentKey = "";
+  let buffer: string[] = [];
+
+  const flush = (): void => {
+    if (!currentKey) {
+      buffer = [];
+      return;
+    }
+
+    const text = buffer.join("\n").trim();
+    if (text.length > 0) {
+      templates[currentKey] = text;
+    }
+    buffer = [];
+  };
+
+  value.split(/\r?\n/).forEach((line) => {
+    const match = line.trim().match(/^\[([a-z0-9-]+)\]$/i);
+    if (match) {
+      flush();
+      currentKey = match[1].toLowerCase();
+      return;
+    }
+
+    buffer.push(line);
+  });
+
+  flush();
+  return templates;
 }

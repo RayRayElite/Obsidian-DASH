@@ -11,7 +11,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
-- can call OpenAI for AI-powered today planning, end-of-day review, weekly coaching, project triage, and freeform questions grounded in dashboard context
+- can call OpenAI for AI-powered morning startup briefs, shutdown summaries, weekly planning, project risk scans, anomaly detection, period comparisons, project synthesis, "why today felt off" analysis, active-note analysis, and freeform questions grounded in dashboard context
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
@@ -69,16 +69,20 @@ The dashboard now also includes a `Gamification Center` with deterministic daily
 
 The dashboard now includes an `AI Workspace` card plus command-palette actions for:
 
-1. `Generate AI today plan`
-2. `Generate AI end-of-day review`
-3. `Generate AI project triage`
-4. `Generate AI weekly coach note`
-5. `Ask AI about dashboard and vault`
-6. `Analyze active note with AI`
+1. `Generate AI morning startup brief`
+2. `Generate AI shutdown summary`
+3. `Generate AI weekly planning assistant`
+4. `Generate AI project risk scanner`
+5. `Generate AI anomaly detection report`
+6. `Generate AI period comparison report`
+7. `Generate AI project synthesis`
+8. `Generate AI why today felt off analysis`
+9. `Ask AI about dashboard and vault`
+10. `Analyze active note with AI`
 
-AI output is written into `Dashboard Logs/AI` by default, grouped by date, so the generated planning and analysis stays searchable in your vault.
+AI output is written into `Dashboard Logs/AI` by default, grouped by date, so the generated planning and analysis stays searchable in your vault. Generated AI notes now also end with a concrete-action section, so even reflective outputs resolve into short next moves instead of stopping at commentary.
 
-The `AI Workspace` card is organized into separate workflow, retrieval, ask, and latest-output sections so the dashboard keeps the same functionality without turning into a single long stack of controls.
+The `AI Workspace` card is organized into separate workflow, retrieval, ask, and latest-output sections so the dashboard keeps the same functionality without turning into a single long stack of controls. The latest-output area now shows both suggested focus items and extracted concrete actions from the newest AI artifact.
 
 Recommended starting model: `gpt-4o-mini`.
 Use that as the default for frequent dashboard actions because it is usually the best cost-to-quality tradeoff for planning, reflection, and triage. If later you want deeper long-form strategic writeups, you can swap the model in settings without changing the rest of the plugin.
@@ -88,10 +92,11 @@ Setup notes:
 2. If you prefer, you can still paste a key into plugin settings and leave the source on `Stored in plugin settings`.
 3. Leave the API URL at the default unless you intentionally want a different compatible endpoint.
 4. Adjust `AI context days` if you want broader or narrower historical context in prompts.
+5. Edit `AI prompt templates` if you want local per-workflow instructions layered onto modes like `morning-startup-brief`, `project-risk-scanner`, or `period-comparison-report` without editing plugin code.
 
 Environment-variable mode avoids persisting the raw API key in plugin data.
 
-The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, and the active note you are currently reading. `AI related note limit` controls how many retrieved notes are included in each request.
+The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, the active note you are currently reading, and explicit calendar snapshot context. `AI related note limit` controls how many retrieved notes are included in each request.
 
 The plugin now also includes a cached AI note index. Instead of rescanning all eligible notes for every AI request, it builds and stores chunked note excerpts for the folders you choose in `AI indexed folders`. That makes retrieval faster and more stable while keeping the scope explicit.
 
