@@ -5,6 +5,7 @@ export const SECTION_HEADER_REGEX = /^([A-Za-z][A-Za-z0-9 &/()'_-]+):\s*$/;
 export const PROJECT_META_REGEX = /^([A-Za-z][A-Za-z ]+)::\s*(.+)$/;
 export const NOTE_LINK_REGEX = /\[\[([^\]]+)\]\]/g;
 export const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"]);
+export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"] as const;
 
 export interface HabitDefinition {
   id: string;
@@ -23,6 +24,7 @@ export interface ArchivedTaskSnapshot {
 export interface WorkSession {
   start: string;
   end: string | null;
+  tag: string;
 }
 
 export type AiApiKeySource = "settings" | "env";

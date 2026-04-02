@@ -12,6 +12,7 @@ import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay } from "
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
+  SESSION_TAG_OPTIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
   type CalendarEventOccurrence,
@@ -26,6 +27,7 @@ import {
   type ProjectReviewOption,
   type QuickAddState,
   type TodoProjectSummary,
+  type WorkSession,
   type WorkLogFilters
 } from "./dashboard-types";
 
@@ -50,6 +52,8 @@ export class DailyDashboardView extends ItemView {
   };
   private editingFocusIndex: number | null = null;
   private editingFocusText = "";
+  private draggedFocusIndex: number | null = null;
+  private selectedSessionTag = getDashboardSelectedSessionTag();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
 
@@ -162,6 +166,63 @@ export class DailyDashboardView extends ItemView {
     }
 
     return { label: "Mobile", icon: "smartphone", nextLabel: "Compact" };
+  }
+
+  private getSessionTagTone(tag: string): DashboardTone {
+    const normalized = tag.trim().toLowerCase();
+    if (normalized === "deep work") {
+      return "capture";
+    }
+
+    if (normalized === "creative") {
+      return "focus";
+    }
+
+    if (normalized === "recovery") {
+      return "health";
+    }
+
+    if (normalized === "admin") {
+      return "log";
+    }
+
+    return "neutral";
+  }
+
+  private setSelectedSessionTag(tag: string): void {
+    this.selectedSessionTag = tag;
+    setDashboardSelectedSessionTag(tag);
+  }
+
+  private getLatestSessionTag(sessions: WorkSession[]): string {
+    return [...sessions]
+      .reverse()
+      .find((session) => session.tag.trim().length > 0)
+      ?.tag ?? "";
+  }
+
+  private getSessionTagSummary(sessions: WorkSession[]): Array<{ tag: string; minutes: number }> {
+    const nowKey = formatDateTimeKey(new Date());
+    const totals = new Map<string, number>();
+
+    sessions.forEach((session) => {
+      const tag = session.tag.trim();
+      if (!tag) {
+        return;
+      }
+
+      const end = session.end ?? nowKey;
+      const minutes = Math.max(0, getMinutesBetween(session.start, end));
+      if (minutes <= 0) {
+        return;
+      }
+
+      totals.set(tag, (totals.get(tag) ?? 0) + minutes);
+    });
+
+    return [...totals.entries()]
+      .map(([tag, minutes]) => ({ tag, minutes }))
+      .sort((left, right) => right.minutes - left.minutes);
   }
 
   private createCollapsibleSubsection(parent: HTMLElement, sectionKey: string, title: string, description: string): HTMLElement {
@@ -333,6 +394,14 @@ export class DailyDashboardView extends ItemView {
       const activeRelaxSession = todayEntry.relaxSessions.find((session) => session.end === null) ?? null;
       const activeBreakSession = todayEntry.breakSessions.find((session) => session.end === null) ?? null;
       const activePoopSession = todayEntry.poopSessions.find((session) => session.end === null) ?? null;
+      const activeSessionTag = activeWorkSession?.tag || activeNapSession?.tag || activeRelaxSession?.tag || activeBreakSession?.tag || activePoopSession?.tag || "";
+      const tagSummary = this.getSessionTagSummary([
+        ...todayEntry.workSessions,
+        ...todayEntry.napSessions,
+        ...todayEntry.relaxSessions,
+        ...todayEntry.breakSessions,
+        ...todayEntry.poopSessions
+      ]);
       const activeModeLabel = activePoopSession
         ? "Pooping"
         : activeBreakSession
@@ -361,6 +430,7 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(dayFlowStatus, activeSessionTag ? `Tag ${activeSessionTag}` : `Default ${this.selectedSessionTag}`, activeSessionTag ? this.getSessionTagTone(activeSessionTag) : this.getSessionTagTone(this.selectedSessionTag));
       createSemanticChip(dayFlowStatus, activeRelaxSession ? "Relaxing tracked" : "No relax active", activeRelaxSession ? "health" : "neutral");
       createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
       createSemanticChip(dayFlowStatus, activePoopSession ? "Poop tracked" : "No poop active", activePoopSession ? "alert" : "neutral");
@@ -386,14 +456,41 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
 
+      const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
+      const tagButtons = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-session-tag-picker" });
+      SESSION_TAG_OPTIONS.forEach((tag) => {
+        const button = tagButtons.createEl("button", {
+          cls: "daily-dashboard-session-tag-button",
+          text: tag
+        });
+        button.type = "button";
+        button.addClass(`is-${this.getSessionTagTone(tag)}`);
+        if (this.selectedSessionTag === tag) {
+          button.addClass("is-active");
+        }
+        button.addEventListener("click", () => {
+          this.setSelectedSessionTag(tag);
+          void this.render();
+        });
+      });
+
+      if (tagSummary.length > 0) {
+        const tagSummaryList = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row" });
+        tagSummary.forEach((item) => {
+          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
+        });
+      } else {
+        dayFlowTagSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No tagged sessions recorded yet today." });
+      }
+
       const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, activeWorkSession ? "Stop work" : "Start work", async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(), false, activeWorkSession ? "square" : "play");
-      createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(), false, activeNapSession ? "alarm-clock-off" : "bed-single");
-      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(), false, activeRelaxSession ? "square" : "coffee");
-      createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(), false, activeBreakSession ? "square" : "pause");
-      createButton(dayFlowActions, activePoopSession ? "Finish poop" : "Start poop", async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(), false, activePoopSession ? "square" : "bath");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work • ${this.selectedSessionTag}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag), false, activeWorkSession ? "square" : "play");
+      createButton(dayFlowActions, activeNapSession ? "Stop nap" : `Start nap • ${this.selectedSessionTag}`, async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(this.selectedSessionTag), false, activeNapSession ? "alarm-clock-off" : "bed-single");
+      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : `Start relaxing • ${this.selectedSessionTag}`, async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(this.selectedSessionTag), false, activeRelaxSession ? "square" : "coffee");
+      createButton(dayFlowActions, activeBreakSession ? "End break" : `Start break • ${this.selectedSessionTag}`, async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(this.selectedSessionTag), false, activeBreakSession ? "square" : "pause");
+      createButton(dayFlowActions, activePoopSession ? "Finish poop" : `Start poop • ${this.selectedSessionTag}`, async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(this.selectedSessionTag), false, activePoopSession ? "square" : "bath");
 
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
@@ -405,6 +502,7 @@ export class DailyDashboardView extends ItemView {
         const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot)
             .filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
+      focusCard.createEl("span", { cls: "daily-dashboard-row-meta", text: "Drag Top 3 rows to reprioritize them without deleting and recreating items." });
       if (focusDisplayItems.length === 0) {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
@@ -467,6 +565,54 @@ export class DailyDashboardView extends ItemView {
             if (focusIndex < 0) {
               return;
             }
+            const latestTag = this.getLatestSessionTag(item.workSessions);
+            if (latestTag && !isEditingFocus) {
+              const tagChipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+              createSemanticChip(tagChipRow, latestTag, this.getSessionTagTone(latestTag));
+            }
+            if (!isEditingFocus) {
+              row.draggable = true;
+              row.addClass("is-draggable");
+              row.addEventListener("dragstart", (event) => {
+                this.draggedFocusIndex = focusIndex;
+                row.addClass("is-dragging");
+                if (event.dataTransfer) {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", `${focusIndex}`);
+                }
+              });
+              row.addEventListener("dragover", (event) => {
+                if (this.draggedFocusIndex === null || this.draggedFocusIndex === focusIndex) {
+                  return;
+                }
+
+                event.preventDefault();
+                row.addClass("is-drop-target");
+              });
+              row.addEventListener("dragleave", () => {
+                row.removeClass("is-drop-target");
+              });
+              row.addEventListener("drop", (event) => {
+                event.preventDefault();
+                row.removeClass("is-drop-target");
+                const draggedIndex = this.draggedFocusIndex;
+                this.draggedFocusIndex = null;
+                if (draggedIndex === null || draggedIndex === focusIndex) {
+                  return;
+                }
+
+                void this.plugin.reorderTodayFocusItems(draggedIndex, focusIndex).then(async (changed) => {
+                  if (changed) {
+                    await this.render();
+                  }
+                });
+              });
+              row.addEventListener("dragend", () => {
+                this.draggedFocusIndex = null;
+                row.removeClass("is-dragging");
+                row.removeClass("is-drop-target");
+              });
+            }
             if (isEditingFocus) {
               createButton(controls, "Save", async () => {
                 const saved = await this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText);
@@ -486,7 +632,7 @@ export class DailyDashboardView extends ItemView {
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
-              createButton(controls, "Start", async () => this.plugin.startTodayFocusItem(focusIndex), false, "play");
+              createButton(controls, `Start • ${this.selectedSessionTag}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag), false, "play");
             }
             if (!isEditingFocus) {
               createButton(controls, "Details", async () => {
@@ -1227,9 +1373,11 @@ export class DailyDashboardView extends ItemView {
 
     const header = shell.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
     const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
+        const sessionTag = this.getLatestSessionTag(item.workSessions);
     const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
     title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
     const controls = header.createDiv({ cls: "daily-dashboard-calendar-nav" });
+          sessionTag ? `Tag ${sessionTag}` : "",
     createButton(controls, "Prev", async () => {
       this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
       await this.render();
@@ -2649,6 +2797,7 @@ const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sectio
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 const DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
 const DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
+const DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-session-tag";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -2819,6 +2968,27 @@ function getDashboardViewMode(): DashboardViewMode {
 function setDashboardViewMode(mode: DashboardViewMode): void {
   try {
     window.localStorage.setItem(DASHBOARD_VIEW_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getDashboardSelectedSessionTag(): string {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY)?.trim() ?? "";
+    return SESSION_TAG_OPTIONS.includes(stored as typeof SESSION_TAG_OPTIONS[number]) ? stored : SESSION_TAG_OPTIONS[0];
+  } catch {
+    return SESSION_TAG_OPTIONS[0];
+  }
+}
+
+function setDashboardSelectedSessionTag(tag: string): void {
+  try {
+    const normalized = tag.trim();
+    window.localStorage.setItem(
+      DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY,
+      SESSION_TAG_OPTIONS.includes(normalized as typeof SESSION_TAG_OPTIONS[number]) ? normalized : SESSION_TAG_OPTIONS[0]
+    );
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }

@@ -29,19 +29,19 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     ? entry.nextUpFocus.map((item) => renderNextUpFocusLine(item))
     : ["- No queued items"];
   const workSessionLines = entry.workSessions.length > 0
-    ? entry.workSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    ? entry.workSessions.map((session) => renderSessionLine(session))
     : ["- No tracked work sessions"];
   const napSessionLines = entry.napSessions.length > 0
-    ? entry.napSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    ? entry.napSessions.map((session) => renderSessionLine(session))
     : ["- No tracked naps"];
   const relaxSessionLines = entry.relaxSessions.length > 0
-    ? entry.relaxSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    ? entry.relaxSessions.map((session) => renderSessionLine(session))
     : ["- No tracked relaxing sessions"];
   const breakSessionLines = entry.breakSessions.length > 0
-    ? entry.breakSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    ? entry.breakSessions.map((session) => renderSessionLine(session))
     : ["- No tracked breaks"];
   const poopSessionLines = entry.poopSessions.length > 0
-    ? entry.poopSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
+    ? entry.poopSessions.map((session) => renderSessionLine(session))
     : ["- No tracked bowel movement sessions"];
   const calendarEventLines = calendarEvents.length > 0
     ? calendarEvents.map((event) => {
@@ -597,12 +597,14 @@ export function isTodayFocusItemActive(item: TodayFocusItem): boolean {
 
 function renderTodayFocusLine(item: TodayFocusItem): string {
   const workedMinutes = getTrackedTodayFocusMinutes(item);
+  const sessionTag = [...item.workSessions].reverse().find((session) => session.tag.trim().length > 0)?.tag ?? "";
   const statusLabel = item.status === "working"
     ? "Working on"
     : item.status === "done"
       ? "Done"
       : "Queued";
   const detailParts = [
+    sessionTag ? `tag: ${sessionTag}` : "",
     item.estimateMinutes && item.estimateMinutes > 0 ? `estimate: ${formatMinutesAsHours(item.estimateMinutes)}` : "",
     workedMinutes > 0 ? `tracked: ${formatMinutesAsHours(workedMinutes)}` : "",
     item.notes ? `notes: ${item.notes}` : ""
@@ -635,9 +637,17 @@ function parseTodayFocusLine(line: string): TodayFocusItem | null {
     notes: extractFocusDetail(details, "notes") ?? "",
     estimateMinutes: parseDurationLabel(extractFocusDetail(details, "estimate")),
     status,
-    workSessions: [],
+    workSessions: (() => {
+      const tag = extractFocusDetail(details, "tag") ?? "";
+      return tag ? [{ start: "", end: null, tag }] : [];
+    })(),
     completedAt: null
   };
+}
+
+function renderSessionLine(session: WorkSession): string {
+  const tagSuffix = session.tag.trim().length > 0 ? ` [${session.tag.trim()}]` : "";
+  return `- ${session.start} -> ${session.end ?? "Still active"}${tagSuffix}`;
 }
 
 function renderNextUpFocusLine(item: NextUpFocusItem): string {

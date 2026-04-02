@@ -812,6 +812,20 @@
   background: color-mix(in srgb, #f0b66b 10%, var(--background-primary));
 }
 
+.daily-dashboard-focus-row.is-draggable {
+  cursor: grab;
+}
+
+.daily-dashboard-focus-row.is-dragging {
+  opacity: 0.6;
+  transform: scale(0.99);
+}
+
+.daily-dashboard-focus-row.is-drop-target {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 40%, var(--background-modifier-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--daily-dashboard-accent) 26%, transparent);
+}
+
 .daily-dashboard-habit-meta {
   color: var(--text-muted);
   font-size: 0.88rem;
@@ -833,6 +847,48 @@
 .daily-dashboard-dayflow-actions .daily-dashboard-primary-button,
 .daily-dashboard-dayflow-actions .daily-dashboard-secondary-button {
   width: 100%;
+}
+
+.daily-dashboard-session-tag-picker {
+  gap: 10px;
+}
+
+.daily-dashboard-session-tag-button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--daily-dashboard-border);
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  color: var(--text-normal);
+  font: inherit;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.daily-dashboard-session-tag-button.is-capture {
+  background: color-mix(in srgb, #83c7ff 12%, var(--background-primary));
+}
+
+.daily-dashboard-session-tag-button.is-focus {
+  background: color-mix(in srgb, #f0d287 14%, var(--background-primary));
+}
+
+.daily-dashboard-session-tag-button.is-health {
+  background: color-mix(in srgb, #79d7cb 14%, var(--background-primary));
+}
+
+.daily-dashboard-session-tag-button.is-log {
+  background: color-mix(in srgb, #8fbbff 14%, var(--background-primary));
+}
+
+.daily-dashboard-session-tag-button.is-neutral {
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+}
+
+.daily-dashboard-session-tag-button.is-active {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 48%, var(--background-modifier-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--daily-dashboard-accent) 22%, transparent);
 }
 
 .daily-dashboard-score-block {

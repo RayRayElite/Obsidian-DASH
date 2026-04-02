@@ -427,10 +427,11 @@ function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
 
   const workSessions = Array.isArray(rawItem.workSessions)
     ? rawItem.workSessions
-        .filter((item): item is { start: string; end?: string | null } => Boolean(item && typeof item === "object" && typeof item.start === "string"))
+        .filter((item): item is { start: string; end?: string | null; tag?: string } => Boolean(item && typeof item === "object" && typeof item.start === "string"))
         .map((item) => ({
           start: item.start,
-          end: typeof item.end === "string" ? item.end : null
+          end: typeof item.end === "string" ? item.end : null,
+          tag: typeof item.tag === "string" ? item.tag.trim() : ""
         }))
     : [];
 

@@ -1407,7 +1407,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
-  async startWorkSession(): Promise<void> {
+  async startWorkSession(tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting work tracking.");
       return;
@@ -1422,7 +1422,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "work");
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null }];
+    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
     await this.persistEntry(entry);
     new Notice("Work session started.");
   }
@@ -1442,7 +1442,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Work session stopped.");
   }
 
-  async startNapSession(): Promise<void> {
+  async startNapSession(tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting a nap session.");
       return;
@@ -1458,7 +1458,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "nap");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null }];
+    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null, tag: tag.trim() }];
     await this.persistEntry(entry);
     new Notice("Nap started.");
   }
@@ -1476,7 +1476,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Nap stopped.");
   }
 
-  async startRelaxSession(): Promise<void> {
+  async startRelaxSession(tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before tracking relaxing time.");
       return;
@@ -1492,7 +1492,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "relax");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null }];
+    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null, tag: tag.trim() }];
     await this.persistEntry(entry);
     new Notice("Relaxing started.");
   }
@@ -1510,7 +1510,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Relaxing stopped.");
   }
 
-  async startBreakSession(): Promise<void> {
+  async startBreakSession(tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting a break.");
       return;
@@ -1526,7 +1526,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "break");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: tag.trim() }];
     await this.persistEntry(entry);
     new Notice("Break started.");
   }
@@ -1547,7 +1547,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "break");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null }];
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: "recovery" }];
     await this.persistEntry(entry);
     new Notice("Paused active sessions and started a break.");
   }
@@ -1565,7 +1565,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Break ended.");
   }
 
-  async startPoopSession(): Promise<void> {
+  async startPoopSession(tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before tracking a bowel movement.");
       return;
@@ -1581,7 +1581,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "poop");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.poopSessions = [...entry.poopSessions, { start: timestamp, end: null }];
+    entry.poopSessions = [...entry.poopSessions, { start: timestamp, end: null, tag: tag.trim() }];
     await this.persistEntry(entry);
     new Notice("Bowel movement tracking started.");
   }
@@ -1921,7 +1921,26 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
-  async startTodayFocusItem(index: number): Promise<void> {
+  async reorderTodayFocusItems(fromIndex: number, toIndex: number): Promise<boolean> {
+    const entry = this.getTodayEntry();
+    if (fromIndex === toIndex) {
+      return false;
+    }
+
+    const item = entry.todayFocus[fromIndex];
+    if (!item || toIndex < 0 || toIndex >= entry.todayFocus.length) {
+      return false;
+    }
+
+    const reordered = [...entry.todayFocus];
+    reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, item);
+    entry.todayFocus = reordered;
+    await this.persistEntry(entry);
+    return true;
+  }
+
+  async startTodayFocusItem(index: number, tag = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before tracking a Top 3 item.");
       return;
@@ -1938,7 +1957,7 @@ export default class DailyDashboardPlugin extends Plugin {
     item.status = "working";
     item.completedAt = null;
     if (!item.workSessions.some((session) => session.end === null)) {
-      item.workSessions = [...item.workSessions, { start: timestamp, end: null }];
+      item.workSessions = [...item.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
     }
     await this.persistEntry(entry);
   }
@@ -2842,7 +2861,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
-              end: typeof item.end === "string" ? item.end : null
+              end: typeof item.end === "string" ? item.end : null,
+              tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
       workMinutesOverride: Number.isFinite(Number(entry.workMinutesOverride)) ? clamp(Number(entry.workMinutesOverride), 0, 1440) : null,
@@ -2851,7 +2871,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
-              end: typeof item.end === "string" ? item.end : null
+              end: typeof item.end === "string" ? item.end : null,
+              tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
       napMinutesOverride: Number.isFinite(Number(entry.napMinutesOverride)) ? clamp(Number(entry.napMinutesOverride), 0, 1440) : null,
@@ -2860,7 +2881,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
-              end: typeof item.end === "string" ? item.end : null
+              end: typeof item.end === "string" ? item.end : null,
+              tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
       relaxMinutesOverride: Number.isFinite(Number(entry.relaxMinutesOverride)) ? clamp(Number(entry.relaxMinutesOverride), 0, 1440) : null,
@@ -2869,7 +2891,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
-              end: typeof item.end === "string" ? item.end : null
+              end: typeof item.end === "string" ? item.end : null,
+              tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
       breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
@@ -2878,7 +2901,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .filter((item): item is WorkSession => Boolean(item && typeof item === "object" && typeof item.start === "string"))
             .map((item) => ({
               start: item.start,
-              end: typeof item.end === "string" ? item.end : null
+              end: typeof item.end === "string" ? item.end : null,
+              tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
       completedTasks: Array.isArray(entry.completedTasks)
