@@ -11,8 +11,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add recurrence exceptions like skip, move once, and cancel one occurrence.
 - [x] Add calendar categories such as work, health, errands, social, and personal.
 - [ ] Add event-to-project linking.
-- [ ] Add task due dates in the master task hub and surface due-soon / overdue work.
-- [ ] Add blocked-task state with blocker reason and unblock target date.
+- [x] Add task due dates in the master task hub and surface due-soon / overdue work.
+- [x] Add blocked-task state with blocker reason and unblock target date.
 - [ ] Expand repeating task support for weekly, monthly, interval, and weekday-specific rules.
 - [ ] Add export mode for markdown / CSV metric dumps.
 
@@ -126,6 +126,6 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Build the view-mode foundation before adding compact, mobile, and widescreen variants.
 - [x] Expand calendar recurrence editing and exception handling.
 - [x] Improve Top 3 editing, carry-forward, and reminder acceptance.
-- [ ] Add due dates / blocked states to project workflow.
+- [x] Add due dates / blocked states to project workflow.
 - [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

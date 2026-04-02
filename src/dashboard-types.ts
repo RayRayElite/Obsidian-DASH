@@ -318,6 +318,13 @@ export interface TodoProjectSummary {
   healthScore: number;
   healthLabel: string;
   relationships: string[];
+  nowTaskDetails: TodoTaskSummary[];
+  nextTaskDetails: TodoTaskSummary[];
+  laterTaskDetails: TodoTaskSummary[];
+  dueRepeatingTaskDetails: TodoTaskSummary[];
+  dueSoonTasks: TodoTaskSummary[];
+  overdueTasks: TodoTaskSummary[];
+  blockedTasks: TodoTaskSummary[];
 }
 
 export interface TodoSnapshot {
@@ -327,6 +334,21 @@ export interface TodoSnapshot {
   staleProjects: TodoProjectSummary[];
   breakdownCandidates: Array<{ project: string; task: string }>;
   cleanupSuggestions: string[];
+  dueSoonTasks: Array<{ project: string; task: TodoTaskSummary }>;
+  overdueTasks: Array<{ project: string; task: TodoTaskSummary }>;
+  blockedTasks: Array<{ project: string; task: TodoTaskSummary }>;
+}
+
+export interface TodoTaskSummary {
+  text: string;
+  rawText: string;
+  section: string;
+  dueDate: string;
+  blockedReason: string;
+  unblockDate: string;
+  isBlocked: boolean;
+  isDueSoon: boolean;
+  isOverdue: boolean;
 }
 
 export interface WorkLogFilters {

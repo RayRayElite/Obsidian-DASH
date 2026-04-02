@@ -18,6 +18,8 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - includes switchable mobile, compact, and widescreen dashboard modes plus collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
+Task lines in the master hub can now include lightweight annotations such as `[due: 2026-04-05]`, `[blocked: waiting on API key]`, and `[unblock: 2026-04-08]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, and blocked work in project health, cleanup alerts, promotion flows, and AI context.
+
 ## Master Todo Workflow
 
 Point the plugin at your `Master Task Hub.md` note in settings. The note works best when each project uses a `##` heading and includes optional metadata such as `Project Note:: [[Note Name]]`, `Status::`, `Focus::`, and `Relationships::`.

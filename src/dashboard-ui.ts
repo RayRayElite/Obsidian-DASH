@@ -27,6 +27,7 @@ import {
   type DashboardViewMode,
   type ProjectReviewOption,
   type QuickAddState,
+  type TodoTaskSummary,
   type TodoProjectSummary,
   type WorkSession,
   type WorkLogFilters
@@ -202,6 +203,16 @@ export class DailyDashboardView extends ItemView {
       ?.tag ?? "";
   }
 
+  private formatTodoTaskMeta(task: TodoTaskSummary): string {
+    return [
+      task.section,
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+    ].filter((value) => value.length > 0).join(" • ");
+  }
+
   private getSessionTagSummary(sessions: WorkSession[]): Array<{ tag: string; minutes: number }> {
     const nowKey = formatDateTimeKey(new Date());
     const totals = new Map<string, number>();
@@ -286,6 +297,9 @@ export class DailyDashboardView extends ItemView {
       const staleProjects = todoSnapshot?.staleProjects ?? [];
       const breakdownCandidates = todoSnapshot?.breakdownCandidates ?? [];
       const cleanupSuggestions = todoSnapshot?.cleanupSuggestions ?? [];
+      const dueSoonTasks = todoSnapshot?.dueSoonTasks ?? [];
+      const overdueTasks = todoSnapshot?.overdueTasks ?? [];
+      const blockedTasks = todoSnapshot?.blockedTasks ?? [];
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
@@ -1161,6 +1175,15 @@ export class DailyDashboardView extends ItemView {
             createSemanticChip(chipRow, project.trend, project.trend === "up" ? "done" : project.trend === "down" ? "alert" : "neutral");
             row.createEl("strong", { text: `${project.name} • ${project.healthScore}` });
             row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend}` });
+            if (projectsExpanded && project.overdueTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" • ")}` });
+            }
+            if (projectsExpanded && project.dueSoonTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Due soon: ${project.dueSoonTasks.slice(0, 2).map((task) => `${task.text} (${task.dueDate})`).join(" • ")}` });
+            }
+            if (projectsExpanded && project.blockedTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
+            }
             if (projectsExpanded && project.staleDays !== null) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
             }
@@ -1185,6 +1208,9 @@ export class DailyDashboardView extends ItemView {
       const alertsExpanded = this.isSectionExpanded("cleanup-details");
       const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
       const alertLines = [
+        ...overdueTasks.slice(0, 5).map((item) => `Overdue: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
+        ...dueSoonTasks.slice(0, 5).map((item) => `Due soon: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
+        ...blockedTasks.slice(0, 5).map((item) => `Blocked: ${item.project} -> ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`),
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
         ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
         ...cleanupSuggestions.slice(0, 5)
@@ -2346,6 +2372,16 @@ export class PromoteTaskModal extends Modal {
     this.selectedProjectName = projects[0]?.name ?? "";
   }
 
+  private formatTodoTaskMeta(task: TodoTaskSummary): string {
+    return [
+      task.section,
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+    ].filter((value) => value.length > 0).join(" • ");
+  }
+
   onOpen(): void {
     this.setTitle("Promote Project Task To Today");
     const { contentEl } = this;
@@ -2363,9 +2399,19 @@ export class PromoteTaskModal extends Modal {
 
     const selectedProject = this.projects.find((project) => project.name === this.selectedProjectName);
     const candidateTasks = [
-      ...selectedProject?.nowTasks ?? [],
-      ...selectedProject?.nextTasks ?? [],
-      ...selectedProject?.breakdownTasks ?? []
+      ...selectedProject?.nowTaskDetails ?? [],
+      ...selectedProject?.nextTaskDetails ?? [],
+      ...(selectedProject?.breakdownTasks ?? []).map((task) => ({
+        text: task,
+        rawText: task,
+        section: "Breakdown",
+        dueDate: "",
+        blockedReason: "",
+        unblockDate: "",
+        isBlocked: false,
+        isDueSoon: false,
+        isOverdue: false
+      }))
     ].slice(0, 20);
 
     if (candidateTasks.length === 0) {
@@ -2373,10 +2419,11 @@ export class PromoteTaskModal extends Modal {
     } else {
       candidateTasks.forEach((task) => {
         new Setting(contentEl)
-          .setName(task)
+          .setName(task.text)
+          .setDesc(this.formatTodoTaskMeta(task))
           .addButton((button) => {
             button.setButtonText("Promote").setCta().onClick(async () => {
-              await this.plugin.promoteTaskToToday(this.selectedProjectName, task);
+              await this.plugin.promoteTaskToToday(this.selectedProjectName, task.text);
               this.close();
             });
           });

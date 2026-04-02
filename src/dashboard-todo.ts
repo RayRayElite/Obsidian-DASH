@@ -15,6 +15,7 @@ import {
   type HabitDefinition,
   type ReferenceOffloadResult,
   type RepeatingTaskDefinition,
+  type TodoTaskSummary,
   type TodoProjectRange,
   type TodoProjectSummary,
   type TodoSnapshot,
@@ -47,6 +48,13 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     const nextTasks: string[] = [];
     const laterTasks: string[] = [];
     const dueRepeatingTasks: string[] = [];
+    const nowTaskDetails: TodoTaskSummary[] = [];
+    const nextTaskDetails: TodoTaskSummary[] = [];
+    const laterTaskDetails: TodoTaskSummary[] = [];
+    const dueRepeatingTaskDetails: TodoTaskSummary[] = [];
+    const dueSoonTasks: TodoTaskSummary[] = [];
+    const overdueTasks: TodoTaskSummary[] = [];
+    const blockedTasks: TodoTaskSummary[] = [];
     const breakdownTasks: string[] = [];
     const emptySections = new Set<string>();
     const relationships = new Set<string>();
@@ -83,7 +91,8 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       }
 
       const taskText = taskMatch[2].trim();
-      const normalizedTask = taskText.toLowerCase();
+  const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
+  const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
       const isComplete = taskMatch[1].toLowerCase() === "x";
 
@@ -114,19 +123,31 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
 
       openCount += 1;
       if (sectionKey === "now") {
-        nowTasks.push(taskText);
+        nowTasks.push(taskSummary.text);
+        nowTaskDetails.push(taskSummary);
       }
       if (sectionKey === "next") {
-        nextTasks.push(taskText);
+        nextTasks.push(taskSummary.text);
+        nextTaskDetails.push(taskSummary);
       }
       if (sectionKey === "later") {
-        laterTasks.push(taskText);
+        laterTasks.push(taskSummary.text);
+        laterTaskDetails.push(taskSummary);
       }
       if (sectionKey === "repeating") {
-        dueRepeatingTasks.push(taskText);
+        dueRepeatingTasks.push(taskSummary.text);
+        dueRepeatingTaskDetails.push(taskSummary);
       }
-      if (looksLikeBreakdownTask(taskText)) {
-        breakdownTasks.push(taskText);
+      if (taskSummary.isBlocked) {
+        blockedTasks.push(taskSummary);
+      }
+      if (taskSummary.isOverdue) {
+        overdueTasks.push(taskSummary);
+      } else if (taskSummary.isDueSoon) {
+        dueSoonTasks.push(taskSummary);
+      }
+      if (looksLikeBreakdownTask(taskSummary.text)) {
+        breakdownTasks.push(taskSummary.text);
       }
     }
 
@@ -138,6 +159,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       completionsThisWeek,
       nowCount: nowTasks.length,
       nextCount: nextTasks.length,
+      dueSoonCount: dueSoonTasks.length,
+      overdueCount: overdueTasks.length,
+      blockedCount: blockedTasks.length,
       breakdownCount: breakdownTasks.length,
       duplicateCount: duplicateTasks.size
     });
@@ -165,7 +189,14 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       trend,
       healthScore,
       healthLabel: describeHealthScore(healthScore),
-      relationships: Array.from(relationships)
+      relationships: Array.from(relationships),
+      nowTaskDetails,
+      nextTaskDetails,
+      laterTaskDetails,
+      dueRepeatingTaskDetails,
+      dueSoonTasks,
+      overdueTasks,
+      blockedTasks
     };
   });
 
@@ -174,6 +205,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     .filter((project) => project.staleDays !== null && project.staleDays >= 7)
     .sort((left, right) => (right.staleDays ?? 0) - (left.staleDays ?? 0));
   const cleanupSuggestions = projects.flatMap((project) => buildCleanupSuggestions(project));
+  const dueSoonTasks = projects.flatMap((project) => project.dueSoonTasks.map((task) => ({ project: project.name, task })));
+  const overdueTasks = projects.flatMap((project) => project.overdueTasks.map((task) => ({ project: project.name, task })));
+  const blockedTasks = projects.flatMap((project) => project.blockedTasks.map((task) => ({ project: project.name, task })));
 
   return {
     totalOpen: projects.reduce((sum, project) => sum + project.openCount, 0),
@@ -181,7 +215,10 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     projects,
     staleProjects,
     breakdownCandidates,
-    cleanupSuggestions
+    cleanupSuggestions,
+    dueSoonTasks,
+    overdueTasks,
+    blockedTasks
   };
 }
 
@@ -1005,6 +1042,9 @@ export function computeHealthScore(input: {
   completionsThisWeek: number;
   nowCount: number;
   nextCount: number;
+  dueSoonCount: number;
+  overdueCount: number;
+  blockedCount: number;
   breakdownCount: number;
   duplicateCount: number;
 }): number {
@@ -1014,6 +1054,9 @@ export function computeHealthScore(input: {
   score += Math.min(input.completionsThisWeek * 4, 16);
   score += Math.min(input.nowCount * 3, 9);
   score += Math.min(input.nextCount * 1, 4);
+  score -= input.dueSoonCount * 2;
+  score -= input.overdueCount * 7;
+  score -= input.blockedCount * 5;
   score -= input.breakdownCount * 5;
   score -= input.duplicateCount * 6;
   return clamp(score, 0, 100);
@@ -1043,10 +1086,51 @@ export function buildCleanupSuggestions(project: TodoProjectSummary): string[] {
   if (project.breakdownTasks.length > 0) {
     suggestions.push(`${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`);
   }
+  if (project.overdueTasks.length > 0) {
+    suggestions.push(`${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (project.blockedTasks.length > 0) {
+    suggestions.push(`${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`);
+  }
   if (project.emptySections.length > 0) {
     suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
   }
   return suggestions;
+}
+
+function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
+  const dueDate = extractTaskAnnotation(rawText, "due");
+  const blockedReason = extractTaskAnnotation(rawText, "blocked");
+  const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
+  const text = stripTaskAnnotations(rawText).trim();
+  const todayKey = formatDateKey(now);
+  const isOverdue = Boolean(dueDate && dueDate < todayKey);
+  const isDueSoon = Boolean(dueDate && !isOverdue && daysBetween(todayKey, dueDate) <= 3);
+
+  return {
+    text: text || rawText,
+    rawText,
+    section,
+    dueDate: dueDate ?? "",
+    blockedReason: blockedReason ?? "",
+    unblockDate: unblockDate ?? "",
+    isBlocked: Boolean(blockedReason),
+    isDueSoon,
+    isOverdue
+  };
+}
+
+function extractTaskAnnotation(value: string, key: string): string | null {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = value.match(new RegExp(`\\[${escapedKey}:\\s*([^\]]+)\\]`, "i"));
+  return match?.[1]?.trim() || null;
+}
+
+function stripTaskAnnotations(value: string): string {
+  return value
+    .replace(/\s*\[(?:due|blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function appendLinesToSection(content: string, sectionName: string, linesToAppend: string[]): string {

@@ -597,6 +597,8 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
       `- ${project.name}: health ${project.healthScore}, ${project.openCount} open, ${project.archivedCount} archived, trend ${project.trend}`,
       project.focus ? `  focus: ${project.focus}` : "",
       project.staleDays !== null ? `  stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
+      project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => `${task.text}${task.dueDate ? ` (${task.dueDate})` : ""}`).join(" | ")}` : "",
+      project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "",
       project.nowTasks.length > 0 ? `  now: ${project.nowTasks.slice(0, 3).join(" | ")}` : "",
       project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
     ].filter((line) => line.length > 0).join("\n"));
@@ -605,6 +607,10 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
     .map((project) => `- ${project.name}: ${project.staleDays} stale days`);
 
   const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item}`);
+  const dueLines = snapshot.overdueTasks.slice(0, 6)
+    .map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
+  const blockedLines = snapshot.blockedTasks.slice(0, 6)
+    .map((item) => `- ${item.project}: ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`);
 
   return [
     `Open tasks: ${snapshot.totalOpen}`,
@@ -615,6 +621,12 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
     "",
     "Stale projects:",
     ...(staleLines.length > 0 ? staleLines : ["- None"]),
+    "",
+    "Overdue tasks:",
+    ...(dueLines.length > 0 ? dueLines : ["- None"]),
+    "",
+    "Blocked tasks:",
+    ...(blockedLines.length > 0 ? blockedLines : ["- None"]),
     "",
     "Cleanup suggestions:",
     ...(cleanupLines.length > 0 ? cleanupLines : ["- None"])

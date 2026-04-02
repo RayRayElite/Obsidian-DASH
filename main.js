@@ -529,11 +529,15 @@ function renderTodoSnapshotForAi(snapshot) {
     `- ${project.name}: health ${project.healthScore}, ${project.openCount} open, ${project.archivedCount} archived, trend ${project.trend}`,
     project.focus ? `  focus: ${project.focus}` : "",
     project.staleDays !== null ? `  stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
+    project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => `${task.text}${task.dueDate ? ` (${task.dueDate})` : ""}`).join(" | ")}` : "",
+    project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "",
     project.nowTasks.length > 0 ? `  now: ${project.nowTasks.slice(0, 3).join(" | ")}` : "",
     project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
   ].filter((line) => line.length > 0).join("\n"));
   const staleLines = snapshot.staleProjects.slice(0, 6).map((project) => `- ${project.name}: ${project.staleDays} stale days`);
   const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item2) => `- ${item2}`);
+  const dueLines = snapshot.overdueTasks.slice(0, 6).map((item2) => `- ${item2.project}: ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`);
+  const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item2) => `- ${item2.project}: ${item2.task.text}${item2.task.blockedReason ? ` (${item2.task.blockedReason})` : ""}`);
   return [
     `Open tasks: ${snapshot.totalOpen}`,
     `Archived tasks: ${snapshot.totalArchived}`,
@@ -543,6 +547,12 @@ function renderTodoSnapshotForAi(snapshot) {
     "",
     "Stale projects:",
     ...staleLines.length > 0 ? staleLines : ["- None"],
+    "",
+    "Overdue tasks:",
+    ...dueLines.length > 0 ? dueLines : ["- None"],
+    "",
+    "Blocked tasks:",
+    ...blockedLines.length > 0 ? blockedLines : ["- None"],
     "",
     "Cleanup suggestions:",
     ...cleanupLines.length > 0 ? cleanupLines : ["- None"]
@@ -1284,6 +1294,13 @@ function parseTodoSnapshot(content) {
     const nextTasks = [];
     const laterTasks = [];
     const dueRepeatingTasks = [];
+    const nowTaskDetails = [];
+    const nextTaskDetails = [];
+    const laterTaskDetails = [];
+    const dueRepeatingTaskDetails = [];
+    const dueSoonTasks2 = [];
+    const overdueTasks2 = [];
+    const blockedTasks2 = [];
     const breakdownTasks = [];
     const emptySections = /* @__PURE__ */ new Set();
     const relationships = /* @__PURE__ */ new Set();
@@ -1315,7 +1332,8 @@ function parseTodoSnapshot(content) {
         continue;
       }
       const taskText = taskMatch[2].trim();
-      const normalizedTask = taskText.toLowerCase();
+      const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
+      const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
       const isComplete = taskMatch[1].toLowerCase() === "x";
       emptySections.delete(currentSection);
@@ -1343,19 +1361,31 @@ function parseTodoSnapshot(content) {
       }
       openCount += 1;
       if (sectionKey === "now") {
-        nowTasks.push(taskText);
+        nowTasks.push(taskSummary.text);
+        nowTaskDetails.push(taskSummary);
       }
       if (sectionKey === "next") {
-        nextTasks.push(taskText);
+        nextTasks.push(taskSummary.text);
+        nextTaskDetails.push(taskSummary);
       }
       if (sectionKey === "later") {
-        laterTasks.push(taskText);
+        laterTasks.push(taskSummary.text);
+        laterTaskDetails.push(taskSummary);
       }
       if (sectionKey === "repeating") {
-        dueRepeatingTasks.push(taskText);
+        dueRepeatingTasks.push(taskSummary.text);
+        dueRepeatingTaskDetails.push(taskSummary);
       }
-      if (looksLikeBreakdownTask(taskText)) {
-        breakdownTasks.push(taskText);
+      if (taskSummary.isBlocked) {
+        blockedTasks2.push(taskSummary);
+      }
+      if (taskSummary.isOverdue) {
+        overdueTasks2.push(taskSummary);
+      } else if (taskSummary.isDueSoon) {
+        dueSoonTasks2.push(taskSummary);
+      }
+      if (looksLikeBreakdownTask(taskSummary.text)) {
+        breakdownTasks.push(taskSummary.text);
       }
     }
     const staleDays = lastCompletedAt ? daysBetween(lastCompletedAt, formatDateKey(now)) : null;
@@ -1366,6 +1396,9 @@ function parseTodoSnapshot(content) {
       completionsThisWeek,
       nowCount: nowTasks.length,
       nextCount: nextTasks.length,
+      dueSoonCount: dueSoonTasks2.length,
+      overdueCount: overdueTasks2.length,
+      blockedCount: blockedTasks2.length,
       breakdownCount: breakdownTasks.length,
       duplicateCount: duplicateTasks.size
     });
@@ -1392,7 +1425,14 @@ function parseTodoSnapshot(content) {
       trend,
       healthScore,
       healthLabel: describeHealthScore(healthScore),
-      relationships: Array.from(relationships)
+      relationships: Array.from(relationships),
+      nowTaskDetails,
+      nextTaskDetails,
+      laterTaskDetails,
+      dueRepeatingTaskDetails,
+      dueSoonTasks: dueSoonTasks2,
+      overdueTasks: overdueTasks2,
+      blockedTasks: blockedTasks2
     };
   });
   const breakdownCandidates = projects.flatMap((project) => project.breakdownTasks.map((task) => ({ project: project.name, task })));
@@ -1401,13 +1441,19 @@ function parseTodoSnapshot(content) {
     return ((_a = right.staleDays) != null ? _a : 0) - ((_b = left.staleDays) != null ? _b : 0);
   });
   const cleanupSuggestions = projects.flatMap((project) => buildCleanupSuggestions(project));
+  const dueSoonTasks = projects.flatMap((project) => project.dueSoonTasks.map((task) => ({ project: project.name, task })));
+  const overdueTasks = projects.flatMap((project) => project.overdueTasks.map((task) => ({ project: project.name, task })));
+  const blockedTasks = projects.flatMap((project) => project.blockedTasks.map((task) => ({ project: project.name, task })));
   return {
     totalOpen: projects.reduce((sum, project) => sum + project.openCount, 0),
     totalArchived: projects.reduce((sum, project) => sum + project.archivedCount, 0),
     projects,
     staleProjects,
     breakdownCandidates,
-    cleanupSuggestions
+    cleanupSuggestions,
+    dueSoonTasks,
+    overdueTasks,
+    blockedTasks
   };
 }
 function reconcileCompletedTasks(content, archivedAt) {
@@ -2113,6 +2159,9 @@ function computeHealthScore(input) {
   score += Math.min(input.completionsThisWeek * 4, 16);
   score += Math.min(input.nowCount * 3, 9);
   score += Math.min(input.nextCount * 1, 4);
+  score -= input.dueSoonCount * 2;
+  score -= input.overdueCount * 7;
+  score -= input.blockedCount * 5;
   score -= input.breakdownCount * 5;
   score -= input.duplicateCount * 6;
   return clamp(score, 0, 100);
@@ -2140,10 +2189,45 @@ function buildCleanupSuggestions(project) {
   if (project.breakdownTasks.length > 0) {
     suggestions.push(`${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`);
   }
+  if (project.overdueTasks.length > 0) {
+    suggestions.push(`${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`);
+  }
+  if (project.blockedTasks.length > 0) {
+    suggestions.push(`${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`);
+  }
   if (project.emptySections.length > 0) {
     suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
   }
   return suggestions;
+}
+function parseTodoTaskSummary(rawText, section, now) {
+  const dueDate = extractTaskAnnotation(rawText, "due");
+  const blockedReason = extractTaskAnnotation(rawText, "blocked");
+  const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
+  const text = stripTaskAnnotations(rawText).trim();
+  const todayKey = formatDateKey(now);
+  const isOverdue = Boolean(dueDate && dueDate < todayKey);
+  const isDueSoon = Boolean(dueDate && !isOverdue && daysBetween(todayKey, dueDate) <= 3);
+  return {
+    text: text || rawText,
+    rawText,
+    section,
+    dueDate: dueDate != null ? dueDate : "",
+    blockedReason: blockedReason != null ? blockedReason : "",
+    unblockDate: unblockDate != null ? unblockDate : "",
+    isBlocked: Boolean(blockedReason),
+    isDueSoon,
+    isOverdue
+  };
+}
+function extractTaskAnnotation(value, key) {
+  var _a;
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = value.match(new RegExp(`\\[${escapedKey}:\\s*([^]]+)\\]`, "i"));
+  return ((_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) || null;
+}
+function stripTaskAnnotations(value) {
+  return value.replace(/\s*\[(?:due|blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 function appendLinesToSection(content, sectionName, linesToAppend) {
   const lines = content.split(/\r?\n/);
@@ -2309,6 +2393,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     var _a, _b;
     return (_b = (_a = [...sessions].reverse().find((session) => session.tag.trim().length > 0)) == null ? void 0 : _a.tag) != null ? _b : "";
   }
+  formatTodoTaskMeta(task) {
+    return [
+      task.section,
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+    ].filter((value) => value.length > 0).join(" \u2022 ");
+  }
   getSessionTagSummary(sessions) {
     const nowKey = formatDateTimeKey(/* @__PURE__ */ new Date());
     const totals = /* @__PURE__ */ new Map();
@@ -2369,7 +2462,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusText = "";
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -2381,6 +2474,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const staleProjects = (_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _b : [];
       const breakdownCandidates = (_c = todoSnapshot == null ? void 0 : todoSnapshot.breakdownCandidates) != null ? _c : [];
       const cleanupSuggestions = (_d = todoSnapshot == null ? void 0 : todoSnapshot.cleanupSuggestions) != null ? _d : [];
+      const dueSoonTasks = (_e = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _e : [];
+      const overdueTasks = (_f = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _f : [];
+      const blockedTasks = (_g = todoSnapshot == null ? void 0 : todoSnapshot.blockedTasks) != null ? _g : [];
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
@@ -2471,11 +2567,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
-      const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
-      const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
-      const activeRelaxSession = (_g = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _g : null;
-      const activeBreakSession = (_h = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _h : null;
-      const activePoopSession = (_i = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _i : null;
+      const activeWorkSession = (_h = todayEntry.workSessions.find((session) => session.end === null)) != null ? _h : null;
+      const activeNapSession = (_i = todayEntry.napSessions.find((session) => session.end === null)) != null ? _i : null;
+      const activeRelaxSession = (_j = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _j : null;
+      const activeBreakSession = (_k = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _k : null;
+      const activePoopSession = (_l = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _l : null;
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
@@ -3202,6 +3298,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           createSemanticChip(chipRow, project.trend, project.trend === "up" ? "done" : project.trend === "down" ? "alert" : "neutral");
           row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
           row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend}` });
+          if (projectsExpanded && project.overdueTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" \u2022 ")}` });
+          }
+          if (projectsExpanded && project.dueSoonTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Due soon: ${project.dueSoonTasks.slice(0, 2).map((task) => `${task.text} (${task.dueDate})`).join(" \u2022 ")}` });
+          }
+          if (projectsExpanded && project.blockedTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 ")}` });
+          }
           if (projectsExpanded && project.staleDays !== null) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
           }
@@ -3225,6 +3330,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const alertsExpanded = this.isSectionExpanded("cleanup-details");
       const alertsList = alertsCard.createDiv({ cls: "daily-dashboard-project-list" });
       const alertLines = [
+        ...overdueTasks.slice(0, 5).map((item2) => `Overdue: ${item2.project} -> ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`),
+        ...dueSoonTasks.slice(0, 5).map((item2) => `Due soon: ${item2.project} -> ${item2.task.text}${item2.task.dueDate ? ` (${item2.task.dueDate})` : ""}`),
+        ...blockedTasks.slice(0, 5).map((item2) => `Blocked: ${item2.project} -> ${item2.task.text}${item2.task.blockedReason ? ` (${item2.task.blockedReason})` : ""}`),
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
         ...breakdownCandidates.slice(0, 5).map((item2) => `Needs breakdown: ${item2.project} -> ${item2.task}`),
         ...cleanupSuggestions.slice(0, 5)
@@ -4128,6 +4236,15 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
     this.projects = projects;
     this.selectedProjectName = (_b = (_a = projects[0]) == null ? void 0 : _a.name) != null ? _b : "";
   }
+  formatTodoTaskMeta(task) {
+    return [
+      task.section,
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+    ].filter((value) => value.length > 0).join(" \u2022 ");
+  }
   onOpen() {
     var _a, _b, _c;
     this.setTitle("Promote Project Task To Today");
@@ -4144,17 +4261,27 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
     });
     const selectedProject = this.projects.find((project) => project.name === this.selectedProjectName);
     const candidateTasks = [
-      ...(_a = selectedProject == null ? void 0 : selectedProject.nowTasks) != null ? _a : [],
-      ...(_b = selectedProject == null ? void 0 : selectedProject.nextTasks) != null ? _b : [],
-      ...(_c = selectedProject == null ? void 0 : selectedProject.breakdownTasks) != null ? _c : []
+      ...(_a = selectedProject == null ? void 0 : selectedProject.nowTaskDetails) != null ? _a : [],
+      ...(_b = selectedProject == null ? void 0 : selectedProject.nextTaskDetails) != null ? _b : [],
+      ...((_c = selectedProject == null ? void 0 : selectedProject.breakdownTasks) != null ? _c : []).map((task) => ({
+        text: task,
+        rawText: task,
+        section: "Breakdown",
+        dueDate: "",
+        blockedReason: "",
+        unblockDate: "",
+        isBlocked: false,
+        isDueSoon: false,
+        isOverdue: false
+      }))
     ].slice(0, 20);
     if (candidateTasks.length === 0) {
       contentEl.createEl("p", { text: "No promotable tasks found for this project." });
     } else {
       candidateTasks.forEach((task) => {
-        new import_obsidian3.Setting(contentEl).setName(task).addButton((button) => {
+        new import_obsidian3.Setting(contentEl).setName(task.text).setDesc(this.formatTodoTaskMeta(task)).addButton((button) => {
           button.setButtonText("Promote").setCta().onClick(async () => {
-            await this.plugin.promoteTaskToToday(this.selectedProjectName, task);
+            await this.plugin.promoteTaskToToday(this.selectedProjectName, task.text);
             this.close();
           });
         });
