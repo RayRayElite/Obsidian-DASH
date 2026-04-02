@@ -1202,7 +1202,7 @@ input.daily-dashboard-input {
   position: absolute;
   left: var(--daily-dashboard-week-stage-padding);
   right: var(--daily-dashboard-week-stage-padding);
-  bottom: 30px;
+  bottom: 18px;
   width: auto;
   min-width: calc(var(--daily-dashboard-week-stage-min-width) - (var(--daily-dashboard-week-stage-padding) * 2));
   height: 82px;
@@ -1225,7 +1225,7 @@ input.daily-dashboard-input {
   align-items: end;
   min-width: var(--daily-dashboard-week-stage-min-width);
   height: 316px;
-  padding: 14px var(--daily-dashboard-week-stage-padding) 24px;
+  padding: 14px var(--daily-dashboard-week-stage-padding) 12px;
 }
 
 .daily-dashboard-week-column {
@@ -1375,7 +1375,7 @@ input.daily-dashboard-input {
   flex-wrap: wrap;
   justify-content: center;
   gap: 18px;
-  margin-top: -14px;
+  margin-top: -2px;
   color: var(--text-muted);
   font-size: 0.86rem;
 }
