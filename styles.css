@@ -1235,6 +1235,7 @@ input.daily-dashboard-input {
   gap: 10px;
   min-width: 0;
   position: relative;
+  transform: translateY(-14px);
 }
 
 .daily-dashboard-week-active-indicator {
@@ -1355,7 +1356,7 @@ input.daily-dashboard-input {
   text-align: center;
   position: relative;
   z-index: 2;
-  margin-top: -12px;
+  margin-top: 0;
 }
 
 .daily-dashboard-week-labels strong {
