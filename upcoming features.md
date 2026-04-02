@@ -70,16 +70,16 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add bowel movement quality tags in addition to count and duration.
 - [x] Add recovery score blending sleep, naps, relax time, anxiety, and misses.
 - [x] Add "What helped today?" and "What hurt today?" micro-reflections.
-- [ ] Add weekly personal trend reporting.
+- [x] Add weekly personal trend reporting.
 
 ## Gamification Center
 
-- [ ] Add a Gamification Center card and report flow.
-- [ ] Create daily, weekly, and monthly scores that compare against perfect runs and past performance.
-- [ ] Decide whether scoring is deterministic, AI-assisted, or hybrid.
-- [ ] Track streaks, personal bests, and recovery from low-score days.
-- [ ] Add category sub-scores for execution, health, consistency, recovery, and planning.
-- [ ] Add explanation views so score changes are auditable instead of opaque.
+- [x] Add a Gamification Center card and report flow.
+- [x] Create daily, weekly, and monthly scores that compare against perfect runs and past performance.
+- [x] Decide whether scoring is deterministic, AI-assisted, or hybrid.
+- [x] Track streaks, personal bests, and recovery from low-score days.
+- [x] Add category sub-scores for execution, health, consistency, recovery, and planning.
+- [x] Add explanation views so score changes are auditable instead of opaque.
 
 ## AI Layer
 
@@ -132,5 +132,5 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add time-allocation grouping and unknown-time diagnosis before timeline-editor work.
 - [x] Add manual session repair and live timeline strip before recurring routine templates.
 - [x] Add routine-window templates before moving into the next planning cluster.
-- [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
+- [x] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

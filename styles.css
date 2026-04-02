@@ -798,6 +798,28 @@
   margin-top: 2px;
 }
 
+.daily-dashboard-gamification-snapshots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.daily-dashboard-gamification-card {
+  min-width: 0;
+}
+
+.daily-dashboard-gamification-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--background-modifier-border) 72%, transparent);
+}
+
+.daily-dashboard-gamification-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
 .daily-dashboard-momentum-row {
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr) 32px;

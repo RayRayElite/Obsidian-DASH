@@ -61,7 +61,9 @@ The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3
 
 Calendar events can now span multiple days and carry event-specific prep and travel lead times, so reminders can surface before the actual start instead of only at the start itself. Daily log notes also render richer calendar context with linked project references pulled from event notes plus persistent follow-through checkboxes for each day’s events.
 
-Habit completions now also capture timestamps for each completion step, can be assigned morning/afternoon/evening/before-bed windows plus difficulty weights, and support daily miss notes. Food entries capture the time they were logged, the body log now tracks water/caffeine/supplements/medication plus symptoms and pain, and the notes block includes quick "What helped today?" and "What hurt today?" reflections.
+Habit completions now also capture timestamps for each completion step, can be assigned morning/afternoon/evening/before-bed windows plus difficulty weights, and support daily miss notes. Food entries capture the time they were logged, the body log now tracks water/caffeine/supplements/medication plus symptoms and pain, and the notes block includes quick "What helped today?" and "What hurt today?" reflections. Weekly and monthly reports now also include explicit personal trend sections so recurring drift, repeat misses, symptom patterns, and reflection themes are surfaced instead of staying buried in day logs.
+
+The dashboard now also includes a `Gamification Center` with deterministic daily, weekly, and monthly scores, category sub-scores for execution, health, consistency, recovery, and planning, streak and personal-best tracking, low-score rebound tracking, and auditable explanation rows for why each score moved. A dedicated gamification report command writes the current score breakdown into `Dashboard Logs/Gamification`.
 
 ## AI Integration
 

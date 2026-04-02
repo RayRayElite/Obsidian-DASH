@@ -29,6 +29,7 @@ import {
   type DashboardFocusDisplayItem,
   type DashboardTone,
   type DashboardViewMode,
+  type GamificationSummary,
   type ProjectReviewOption,
   type QuickAddState,
   type RepairTimelineSession,
@@ -311,6 +312,7 @@ export class DailyDashboardView extends ItemView {
       const overdueTasks = todoSnapshot?.overdueTasks ?? [];
       const blockedTasks = todoSnapshot?.blockedTasks ?? [];
       const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
+      const gamificationSummary = this.plugin.getGamificationSummary(todoSnapshot);
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
@@ -362,6 +364,7 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
+      createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
       const weekBoardCard = createCard(page, "Week At A Glance", "", {
@@ -1110,6 +1113,31 @@ export class DailyDashboardView extends ItemView {
       frictionInput.addEventListener("change", () => {
         void this.plugin.updateFrictionLog(frictionInput.value);
       });
+
+      const gamificationCard = createCard(grid, "Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
+        icon: "trophy",
+        eyebrow: "Scores",
+        tone: "done",
+        tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored"
+      });
+      const gamificationSummaryRow = gamificationCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(gamificationSummaryRow, `Today ${gamificationSummary.today.score}/100 ${gamificationSummary.today.grade}`, gamificationSummary.today.score >= 80 ? "done" : gamificationSummary.today.score >= 60 ? "state" : "alert");
+      createSemanticChip(gamificationSummaryRow, `Week ${gamificationSummary.week.score}/100 ${gamificationSummary.week.grade}`, gamificationSummary.week.score >= 80 ? "done" : gamificationSummary.week.score >= 60 ? "state" : "alert");
+      createSemanticChip(gamificationSummaryRow, `Month ${gamificationSummary.month.score}/100 ${gamificationSummary.month.grade}`, gamificationSummary.month.score >= 80 ? "done" : gamificationSummary.month.score >= 60 ? "state" : "alert");
+      createSemanticChip(gamificationSummaryRow, `Streak ${gamificationSummary.currentStreak}`, gamificationSummary.currentStreak >= 3 ? "focus" : "neutral");
+      createSemanticChip(gamificationSummaryRow, `Best ${gamificationSummary.bestStreak}`, gamificationSummary.bestStreak >= 5 ? "done" : "neutral");
+      const gamificationStats = gamificationCard.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
+      this.renderDayMetric(gamificationStats, "Personal best", `${gamificationSummary.personalBestDayScore}/100`);
+      this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
+      this.renderDayMetric(gamificationStats, "Recovery run", `${gamificationSummary.recoveryFromLowScoreDays} days`);
+      this.renderDayMetric(gamificationStats, "Low-score line", `${gamificationSummary.lowScoreThreshold}/100`);
+      const gamificationSnapshots = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-snapshots" });
+      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.today);
+      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.week);
+      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.month);
+      const gamificationActions = gamificationCard.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
+      createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
 
       const habitsCard = createCard(grid, "Habits", "Repeatables with misses and timing kept visible.", {
         icon: "check-square",
@@ -3937,6 +3965,33 @@ function createStatPill(parent: HTMLElement, text: string, iconName: string, ton
   setIcon(iconEl, iconName);
   pill.createSpan({ cls: "daily-dashboard-pill-label", text });
   return pill;
+}
+
+function renderGamificationSnapshotCard(parent: HTMLElement, snapshot: GamificationSummary["today"]): void {
+  const card = parent.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-gamification-card" });
+  const header = card.createDiv({ cls: "daily-dashboard-score-header" });
+  header.createEl("strong", { text: `${snapshot.label} • ${snapshot.score}/100 ${snapshot.grade}` });
+  header.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.comparisonText });
+  const chipRow = card.createDiv({ cls: "daily-dashboard-chip-row" });
+  snapshot.highlights.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "done"));
+  snapshot.cautions.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "alert"));
+  const categoryList = card.createDiv({ cls: "daily-dashboard-momentum" });
+  snapshot.categories.forEach((category) => {
+    const row = categoryList.createDiv({ cls: "daily-dashboard-gamification-row" });
+    const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+    copy.createEl("strong", { text: `${category.label} • ${category.score}/100` });
+    copy.createEl("span", { cls: "daily-dashboard-row-meta", text: category.summary });
+    if (category.details.length > 0) {
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: category.details.join(" • ") });
+    }
+    const trackRow = row.createDiv({ cls: "daily-dashboard-momentum-row" });
+    trackRow.createSpan({ cls: "daily-dashboard-momentum-label", text: "Score" });
+    const track = trackRow.createDiv({ cls: "daily-dashboard-momentum-track" });
+    const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
+    fill.addClass(`is-${category.tone === "done" ? "done" : category.tone === "alert" ? "alert" : category.tone === "log" ? "log" : "focus"}`);
+    fill.style.width = `${Math.max((category.score / category.maxScore) * 100, category.score > 0 ? 10 : 0)}%`;
+    trackRow.createSpan({ cls: "daily-dashboard-momentum-value", text: `${category.score}` });
+  });
 }
 
 function renderProjectMomentum(parent: HTMLElement, project: Pick<TodoProjectSummary, "completionsPreviousWeek" | "completionsThisWeek" | "completionsThisMonth">): void {

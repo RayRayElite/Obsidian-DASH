@@ -5,13 +5,14 @@ import {
   formatHabitWindowLabel,
   formatDateKey,
   formatDateTimeKey,
+  getHabitWeightedCompletion,
   getTodayFocusTexts,
   getEntryRecencyKey,
   normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
 import { CHECKLIST_REGEX } from "./dashboard-types";
-import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, NextUpFocusItem, SleepInsights, SleepNightSnapshot, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { CalendarEventOccurrence, DailyEntry, GamificationCategoryScore, GamificationSnapshot, GamificationSummary, HabitDefinition, NextUpFocusItem, PersonalTrendSummary, SleepInsights, SleepNightSnapshot, TodayFocusItem, TodoSnapshot, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
 const DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 const CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
@@ -368,8 +369,11 @@ export function renderPeriodReport(input: {
   rangeLabel: string;
   entries: DailyEntry[];
   habitDefinitions: HabitDefinition[];
+  todoSnapshot?: TodoSnapshot | null;
 }): string {
   const sleepInsights = buildSleepInsights(input.entries, undefined, input.habitDefinitions);
+  const personalTrends = buildPersonalTrendSummary(input.entries, input.habitDefinitions);
+  const gamification = buildGamificationSummary(input.entries, input.habitDefinitions, input.todoSnapshot ?? null);
   const workByProject = new Map<string, number>();
   let daysWithFood = 0;
   let daysWithSleep = 0;
@@ -495,6 +499,12 @@ export function renderPeriodReport(input: {
     "| --- | --- | --- |",
     ...habitRows,
     "",
+    "## Personal Trends",
+    ...renderPersonalTrendSectionLines(personalTrends),
+    "",
+    "## Gamification Center",
+    ...renderGamificationSectionLines(gamification),
+    "",
     "## Work By Project",
     ...(workLines.length > 0 ? workLines : ["- No archived tasks recorded in this period"]),
     "",
@@ -598,6 +608,8 @@ export function formatMinutesAsHours(totalMinutes: number): string {
 
 export function renderWeeklyReview(input: WeeklyReviewInput): string {
   const sleepInsights = buildSleepInsights(input.entries, undefined, input.habits);
+  const personalTrends = buildPersonalTrendSummary(input.entries, input.habits);
+  const gamification = buildGamificationSummary(input.entries, input.habits, input.todoSnapshot);
   const totalTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
   const moodEntries = input.entries.filter((entry) => entry.moodScore > 0);
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
@@ -638,6 +650,12 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
     "## Missed Habits",
     ...(missedHabits.length > 0 ? missedHabits.map((item) => `- ${item}`) : ["- No recurring misses."]),
     "",
+    "## Personal Trends",
+    ...renderPersonalTrendSectionLines(personalTrends),
+    "",
+    "## Gamification Center",
+    ...renderGamificationSectionLines(gamification),
+    "",
     "## Strongest Projects",
     ...(strongestProjects.length > 0
       ? strongestProjects.map((project) => `- ${project.name}: ${project.completionsThisWeek} completions this week, ${project.healthLabel.toLowerCase()} health`)
@@ -654,6 +672,330 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
       : ["- No daily entries recorded."]),
     ""
   ].join("\n");
+}
+
+export function buildPersonalTrendSummary(entries: DailyEntry[], habits: HabitDefinition[]): PersonalTrendSummary {
+  if (entries.length === 0) {
+    return {
+      strongestSignals: [],
+      driftSignals: [],
+      repeatedMisses: [],
+      symptomSignals: [],
+      reflectionSignals: []
+    };
+  }
+
+  const orderedEntries = [...entries].sort((left, right) => left.date.localeCompare(right.date));
+  const midpoint = Math.max(1, Math.floor(orderedEntries.length / 2));
+  const firstHalf = orderedEntries.slice(0, midpoint);
+  const secondHalf = orderedEntries.slice(midpoint);
+  const firstEnergy = averageEntryScore(firstHalf, "energyScore");
+  const secondEnergy = averageEntryScore(secondHalf, "energyScore");
+  const firstMood = averageEntryScore(firstHalf, "moodScore");
+  const secondMood = averageEntryScore(secondHalf, "moodScore");
+  const firstRecovery = buildSleepInsights(firstHalf, undefined, habits).averageRecoveryScore;
+  const secondRecovery = buildSleepInsights(secondHalf, undefined, habits).averageRecoveryScore;
+  const waterDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "water")).length;
+  const caffeineDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "caffeine")).length;
+  const helpedDays = orderedEntries.filter((entry) => entry.helpedToday.trim().length > 0).length;
+  const hurtDays = orderedEntries.filter((entry) => entry.hurtToday.trim().length > 0).length;
+  const missCounts = new Map<string, number>();
+  orderedEntries.forEach((entry) => {
+    entry.missedHabits.forEach((item) => missCounts.set(item, (missCounts.get(item) ?? 0) + 1));
+  });
+  const symptomCounts = new Map<string, number>();
+  orderedEntries.forEach((entry) => {
+    entry.symptomLog.forEach((item) => symptomCounts.set(item.symptom, (symptomCounts.get(item.symptom) ?? 0) + 1));
+  });
+
+  return {
+    strongestSignals: [
+      secondEnergy > firstEnergy ? `Energy improved from ${firstEnergy.toFixed(1)}/5 to ${secondEnergy.toFixed(1)}/5 across the period.` : "",
+      secondMood > firstMood ? `Mood improved from ${firstMood.toFixed(1)}/5 to ${secondMood.toFixed(1)}/5 across the period.` : "",
+      secondRecovery > firstRecovery ? `Recovery improved from ${firstRecovery}/100 to ${secondRecovery}/100 across the period.` : "",
+      waterDays > 0 ? `Hydration was logged on ${waterDays}/${orderedEntries.length} days.` : "",
+      helpedDays > 0 ? `Positive reflections were captured on ${helpedDays}/${orderedEntries.length} days.` : ""
+    ].filter((item) => item.length > 0),
+    driftSignals: [
+      secondEnergy < firstEnergy ? `Energy drifted down from ${firstEnergy.toFixed(1)}/5 to ${secondEnergy.toFixed(1)}/5.` : "",
+      secondMood < firstMood ? `Mood drifted down from ${firstMood.toFixed(1)}/5 to ${secondMood.toFixed(1)}/5.` : "",
+      secondRecovery < firstRecovery ? `Recovery drifted from ${firstRecovery}/100 to ${secondRecovery}/100.` : "",
+      caffeineDays > Math.ceil(orderedEntries.length / 2) ? `Caffeine showed up on ${caffeineDays}/${orderedEntries.length} days.` : "",
+      hurtDays > Math.ceil(orderedEntries.length / 2) ? `Negative reflections were logged on ${hurtDays}/${orderedEntries.length} days.` : ""
+    ].filter((item) => item.length > 0),
+    repeatedMisses: Array.from(missCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([label, count]) => `${label} missed on ${count} day${count === 1 ? "" : "s"}.`),
+    symptomSignals: Array.from(symptomCounts.entries())
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 4)
+      .map(([label, count]) => `${label} logged on ${count} day${count === 1 ? "" : "s"}.`),
+    reflectionSignals: [
+      orderedEntries.map((entry) => entry.helpedToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Helped: ${item}`),
+      orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Hurt: ${item}`)
+    ].flat()
+  };
+}
+
+export function renderPersonalTrendSectionLines(summary: PersonalTrendSummary): string[] {
+  return [
+    "Strongest signals:",
+    ...(summary.strongestSignals.length > 0 ? summary.strongestSignals.map((item) => `- ${item}`) : ["- No strong positive trend stood out in this range."]),
+    "",
+    "Drift signals:",
+    ...(summary.driftSignals.length > 0 ? summary.driftSignals.map((item) => `- ${item}`) : ["- No major negative drift stood out in this range."]),
+    "",
+    "Repeated misses:",
+    ...(summary.repeatedMisses.length > 0 ? summary.repeatedMisses.map((item) => `- ${item}`) : ["- No repeated habit misses stood out."]),
+    "",
+    "Symptoms and reflections:",
+    ...(summary.symptomSignals.length > 0 || summary.reflectionSignals.length > 0
+      ? [...summary.symptomSignals, ...summary.reflectionSignals].map((item) => `- ${item}`)
+      : ["- No persistent symptom or reflection pattern stood out."])
+  ];
+}
+
+export function buildGamificationSummary(entries: DailyEntry[], habits: HabitDefinition[], todoSnapshot: TodoSnapshot | null): GamificationSummary {
+  const orderedEntries = [...entries].sort((left, right) => left.date.localeCompare(right.date));
+  const daySnapshots = orderedEntries.map((entry, index) => buildGamificationSnapshot(
+    entry.date,
+    [entry],
+    habits,
+    todoSnapshot,
+    orderedEntries[index - 1] ? buildGamificationSnapshot(orderedEntries[index - 1].date, [orderedEntries[index - 1]], habits, todoSnapshot) : null
+  ));
+  const todayEntries = orderedEntries.slice(-1);
+  const previousDayEntries = orderedEntries.slice(-2, -1);
+  const weekEntries = orderedEntries.slice(-7);
+  const previousWeekEntries = orderedEntries.slice(-14, -7);
+  const monthEntries = orderedEntries.slice(-30);
+  const previousMonthEntries = orderedEntries.slice(-60, -30);
+  const today = buildGamificationSnapshot(todayEntries[0]?.date ?? "Today", todayEntries, habits, todoSnapshot, previousDayEntries.length > 0 ? buildGamificationSnapshot(previousDayEntries[0].date, previousDayEntries, habits, todoSnapshot) : null);
+  const week = buildGamificationSnapshot("Last 7 days", weekEntries, habits, todoSnapshot, previousWeekEntries.length > 0 ? buildGamificationSnapshot("Previous 7 days", previousWeekEntries, habits, todoSnapshot) : null);
+  const month = buildGamificationSnapshot("Last 30 days", monthEntries, habits, todoSnapshot, previousMonthEntries.length > 0 ? buildGamificationSnapshot("Previous 30 days", previousMonthEntries, habits, todoSnapshot) : null);
+  const successThreshold = 70;
+  let currentStreak = 0;
+  for (let index = daySnapshots.length - 1; index >= 0; index -= 1) {
+    if (daySnapshots[index].score >= successThreshold) {
+      currentStreak += 1;
+    } else {
+      break;
+    }
+  }
+  let bestStreak = 0;
+  let streak = 0;
+  daySnapshots.forEach((snapshot) => {
+    if (snapshot.score >= successThreshold) {
+      streak += 1;
+      bestStreak = Math.max(bestStreak, streak);
+    } else {
+      streak = 0;
+    }
+  });
+  const personalBest = daySnapshots.reduce<{ label: string; score: number }>((best, snapshot) => snapshot.score > best.score ? { label: snapshot.label, score: snapshot.score } : best, { label: orderedEntries[0]?.date ?? "No data", score: 0 });
+  const lowScoreThreshold = 45;
+  let recoveryFromLowScoreDays = 0;
+  for (let index = daySnapshots.length - 2; index >= 0; index -= 1) {
+    if (daySnapshots[index].score < lowScoreThreshold) {
+      recoveryFromLowScoreDays = daySnapshots.length - 1 - index;
+      break;
+    }
+    if (index === 0) {
+      recoveryFromLowScoreDays = daySnapshots.length > 0 ? daySnapshots.length - 1 : 0;
+    }
+  }
+
+  return {
+    model: "deterministic",
+    today,
+    week,
+    month,
+    currentStreak,
+    bestStreak,
+    personalBestDayLabel: personalBest.label,
+    personalBestDayScore: personalBest.score,
+    recoveryFromLowScoreDays,
+    lowScoreThreshold
+  };
+}
+
+export function renderGamificationSectionLines(summary: GamificationSummary): string[] {
+  return [
+    `- Model: ${summary.model}`,
+    `- Today: ${summary.today.score}/${summary.today.maxScore} (${summary.today.grade}) • ${summary.today.comparisonText}`,
+    `- Week: ${summary.week.score}/${summary.week.maxScore} (${summary.week.grade}) • ${summary.week.comparisonText}`,
+    `- Month: ${summary.month.score}/${summary.month.maxScore} (${summary.month.grade}) • ${summary.month.comparisonText}`,
+    `- Current streak: ${summary.currentStreak} day${summary.currentStreak === 1 ? "" : "s"}`,
+    `- Best streak: ${summary.bestStreak} day${summary.bestStreak === 1 ? "" : "s"}`,
+    `- Personal best day: ${summary.personalBestDayLabel} (${summary.personalBestDayScore}/100)`,
+    `- Recovery from low-score days: ${summary.recoveryFromLowScoreDays} day${summary.recoveryFromLowScoreDays === 1 ? "" : "s"} since the last day under ${summary.lowScoreThreshold}`,
+    "",
+    ...renderGamificationSnapshotLines(summary.today)
+  ];
+}
+
+export function renderGamificationReport(input: {
+  title: string;
+  entries: DailyEntry[];
+  habits: HabitDefinition[];
+  todoSnapshot: TodoSnapshot | null;
+}): string {
+  const summary = buildGamificationSummary(input.entries, input.habits, input.todoSnapshot);
+  return [
+    `# ${input.title}`,
+    "",
+    ...renderGamificationSectionLines(summary),
+    "",
+    "## Weekly Snapshot Details",
+    ...renderGamificationSnapshotLines(summary.week),
+    "",
+    "## Monthly Snapshot Details",
+    ...renderGamificationSnapshotLines(summary.month),
+    ""
+  ].join("\n");
+}
+
+function renderGamificationSnapshotLines(snapshot: GamificationSnapshot): string[] {
+  return [
+    `### ${snapshot.label}`,
+    `- Score: ${snapshot.score}/${snapshot.maxScore} (${snapshot.grade})`,
+    `- Comparison: ${snapshot.comparisonText}`,
+    `- Highlights: ${snapshot.highlights.join(" • ") || "None"}`,
+    `- Cautions: ${snapshot.cautions.join(" • ") || "None"}`,
+    ...snapshot.categories.flatMap((category) => [
+      `- ${category.label}: ${category.score}/${category.maxScore} - ${category.summary}`,
+      ...category.details.map((detail) => `  - ${detail}`)
+    ])
+  ];
+}
+
+function buildGamificationSnapshot(label: string, entries: DailyEntry[], habits: HabitDefinition[], todoSnapshot: TodoSnapshot | null, previous: GamificationSnapshot | null = null): GamificationSnapshot {
+  const categories = buildGamificationCategories(entries, habits, todoSnapshot);
+  const score = Math.round(categories.reduce((sum, category) => sum + category.score, 0) / Math.max(categories.length, 1));
+  const percentage = score;
+  return {
+    label,
+    score,
+    maxScore: 100,
+    percentage,
+    grade: score >= 90 ? "S" : score >= 80 ? "A" : score >= 70 ? "B" : score >= 55 ? "C" : score >= 40 ? "D" : "F",
+    comparisonText: previous ? `${score >= previous.score ? "+" : ""}${score - previous.score} vs previous window` : `${100 - score} points from a perfect run`,
+    categories,
+    highlights: categories.filter((category) => category.score >= 75).map((category) => `${category.label} strong`),
+    cautions: categories.filter((category) => category.score < 55).map((category) => `${category.label} lagging`)
+  };
+}
+
+function buildGamificationCategories(entries: DailyEntry[], habits: HabitDefinition[], todoSnapshot: TodoSnapshot | null): GamificationCategoryScore[] {
+  const days = Math.max(entries.length, 1);
+  const totalTasks = entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
+  const totalWorkMinutes = entries.reduce((sum, entry) => sum + getTrackedWorkMinutes(entry), 0);
+  const totalFocus = entries.reduce((sum, entry) => sum + entry.todayFocus.length, 0);
+  const completedFocus = entries.reduce((sum, entry) => sum + entry.todayFocus.filter((item) => item.status === "done").length, 0);
+  const focusCompletionRate = totalFocus > 0 ? completedFocus / totalFocus : 0;
+  const activeDays = entries.filter((entry) => entry.completedTasks.length > 0 || getTrackedWorkMinutes(entry) > 0).length;
+  const executionScore = clamp(Math.round(
+    Math.min(35, (totalTasks / days) * 12)
+    + Math.min(35, (totalWorkMinutes / days) / 8)
+    + (focusCompletionRate * 20)
+    + ((activeDays / days) * 10)
+  ), 0, 100);
+
+  const weightedHabitAverage = entries.length > 0
+    ? Math.round(entries.reduce((sum, entry) => sum + getHabitWeightedCompletion(entry, habits).percentage, 0) / entries.length)
+    : 0;
+  const sleepInsights = buildSleepInsights(entries, undefined, habits);
+  const averageMood = averageEntryScore(entries, "moodScore");
+  const averageEnergy = averageEntryScore(entries, "energyScore");
+  const averageAnxiety = averageEntryScore(entries, "anxietyScore");
+  const symptomBurden = entries.reduce((sum, entry) => sum + entry.symptomLog.reduce((inner, symptom) => inner + symptom.severity, 0), 0) / days;
+  const healthScore = clamp(Math.round(
+    (weightedHabitAverage * 0.35)
+    + (sleepInsights.averageRecoveryScore * 0.25)
+    + (averageMood * 8)
+    + (averageEnergy * 9)
+    + ((5 - averageAnxiety) * 6)
+    - (symptomBurden * 4)
+  ), 0, 100);
+
+  const loggedEnergyDays = entries.filter((entry) => entry.energyCheckIns.length > 0).length;
+  const loggedReflectionDays = entries.filter((entry) => entry.helpedToday.trim().length > 0 || entry.hurtToday.trim().length > 0).length;
+  const loggedFoodDays = entries.filter((entry) => entry.foodLog.length > 0 || entry.intakeLog.length > 0).length;
+  const consistencyScore = clamp(Math.round(
+    (sleepInsights.consistencyScore * 0.45)
+    + ((weightedHabitAverage) * 0.3)
+    + ((loggedEnergyDays / days) * 12)
+    + ((loggedReflectionDays / days) * 8)
+    + ((loggedFoodDays / days) * 5)
+  ), 0, 100);
+
+  const totalRelaxMinutes = entries.reduce((sum, entry) => sum + getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry), 0);
+  const totalNapMinutes = entries.reduce((sum, entry) => sum + getTrackedNapMinutes(entry), 0);
+  const recoveryFriendlyDays = entries.filter((entry) => entry.helpedToday.trim().length > 0).length;
+  const recoveryScore = clamp(Math.round(
+    (sleepInsights.averageRecoveryScore * 0.65)
+    + Math.min(15, (totalRelaxMinutes / days) / 8)
+    + Math.min(10, (totalNapMinutes / days) / 10)
+    + ((recoveryFriendlyDays / days) * 10)
+  ), 0, 100);
+
+  const nextUpCoverage = entries.filter((entry) => entry.nextUpFocus.length > 0).length;
+  const followThroughCount = entries.reduce((sum, entry) => sum + entry.calendarFollowThroughCompleted.length, 0);
+  const averageProjectHealth = todoSnapshot && todoSnapshot.projects.length > 0
+    ? Math.round(todoSnapshot.projects.reduce((sum, project) => sum + project.healthScore, 0) / todoSnapshot.projects.length)
+    : 0;
+  const planningScore = clamp(Math.round(
+    ((totalFocus > 0 ? 1 : 0) * 20)
+    + ((nextUpCoverage / days) * 20)
+    + Math.min(20, followThroughCount * 4)
+    + (averageProjectHealth * 0.4)
+  ), 0, 100);
+
+  return [
+    buildCategory("execution", "Execution", executionScore, `Tasks, work time, and focus completion`, [
+      `${totalTasks} archived tasks across ${days} day${days === 1 ? "" : "s"}`,
+      `${formatMinutesAsHours(totalWorkMinutes)} tracked work`,
+      `${completedFocus}/${totalFocus || 0} focus items completed`
+    ]),
+    buildCategory("health", "Health", healthScore, `Habits, mood, energy, symptoms, and recovery`, [
+      `Weighted habit completion averaged ${weightedHabitAverage}%`,
+      `Average mood ${averageMood.toFixed(1)}/5 • energy ${averageEnergy.toFixed(1)}/5 • anxiety ${averageAnxiety.toFixed(1)}/5`,
+      `Symptom burden averaged ${symptomBurden.toFixed(1)} severity points per day`
+    ]),
+    buildCategory("consistency", "Consistency", consistencyScore, `Routine steadiness and logging coverage`, [
+      `Sleep consistency ${sleepInsights.consistencyScore}/100`,
+      `${loggedEnergyDays}/${days} days with energy check-ins`,
+      `${loggedReflectionDays}/${days} days with reflections`
+    ]),
+    buildCategory("recovery", "Recovery", recoveryScore, `Sleep, rest, and rebound capacity`, [
+      `Average recovery ${sleepInsights.averageRecoveryScore}/100`,
+      `${formatMinutesAsHours(totalRelaxMinutes)} relax/break time`,
+      `${formatMinutesAsHours(totalNapMinutes)} naps`
+    ]),
+    buildCategory("planning", "Planning", planningScore, `Focus shaping, follow-through, and project health`, [
+      `${totalFocus} focus items set across the window`,
+      `${nextUpCoverage}/${days} days had Next Up coverage`,
+      `Average project health ${averageProjectHealth}/100`
+    ])
+  ];
+}
+
+function buildCategory(key: GamificationCategoryScore["key"], label: string, score: number, summary: string, details: string[]): GamificationCategoryScore {
+  return {
+    key,
+    label,
+    score,
+    maxScore: 100,
+    tone: score >= 75 ? "done" : score >= 55 ? "state" : "alert",
+    summary,
+    details
+  };
+}
+
+function averageEntryScore(entries: DailyEntry[], key: "moodScore" | "energyScore" | "anxietyScore"): number {
+  const values = entries.map((entry) => entry[key]).filter((value) => value > 0);
+  return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
 export function getSleepMinutesForDay(entry: DailyEntry, nextEntry?: DailyEntry): number {

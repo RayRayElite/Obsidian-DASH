@@ -36,6 +36,7 @@ import {
   truncateText
 } from "./src/dashboard-core";
 import {
+  buildGamificationSummary,
   buildSleepInsights,
   closeOpenBreakSessions,
   closeOpenNapSessions,
@@ -52,6 +53,7 @@ import {
   getTrackedWorkMinutes,
   parseDailyLogEntry,
   renderDailyLog,
+  renderGamificationReport,
   renderPeriodReport,
   renderWeeklyReview
 } from "./src/dashboard-logs";
@@ -112,6 +114,7 @@ import {
   type DayLifecycleState,
   type EnergyCheckIn,
   type FoodEntry,
+  type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
   type LogicalDayInsights,
@@ -221,6 +224,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate monthly dashboard report",
       callback: () => {
         void this.generateMonthlyReport();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-gamification-report",
+      name: "Generate gamification report",
+      callback: () => {
+        void this.generateGamificationReport();
       }
     });
 
@@ -656,6 +667,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getSleepInsights(): SleepInsights {
     return buildSleepInsights(this.getAllEntries(), undefined, this.getHabitDefinitions());
+  }
+
+  getGamificationSummary(todoSnapshot: TodoSnapshot | null): GamificationSummary {
+    return buildGamificationSummary(this.getAllEntries(), this.getHabitDefinitions(), todoSnapshot);
   }
 
   getTimeAllocationInsights(date: string = this.getTodayKey(), referenceDate: Date = new Date()): TimeAllocationInsights {
@@ -2421,11 +2436,13 @@ export default class DailyDashboardPlugin extends Plugin {
     const today = new Date();
     const range = getIsoWeekRange(today);
     const entries = this.getEntriesInRange(range.start, range.end);
+    const todoSnapshot = await this.getTodoSnapshot();
     const content = renderPeriodReport({
       title: `Weekly Dashboard Report - ${range.label}`,
       rangeLabel: `${formatDateKey(range.start)} to ${formatDateKey(range.end)}`,
       entries,
-      habitDefinitions: this.getHabitDefinitions()
+      habitDefinitions: this.getHabitDefinitions(),
+      todoSnapshot
     });
 
     const file = await this.upsertMarkdownFile(
@@ -2443,11 +2460,13 @@ export default class DailyDashboardPlugin extends Plugin {
     const start = new Date(today.getFullYear(), today.getMonth(), 1);
     const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const entries = this.getEntriesInRange(start, end);
+    const todoSnapshot = await this.getTodoSnapshot();
     const content = renderPeriodReport({
       title: `Monthly Dashboard Report - ${label}`,
       rangeLabel: `${formatDateKey(start)} to ${formatDateKey(end)}`,
       entries,
-      habitDefinitions: this.getHabitDefinitions()
+      habitDefinitions: this.getHabitDefinitions(),
+      todoSnapshot
     });
 
     const file = await this.upsertMarkdownFile(
@@ -2457,6 +2476,23 @@ export default class DailyDashboardPlugin extends Plugin {
 
     await this.openFile(file);
     new Notice("Monthly dashboard report generated.");
+  }
+
+  async generateGamificationReport(): Promise<void> {
+    const today = new Date();
+    const label = formatDateKey(today);
+    const entries = this.getAllEntries();
+    const todoSnapshot = await this.getTodoSnapshot();
+    const content = renderGamificationReport({
+      title: `Gamification Report - ${label}`,
+      entries,
+      habits: this.getHabitDefinitions(),
+      todoSnapshot
+    });
+
+    const file = await this.upsertMarkdownFile(`Dashboard Logs/Gamification/${label}.md`, content);
+    await this.openFile(file);
+    new Notice("Gamification report generated.");
   }
 
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {

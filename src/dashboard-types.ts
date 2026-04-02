@@ -576,6 +576,49 @@ export interface WeeklyReviewInput {
   habits: HabitDefinition[];
 }
 
+export interface PersonalTrendSummary {
+  strongestSignals: string[];
+  driftSignals: string[];
+  repeatedMisses: string[];
+  symptomSignals: string[];
+  reflectionSignals: string[];
+}
+
+export interface GamificationCategoryScore {
+  key: "execution" | "health" | "consistency" | "recovery" | "planning";
+  label: string;
+  score: number;
+  maxScore: number;
+  tone: DashboardTone;
+  summary: string;
+  details: string[];
+}
+
+export interface GamificationSnapshot {
+  label: string;
+  score: number;
+  maxScore: number;
+  percentage: number;
+  grade: string;
+  comparisonText: string;
+  categories: GamificationCategoryScore[];
+  highlights: string[];
+  cautions: string[];
+}
+
+export interface GamificationSummary {
+  model: "deterministic";
+  today: GamificationSnapshot;
+  week: GamificationSnapshot;
+  month: GamificationSnapshot;
+  currentStreak: number;
+  bestStreak: number;
+  personalBestDayLabel: string;
+  personalBestDayScore: number;
+  recoveryFromLowScoreDays: number;
+  lowScoreThreshold: number;
+}
+
 export interface ReferenceOffloadResult {
   updatedContent: string;
   offloadedProjects: string[];
