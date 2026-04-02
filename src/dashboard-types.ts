@@ -608,6 +608,19 @@ export interface CardVisualOptions {
 export interface RepeatingTaskDefinition {
   text: string;
   cadence: string;
+  ruleText: string;
+  rule: RepeatingTaskRule;
+}
+
+export type RepeatingTaskRuleKind = "daily" | "weekly" | "monthly" | "yearly" | "interval" | "weekday-list";
+export type RepeatingTaskIntervalUnit = "day" | "week" | "month" | "year";
+
+export interface RepeatingTaskRule {
+  kind: RepeatingTaskRuleKind;
+  interval: number;
+  unit?: RepeatingTaskIntervalUnit;
+  weekdays?: number[];
+  monthlyDay?: number | "last";
 }
 
 export interface WeeklyReviewInput {

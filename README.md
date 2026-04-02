@@ -33,6 +33,8 @@ This gives you a work-history trail without deleting finished tasks.
 
 The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
 
+The `### Repeating` section now supports richer repeat rules instead of only simple weekly-style tags. Plain bullets and checklist bullets both work. Supported forms include `- Pay rent [repeat: monthly day 1]`, `- Water plants [repeat: every 10 days]`, `- Review backlog [repeat: every 2 weeks]`, `- Gym session [repeat: weekdays mon wed fri]`, plus the legacy short forms like `[daily]`, `[weekly]`, `[monthly]`, and `[yearly]`. When synced into the master hub, due repeating tasks are inserted into `### Next` with their normalized repeat tag preserved.
+
 Project health now surfaces a visible next action for every project, explains the reasons behind each health score, renders compact momentum bars from recent completion history, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
 
 The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup.

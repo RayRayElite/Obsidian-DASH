@@ -15,6 +15,8 @@ import {
   type HabitDefinition,
   type ReferenceOffloadResult,
   type RepeatingTaskDefinition,
+  type RepeatingTaskIntervalUnit,
+  type RepeatingTaskRule,
   type TodoTaskSummary,
   type TodoProjectRange,
   type TodoProjectSummary,
@@ -936,16 +938,23 @@ export function extractRepeatingTasks(noteContent: string): RepeatingTaskDefinit
     if (!inRepeatingSection) {
       return;
     }
-    const taskMatch = trimmed.match(/^[-*]\s+(.*)$/);
+    const taskMatch = trimmed.match(/^[-*]\s+(?:\[(?: |x|X)\]\s+)?(.*)$/);
     if (!taskMatch) {
       return;
     }
     const rawText = taskMatch[1].trim();
-    const cadenceMatch = rawText.match(/\[(daily|weekly|monthly)\]|\((daily|weekly|monthly)\)/i);
-    const cadence = (cadenceMatch?.[1] ?? cadenceMatch?.[2] ?? "weekly").toLowerCase();
-    const text = rawText.replace(/\s*(\[(daily|weekly|monthly)\]|\((daily|weekly|monthly)\))\s*/i, "").trim();
+    const parsed = parseRepeatingTaskLine(rawText);
+    if (!parsed) {
+      return;
+    }
+    const { text, ruleText, rule } = parsed;
     if (text) {
-      tasks.push({ text, cadence });
+      tasks.push({
+        text,
+        cadence: rule.kind,
+        ruleText,
+        rule
+      });
     }
   });
 
@@ -953,6 +962,10 @@ export function extractRepeatingTasks(noteContent: string): RepeatingTaskDefinit
 }
 
 export function isRepeatingTaskDue(task: RepeatingTaskDefinition, content: string, projectName: string): boolean {
+  return isRepeatingTaskDueOnDate(task, content, projectName, formatDateKey(new Date()));
+}
+
+export function isRepeatingTaskDueOnDate(task: RepeatingTaskDefinition, content: string, projectName: string, todayKey: string): boolean {
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
   if (!project) {
@@ -976,18 +989,242 @@ export function isRepeatingTaskDue(task: RepeatingTaskDefinition, content: strin
   });
 
   if (archivedDates.length === 0) {
-    return true;
+    return isRepeatingRuleEligibleWithoutHistory(task.rule, todayKey);
   }
 
   const latest = archivedDates.sort().reverse()[0];
-  const daysSince = daysBetween(latest, formatDateKey(new Date()));
-  if (task.cadence === "daily") {
-    return daysSince >= 1;
+  return isRepeatingRuleDueSince(task.rule, latest, todayKey);
+}
+
+function parseRepeatingTaskLine(rawText: string): { text: string; ruleText: string; rule: RepeatingTaskRule } | null {
+  const explicitRepeatMatch = rawText.match(/\[(?:repeat|repeats)\s*:\s*([^\]]+)\]\s*$/i);
+  const parenRepeatMatch = rawText.match(/\((?:repeat|repeats)\s*:\s*([^\)]+)\)\s*$/i);
+  const legacyMatch = rawText.match(/\[(daily|weekly|monthly|yearly)\]\s*$|\((daily|weekly|monthly|yearly)\)\s*$/i);
+  const extractedRuleText = (explicitRepeatMatch?.[1] ?? parenRepeatMatch?.[1] ?? legacyMatch?.[1] ?? legacyMatch?.[2] ?? "weekly").trim();
+  const text = rawText
+    .replace(/\s*\[(?:repeat|repeats)\s*:[^\]]+\]\s*$/i, "")
+    .replace(/\s*\((?:repeat|repeats)\s*:[^\)]+\)\s*$/i, "")
+    .replace(/\s*(\[(daily|weekly|monthly|yearly)\]|\((daily|weekly|monthly|yearly)\))\s*$/i, "")
+    .trim();
+  const rule = parseRepeatingRule(extractedRuleText);
+  if (!text || !rule) {
+    return null;
   }
-  if (task.cadence === "weekly") {
-    return daysSince >= 7;
+
+  return {
+    text,
+    ruleText: normalizeRepeatingRuleText(rule),
+    rule
+  };
+}
+
+function parseRepeatingRule(value: string): RepeatingTaskRule | null {
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) {
+    return { kind: "weekly", interval: 1, unit: "week" };
   }
-  return daysSince >= 28;
+
+  if (normalized === "daily") {
+    return { kind: "daily", interval: 1, unit: "day" };
+  }
+  if (normalized === "weekly") {
+    return { kind: "weekly", interval: 1, unit: "week" };
+  }
+  if (normalized === "monthly") {
+    return { kind: "monthly", interval: 1, unit: "month" };
+  }
+  if (normalized === "yearly" || normalized === "annual" || normalized === "annually") {
+    return { kind: "yearly", interval: 1, unit: "year" };
+  }
+
+  const everyMatch = normalized.match(/^every\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)$/i)
+    ?? normalized.match(/^interval\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)$/i);
+  if (everyMatch) {
+    const interval = Math.max(1, Number(everyMatch[1]));
+    const unit = normalizeRepeatingIntervalUnit(everyMatch[2]);
+    return {
+      kind: "interval",
+      interval,
+      unit
+    };
+  }
+
+  const monthlyDayMatch = normalized.match(/^monthly\s+(?:day\s+)?(last|[1-9]|[12]\d|3[01])$/i);
+  if (monthlyDayMatch) {
+    return {
+      kind: "monthly",
+      interval: 1,
+      unit: "month",
+      monthlyDay: monthlyDayMatch[1].toLowerCase() === "last" ? "last" : Number(monthlyDayMatch[1])
+    };
+  }
+
+  const weekdayMatch = normalized.match(/^(?:weekdays?|weekly\s+on)\s+(.+)$/i);
+  if (weekdayMatch) {
+    const weekdays = weekdayMatch[1]
+      .split(/[\s,\/|]+/)
+      .map((token) => normalizeWeekdayToken(token))
+      .filter((token): token is number => token !== null)
+      .filter((token, index, array) => array.indexOf(token) === index)
+      .sort((left, right) => left - right);
+    if (weekdays.length > 0) {
+      return {
+        kind: "weekday-list",
+        interval: 1,
+        unit: "week",
+        weekdays
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeRepeatingRuleText(rule: RepeatingTaskRule): string {
+  if (rule.kind === "daily") {
+    return "daily";
+  }
+  if (rule.kind === "weekly") {
+    return "weekly";
+  }
+  if (rule.kind === "monthly") {
+    if (rule.monthlyDay === "last") {
+      return "monthly day last";
+    }
+    if (typeof rule.monthlyDay === "number") {
+      return `monthly day ${rule.monthlyDay}`;
+    }
+    return "monthly";
+  }
+  if (rule.kind === "yearly") {
+    return "yearly";
+  }
+  if (rule.kind === "weekday-list") {
+    return `weekdays ${formatWeekdayList(rule.weekdays ?? [])}`;
+  }
+  return `every ${rule.interval} ${(rule.unit ?? "day")}${rule.interval === 1 ? "" : "s"}`;
+}
+
+function normalizeRepeatingIntervalUnit(value: string): RepeatingTaskIntervalUnit {
+  if (/^day/i.test(value)) {
+    return "day";
+  }
+  if (/^week/i.test(value)) {
+    return "week";
+  }
+  if (/^month/i.test(value)) {
+    return "month";
+  }
+  return "year";
+}
+
+function normalizeWeekdayToken(value: string): number | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const map: Record<string, number> = {
+    sun: 0,
+    sunday: 0,
+    mon: 1,
+    monday: 1,
+    tue: 2,
+    tues: 2,
+    tuesday: 2,
+    wed: 3,
+    weds: 3,
+    wednesday: 3,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
+    thursday: 4,
+    fri: 5,
+    friday: 5,
+    sat: 6,
+    saturday: 6
+  };
+
+  return normalized in map ? map[normalized] : null;
+}
+
+function formatWeekdayList(weekdays: number[]): string {
+  const labels = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return weekdays.map((weekday) => labels[weekday] ?? `${weekday}`).join(" ");
+}
+
+function isRepeatingRuleEligibleWithoutHistory(rule: RepeatingTaskRule, todayKey: string): boolean {
+  const today = new Date(`${todayKey}T00:00:00`);
+  if (rule.kind === "weekday-list") {
+    return (rule.weekdays ?? []).includes(today.getDay());
+  }
+  if (rule.kind === "monthly" && typeof rule.monthlyDay !== "undefined") {
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const targetDay = rule.monthlyDay === "last" ? lastDayOfMonth : Math.min(rule.monthlyDay, lastDayOfMonth);
+    return today.getDate() >= targetDay;
+  }
+  return true;
+}
+
+function isRepeatingRuleDueSince(rule: RepeatingTaskRule, latestCompletedKey: string, todayKey: string): boolean {
+  const latest = new Date(`${latestCompletedKey}T00:00:00`);
+  const today = new Date(`${todayKey}T00:00:00`);
+  if (today.getTime() < latest.getTime()) {
+    return false;
+  }
+
+  if (rule.kind === "daily") {
+    return latestCompletedKey < todayKey;
+  }
+
+  if (rule.kind === "weekly") {
+    return daysBetween(latestCompletedKey, todayKey) >= 7;
+  }
+
+  if (rule.kind === "yearly") {
+    return addMonthsToDateKey(latestCompletedKey, 12) <= todayKey;
+  }
+
+  if (rule.kind === "interval") {
+    if (rule.unit === "day") {
+      return daysBetween(latestCompletedKey, todayKey) >= rule.interval;
+    }
+    if (rule.unit === "week") {
+      return daysBetween(latestCompletedKey, todayKey) >= rule.interval * 7;
+    }
+    if (rule.unit === "month") {
+      return addMonthsToDateKey(latestCompletedKey, rule.interval) <= todayKey;
+    }
+    return addMonthsToDateKey(latestCompletedKey, rule.interval * 12) <= todayKey;
+  }
+
+  if (rule.kind === "weekday-list") {
+    return (rule.weekdays ?? []).includes(today.getDay()) && latestCompletedKey < todayKey;
+  }
+
+  if (rule.kind === "monthly") {
+    if (typeof rule.monthlyDay === "number" || rule.monthlyDay === "last") {
+      const currentPeriodKey = `${todayKey.slice(0, 7)}-${`${resolveMonthlyTargetDay(today, rule.monthlyDay)}`.padStart(2, "0")}`;
+      return todayKey >= currentPeriodKey && latestCompletedKey < currentPeriodKey;
+    }
+    return addMonthsToDateKey(latestCompletedKey, 1) <= todayKey;
+  }
+
+  return false;
+}
+
+function resolveMonthlyTargetDay(date: Date, day: number | "last"): number {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return day === "last" ? lastDay : Math.min(day, lastDay);
+}
+
+function addMonthsToDateKey(dateKey: string, months: number): string {
+  const date = new Date(`${dateKey}T00:00:00`);
+  const originalDay = date.getDate();
+  date.setMonth(date.getMonth() + months, 1);
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(originalDay, lastDay));
+  return formatDateKey(date);
 }
 
 export async function offloadReferencesFromMasterHub(content: string, vault: Vault, masterTodoPath: string): Promise<ReferenceOffloadResult> {

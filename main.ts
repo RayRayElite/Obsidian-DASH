@@ -3123,7 +3123,7 @@ export default class DailyDashboardPlugin extends Plugin {
         if (!isRepeatingTaskDue(task, content, project.projectName)) {
           return;
         }
-        updatedContent = insertTaskIntoProjectSection(updatedContent, project.projectName, "Next", `${task.text} [${task.cadence}]`);
+        updatedContent = insertTaskIntoProjectSection(updatedContent, project.projectName, "Next", `${task.text} [repeat: ${task.ruleText}]`);
         insertedCount += 1;
       });
     }

@@ -13,7 +13,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add event-to-project linking.
 - [x] Add task due dates in the master task hub and surface due-soon / overdue work.
 - [x] Add blocked-task state with blocker reason and unblock target date.
-- [ ] Expand repeating task support for weekly, monthly, interval, and weekday-specific rules.
+- [x] Expand repeating task support for weekly, monthly, interval, and weekday-specific rules.
 - [x] Add export mode for markdown / CSV metric dumps.
 
 ## Execution And Focus
