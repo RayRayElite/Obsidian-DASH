@@ -374,14 +374,7 @@ export class DailyDashboardView extends ItemView {
         void submitFocus();
       });
       this.renderReminderBlock(focusCard, calendarSnapshot, settings.calendarLookaheadHours);
-
-      const calendarCard = createCard(grid, "Monthly Calendar", "Click a day to add events and keep the month visible without leaving the dashboard.", {
-        icon: "calendar-days",
-        eyebrow: "Calendar",
-        tone: "log",
-        tag: settings.calendarEnabled ? "Reminders On" : "Reminders Off"
-      });
-      this.renderMonthlyCalendar(calendarCard, todayEntry.date);
+      this.renderMonthlyCalendar(focusCard, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -934,13 +927,23 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private renderMonthlyCalendar(parent: HTMLElement, todayKey: string): void {
-    const header = parent.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
+  private renderMonthlyCalendar(parent: HTMLElement, todayKey: string, remindersEnabled: boolean): void {
+    const shell = parent.createDiv({ cls: "daily-dashboard-calendar-panel" });
+    const shellHeader = shell.createDiv({ cls: "daily-dashboard-calendar-panel-header" });
+    shellHeader.createEl("strong", { text: "Calendar" });
+    shellHeader.createEl("span", {
+      cls: "daily-dashboard-row-meta",
+      text: remindersEnabled
+        ? "Upcoming events from this calendar show above as reminders."
+        : "Turn reminders on in settings if you want upcoming events surfaced automatically."
+    });
+
+    const header = shell.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
     const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
     const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
     title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
-    title.createEl("span", { cls: "daily-dashboard-row-meta", text: "Click any day to add or remove events." });
-    const controls = header.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    title.createEl("span", { cls: "daily-dashboard-row-meta", text: "Click a day to add or remove events." });
+    const controls = header.createDiv({ cls: "daily-dashboard-calendar-nav" });
     createButton(controls, "Prev", async () => {
       this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
       await this.render();
@@ -955,7 +958,7 @@ export class DailyDashboardView extends ItemView {
       await this.render();
     }, false, "chevron-right");
 
-    const weekHeader = parent.createDiv({ cls: "daily-dashboard-calendar-weekdays" });
+    const weekHeader = shell.createDiv({ cls: "daily-dashboard-calendar-weekdays" });
     ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach((label) => {
       weekHeader.createEl("span", { text: label });
     });
@@ -967,7 +970,7 @@ export class DailyDashboardView extends ItemView {
       eventMap.set(event.date, list);
     });
 
-    const grid = parent.createDiv({ cls: "daily-dashboard-calendar-grid" });
+    const grid = shell.createDiv({ cls: "daily-dashboard-calendar-grid" });
     this.getCalendarMonthDays(currentMonth).forEach((date) => {
       const dateKey = formatDateKey(date);
       const events = eventMap.get(dateKey) ?? [];
@@ -985,22 +988,17 @@ export class DailyDashboardView extends ItemView {
       if (events.length > 0) {
         cell.addClass("has-events");
       }
+      cell.ariaLabel = `${dateKey}${events.length > 0 ? `, ${events.length} event${events.length === 1 ? "" : "s"}` : ", no events"}`;
 
       const top = cell.createDiv({ cls: "daily-dashboard-calendar-day-top" });
       top.createEl("strong", { text: `${date.getDate()}` });
+      const dotRow = cell.createDiv({ cls: "daily-dashboard-calendar-day-dots" });
       if (events.length > 0) {
-        top.createEl("span", { text: `${events.length}` });
-      }
-
-      const preview = cell.createDiv({ cls: "daily-dashboard-calendar-day-preview" });
-      if (events.length === 0) {
-        preview.createEl("span", { cls: "daily-dashboard-row-meta", text: "Add event" });
-      } else {
-        events.slice(0, 2).forEach((event) => {
-          preview.createEl("span", { text: event.startTime ? `${event.startTime} ${event.title}` : event.title });
+        events.slice(0, 3).forEach(() => {
+          dotRow.createSpan({ cls: "daily-dashboard-calendar-day-dot" });
         });
-        if (events.length > 2) {
-          preview.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${events.length - 2} more` });
+        if (events.length > 3) {
+          dotRow.createEl("span", { cls: "daily-dashboard-calendar-day-more", text: `+${events.length - 3}` });
         }
       }
 
@@ -1013,10 +1011,10 @@ export class DailyDashboardView extends ItemView {
 
     const selectedDate = this.selectedCalendarDate || todayKey;
     const selectedEvents = this.plugin.getCalendarEventsForDate(selectedDate);
-    const detail = parent.createDiv({ cls: "daily-dashboard-calendar-detail" });
+    const detail = shell.createDiv({ cls: "daily-dashboard-calendar-detail" });
     const detailHeader = detail.createDiv({ cls: "daily-dashboard-calendar-detail-header" });
     detailHeader.createEl("strong", { text: `Events for ${selectedDate}` });
-    const detailActions = detailHeader.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    const detailActions = detailHeader.createDiv({ cls: "daily-dashboard-actions-inline" });
     createButton(detailActions, "Add event", async () => {
       new CalendarEventModal(this.app, this.plugin, selectedDate).open();
     }, false, "plus-circle");
@@ -1918,7 +1916,7 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Calendar behavior")
-      .setDesc("Events are stored directly in plugin data from the Monthly Calendar card. Click any day to add or remove them.");
+      .setDesc("Events are stored directly in plugin data from the mini calendar at the bottom of the Execution card. Click any day to add or remove them.");
 
     new Setting(containerEl)
       .setName("Calendar lookahead hours")
