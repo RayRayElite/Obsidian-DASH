@@ -3463,6 +3463,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
     this.selectedCalendarDate = formatDateKey(/* @__PURE__ */ new Date());
+    this.pendingUndoAction = null;
     this.handleDashboardKeydown = (event) => {
       if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
         return;
@@ -3625,6 +3626,24 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   openShortcutHelpFlow() {
     new DashboardShortcutHelpModal(this.app).open();
+  }
+  async runDestructiveAction(label, action, undo) {
+    await action();
+    this.pendingUndoAction = { label, undo };
+    await this.render();
+  }
+  async undoPendingAction() {
+    if (!this.pendingUndoAction) {
+      return;
+    }
+    const action = this.pendingUndoAction;
+    this.pendingUndoAction = null;
+    await action.undo();
+    await this.render();
+  }
+  async dismissPendingUndo() {
+    this.pendingUndoAction = null;
+    await this.render();
   }
   registerGridCard(card, title, bindings, layoutByKey) {
     const key = toClassSlug(title);
@@ -3842,6 +3861,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
+      if (this.pendingUndoAction) {
+        const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
+        const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
+        undoCopy.createEl("strong", { text: "Undo last dashboard action" });
+        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: this.pendingUndoAction.label });
+        const undoActions = undoBanner.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
+        createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
+      }
       const weekBoardCard = createCard(page, "Week At A Glance", "", {
         icon: "layout-dashboard",
         eyebrow: "Week",
@@ -4349,7 +4377,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               removeButton.title = `Remove ${item2.text}`;
               (0, import_obsidian3.setIcon)(removeButton, "x");
               removeButton.addEventListener("click", () => {
-                void this.plugin.removeTodayFocusItem(focusIndex);
+                const removedItem = cloneTodayFocusItem(item2);
+                void this.runDestructiveAction(
+                  `Removed Top 3 item "${item2.text}".`,
+                  async () => this.plugin.removeTodayFocusItem(focusIndex),
+                  async () => this.plugin.restoreTodayFocusItem(removedItem, focusIndex)
+                );
               });
             }
           } else {
@@ -4464,8 +4497,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             }).open();
           }, false, "pencil");
           createButton(controls, "Remove", async () => {
-            await this.plugin.removeNextUpFocusItem(index);
-            await this.render();
+            const removedItem = cloneNextUpFocusItem(item2);
+            await this.runDestructiveAction(
+              `Removed queued item "${item2.text}".`,
+              async () => this.plugin.removeNextUpFocusItem(index),
+              async () => this.plugin.restoreNextUpFocusItem(removedItem, index)
+            );
           }, false, "x");
         });
       }
@@ -4586,7 +4623,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(habitSummaryChips, `${habitSummary.percentage}% weighted completion`, habitSummary.percentage >= 80 ? "done" : habitSummary.percentage >= 55 ? "state" : "alert");
       createSemanticChip(habitSummaryChips, `${todayEntry.missedHabits.length} misses`, todayEntry.missedHabits.length === 0 ? "done" : "alert");
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
-      this.plugin.getHabitDefinitions().forEach((habit) => {
+      this.plugin.getHabitDefinitions().forEach((habit, habitIndex) => {
         var _a2, _b2, _c2, _d2;
         const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
         const habitEvents = (_b2 = todayEntry.habitEvents[habit.id]) != null ? _b2 : [];
@@ -4627,7 +4664,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         removeButton.title = `Remove ${habit.label}`;
         (0, import_obsidian3.setIcon)(removeButton, "x");
         removeButton.addEventListener("click", () => {
-          void this.plugin.removeHabitDefinition(habit.id);
+          const removedHabit = { ...habit };
+          if (this.plugin.getHabitDefinitions().length <= 1) {
+            void this.plugin.removeHabitDefinition(habit.id);
+            return;
+          }
+          void this.runDestructiveAction(
+            `Removed habit "${habit.label}".`,
+            async () => this.plugin.removeHabitDefinition(habit.id),
+            async () => this.plugin.restoreHabitDefinition(removedHabit, habitIndex)
+          );
         });
         if (currentValue < habit.target || ((_c2 = todayEntry.habitMissNotes[habit.id]) != null ? _c2 : "").length > 0) {
           const missNote = row.createEl("input", {
@@ -4751,7 +4797,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeFoodEntry(index);
+            const removedItem = { ...item2 };
+            void this.runDestructiveAction(
+              `Removed food entry "${item2.text}".`,
+              async () => this.plugin.removeFoodEntry(index),
+              async () => this.plugin.restoreFoodEntry(removedItem, index)
+            );
           });
         });
       }
@@ -4793,7 +4844,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeIntakeEntry(index);
+            const removedItem = { ...item2 };
+            void this.runDestructiveAction(
+              `Removed intake entry "${item2.label}".`,
+              async () => this.plugin.removeIntakeEntry(index),
+              async () => this.plugin.restoreIntakeEntry(removedItem, index)
+            );
           });
         });
       }
@@ -4826,7 +4882,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeSymptomEntry(index);
+            const removedItem = { ...item2 };
+            void this.runDestructiveAction(
+              `Removed symptom entry "${item2.symptom}".`,
+              async () => this.plugin.removeSymptomEntry(index),
+              async () => this.plugin.restoreSymptomEntry(removedItem, index)
+            );
           });
         });
       }
@@ -7722,6 +7783,17 @@ function sortDashboardLayoutCards(cards) {
 function sortDashboardLayoutCardsByOrder(cards) {
   return [...cards].sort((left, right) => left.order - right.order || left.title.localeCompare(right.title));
 }
+function cloneTodayFocusItem(item2) {
+  return {
+    ...item2,
+    workSessions: item2.workSessions.map((session) => ({ ...session }))
+  };
+}
+function cloneNextUpFocusItem(item2) {
+  return {
+    ...item2
+  };
+}
 function getCollapsedSubsectionState() {
   try {
     const stored = window.localStorage.getItem(DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY);
@@ -9457,6 +9529,17 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       habitDefinitions: nextDefinitions
     });
   }
+  async restoreHabitDefinition(habit, index) {
+    if (this.getHabitDefinitions().some((candidate) => candidate.id === habit.id)) {
+      return;
+    }
+    const nextDefinitions = [...this.getHabitDefinitions()];
+    nextDefinitions.splice(clamp(index, 0, nextDefinitions.length), 0, { ...habit });
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: nextDefinitions
+    });
+  }
   async addFoodEntry(value, amount = 1) {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
@@ -9487,6 +9570,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.intakeLog = entry.intakeLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
+  async restoreIntakeEntry(item2, index) {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.intakeLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    entry.intakeLog = nextLog.slice(0, 40);
+    await this.persistEntry(entry);
+  }
   async addSymptomEntry(symptom, severity, note = "") {
     const trimmedSymptom = symptom.trim();
     if (!trimmedSymptom) {
@@ -9506,6 +9596,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.symptomLog = entry.symptomLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
+  async restoreSymptomEntry(item2, index) {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.symptomLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    entry.symptomLog = nextLog.slice(0, 30);
+    await this.persistEntry(entry);
+  }
   async updateFoodEntryAmount(index, amount) {
     const entry = this.getTodayEntry();
     const nextEntry = entry.foodLog[index];
@@ -9518,6 +9615,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async removeFoodEntry(index) {
     const entry = this.getTodayEntry();
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+  async restoreFoodEntry(item2, index) {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.foodLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item2 });
+    entry.foodLog = nextLog;
     await this.persistEntry(entry);
   }
   async addEnergyCheckIn(score, note = "") {
@@ -10325,6 +10429,16 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.todayFocus = entry.todayFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
+  async restoreTodayFocusItem(item2, index) {
+    const entry = this.getTodayEntry();
+    const nextFocus = [...entry.todayFocus];
+    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, {
+      ...item2,
+      workSessions: item2.workSessions.map((session) => ({ ...session }))
+    });
+    entry.todayFocus = nextFocus;
+    await this.persistEntry(entry);
+  }
   async addNextUpFocusItem(input) {
     const text = input.text.trim();
     if (!text) {
@@ -10368,6 +10482,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async removeNextUpFocusItem(index) {
     const entry = this.getTodayEntry();
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+  async restoreNextUpFocusItem(item2, index) {
+    const entry = this.getTodayEntry();
+    const nextFocus = [...entry.nextUpFocus];
+    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, { ...item2 });
+    entry.nextUpFocus = nextFocus;
     await this.persistEntry(entry);
   }
   async updateFrictionLog(value) {

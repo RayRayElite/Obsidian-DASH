@@ -1234,6 +1234,18 @@
   align-self: center;
 }
 
+.daily-dashboard-undo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 20%, var(--background-modifier-border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+  box-shadow: var(--daily-dashboard-shadow);
+}
+
 .daily-dashboard-layout-modal .modal-content {
   display: flex;
   flex-direction: column;

@@ -116,7 +116,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add layout customization for card order, hidden cards, and pinned cards.
 - [x] Add nested collapsible subsections inside cards for finer-grained control.
 - [x] Add keyboard shortcuts for major dashboard actions.
-- [ ] Add undo for destructive actions.
+- [x] Add undo for destructive actions.
 - [ ] Add notification center for reminders and system notices.
 - [ ] Add first-run setup wizard.
 

@@ -29,18 +29,24 @@ import {
   type DashboardFocusDisplayItem,
   type DashboardTone,
   type DashboardViewMode,
+  type FoodEntry,
   type GamificationSummary,
+  type HabitDefinition,
+  type IntakeEntry,
+  type NextUpFocusItem,
   type ProjectReviewOption,
   type QuickAddState,
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
   type SavedDashboardFilter,
   type SuggestedTop3Candidate,
+  type SymptomEntry,
   type TodoTaskSummary,
   type TodoProjectSummary,
   type TimelineSearchFilters,
   type TimelineSearchKind,
   type TimelineSearchResult,
+  type TodayFocusItem,
   type WeeklyAgendaDay,
   type WorkSession,
   type WorkLogFilters
@@ -82,6 +88,7 @@ export class DailyDashboardView extends ItemView {
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
+  private pendingUndoAction: DashboardUndoAction | null = null;
   private readonly handleDashboardKeydown = (event: KeyboardEvent): void => {
     if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
       return;
@@ -287,6 +294,28 @@ export class DailyDashboardView extends ItemView {
 
   private openShortcutHelpFlow(): void {
     new DashboardShortcutHelpModal(this.app).open();
+  }
+
+  private async runDestructiveAction(label: string, action: () => Promise<void>, undo: () => Promise<void>): Promise<void> {
+    await action();
+    this.pendingUndoAction = { label, undo };
+    await this.render();
+  }
+
+  private async undoPendingAction(): Promise<void> {
+    if (!this.pendingUndoAction) {
+      return;
+    }
+
+    const action = this.pendingUndoAction;
+    this.pendingUndoAction = null;
+    await action.undo();
+    await this.render();
+  }
+
+  private async dismissPendingUndo(): Promise<void> {
+    this.pendingUndoAction = null;
+    await this.render();
   }
 
   private registerGridCard(
@@ -541,6 +570,16 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
+
+      if (this.pendingUndoAction) {
+        const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
+        const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
+        undoCopy.createEl("strong", { text: "Undo last dashboard action" });
+        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: this.pendingUndoAction.label });
+        const undoActions = undoBanner.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
+        createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
+      }
 
       const weekBoardCard = createCard(page, "Week At A Glance", "", {
         icon: "layout-dashboard",
@@ -1093,7 +1132,12 @@ export class DailyDashboardView extends ItemView {
               removeButton.title = `Remove ${item.text}`;
               setIcon(removeButton, "x");
               removeButton.addEventListener("click", () => {
-                void this.plugin.removeTodayFocusItem(focusIndex);
+                const removedItem = cloneTodayFocusItem(item);
+                void this.runDestructiveAction(
+                  `Removed Top 3 item \"${item.text}\".`,
+                  async () => this.plugin.removeTodayFocusItem(focusIndex),
+                  async () => this.plugin.restoreTodayFocusItem(removedItem, focusIndex)
+                );
               });
             }
           } else {
@@ -1208,8 +1252,12 @@ export class DailyDashboardView extends ItemView {
             }).open();
           }, false, "pencil");
           createButton(controls, "Remove", async () => {
-            await this.plugin.removeNextUpFocusItem(index);
-            await this.render();
+            const removedItem = cloneNextUpFocusItem(item);
+            await this.runDestructiveAction(
+              `Removed queued item \"${item.text}\".`,
+              async () => this.plugin.removeNextUpFocusItem(index),
+              async () => this.plugin.restoreNextUpFocusItem(removedItem, index)
+            );
           }, false, "x");
         });
       }
@@ -1333,7 +1381,7 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(habitSummaryChips, `${habitSummary.percentage}% weighted completion`, habitSummary.percentage >= 80 ? "done" : habitSummary.percentage >= 55 ? "state" : "alert");
       createSemanticChip(habitSummaryChips, `${todayEntry.missedHabits.length} misses`, todayEntry.missedHabits.length === 0 ? "done" : "alert");
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
-      this.plugin.getHabitDefinitions().forEach((habit) => {
+      this.plugin.getHabitDefinitions().forEach((habit, habitIndex) => {
         const currentValue = todayEntry.habits[habit.id] ?? 0;
         const habitEvents = todayEntry.habitEvents[habit.id] ?? [];
         const inWindowCount = countHabitEventsInWindow(habitEvents, habit.completionWindow);
@@ -1373,7 +1421,17 @@ export class DailyDashboardView extends ItemView {
         removeButton.title = `Remove ${habit.label}`;
         setIcon(removeButton, "x");
         removeButton.addEventListener("click", () => {
-          void this.plugin.removeHabitDefinition(habit.id);
+          const removedHabit = { ...habit };
+          if (this.plugin.getHabitDefinitions().length <= 1) {
+            void this.plugin.removeHabitDefinition(habit.id);
+            return;
+          }
+
+          void this.runDestructiveAction(
+            `Removed habit \"${habit.label}\".`,
+            async () => this.plugin.removeHabitDefinition(habit.id),
+            async () => this.plugin.restoreHabitDefinition(removedHabit, habitIndex)
+          );
         });
         if (currentValue < habit.target || (todayEntry.habitMissNotes[habit.id] ?? "").length > 0) {
           const missNote = row.createEl("input", {
@@ -1499,7 +1557,12 @@ export class DailyDashboardView extends ItemView {
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeFoodEntry(index);
+            const removedItem = { ...item } satisfies FoodEntry;
+            void this.runDestructiveAction(
+              `Removed food entry \"${item.text}\".`,
+              async () => this.plugin.removeFoodEntry(index),
+              async () => this.plugin.restoreFoodEntry(removedItem, index)
+            );
           });
         });
       }
@@ -1541,7 +1604,12 @@ export class DailyDashboardView extends ItemView {
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeIntakeEntry(index);
+            const removedItem = { ...item } satisfies IntakeEntry;
+            void this.runDestructiveAction(
+              `Removed intake entry \"${item.label}\".`,
+              async () => this.plugin.removeIntakeEntry(index),
+              async () => this.plugin.restoreIntakeEntry(removedItem, index)
+            );
           });
         });
       }
@@ -1575,7 +1643,12 @@ export class DailyDashboardView extends ItemView {
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
-            void this.plugin.removeSymptomEntry(index);
+            const removedItem = { ...item } satisfies SymptomEntry;
+            void this.runDestructiveAction(
+              `Removed symptom entry \"${item.symptom}\".`,
+              async () => this.plugin.removeSymptomEntry(index),
+              async () => this.plugin.restoreSymptomEntry(removedItem, index)
+            );
           });
         });
       }
@@ -4775,6 +4848,11 @@ type DashboardShortcutDefinition = {
   description: string;
 };
 
+type DashboardUndoAction = {
+  label: string;
+  undo: () => Promise<void>;
+};
+
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
@@ -5206,6 +5284,19 @@ function sortDashboardLayoutCards(cards: DashboardLayoutCardState[]): DashboardL
 
 function sortDashboardLayoutCardsByOrder(cards: DashboardLayoutCardState[]): DashboardLayoutCardState[] {
   return [...cards].sort((left, right) => left.order - right.order || left.title.localeCompare(right.title));
+}
+
+function cloneTodayFocusItem(item: TodayFocusItem): TodayFocusItem {
+  return {
+    ...item,
+    workSessions: item.workSessions.map((session) => ({ ...session }))
+  };
+}
+
+function cloneNextUpFocusItem(item: NextUpFocusItem): NextUpFocusItem {
+  return {
+    ...item
+  };
 }
 
 function getCollapsedSubsectionState(): Set<string> {

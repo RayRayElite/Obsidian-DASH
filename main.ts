@@ -1972,6 +1972,19 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  async restoreHabitDefinition(habit: HabitDefinition, index: number): Promise<void> {
+    if (this.getHabitDefinitions().some((candidate) => candidate.id === habit.id)) {
+      return;
+    }
+
+    const nextDefinitions = [...this.getHabitDefinitions()];
+    nextDefinitions.splice(clamp(index, 0, nextDefinitions.length), 0, { ...habit });
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: nextDefinitions
+    });
+  }
+
   async addFoodEntry(value: string, amount = 1): Promise<void> {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
@@ -2007,6 +2020,14 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async restoreIntakeEntry(item: IntakeEntry, index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.intakeLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
+    entry.intakeLog = nextLog.slice(0, 40);
+    await this.persistEntry(entry);
+  }
+
   async addSymptomEntry(symptom: string, severity: number, note = ""): Promise<void> {
     const trimmedSymptom = symptom.trim();
     if (!trimmedSymptom) {
@@ -2029,6 +2050,14 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async restoreSymptomEntry(item: SymptomEntry, index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.symptomLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
+    entry.symptomLog = nextLog.slice(0, 30);
+    await this.persistEntry(entry);
+  }
+
   async updateFoodEntryAmount(index: number, amount: number): Promise<void> {
     const entry = this.getTodayEntry();
     const nextEntry = entry.foodLog[index];
@@ -2043,6 +2072,14 @@ export default class DailyDashboardPlugin extends Plugin {
   async removeFoodEntry(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async restoreFoodEntry(item: FoodEntry, index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextLog = [...entry.foodLog];
+    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
+    entry.foodLog = nextLog;
     await this.persistEntry(entry);
   }
 
@@ -2991,6 +3028,17 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async restoreTodayFocusItem(item: TodayFocusItem, index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextFocus = [...entry.todayFocus];
+    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, {
+      ...item,
+      workSessions: item.workSessions.map((session) => ({ ...session }))
+    });
+    entry.todayFocus = nextFocus;
+    await this.persistEntry(entry);
+  }
+
   async addNextUpFocusItem(input: {
     text: string;
     notes?: string;
@@ -3047,6 +3095,14 @@ export default class DailyDashboardPlugin extends Plugin {
   async removeNextUpFocusItem(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async restoreNextUpFocusItem(item: NextUpFocusItem, index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextFocus = [...entry.nextUpFocus];
+    nextFocus.splice(clamp(index, 0, nextFocus.length), 0, { ...item });
+    entry.nextUpFocus = nextFocus;
     await this.persistEntry(entry);
   }
 
