@@ -1225,14 +1225,14 @@ input.daily-dashboard-input {
   align-items: end;
   min-width: var(--daily-dashboard-week-stage-min-width);
   height: 316px;
-  padding: 18px var(--daily-dashboard-week-stage-padding) 24px;
+  padding: 18px var(--daily-dashboard-week-stage-padding) 32px;
 }
 
 .daily-dashboard-week-column {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   min-width: 0;
   position: relative;
 }
@@ -1353,6 +1353,9 @@ input.daily-dashboard-input {
   align-items: center;
   gap: 3px;
   text-align: center;
+  position: relative;
+  z-index: 2;
+  margin-top: -2px;
 }
 
 .daily-dashboard-week-labels strong {
