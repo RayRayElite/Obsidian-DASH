@@ -33,6 +33,20 @@ export type DashboardViewMode = "mobile" | "compact" | "widescreen";
 export type TodayFocusStatus = "pending" | "working" | "done";
 
 export type CalendarRepeatCadence = "none" | "daily" | "weekly" | "monthly" | "yearly";
+export type CalendarOccurrenceExceptionKind = "skip" | "cancel" | "move";
+export type CalendarEventCategory = "work" | "health" | "errands" | "social" | "personal";
+
+export interface CalendarOccurrenceException {
+  originalDate: string;
+  kind: CalendarOccurrenceExceptionKind;
+  date: string;
+  startTime: string;
+  endTime: string;
+  category: CalendarEventCategory;
+  title: string;
+  notes: string;
+  updatedAt: string;
+}
 
 export interface CalendarEventEntry {
   id: string;
@@ -40,9 +54,11 @@ export interface CalendarEventEntry {
   date: string;
   startTime: string;
   endTime: string;
+  category: CalendarEventCategory;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
   repeatUntil: string;
+  occurrenceExceptions: CalendarOccurrenceException[];
   createdAt: string;
   updatedAt: string;
 }
@@ -50,14 +66,18 @@ export interface CalendarEventEntry {
 export interface CalendarEventOccurrence {
   id: string;
   sourceEventId: string;
+  originalDate: string;
   title: string;
   date: string;
   startTime: string;
   endTime: string;
+  category: CalendarEventCategory;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
   repeatUntil: string;
   isRecurring: boolean;
+  isException: boolean;
+  exceptionKind?: CalendarOccurrenceExceptionKind;
 }
 
 export interface CalendarDocumentPayload {

@@ -7,9 +7,9 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 ## Foundation And Data
 
 - [x] Track bowel movement count per day in addition to tracked bowel time.
-- [ ] Add event editing for single recurring occurrences, not only full series.
-- [ ] Add recurrence exceptions like skip, move once, and cancel one occurrence.
-- [ ] Add calendar categories such as work, health, errands, social, and personal.
+- [x] Add event editing for single recurring occurrences, not only full series.
+- [x] Add recurrence exceptions like skip, move once, and cancel one occurrence.
+- [x] Add calendar categories such as work, health, errands, social, and personal.
 - [ ] Add event-to-project linking.
 - [ ] Add task due dates in the master task hub and surface due-soon / overdue work.
 - [ ] Add blocked-task state with blocker reason and unblock target date.
@@ -19,7 +19,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 ## Execution And Focus
 
 - [x] Edit Top 3 items inline without deleting and recreating them.
-- [ ] Drag to reorder Top 3 items.
+- [x] Drag to reorder Top 3 items.
 - [x] Carry forward unfinished Top 3 items into the next logical day with confirmation.
 - [x] Let calendar reminders become real temporary focus rows with accept / dismiss actions.
 - [x] Add notes on Top 3 items for links, context, or next steps.
@@ -27,7 +27,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add a Next Up queue under Top 3.
 - [x] Add quick-capture actions for Top 3 from commands and anywhere in Obsidian.
 - [x] Add pause-all / start-break flow.
-- [ ] Add session tags like deep work, admin, creative, errands, and recovery.
+- [x] Add session tags like deep work, admin, creative, errands, and recovery.
 
 ## Logical Day And Tracking
 
@@ -124,8 +124,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 - [x] Track bowel movement count.
 - [x] Build the view-mode foundation before adding compact, mobile, and widescreen variants.
-- [ ] Expand calendar recurrence editing and exception handling.
-- [ ] Improve Top 3 editing, carry-forward, and reminder acceptance.
+- [x] Expand calendar recurrence editing and exception handling.
+- [x] Improve Top 3 editing, carry-forward, and reminder acceptance.
 - [ ] Add due dates / blocked states to project workflow.
 - [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

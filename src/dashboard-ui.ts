@@ -16,6 +16,7 @@ import {
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
   type CalendarEventOccurrence,
+  type CalendarEventCategory,
   type CalendarRepeatCadence,
   type CalendarSnapshot,
   type CardVisualOptions,
@@ -1460,11 +1461,36 @@ export class DailyDashboardView extends ItemView {
 
       const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
       copy.createEl("strong", { text: event.title });
-      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
+      copy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: [
+          `Category ${event.category}`,
+          event.notes || "No notes",
+          event.isException ? `${event.exceptionKind === "move" ? "Moved once" : event.exceptionKind === "cancel" ? "Cancelled once" : "Skipped once"} from ${event.originalDate}` : ""
+        ].filter((value) => value.length > 0).join(" • ")
+      });
 
       const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(actions, event.isRecurring ? "Edit series" : "Edit", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId).open(), false, "pencil");
-      createButton(actions, event.isRecurring ? "Delete series" : "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
+      if (event.isRecurring) {
+        createButton(actions, "Edit once", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId, event.originalDate).open(), false, "pencil");
+        createButton(actions, "Edit series", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId).open(), false, "notebook-pen");
+        createButton(actions, event.isException ? "Restore once" : "Skip once", async () => {
+          if (event.isException) {
+            await this.plugin.clearCalendarOccurrenceException(event.sourceEventId, event.originalDate);
+          } else {
+            await this.plugin.applyCalendarOccurrenceException(event.sourceEventId, event.originalDate, "skip");
+          }
+          await this.render();
+        }, false, event.isException ? "rotate-ccw" : "skip-forward");
+        createButton(actions, "Cancel once", async () => {
+          await this.plugin.applyCalendarOccurrenceException(event.sourceEventId, event.originalDate, "cancel");
+          await this.render();
+        }, false, "circle-off");
+        createButton(actions, "Delete series", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
+      } else {
+        createButton(actions, "Edit", async () => new CalendarEventModal(this.app, this.plugin, selectedDate, event.sourceEventId).open(), false, "pencil");
+        createButton(actions, "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
+      }
     });
   }
 
@@ -1651,19 +1677,22 @@ export class CalendarEventModal extends Modal {
   private date: string;
   private readonly initialDate: string;
   private editingEventId: string | null;
+  private editingOccurrenceOriginalDate: string | null;
   private titleValue = "";
   private startTimeValue = "";
   private endTimeValue = "";
+  private categoryValue: CalendarEventCategory = "personal";
   private notesValue = "";
   private repeatCadenceValue: CalendarRepeatCadence = "none";
   private repeatUntilValue = "";
 
-  constructor(app: App, plugin: DailyDashboardPlugin, date: string, editingEventId: string | null = null) {
+  constructor(app: App, plugin: DailyDashboardPlugin, date: string, editingEventId: string | null = null, editingOccurrenceOriginalDate: string | null = null) {
     super(app);
     this.plugin = plugin;
     this.date = date;
     this.initialDate = date;
     this.editingEventId = editingEventId;
+    this.editingOccurrenceOriginalDate = editingOccurrenceOriginalDate;
   }
 
   onOpen(): void {
@@ -1689,40 +1718,99 @@ export class CalendarEventModal extends Modal {
           .setDesc([
             event.startTime || "All day",
             event.endTime ? `to ${event.endTime}` : "",
+            `category ${event.category}`,
             event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
+            event.isException ? `${event.exceptionKind === "move" ? "moved" : event.exceptionKind} once from ${event.originalDate}` : "",
             event.notes
           ].filter((value) => value.length > 0).join(" • "))
           .addButton((button) => {
-            button.setButtonText(event.isRecurring ? "Edit series" : "Edit").onClick(() => {
-              const sourceEvent = this.plugin.getCalendarEventEntry(event.sourceEventId);
-              if (!sourceEvent) {
-                return;
-              }
-
-              this.editingEventId = sourceEvent.id;
-              this.date = sourceEvent.date;
-              this.titleValue = sourceEvent.title;
-              this.startTimeValue = sourceEvent.startTime;
-              this.endTimeValue = sourceEvent.endTime;
-              this.notesValue = sourceEvent.notes;
-              this.repeatCadenceValue = sourceEvent.repeatCadence;
-              this.repeatUntilValue = sourceEvent.repeatUntil;
-              this.renderContent();
-            });
-          })
-          .addButton((button) => {
-            button.setButtonText(event.isRecurring ? "Delete series" : "Delete").onClick(async () => {
-              await this.plugin.removeCalendarEvent(event.sourceEventId);
-              if (this.editingEventId === event.sourceEventId) {
-                this.clearEditingState();
+            button.setButtonText(event.isRecurring ? "Edit once" : "Edit").onClick(() => {
+              this.editingEventId = event.sourceEventId;
+              this.editingOccurrenceOriginalDate = event.isRecurring ? event.originalDate : null;
+              this.date = event.date;
+              this.titleValue = event.title;
+              this.startTimeValue = event.startTime;
+              this.endTimeValue = event.endTime;
+              this.categoryValue = event.category;
+              this.notesValue = event.notes;
+              if (!event.isRecurring) {
+                this.repeatCadenceValue = "none";
+                this.repeatUntilValue = "";
               }
               this.renderContent();
             });
           });
+        if (event.isRecurring) {
+          new Setting(contentEl)
+            .setName("")
+            .addButton((button) => {
+              button.setButtonText("Edit series").onClick(() => {
+                const sourceEvent = this.plugin.getCalendarEventEntry(event.sourceEventId);
+                if (!sourceEvent) {
+                  return;
+                }
+
+                this.editingEventId = sourceEvent.id;
+                this.editingOccurrenceOriginalDate = null;
+                this.date = sourceEvent.date;
+                this.titleValue = sourceEvent.title;
+                this.startTimeValue = sourceEvent.startTime;
+                this.endTimeValue = sourceEvent.endTime;
+                this.categoryValue = sourceEvent.category;
+                this.notesValue = sourceEvent.notes;
+                this.repeatCadenceValue = sourceEvent.repeatCadence;
+                this.repeatUntilValue = sourceEvent.repeatUntil;
+                this.renderContent();
+              });
+            })
+            .addButton((button) => {
+              button.setButtonText(event.isException ? "Restore once" : "Skip once").onClick(async () => {
+                if (event.isException) {
+                  await this.plugin.clearCalendarOccurrenceException(event.sourceEventId, event.originalDate);
+                } else {
+                  await this.plugin.applyCalendarOccurrenceException(event.sourceEventId, event.originalDate, "skip");
+                }
+                if (this.editingOccurrenceOriginalDate === event.originalDate) {
+                  this.clearEditingState();
+                }
+                this.renderContent();
+              });
+            })
+            .addButton((button) => {
+              button.setButtonText("Cancel once").onClick(async () => {
+                await this.plugin.applyCalendarOccurrenceException(event.sourceEventId, event.originalDate, "cancel");
+                if (this.editingOccurrenceOriginalDate === event.originalDate) {
+                  this.clearEditingState();
+                }
+                this.renderContent();
+              });
+            })
+            .addButton((button) => {
+              button.setButtonText("Delete series").onClick(async () => {
+                await this.plugin.removeCalendarEvent(event.sourceEventId);
+                if (this.editingEventId === event.sourceEventId) {
+                  this.clearEditingState();
+                }
+                this.renderContent();
+              });
+            });
+        } else {
+          new Setting(contentEl)
+            .setName("")
+            .addButton((button) => {
+              button.setButtonText("Delete").onClick(async () => {
+                await this.plugin.removeCalendarEvent(event.sourceEventId);
+                if (this.editingEventId === event.sourceEventId) {
+                  this.clearEditingState();
+                }
+                this.renderContent();
+              });
+            });
+        }
       });
     }
 
-    contentEl.createEl("h3", { text: this.editingEventId ? "Edit event" : "Add event" });
+    contentEl.createEl("h3", { text: this.editingOccurrenceOriginalDate ? `Edit occurrence from ${this.editingOccurrenceOriginalDate}` : this.editingEventId ? "Edit event" : "Add event" });
 
     new Setting(contentEl)
       .setName("Title")
@@ -1777,6 +1865,21 @@ export class CalendarEventModal extends Modal {
       });
 
     new Setting(contentEl)
+      .setName("Category")
+      .setDesc("Used to group calendar context across the dashboard.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("work", "Work");
+        dropdown.addOption("health", "Health");
+        dropdown.addOption("errands", "Errands");
+        dropdown.addOption("social", "Social");
+        dropdown.addOption("personal", "Personal");
+        dropdown.setValue(this.categoryValue);
+        dropdown.onChange((value) => {
+          this.categoryValue = value === "work" || value === "health" || value === "errands" || value === "social" ? value : "personal";
+        });
+      });
+
+    new Setting(contentEl)
       .setName("Notes")
       .setDesc("Optional context shown in reminders and the calendar detail list.")
       .addTextArea((textArea) => {
@@ -1789,35 +1892,42 @@ export class CalendarEventModal extends Modal {
         textArea.inputEl.rows = 3;
       });
 
-    new Setting(contentEl)
-      .setName("Repeat")
-      .setDesc("Make this event recurring.")
-      .addDropdown((dropdown) => {
-        dropdown.addOption("none", "Does not repeat");
-        dropdown.addOption("daily", "Daily");
-        dropdown.addOption("weekly", "Weekly");
-        dropdown.addOption("monthly", "Monthly");
-        dropdown.addOption("yearly", "Yearly");
-        dropdown.setValue(this.repeatCadenceValue);
-        dropdown.onChange((value) => {
-          this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
-          this.renderContent();
-        });
-      });
-
-    if (this.repeatCadenceValue !== "none") {
+    if (!this.editingOccurrenceOriginalDate) {
       new Setting(contentEl)
-        .setName("Repeat until")
-        .setDesc("Optional end date for the recurring series.")
-        .addText((text) => {
-          text
-            .setPlaceholder("2026-12-31")
-            .setValue(this.repeatUntilValue)
-            .onChange((value) => {
-              this.repeatUntilValue = value.trim();
-            });
-          text.inputEl.type = "date";
+        .setName("Repeat")
+        .setDesc("Make this event recurring.")
+        .addDropdown((dropdown) => {
+          dropdown.addOption("none", "Does not repeat");
+          dropdown.addOption("daily", "Daily");
+          dropdown.addOption("weekly", "Weekly");
+          dropdown.addOption("monthly", "Monthly");
+          dropdown.addOption("yearly", "Yearly");
+          dropdown.setValue(this.repeatCadenceValue);
+          dropdown.onChange((value) => {
+            this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
+            this.renderContent();
+          });
         });
+
+      if (this.repeatCadenceValue !== "none") {
+        new Setting(contentEl)
+          .setName("Repeat until")
+          .setDesc("Optional end date for the recurring series.")
+          .addText((text) => {
+            text
+              .setPlaceholder("2026-12-31")
+              .setValue(this.repeatUntilValue)
+              .onChange((value) => {
+                this.repeatUntilValue = value.trim();
+              });
+            text.inputEl.type = "date";
+          });
+      }
+    } else {
+      contentEl.createEl("p", {
+        cls: "daily-dashboard-row-meta",
+        text: "This edits only the selected occurrence. Series recurrence rules stay unchanged."
+      });
     }
 
     new Setting(contentEl)
@@ -1828,12 +1938,15 @@ export class CalendarEventModal extends Modal {
             date: this.date,
             startTime: this.startTimeValue,
             endTime: this.endTimeValue,
+            category: this.categoryValue,
             notes: this.notesValue,
             repeatCadence: this.repeatCadenceValue,
             repeatUntil: this.repeatUntilValue
           };
 
-          if (this.editingEventId) {
+          if (this.editingEventId && this.editingOccurrenceOriginalDate) {
+            await this.plugin.updateCalendarOccurrence(this.editingEventId, this.editingOccurrenceOriginalDate, input);
+          } else if (this.editingEventId) {
             await this.plugin.updateCalendarEvent(this.editingEventId, input);
           } else {
             await this.plugin.addCalendarEvent(input);
@@ -1860,6 +1973,23 @@ export class CalendarEventModal extends Modal {
       return;
     }
 
+    if (this.editingOccurrenceOriginalDate) {
+      const occurrence = this.plugin.getCalendarEventsForDate(this.date)
+        .find((event) => event.sourceEventId === this.editingEventId && event.originalDate === this.editingOccurrenceOriginalDate);
+      if (!occurrence) {
+        this.clearEditingState();
+        return;
+      }
+
+      this.date = occurrence.date;
+      this.titleValue = occurrence.title;
+      this.startTimeValue = occurrence.startTime;
+      this.endTimeValue = occurrence.endTime;
+      this.categoryValue = occurrence.category;
+      this.notesValue = occurrence.notes;
+      return;
+    }
+
     const event = this.plugin.getCalendarEventEntry(this.editingEventId);
     if (!event) {
       this.clearEditingState();
@@ -1870,6 +2000,7 @@ export class CalendarEventModal extends Modal {
     this.titleValue = event.title;
     this.startTimeValue = event.startTime;
     this.endTimeValue = event.endTime;
+    this.categoryValue = event.category;
     this.notesValue = event.notes;
     this.repeatCadenceValue = event.repeatCadence;
     this.repeatUntilValue = event.repeatUntil;
@@ -1877,10 +2008,12 @@ export class CalendarEventModal extends Modal {
 
   private clearEditingState(): void {
     this.editingEventId = null;
+    this.editingOccurrenceOriginalDate = null;
     this.date = this.initialDate;
     this.titleValue = "";
     this.startTimeValue = "";
     this.endTimeValue = "";
+    this.categoryValue = "personal";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
     this.repeatUntilValue = "";
