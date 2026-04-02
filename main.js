@@ -3463,7 +3463,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
     this.selectedCalendarDate = formatDateKey(/* @__PURE__ */ new Date());
-    this.pendingUndoAction = null;
+    this.pendingUndoActions = [];
     this.handleDashboardKeydown = (event) => {
       if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
         return;
@@ -3657,20 +3657,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   async runDestructiveAction(label, action, undo) {
     await action();
-    this.pendingUndoAction = { label, undo };
+    this.pendingUndoActions = [...this.pendingUndoActions, { label, undo }].slice(-5);
     await this.render();
   }
   async undoPendingAction() {
-    if (!this.pendingUndoAction) {
+    if (this.pendingUndoActions.length === 0) {
       return;
     }
-    const action = this.pendingUndoAction;
-    this.pendingUndoAction = null;
+    const action = this.pendingUndoActions[this.pendingUndoActions.length - 1];
+    this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await action.undo();
     await this.render();
   }
   async dismissPendingUndo() {
-    this.pendingUndoAction = null;
+    this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await this.render();
   }
   registerGridCard(card, title, bindings, layoutByKey) {
@@ -3808,7 +3808,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusText = "";
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -3894,11 +3894,18 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      if (this.pendingUndoAction) {
+      const latestUndoAction = (_h = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _h : null;
+      if (latestUndoAction) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
         const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
         undoCopy.createEl("strong", { text: "Undo last dashboard action" });
-        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: this.pendingUndoAction.label });
+        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: latestUndoAction.label });
+        if (this.pendingUndoActions.length > 1) {
+          undoCopy.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `${this.pendingUndoActions.length - 1} earlier undo action${this.pendingUndoActions.length - 1 === 1 ? "" : "s"} still available.`
+          });
+        }
         const undoActions = undoBanner.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
         createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
@@ -4024,11 +4031,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
-      const activeWorkSession = (_h = todayEntry.workSessions.find((session) => session.end === null)) != null ? _h : null;
-      const activeNapSession = (_i = todayEntry.napSessions.find((session) => session.end === null)) != null ? _i : null;
-      const activeRelaxSession = (_j = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _j : null;
-      const activeBreakSession = (_k = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _k : null;
-      const activePoopSession = (_l = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _l : null;
+      const activeWorkSession = (_i = todayEntry.workSessions.find((session) => session.end === null)) != null ? _i : null;
+      const activeNapSession = (_j = todayEntry.napSessions.find((session) => session.end === null)) != null ? _j : null;
+      const activeRelaxSession = (_k = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _k : null;
+      const activeBreakSession = (_l = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _l : null;
+      const activePoopSession = (_m = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _m : null;
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || "";
       const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item2) => sum + item2.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
       const tagSummary = this.getSessionTagSummary([
@@ -4122,7 +4129,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
       const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
-      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_m = timeAllocationInsights.awakeUnknownMinutes) != null ? _m : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
+      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_n = timeAllocationInsights.awakeUnknownMinutes) != null ? _n : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
       createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
       const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
       this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
@@ -6704,6 +6711,7 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
     }
     const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
     createButton(footer, "Close for now", async () => {
+      await this.plugin.snoozeFirstRunSetupWizard(12);
       this.close();
     }, false, "x");
     if (this.stepIndex > 0) {
@@ -8309,6 +8317,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       noteIndex: createEmptyNoteIndexCache(),
       uiState: {
         onboardingCompleted: false,
+        onboardingDeferredUntil: "",
         dismissedNotificationIds: []
       }
     };
@@ -8712,7 +8721,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       void this.rebuildAiNoteIndex(false);
     }, 2500);
     this.app.workspace.onLayoutReady(() => {
-      if (!this.isFirstRunSetupPending()) {
+      if (!this.shouldAutoOpenFirstRunSetupWizard()) {
         return;
       }
       window.setTimeout(() => {
@@ -10449,14 +10458,32 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   isFirstRunSetupPending() {
     return !this.data.uiState.onboardingCompleted;
   }
+  shouldAutoOpenFirstRunSetupWizard(referenceDate = /* @__PURE__ */ new Date()) {
+    if (!this.isFirstRunSetupPending()) {
+      return false;
+    }
+    const deferredUntil = this.data.uiState.onboardingDeferredUntil.trim();
+    if (!deferredUntil) {
+      return true;
+    }
+    const deferredDate = new Date(deferredUntil.replace(" ", "T"));
+    return Number.isNaN(deferredDate.getTime()) || deferredDate.getTime() <= referenceDate.getTime();
+  }
   async openFirstRunSetupWizard() {
     new FirstRunSetupWizardModal(this.app, this).open();
+  }
+  async snoozeFirstRunSetupWizard(hours = 12) {
+    const nextTime = new Date(Date.now() + Math.max(1, hours) * 60 * 60 * 1e3);
+    this.data.uiState.onboardingDeferredUntil = formatDateTimeKey(nextTime);
+    await this.savePluginData();
+    this.refreshDashboardViews();
   }
   async completeFirstRunSetupWizard() {
     if (this.data.uiState.onboardingCompleted) {
       return;
     }
     this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
     this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
     await this.savePluginData();
     this.refreshDashboardViews();
@@ -10468,6 +10495,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.data.uiState.dismissedNotificationIds = [...this.data.uiState.dismissedNotificationIds, id].slice(-200);
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+  reconcileDismissedNotificationIds(activeDismissibleIds) {
+    const allowed = new Set(activeDismissibleIds);
+    const nextDismissed = this.data.uiState.dismissedNotificationIds.filter((id) => allowed.has(id));
+    if (nextDismissed.length === this.data.uiState.dismissedNotificationIds.length) {
+      return;
+    }
+    this.data.uiState.dismissedNotificationIds = nextDismissed;
+    void this.savePluginData();
+  }
+  buildDashboardNotificationId(prefix, values, todayKey) {
+    const normalized = values.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0).map((value) => value.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")).join("~").slice(0, 180);
+    return normalized.length > 0 ? `${prefix}:${todayKey}:${normalized}` : `${prefix}:${todayKey}`;
   }
   getDashboardNotifications(todoSnapshot, calendarSnapshot, referenceDate = /* @__PURE__ */ new Date()) {
     var _a;
@@ -10529,7 +10569,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
     if (todoSnapshot && todoSnapshot.overdueTasks.length > 0) {
       items.push({
-        id: `tasks:overdue:${todayKey}:${todoSnapshot.overdueTasks.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:overdue",
+          todoSnapshot.overdueTasks.slice(0, 5).map(({ project, task }) => `${project}|${task.text}|${task.dueDate}`),
+          todayKey
+        ),
         source: "tasks",
         title: `${todoSnapshot.overdueTasks.length} overdue task${todoSnapshot.overdueTasks.length === 1 ? "" : "s"}`,
         description: todoSnapshot.overdueTasks.slice(0, 2).map(({ project, task }) => `${project} \u2022 ${task.text}`).join(" \u2022 "),
@@ -10540,7 +10584,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     if (todoSnapshot && todoSnapshot.blockedTasks.length > 0) {
       items.push({
-        id: `tasks:blocked:${todayKey}:${todoSnapshot.blockedTasks.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:blocked",
+          todoSnapshot.blockedTasks.slice(0, 5).map(({ project, task }) => `${project}|${task.text}|${task.blockedReason}|${task.unblockDate}`),
+          todayKey
+        ),
         source: "tasks",
         title: `${todoSnapshot.blockedTasks.length} blocked task${todoSnapshot.blockedTasks.length === 1 ? "" : "s"}`,
         description: todoSnapshot.blockedTasks.slice(0, 2).map(({ project, task }) => `${project} \u2022 ${task.text}${task.blockedReason ? ` (${task.blockedReason})` : ""}`).join(" \u2022 "),
@@ -10551,7 +10599,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     if (todoSnapshot && (todoSnapshot.cleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
       items.push({
-        id: `tasks:cleanup:${todayKey}:${todoSnapshot.cleanupSuggestions.length}:${todoSnapshot.staleProjects.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:cleanup",
+          [
+            ...todoSnapshot.staleProjects.slice(0, 5).map((project) => project.name),
+            ...todoSnapshot.cleanupSuggestions.slice(0, 5)
+          ],
+          todayKey
+        ),
         source: "tasks",
         title: "Cleanup and stale work need review",
         description: [
@@ -10563,6 +10618,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         dismissible: true
       });
     }
+    const activeDismissibleIds = items.filter((item2) => item2.dismissible).map((item2) => item2.id);
+    this.reconcileDismissedNotificationIds(activeDismissibleIds);
     const dismissed = new Set(this.data.uiState.dismissedNotificationIds);
     return items.filter((item2) => !item2.dismissible || !dismissed.has(item2.id));
   }
@@ -11758,6 +11815,7 @@ No entries available.`;
   normalizeUiState(state) {
     return {
       onboardingCompleted: Boolean(state == null ? void 0 : state.onboardingCompleted),
+      onboardingDeferredUntil: typeof (state == null ? void 0 : state.onboardingDeferredUntil) === "string" ? state.onboardingDeferredUntil : "",
       dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item2) => typeof item2 === "string" && item2.trim().length > 0).slice(0, 200) : []
     };
   }

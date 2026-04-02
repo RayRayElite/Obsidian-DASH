@@ -574,6 +574,7 @@ export interface SavedDashboardFilter {
 
 export interface DashboardUiState {
   onboardingCompleted: boolean;
+  onboardingDeferredUntil: string;
   dismissedNotificationIds: string[];
 }
 

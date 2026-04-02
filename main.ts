@@ -164,6 +164,7 @@ export default class DailyDashboardPlugin extends Plugin {
     noteIndex: createEmptyNoteIndexCache(),
     uiState: {
       onboardingCompleted: false,
+      onboardingDeferredUntil: "",
       dismissedNotificationIds: []
     }
   };
@@ -635,7 +636,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }, 2500);
 
     this.app.workspace.onLayoutReady(() => {
-      if (!this.isFirstRunSetupPending()) {
+      if (!this.shouldAutoOpenFirstRunSetupWizard()) {
         return;
       }
 
@@ -2741,8 +2742,29 @@ export default class DailyDashboardPlugin extends Plugin {
     return !this.data.uiState.onboardingCompleted;
   }
 
+  shouldAutoOpenFirstRunSetupWizard(referenceDate: Date = new Date()): boolean {
+    if (!this.isFirstRunSetupPending()) {
+      return false;
+    }
+
+    const deferredUntil = this.data.uiState.onboardingDeferredUntil.trim();
+    if (!deferredUntil) {
+      return true;
+    }
+
+    const deferredDate = new Date(deferredUntil.replace(" ", "T"));
+    return Number.isNaN(deferredDate.getTime()) || deferredDate.getTime() <= referenceDate.getTime();
+  }
+
   async openFirstRunSetupWizard(): Promise<void> {
     new FirstRunSetupWizardModal(this.app, this).open();
+  }
+
+  async snoozeFirstRunSetupWizard(hours = 12): Promise<void> {
+    const nextTime = new Date(Date.now() + Math.max(1, hours) * 60 * 60 * 1000);
+    this.data.uiState.onboardingDeferredUntil = formatDateTimeKey(nextTime);
+    await this.savePluginData();
+    this.refreshDashboardViews();
   }
 
   async completeFirstRunSetupWizard(): Promise<void> {
@@ -2751,6 +2773,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
     this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
     await this.savePluginData();
     this.refreshDashboardViews();
@@ -2764,6 +2787,27 @@ export default class DailyDashboardPlugin extends Plugin {
     this.data.uiState.dismissedNotificationIds = [...this.data.uiState.dismissedNotificationIds, id].slice(-200);
     await this.savePluginData();
     this.refreshDashboardViews();
+  }
+
+  private reconcileDismissedNotificationIds(activeDismissibleIds: string[]): void {
+    const allowed = new Set(activeDismissibleIds);
+    const nextDismissed = this.data.uiState.dismissedNotificationIds.filter((id) => allowed.has(id));
+    if (nextDismissed.length === this.data.uiState.dismissedNotificationIds.length) {
+      return;
+    }
+
+    this.data.uiState.dismissedNotificationIds = nextDismissed;
+    void this.savePluginData();
+  }
+
+  private buildDashboardNotificationId(prefix: string, values: string[], todayKey: string): string {
+    const normalized = values
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0)
+      .map((value) => value.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""))
+      .join("~")
+      .slice(0, 180);
+    return normalized.length > 0 ? `${prefix}:${todayKey}:${normalized}` : `${prefix}:${todayKey}`;
   }
 
   getDashboardNotifications(todoSnapshot: TodoSnapshot | null, calendarSnapshot: CalendarSnapshot, referenceDate: Date = new Date()): DashboardNotificationItem[] {
@@ -2831,7 +2875,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (todoSnapshot && todoSnapshot.overdueTasks.length > 0) {
       items.push({
-        id: `tasks:overdue:${todayKey}:${todoSnapshot.overdueTasks.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:overdue",
+          todoSnapshot.overdueTasks.slice(0, 5).map(({ project, task }) => `${project}|${task.text}|${task.dueDate}`),
+          todayKey
+        ),
         source: "tasks",
         title: `${todoSnapshot.overdueTasks.length} overdue task${todoSnapshot.overdueTasks.length === 1 ? "" : "s"}`,
         description: todoSnapshot.overdueTasks.slice(0, 2).map(({ project, task }) => `${project} • ${task.text}`).join(" • "),
@@ -2843,7 +2891,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (todoSnapshot && todoSnapshot.blockedTasks.length > 0) {
       items.push({
-        id: `tasks:blocked:${todayKey}:${todoSnapshot.blockedTasks.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:blocked",
+          todoSnapshot.blockedTasks.slice(0, 5).map(({ project, task }) => `${project}|${task.text}|${task.blockedReason}|${task.unblockDate}`),
+          todayKey
+        ),
         source: "tasks",
         title: `${todoSnapshot.blockedTasks.length} blocked task${todoSnapshot.blockedTasks.length === 1 ? "" : "s"}`,
         description: todoSnapshot.blockedTasks.slice(0, 2).map(({ project, task }) => `${project} • ${task.text}${task.blockedReason ? ` (${task.blockedReason})` : ""}`).join(" • "),
@@ -2855,7 +2907,14 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (todoSnapshot && (todoSnapshot.cleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
       items.push({
-        id: `tasks:cleanup:${todayKey}:${todoSnapshot.cleanupSuggestions.length}:${todoSnapshot.staleProjects.length}`,
+        id: this.buildDashboardNotificationId(
+          "tasks:cleanup",
+          [
+            ...todoSnapshot.staleProjects.slice(0, 5).map((project) => project.name),
+            ...todoSnapshot.cleanupSuggestions.slice(0, 5)
+          ],
+          todayKey
+        ),
         source: "tasks",
         title: "Cleanup and stale work need review",
         description: [
@@ -2868,6 +2927,8 @@ export default class DailyDashboardPlugin extends Plugin {
       });
     }
 
+    const activeDismissibleIds = items.filter((item) => item.dismissible).map((item) => item.id);
+    this.reconcileDismissedNotificationIds(activeDismissibleIds);
     const dismissed = new Set(this.data.uiState.dismissedNotificationIds);
     return items.filter((item) => !item.dismissible || !dismissed.has(item.id));
   }
@@ -4287,6 +4348,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private normalizeUiState(state: Partial<DashboardUiState> | null | undefined): DashboardUiState {
     return {
       onboardingCompleted: Boolean(state?.onboardingCompleted),
+      onboardingDeferredUntil: typeof state?.onboardingDeferredUntil === "string" ? state.onboardingDeferredUntil : "",
       dismissedNotificationIds: Array.isArray(state?.dismissedNotificationIds)
         ? state.dismissedNotificationIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 200)
         : []

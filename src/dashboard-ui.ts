@@ -90,7 +90,7 @@ export class DailyDashboardView extends ItemView {
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
-  private pendingUndoAction: DashboardUndoAction | null = null;
+  private pendingUndoActions: DashboardUndoAction[] = [];
   private readonly handleDashboardKeydown = (event: KeyboardEvent): void => {
     if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
       return;
@@ -331,23 +331,23 @@ export class DailyDashboardView extends ItemView {
 
   private async runDestructiveAction(label: string, action: () => Promise<void>, undo: () => Promise<void>): Promise<void> {
     await action();
-    this.pendingUndoAction = { label, undo };
+    this.pendingUndoActions = [...this.pendingUndoActions, { label, undo }].slice(-5);
     await this.render();
   }
 
   private async undoPendingAction(): Promise<void> {
-    if (!this.pendingUndoAction) {
+    if (this.pendingUndoActions.length === 0) {
       return;
     }
 
-    const action = this.pendingUndoAction;
-    this.pendingUndoAction = null;
+    const action = this.pendingUndoActions[this.pendingUndoActions.length - 1];
+    this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await action.undo();
     await this.render();
   }
 
   private async dismissPendingUndo(): Promise<void> {
-    this.pendingUndoAction = null;
+    this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await this.render();
   }
 
@@ -609,11 +609,18 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
-      if (this.pendingUndoAction) {
+      const latestUndoAction = this.pendingUndoActions[this.pendingUndoActions.length - 1] ?? null;
+      if (latestUndoAction) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
         const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
         undoCopy.createEl("strong", { text: "Undo last dashboard action" });
-        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: this.pendingUndoAction.label });
+        undoCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: latestUndoAction.label });
+        if (this.pendingUndoActions.length > 1) {
+          undoCopy.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `${this.pendingUndoActions.length - 1} earlier undo action${this.pendingUndoActions.length - 1 === 1 ? "" : "s"} still available.`
+          });
+        }
         const undoActions = undoBanner.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
         createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
         createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
@@ -3752,6 +3759,7 @@ export class FirstRunSetupWizardModal extends Modal {
 
     const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
     createButton(footer, "Close for now", async () => {
+      await this.plugin.snoozeFirstRunSetupWizard(12);
       this.close();
     }, false, "x");
     if (this.stepIndex > 0) {
