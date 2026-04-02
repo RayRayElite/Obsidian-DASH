@@ -47,6 +47,8 @@ The dashboard records wake time, sleep time, day start/end, tracked work session
 
 The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card also supports timestamped energy check-ins with optional notes during the day.
 
+The Day Flow card now also includes a grouped time-allocation summary for the current logical day, plus unknown-time diagnostics that call out missing timestamps, active days, and likely timer gaps. That makes the old generic "unknown" bucket actionable instead of just vague leftover time.
+
 Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
 
 ## AI Integration

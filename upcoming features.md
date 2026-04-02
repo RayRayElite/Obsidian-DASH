@@ -36,10 +36,10 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add late-night rollover warnings.
 - [x] Add wake quality check-ins.
 - [x] Add energy timeline check-ins during the day.
-- [ ] Add better unknown-time diagnosis.
+- [x] Add better unknown-time diagnosis.
 - [ ] Add manual day timeline editor for repair workflows.
 - [ ] Add live session timeline strip for the current day.
-- [ ] Add "What did I spend today on?" grouped summaries.
+- [x] Add "What did I spend today on?" grouped summaries.
 - [ ] Add recurring routine templates tied to time windows.
 
 ## Calendar And Planning
@@ -129,5 +129,6 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add due dates / blocked states to project workflow.
 - [x] Add automatic day-end suggestions and rollover warnings before deeper sleep analytics.
 - [x] Add sleep debt, consistency, wake quality, and energy timeline tracking before timeline-editor work.
+- [x] Add time-allocation grouping and unknown-time diagnosis before timeline-editor work.
 - [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.

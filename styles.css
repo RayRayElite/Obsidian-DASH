@@ -985,6 +985,10 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.daily-dashboard-dayflow-grid--allocation {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .daily-dashboard-food-insight {
   gap: 8px;
 }

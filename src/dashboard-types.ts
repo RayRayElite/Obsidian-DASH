@@ -230,6 +230,28 @@ export interface SleepInsights {
   recentNights: SleepNightSnapshot[];
 }
 
+export interface TimeAllocationBucket {
+  label: string;
+  minutes: number;
+  tone: DashboardTone;
+}
+
+export interface TimeAllocationInsights {
+  date: string;
+  sleepMinutes: number;
+  workMinutes: number;
+  napMinutes: number;
+  relaxMinutes: number;
+  breakMinutes: number;
+  poopMinutes: number;
+  trackedAwakeMinutes: number;
+  awakeWindowMinutes: number | null;
+  awakeUnknownMinutes: number | null;
+  fullDayUnknownMinutes: number;
+  diagnostics: string[];
+  buckets: TimeAllocationBucket[];
+}
+
 export interface DashboardSettings {
   dashboardTitle: string;
   masterTodoPath: string;

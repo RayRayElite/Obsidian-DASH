@@ -2599,7 +2599,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusText = "";
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -2698,6 +2698,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
+      const timeAllocationInsights = this.plugin.getTimeAllocationInsights(todayEntry.date);
       const aiStatus = this.plugin.getAiStatus();
       const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
@@ -2782,6 +2783,27 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
+      const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
+      const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
+      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_m = timeAllocationInsights.awakeUnknownMinutes) != null ? _m : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
+      createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
+      const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
+      this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
+      this.renderDayMetric(allocationGrid, "Tracked awake", formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes));
+      this.renderDayMetric(allocationGrid, "Full-day unknown", formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes));
+      this.renderDayMetric(allocationGrid, "Sleep total", formatMinutesAsHours(timeAllocationInsights.sleepMinutes));
+      const allocationBuckets = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      timeAllocationInsights.buckets.sort((left, right) => right.minutes - left.minutes).forEach((bucket) => {
+        createSemanticChip(allocationBuckets, `${bucket.label} ${formatMinutesAsHours(bucket.minutes)}`, bucket.tone);
+      });
+      if (timeAllocationInsights.diagnostics.length > 0) {
+        const diagnosisList = timeAllocationSection.createDiv({ cls: "daily-dashboard-project-list" });
+        timeAllocationInsights.diagnostics.forEach((diagnosis) => {
+          const row = diagnosisList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("span", { text: diagnosis });
+        });
+      }
       const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
       const tagButtons = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-session-tag-picker" });
       SESSION_TAG_OPTIONS.forEach((tag) => {
@@ -3930,7 +3952,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
       const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
       const poopMinutes = entry ? this.plugin.getTrackedPoopMinutes(entry) : 0;
-      const unknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes - poopMinutes);
+      const unknownMinutes = entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes - poopMinutes);
       return {
         label,
         date: dateKey,
@@ -5651,6 +5673,72 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getSleepInsights() {
     return buildSleepInsights(this.getAllEntries());
+  }
+  getTimeAllocationInsights(date = this.getTodayKey(), referenceDate = /* @__PURE__ */ new Date()) {
+    const entry = this.getOrCreateEntry(date);
+    const nextEntry = this.getNextEntry(date);
+    const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+    const workMinutes = this.getTrackedWorkMinutes(entry);
+    const napMinutes = this.getTrackedNapMinutes(entry);
+    const relaxMinutes = this.getTrackedRelaxMinutes(entry);
+    const breakMinutes = this.getTrackedBreakMinutes(entry);
+    const poopMinutes = this.getTrackedPoopMinutes(entry);
+    const trackedAwakeMinutes = workMinutes + napMinutes + relaxMinutes + breakMinutes + poopMinutes;
+    const activeDate = this.data.dayState.status === "in-progress" ? this.data.dayState.activeDate : "";
+    const wakeWindowEnd = entry.dayEndedAt || entry.sleepTime || (date === activeDate ? formatDateTimeKey(referenceDate) : entry.lastEditedAt);
+    const awakeWindowMinutes = entry.wakeTime && wakeWindowEnd && wakeWindowEnd >= entry.wakeTime ? getTrackedMinutes([{ start: entry.wakeTime, end: wakeWindowEnd, tag: "" }]) : null;
+    const awakeUnknownMinutes = awakeWindowMinutes === null ? null : Math.max(0, awakeWindowMinutes - trackedAwakeMinutes);
+    const fullDayUnknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - (relaxMinutes + breakMinutes) - poopMinutes);
+    const diagnostics = [];
+    if (!entry.wakeTime) {
+      diagnostics.push("Wake time is missing, so awake-time coverage is estimated loosely instead of measured.");
+    }
+    if (!entry.dayEndedAt && !entry.sleepTime && date !== activeDate) {
+      diagnostics.push("This day has no recorded end marker, so untracked time may include the tail end of the day.");
+    }
+    if (date === activeDate) {
+      diagnostics.push("The logical day is still active, so untracked awake time includes whatever part of today has not been logged yet.");
+    }
+    if ((awakeUnknownMinutes != null ? awakeUnknownMinutes : 0) >= 180) {
+      diagnostics.push("There are at least 3 hours of awake time with no timer coverage. Meals, chores, commuting, or missed session starts are likely hiding there.");
+    }
+    if (trackedAwakeMinutes === 0 && (entry.foodLog.length > 0 || entry.completedTasks.length > 0 || Object.values(entry.habitEvents).some((items) => items.length > 0))) {
+      diagnostics.push("You recorded real activity, but none of it was tied to a session timer. Consider using work, break, relax, or nap timers more aggressively.");
+    }
+    if (!entry.sleepTime && !(nextEntry == null ? void 0 : nextEntry.wakeTime)) {
+      diagnostics.push("Overnight sleep is incomplete until sleep time and the next wake time are both present.");
+    }
+    const buckets = [
+      { label: "Sleep", minutes: sleepMinutes, tone: "health" },
+      { label: "Work", minutes: workMinutes, tone: "capture" },
+      { label: "Naps", minutes: napMinutes, tone: "health" },
+      { label: "Relax", minutes: relaxMinutes, tone: "health" },
+      { label: "Breaks", minutes: breakMinutes, tone: "alert" },
+      { label: "Poop", minutes: poopMinutes, tone: "log" },
+      { label: "Unknown", minutes: fullDayUnknownMinutes, tone: fullDayUnknownMinutes >= 360 ? "alert" : "neutral" }
+    ].filter((bucket) => bucket.minutes > 0);
+    if (awakeUnknownMinutes !== null) {
+      buckets.push({
+        label: "Untracked awake",
+        minutes: awakeUnknownMinutes,
+        tone: awakeUnknownMinutes >= 180 ? "alert" : "neutral"
+      });
+    }
+    return {
+      date,
+      sleepMinutes,
+      workMinutes,
+      napMinutes,
+      relaxMinutes,
+      breakMinutes,
+      poopMinutes,
+      trackedAwakeMinutes,
+      awakeWindowMinutes,
+      awakeUnknownMinutes,
+      fullDayUnknownMinutes,
+      diagnostics,
+      buckets
+    };
   }
   getAllEntries() {
     return Object.values(this.data.entries).map((entry) => this.normalizeEntry(entry, entry.date || this.getTodayKey())).sort((left, right) => left.date.localeCompare(right.date));

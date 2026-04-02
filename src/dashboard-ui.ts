@@ -398,6 +398,7 @@ export class DailyDashboardView extends ItemView {
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
+      const timeAllocationInsights = this.plugin.getTimeAllocationInsights(todayEntry.date);
       const aiStatus = this.plugin.getAiStatus();
       const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
@@ -505,6 +506,30 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
+
+      const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
+      const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
+      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", (timeAllocationInsights.awakeUnknownMinutes ?? 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
+      createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
+      const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
+      this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
+      this.renderDayMetric(allocationGrid, "Tracked awake", formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes));
+      this.renderDayMetric(allocationGrid, "Full-day unknown", formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes));
+      this.renderDayMetric(allocationGrid, "Sleep total", formatMinutesAsHours(timeAllocationInsights.sleepMinutes));
+      const allocationBuckets = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      timeAllocationInsights.buckets
+        .sort((left, right) => right.minutes - left.minutes)
+        .forEach((bucket) => {
+          createSemanticChip(allocationBuckets, `${bucket.label} ${formatMinutesAsHours(bucket.minutes)}`, bucket.tone);
+        });
+      if (timeAllocationInsights.diagnostics.length > 0) {
+        const diagnosisList = timeAllocationSection.createDiv({ cls: "daily-dashboard-project-list" });
+        timeAllocationInsights.diagnostics.forEach((diagnosis) => {
+          const row = diagnosisList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("span", { text: diagnosis });
+        });
+      }
 
       const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
       const tagButtons = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-session-tag-picker" });
@@ -1748,7 +1773,7 @@ export class DailyDashboardView extends ItemView {
       const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
       const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
       const poopMinutes = entry ? this.plugin.getTrackedPoopMinutes(entry) : 0;
-      const unknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes - poopMinutes);
+      const unknownMinutes = entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes - poopMinutes);
 
       return {
         label,

@@ -117,6 +117,8 @@ import {
   type ProjectReviewOption,
   type RetrievalIndexStatus,
   type SleepInsights,
+  type TimeAllocationBucket,
+  type TimeAllocationInsights,
   type TodoSnapshot,
   type TodayFocusItem,
   type WallpaperOption,
@@ -644,6 +646,81 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getSleepInsights(): SleepInsights {
     return buildSleepInsights(this.getAllEntries());
+  }
+
+  getTimeAllocationInsights(date: string = this.getTodayKey(), referenceDate: Date = new Date()): TimeAllocationInsights {
+    const entry = this.getOrCreateEntry(date);
+    const nextEntry = this.getNextEntry(date);
+    const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+    const workMinutes = this.getTrackedWorkMinutes(entry);
+    const napMinutes = this.getTrackedNapMinutes(entry);
+    const relaxMinutes = this.getTrackedRelaxMinutes(entry);
+    const breakMinutes = this.getTrackedBreakMinutes(entry);
+    const poopMinutes = this.getTrackedPoopMinutes(entry);
+    const trackedAwakeMinutes = workMinutes + napMinutes + relaxMinutes + breakMinutes + poopMinutes;
+    const activeDate = this.data.dayState.status === "in-progress" ? this.data.dayState.activeDate : "";
+    const wakeWindowEnd = entry.dayEndedAt
+      || entry.sleepTime
+      || (date === activeDate ? formatDateTimeKey(referenceDate) : entry.lastEditedAt);
+    const awakeWindowMinutes = entry.wakeTime && wakeWindowEnd && wakeWindowEnd >= entry.wakeTime
+      ? getTrackedMinutes([{ start: entry.wakeTime, end: wakeWindowEnd, tag: "" }])
+      : null;
+    const awakeUnknownMinutes = awakeWindowMinutes === null ? null : Math.max(0, awakeWindowMinutes - trackedAwakeMinutes);
+    const fullDayUnknownMinutes = Math.max(0, 1440 - sleepMinutes - workMinutes - (relaxMinutes + breakMinutes) - poopMinutes);
+    const diagnostics: string[] = [];
+
+    if (!entry.wakeTime) {
+      diagnostics.push("Wake time is missing, so awake-time coverage is estimated loosely instead of measured.");
+    }
+    if (!entry.dayEndedAt && !entry.sleepTime && date !== activeDate) {
+      diagnostics.push("This day has no recorded end marker, so untracked time may include the tail end of the day.");
+    }
+    if (date === activeDate) {
+      diagnostics.push("The logical day is still active, so untracked awake time includes whatever part of today has not been logged yet.");
+    }
+    if ((awakeUnknownMinutes ?? 0) >= 180) {
+      diagnostics.push("There are at least 3 hours of awake time with no timer coverage. Meals, chores, commuting, or missed session starts are likely hiding there.");
+    }
+    if (trackedAwakeMinutes === 0 && (entry.foodLog.length > 0 || entry.completedTasks.length > 0 || Object.values(entry.habitEvents).some((items) => items.length > 0))) {
+      diagnostics.push("You recorded real activity, but none of it was tied to a session timer. Consider using work, break, relax, or nap timers more aggressively.");
+    }
+    if (!entry.sleepTime && !nextEntry?.wakeTime) {
+      diagnostics.push("Overnight sleep is incomplete until sleep time and the next wake time are both present.");
+    }
+
+    const buckets: TimeAllocationBucket[] = [
+      { label: "Sleep", minutes: sleepMinutes, tone: "health" },
+      { label: "Work", minutes: workMinutes, tone: "capture" },
+      { label: "Naps", minutes: napMinutes, tone: "health" },
+      { label: "Relax", minutes: relaxMinutes, tone: "health" },
+      { label: "Breaks", minutes: breakMinutes, tone: "alert" },
+      { label: "Poop", minutes: poopMinutes, tone: "log" },
+      { label: "Unknown", minutes: fullDayUnknownMinutes, tone: fullDayUnknownMinutes >= 360 ? "alert" : "neutral" }
+    ].filter((bucket) => bucket.minutes > 0);
+
+    if (awakeUnknownMinutes !== null) {
+      buckets.push({
+        label: "Untracked awake",
+        minutes: awakeUnknownMinutes,
+        tone: awakeUnknownMinutes >= 180 ? "alert" : "neutral"
+      });
+    }
+
+    return {
+      date,
+      sleepMinutes,
+      workMinutes,
+      napMinutes,
+      relaxMinutes,
+      breakMinutes,
+      poopMinutes,
+      trackedAwakeMinutes,
+      awakeWindowMinutes,
+      awakeUnknownMinutes,
+      fullDayUnknownMinutes,
+      diagnostics,
+      buckets
+    };
   }
 
   getAllEntries(): DailyEntry[] {
