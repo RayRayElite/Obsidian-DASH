@@ -128,12 +128,19 @@ export interface FoodEntry {
   loggedAt: string;
 }
 
+export interface EnergyCheckIn {
+  loggedAt: string;
+  score: number;
+  note: string;
+}
+
 export interface DailyEntry {
   date: string;
   lastEditedAt: string;
   dayStartedAt: string;
   dayEndedAt: string;
   wakeTime: string;
+  wakeQualityScore: number;
   sleepTime: string;
   sleepMinutesOverride: number | null;
   habits: Record<string, number>;
@@ -146,6 +153,7 @@ export interface DailyEntry {
   frictionLog: string;
   missedHabits: string[];
   foodLog: FoodEntry[];
+  energyCheckIns: EnergyCheckIn[];
   dietInsight: string;
   sleepLog: string;
   dreamLog: string;
@@ -200,6 +208,26 @@ export interface LogicalDayInsights {
   hasActiveSession: boolean;
   isRollover: boolean;
   prompts: LogicalDayPrompt[];
+}
+
+export interface SleepNightSnapshot {
+  date: string;
+  sleepMinutes: number;
+  bedtime: string;
+  wakeTime: string;
+  wakeQualityScore: number;
+}
+
+export interface SleepInsights {
+  targetMinutes: number;
+  nightsTracked: number;
+  averageSleepMinutes: number;
+  debtMinutes: number;
+  consistencyScore: number;
+  consistencyLabel: string;
+  averageBedtime: string;
+  averageWakeTime: string;
+  recentNights: SleepNightSnapshot[];
 }
 
 export interface DashboardSettings {

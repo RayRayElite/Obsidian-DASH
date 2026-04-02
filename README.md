@@ -5,7 +5,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 ## What It Does
 
 - tracks repeat daily habits with per-day counts
-- stores mood, energy, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, friction log, timestamped food entries, sleep log, dream log, and daily notes
+- stores mood, energy, wake quality, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, friction log, timestamped food entries, timestamped energy check-ins, sleep log, dream log, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, and sync events into markdown for later AI analysis
@@ -44,6 +44,8 @@ The dashboard now separates your real day from the calendar date.
 The `Day Flow` card now also watches for long stretches of inactivity and shows an automatic prompt when the logical day looks finished. If the clock rolls past midnight while the logical day is still active, the card and notice system warn that new sessions and edits are still landing on yesterday until you explicitly end the day.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
+
+The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card also supports timestamped energy check-ins with optional notes during the day.
 
 Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
 

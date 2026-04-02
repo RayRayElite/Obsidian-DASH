@@ -737,6 +737,10 @@
   align-items: center;
 }
 
+.daily-dashboard-food-row--energy {
+  grid-template-columns: minmax(0, 1fr) 64px auto;
+}
+
 .daily-dashboard-project-row strong,
 .daily-dashboard-project-row span,
 .daily-dashboard-completed-row strong,
@@ -971,6 +975,14 @@
 
 .daily-dashboard-inline-form--food {
   grid-template-columns: 88px minmax(0, 1fr) auto;
+}
+
+.daily-dashboard-inline-form--energy {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.daily-dashboard-dayflow-grid--recovery {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .daily-dashboard-food-insight {

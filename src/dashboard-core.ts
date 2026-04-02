@@ -333,6 +333,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     dayStartedAt: "",
     dayEndedAt: "",
     wakeTime: "",
+    wakeQualityScore: 0,
     sleepTime: "",
     sleepMinutesOverride: null,
     habits: habitValues,
@@ -345,6 +346,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
+    energyCheckIns: [],
     dietInsight: "",
     sleepLog: "",
     dreamLog: "",
@@ -648,13 +650,17 @@ export function renderRoutineSignalsForAi(entries: DailyEntry[], habits: HabitDe
 
   const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
   const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
+  const wakeQualityValues = entries.filter((entry) => entry.wakeQualityScore > 0).map((entry) => entry.wakeQualityScore);
+  const energyCheckInLines = entries.flatMap((entry) => entry.energyCheckIns.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.score}/5${item.note ? ` ${item.note}` : ""}`));
 
   return [
     "Habit timing:",
     ...habitLines,
     "",
     `Recent food times: ${foodTimes.slice(-12).join(", ") || "none"}`,
-    `Dream log days: ${dreamDays.join(", ") || "none"}`
+    `Dream log days: ${dreamDays.join(", ") || "none"}`,
+    `Average wake quality: ${wakeQualityValues.length > 0 ? `${(wakeQualityValues.reduce((sum, value) => sum + value, 0) / wakeQualityValues.length).toFixed(1)}/5` : "none"}`,
+    `Recent energy check-ins: ${energyCheckInLines.slice(0, 10).join(" | ") || "none"}`
   ].join("\n");
 }
 
@@ -763,6 +769,7 @@ export function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): stri
     typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
     typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
     typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+    ...(Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.map((item) => item.loggedAt) : []),
     typeof entry.sleepTime === "string" ? entry.sleepTime : "",
     ...(Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : []),
     ...(Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),

@@ -397,6 +397,7 @@ export class DailyDashboardView extends ItemView {
 
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
+      const sleepInsights = this.plugin.getSleepInsights();
       const aiStatus = this.plugin.getAiStatus();
       const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
@@ -411,6 +412,9 @@ export class DailyDashboardView extends ItemView {
       const activeBreakSession = todayEntry.breakSessions.find((session) => session.end === null) ?? null;
       const activePoopSession = todayEntry.poopSessions.find((session) => session.end === null) ?? null;
       const activeSessionTag = activeWorkSession?.tag || activeNapSession?.tag || activeRelaxSession?.tag || activeBreakSession?.tag || activePoopSession?.tag || "";
+      const energyCheckInAverage = todayEntry.energyCheckIns.length > 0
+        ? (todayEntry.energyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.energyCheckIns.length).toFixed(1)
+        : "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
         ...todayEntry.napSessions,
@@ -843,6 +847,50 @@ export class DailyDashboardView extends ItemView {
       this.renderScoreControl(stateCard, "Mood", todayEntry.moodScore, (value) => this.plugin.updateMoodScore(value));
       this.renderScoreControl(stateCard, "Energy", todayEntry.energyScore, (value) => this.plugin.updateEnergyScore(value));
       this.renderScoreControl(stateCard, "Anxiety", todayEntry.anxietyScore, (value) => this.plugin.updateAnxietyScore(value));
+      const energyTimelineSection = this.createCollapsibleSubsection(stateCard, "state-energy-timeline", "Energy timeline", "Drop quick energy check-ins through the day instead of relying on one end-of-day memory.");
+      const energySummary = energyTimelineSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(energySummary, todayEntry.energyCheckIns.length > 0 ? `${todayEntry.energyCheckIns.length} check-ins` : "No check-ins", todayEntry.energyCheckIns.length > 0 ? "state" : "neutral");
+      createSemanticChip(energySummary, energyCheckInAverage ? `Avg ${energyCheckInAverage}/5` : "No average yet", energyCheckInAverage ? "health" : "neutral");
+      const energyInputRow = energyTimelineSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--energy" });
+      const energyNoteInput = energyInputRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Optional note for this check-in" }
+      });
+      const energyButtons = energyTimelineSection.createDiv({ cls: "daily-dashboard-habit-controls" });
+      for (let score = 1; score <= 5; score += 1) {
+        const button = energyButtons.createEl("button", {
+          cls: "daily-dashboard-step",
+          text: `${score}`
+        });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          void this.plugin.addEnergyCheckIn(score, energyNoteInput.value).then(async () => {
+            energyNoteInput.value = "";
+            await this.render();
+          });
+        });
+      }
+      if (todayEntry.energyCheckIns.length === 0) {
+        energyTimelineSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No energy timeline yet. Use the 1-5 buttons to log the current state with an optional note." });
+      } else {
+        const energyList = energyTimelineSection.createDiv({ cls: "daily-dashboard-food-list" });
+        todayEntry.energyCheckIns.slice(0, 6).forEach((item, index) => {
+          const row = energyList.createDiv({ cls: "daily-dashboard-food-row daily-dashboard-food-row--energy" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: `${item.score}/5 energy` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          if (item.note) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.note });
+          }
+          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
+          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: renderScore(item.score) });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeEnergyCheckIn(index);
+          });
+        });
+      }
       const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
       missedCard.createEl("strong", { text: "Habit misses so far" });
       missedCard.createEl("span", {
@@ -1027,6 +1075,28 @@ export class DailyDashboardView extends ItemView {
         tone: "log",
         tag: "Journal"
       });
+      this.renderScoreControl(notesCard, "Wake quality", todayEntry.wakeQualityScore, (value) => this.plugin.updateWakeQualityScore(value));
+      const recoverySection = this.createCollapsibleSubsection(notesCard, "sleep-recovery-summary", "Recovery summary", "Track whether sleep quantity and timing are holding steady over the last week.");
+      const recoveryChips = recoverySection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Debt ${formatMinutesAsHours(sleepInsights.debtMinutes)}` : "No debt data", sleepInsights.debtMinutes >= 180 ? "alert" : sleepInsights.nightsTracked > 0 ? "health" : "neutral");
+      createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 ${sleepInsights.consistencyLabel}` : "No consistency data", sleepInsights.consistencyScore >= 70 ? "done" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
+      createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Avg ${formatMinutesAsHours(sleepInsights.averageSleepMinutes)}` : "No average sleep yet", sleepInsights.averageSleepMinutes >= 420 ? "health" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
+      const recoveryGrid = recoverySection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
+      this.renderDayMetric(recoveryGrid, "Nights tracked", `${sleepInsights.nightsTracked}`);
+      this.renderDayMetric(recoveryGrid, "Sleep target", formatMinutesAsHours(sleepInsights.targetMinutes));
+      this.renderDayMetric(recoveryGrid, "Avg bedtime", sleepInsights.averageBedtime || "Not enough data");
+      this.renderDayMetric(recoveryGrid, "Avg wake", sleepInsights.averageWakeTime || "Not enough data");
+      if (sleepInsights.recentNights.length > 0) {
+        const recentNights = recoverySection.createDiv({ cls: "daily-dashboard-project-list" });
+        sleepInsights.recentNights.slice().reverse().forEach((night) => {
+          const row = recentNights.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${night.date} • ${formatMinutesAsHours(night.sleepMinutes)}` });
+          row.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Bed ${night.bedtime || "unknown"} • Wake ${night.wakeTime || "unknown"} • Wake quality ${night.wakeQualityScore > 0 ? `${night.wakeQualityScore}/5` : "not logged"}`
+          });
+        });
+      }
       notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Sleep log" });
       const sleepInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       sleepInput.value = todayEntry.sleepLog;

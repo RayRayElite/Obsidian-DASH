@@ -7,7 +7,9 @@ import {
   normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
-import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, NextUpFocusItem, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, NextUpFocusItem, SleepInsights, SleepNightSnapshot, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+
+const DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 
 export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry, calendarEvents: CalendarEventOccurrence[] = []): string {
   const payload = JSON.stringify(entry, null, 2);
@@ -19,6 +21,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const foodLines = entry.foodLog.length > 0
     ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`)
     : ["- None logged"];
+  const energyCheckInLines = entry.energyCheckIns.length > 0
+    ? entry.energyCheckIns.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.score}/5${item.note ? ` - ${item.note}` : ""}`)
+    : ["- No energy check-ins logged"];
   const completedTaskLines = entry.completedTasks.length > 0
     ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`)
     : ["- No archived tasks today"];
@@ -71,6 +76,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `dayStartedAt: ${entry.dayStartedAt || ""}`,
     `dayEndedAt: ${entry.dayEndedAt || ""}`,
     `wakeTime: ${entry.wakeTime || ""}`,
+    `wakeQualityScore: ${entry.wakeQualityScore}`,
     `sleepTime: ${entry.sleepTime || ""}`,
     `sleepMinutesOverride: ${entry.sleepMinutesOverride ?? ""}`,
     `trackedSleepMinutes: ${totalSleepMinutes}`,
@@ -86,6 +92,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `breakMinutesOverride: ${entry.breakMinutesOverride ?? ""}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
+    `energyCheckInCount: ${entry.energyCheckIns.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
     `energyScore: ${entry.energyScore}`,
@@ -99,6 +106,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `- Wake time: ${entry.wakeTime || "Not logged"}`,
     `- Day ended: ${entry.dayEndedAt || "Not ended"}`,
     `- Sleep time: ${entry.sleepTime || "Not logged"}`,
+    `- Wake quality: ${renderScore(entry.wakeQualityScore)}`,
     `- Tracked sleep: ${formatMinutesAsHours(totalSleepMinutes)}`,
     `- Tracked work: ${formatMinutesAsHours(totalWorkMinutes)}`,
     `- Tracked naps: ${formatMinutesAsHours(totalNapMinutes)}`,
@@ -123,6 +131,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `- Mood: ${renderScore(entry.moodScore)}`,
     `- Energy: ${renderScore(entry.energyScore)}`,
     `- Anxiety: ${renderScore(entry.anxietyScore)}`,
+    "",
+    "## Energy Timeline",
+    ...energyCheckInLines,
     "",
     "## Food Log",
     ...foodLines,
@@ -269,6 +280,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     dayStartedAt: frontmatter.get("dayStartedAt") ?? (typeof parsedEntry.dayStartedAt === "string" ? parsedEntry.dayStartedAt : ""),
     dayEndedAt: frontmatter.get("dayEndedAt") ?? (typeof parsedEntry.dayEndedAt === "string" ? parsedEntry.dayEndedAt : ""),
     wakeTime: frontmatter.get("wakeTime") ?? (typeof parsedEntry.wakeTime === "string" ? parsedEntry.wakeTime : ""),
+    wakeQualityScore: Number(frontmatter.get("wakeQualityScore") ?? parsedEntry.wakeQualityScore ?? 0),
     sleepTime: frontmatter.get("sleepTime") ?? (typeof parsedEntry.sleepTime === "string" ? parsedEntry.sleepTime : ""),
     sleepMinutesOverride: normalizeOptionalMinutes(frontmatter.get("sleepMinutesOverride") ?? parsedEntry.sleepMinutesOverride),
     moodScore: Number(frontmatter.get("moodScore") ?? parsedEntry.moodScore ?? 0),
@@ -281,6 +293,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
+    energyCheckIns: Array.isArray(parsedEntry.energyCheckIns) ? parsedEntry.energyCheckIns : baseEntry.energyCheckIns,
     dietInsight: typeof parsedEntry.dietInsight === "string" ? parsedEntry.dietInsight : baseEntry.dietInsight,
     sleepLog: typeof parsedEntry.sleepLog === "string" ? parsedEntry.sleepLog : baseEntry.sleepLog,
     dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
@@ -304,6 +317,7 @@ export function renderPeriodReport(input: {
   entries: DailyEntry[];
   habitDefinitions: HabitDefinition[];
 }): string {
+  const sleepInsights = buildSleepInsights(input.entries);
   const workByProject = new Map<string, number>();
   let daysWithFood = 0;
   let daysWithSleep = 0;
@@ -314,6 +328,8 @@ export function renderPeriodReport(input: {
   let energyDays = 0;
   let anxietyTotal = 0;
   let anxietyDays = 0;
+  let wakeQualityTotal = 0;
+  let wakeQualityDays = 0;
   let trackedWorkMinutes = 0;
   let trackedNapMinutes = 0;
   let trackedRelaxMinutes = 0;
@@ -350,6 +366,11 @@ export function renderPeriodReport(input: {
       anxietyDays += 1;
     }
 
+    if (entry.wakeQualityScore > 0) {
+      wakeQualityTotal += entry.wakeQualityScore;
+      wakeQualityDays += 1;
+    }
+
     trackedWorkMinutes += getTrackedWorkMinutes(entry);
     trackedNapMinutes += getTrackedMinutes(entry.napSessions);
     trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
@@ -379,14 +400,16 @@ export function renderPeriodReport(input: {
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
     const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
+    const trackedSleepMinutesForEntry = getSleepMinutesForDay(entry, input.entries.find((candidate) => candidate.date > entry.date));
     const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
+    const sleepSummary = trackedSleepMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedSleepMinutesForEntry)} sleep` : "sleep untracked";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
     const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0
       ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed`
       : "no relax tracked";
     const poopCount = getTrackedPoopCount(entry);
     const poopSummary = poopCount > 0 ? `${poopCount} bowel movement${poopCount === 1 ? "" : "s"}` : "no bowel movements tracked";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${poopSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${sleepSummary}, ${napSummary}, ${relaxSummary}, ${poopSummary}, ${dreamSummary}, wake quality ${renderScore(entry.wakeQualityScore)}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
   });
 
   return [
@@ -406,6 +429,10 @@ export function renderPeriodReport(input: {
     `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
     `- Tracked bowel time: ${formatMinutesAsHours(trackedPoopMinutes)}`,
     `- Bowel movements tracked: ${trackedPoopCount}`,
+    `- Average sleep: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.averageSleepMinutes) : "No sleep data"}`,
+    `- Sleep debt: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.debtMinutes) : "No sleep data"}`,
+    `- Sleep consistency: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 (${sleepInsights.consistencyLabel})` : "No sleep data"}`,
+    `- Average wake quality: ${wakeQualityDays > 0 ? `${(wakeQualityTotal / wakeQualityDays).toFixed(1)}/5` : "No wake-quality data"}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
@@ -517,11 +544,14 @@ export function formatMinutesAsHours(totalMinutes: number): string {
 }
 
 export function renderWeeklyReview(input: WeeklyReviewInput): string {
+  const sleepInsights = buildSleepInsights(input.entries);
   const totalTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
   const moodEntries = input.entries.filter((entry) => entry.moodScore > 0);
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
+  const wakeQualityEntries = input.entries.filter((entry) => entry.wakeQualityScore > 0);
   const averageMood = moodEntries.length > 0 ? (moodEntries.reduce((sum, entry) => sum + entry.moodScore, 0) / moodEntries.length).toFixed(1) : "n/a";
   const averageEnergy = energyEntries.length > 0 ? (energyEntries.reduce((sum, entry) => sum + entry.energyScore, 0) / energyEntries.length).toFixed(1) : "n/a";
+  const averageWakeQuality = wakeQualityEntries.length > 0 ? (wakeQualityEntries.reduce((sum, entry) => sum + entry.wakeQualityScore, 0) / wakeQualityEntries.length).toFixed(1) : "n/a";
   const focusItems = Array.from(new Set(input.entries.flatMap((entry) => getTodayFocusTexts(entry.todayFocus)))).slice(0, 10);
   const frictionItems = input.entries.map((entry) => entry.frictionLog).filter(Boolean);
   const missedHabits = Array.from(new Set(input.entries.flatMap((entry) => entry.missedHabits)));
@@ -539,6 +569,10 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
     `- Archived tasks completed: ${totalTasks}`,
     `- Average mood: ${averageMood === "n/a" ? "No data" : `${averageMood}/5`}`,
     `- Average energy: ${averageEnergy === "n/a" ? "No data" : `${averageEnergy}/5`}`,
+    `- Average wake quality: ${averageWakeQuality === "n/a" ? "No data" : `${averageWakeQuality}/5`}`,
+    `- Average sleep: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.averageSleepMinutes) : "No sleep data"}`,
+    `- Sleep debt: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.debtMinutes) : "No sleep data"}`,
+    `- Sleep consistency: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 (${sleepInsights.consistencyLabel})` : "No sleep data"}`,
     `- Days captured: ${input.entries.length}`,
     "",
     "## Top Focus",
@@ -585,6 +619,111 @@ export function getSleepMinutesForDay(entry: DailyEntry, nextEntry?: DailyEntry)
   }
 
   return napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
+}
+
+export function buildSleepInsights(entries: DailyEntry[], targetMinutes = DEFAULT_SLEEP_TARGET_MINUTES): SleepInsights {
+  const orderedEntries = [...entries].sort((left, right) => left.date.localeCompare(right.date));
+  const recentNights = orderedEntries
+    .map((entry, index) => buildSleepNightSnapshot(entry, orderedEntries[index + 1]))
+    .filter((item): item is SleepNightSnapshot => item !== null)
+    .slice(-7);
+
+  if (recentNights.length === 0) {
+    return {
+      targetMinutes,
+      nightsTracked: 0,
+      averageSleepMinutes: 0,
+      debtMinutes: 0,
+      consistencyScore: 0,
+      consistencyLabel: "No data",
+      averageBedtime: "",
+      averageWakeTime: "",
+      recentNights: []
+    };
+  }
+
+  const averageSleepMinutes = Math.round(recentNights.reduce((sum, item) => sum + item.sleepMinutes, 0) / recentNights.length);
+  const debtMinutes = Math.max(0, recentNights.reduce((sum, item) => sum + Math.max(0, targetMinutes - item.sleepMinutes), 0));
+  const bedtimeValues = recentNights.map((item) => normalizeBedtimeMinutes(item.bedtime)).filter((value): value is number => value !== null);
+  const wakeValues = recentNights.map((item) => parseClockMinutes(item.wakeTime)).filter((value): value is number => value !== null);
+  const bedtimeDeviation = getAverageDeviation(bedtimeValues);
+  const wakeDeviation = getAverageDeviation(wakeValues);
+  const consistencyScore = Math.max(0, 100 - Math.round((bedtimeDeviation + wakeDeviation) / 3));
+
+  return {
+    targetMinutes,
+    nightsTracked: recentNights.length,
+    averageSleepMinutes,
+    debtMinutes,
+    consistencyScore,
+    consistencyLabel: consistencyScore >= 85 ? "Very steady" : consistencyScore >= 70 ? "Stable" : consistencyScore >= 50 ? "Drifting" : "Irregular",
+    averageBedtime: formatAverageClock(bedtimeValues, true),
+    averageWakeTime: formatAverageClock(wakeValues, false),
+    recentNights
+  };
+}
+
+function buildSleepNightSnapshot(entry: DailyEntry, nextEntry?: DailyEntry): SleepNightSnapshot | null {
+  const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+  if (sleepMinutes <= 0) {
+    return null;
+  }
+
+  return {
+    date: entry.date,
+    sleepMinutes,
+    bedtime: entry.sleepTime ? entry.sleepTime.slice(11, 16) : "",
+    wakeTime: nextEntry?.wakeTime ? nextEntry.wakeTime.slice(11, 16) : "",
+    wakeQualityScore: nextEntry?.wakeQualityScore ?? 0
+  };
+}
+
+function parseClockMinutes(value: string): number | null {
+  if (!/^\d{2}:\d{2}$/.test(value.trim())) {
+    return null;
+  }
+
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return (hours * 60) + minutes;
+}
+
+function normalizeBedtimeMinutes(value: string): number | null {
+  const minutes = parseClockMinutes(value);
+  if (minutes === null) {
+    return null;
+  }
+
+  return minutes < 12 * 60 ? minutes + (24 * 60) : minutes;
+}
+
+function getAverageDeviation(values: number[]): number {
+  if (values.length <= 1) {
+    return 0;
+  }
+
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.reduce((sum, value) => sum + Math.abs(value - average), 0) / values.length;
+}
+
+function formatAverageClock(values: number[], bedtime: boolean): string {
+  if (values.length === 0) {
+    return "";
+  }
+
+  let average = Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  if (bedtime && average >= 24 * 60) {
+    average -= 24 * 60;
+  }
+
+  const hours = Math.floor(average / 60) % 24;
+  const minutes = average % 60;
+  return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}`;
 }
 
 export function getTrackedTodayFocusMinutes(item: TodayFocusItem): number {

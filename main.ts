@@ -33,6 +33,7 @@ import {
   truncateText
 } from "./src/dashboard-core";
 import {
+  buildSleepInsights,
   closeOpenBreakSessions,
   closeOpenNapSessions,
   closeOpenPoopSessions,
@@ -106,6 +107,7 @@ import {
   type DashboardFocusDisplayItem,
   type DashboardSettings,
   type DayLifecycleState,
+  type EnergyCheckIn,
   type FoodEntry,
   type HabitDefinition,
   type LogicalDayInsights,
@@ -114,6 +116,7 @@ import {
   type NextUpFocusItem,
   type ProjectReviewOption,
   type RetrievalIndexStatus,
+  type SleepInsights,
   type TodoSnapshot,
   type TodayFocusItem,
   type WallpaperOption,
@@ -637,6 +640,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
+  }
+
+  getSleepInsights(): SleepInsights {
+    return buildSleepInsights(this.getAllEntries());
   }
 
   getAllEntries(): DailyEntry[] {
@@ -1328,6 +1335,12 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async updateWakeQualityScore(value: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.wakeQualityScore = clamp(value, 0, 5);
+    await this.persistEntry(entry);
+  }
+
   async updateAnxietyScore(value: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.anxietyScore = clamp(value, 0, 5);
@@ -1425,6 +1438,25 @@ export default class DailyDashboardPlugin extends Plugin {
   async removeFoodEntry(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async addEnergyCheckIn(score: number, note = ""): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.energyCheckIns = [
+      {
+        loggedAt: formatDateTimeKey(new Date()),
+        score: clamp(Math.round(score), 1, 5),
+        note: note.trim()
+      },
+      ...entry.energyCheckIns
+    ].slice(0, 24);
+    await this.persistEntry(entry);
+  }
+
+  async removeEnergyCheckIn(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.energyCheckIns = entry.energyCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
 
@@ -3058,6 +3090,7 @@ export default class DailyDashboardPlugin extends Plugin {
       dayStartedAt: typeof entry.dayStartedAt === "string" ? entry.dayStartedAt : "",
       dayEndedAt: typeof entry.dayEndedAt === "string" ? entry.dayEndedAt : "",
       wakeTime: typeof entry.wakeTime === "string" ? entry.wakeTime : "",
+      wakeQualityScore: clamp(Number(entry.wakeQualityScore ?? 0), 0, 5),
       sleepTime: typeof entry.sleepTime === "string" ? entry.sleepTime : "",
       sleepMinutesOverride: Number.isFinite(Number(entry.sleepMinutesOverride)) ? clamp(Number(entry.sleepMinutesOverride), 0, 1440) : null,
       habits: normalizedHabits,
@@ -3073,6 +3106,15 @@ export default class DailyDashboardPlugin extends Plugin {
         ? entry.foodLog
             .map((item) => normalizeFoodEntry(item))
             .filter((item): item is FoodEntry => item !== null)
+        : [],
+      energyCheckIns: Array.isArray(entry.energyCheckIns)
+        ? entry.energyCheckIns
+            .filter((item): item is EnergyCheckIn => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string"))
+            .map((item) => ({
+              loggedAt: item.loggedAt,
+              score: clamp(Number(item.score ?? 0), 1, 5),
+              note: typeof item.note === "string" ? item.note.trim() : ""
+            }))
         : [],
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
@@ -3231,7 +3273,10 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry.napSessions.map((session) => session.start),
       ...entry.relaxSessions.map((session) => session.start),
       ...entry.breakSessions.map((session) => session.start),
+      ...entry.poopSessions.map((session) => session.start),
+      ...entry.todayFocus.flatMap((item) => item.workSessions.map((session) => session.start)),
       ...entry.foodLog.map((item) => item.loggedAt ?? ""),
+      ...entry.energyCheckIns.map((item) => item.loggedAt ?? ""),
       ...Object.values(entry.habitEvents).flat(),
       entry.dayEndedAt,
       entry.sleepTime
