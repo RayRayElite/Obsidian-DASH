@@ -13,6 +13,13 @@ export interface HabitDefinition {
   target: number;
 }
 
+export interface RoutineTemplateDefinition {
+  id: string;
+  label: string;
+  startTime: string;
+  endTime: string;
+}
+
 export interface ArchivedTaskSnapshot {
   project: string;
   section: string;
@@ -291,6 +298,7 @@ export interface DashboardSettings {
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
+  routineTemplates: string;
 }
 
 export interface CalendarReminderItem {
@@ -566,5 +574,6 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
     { id: "floss", label: "Floss", target: 2 },
     { id: "shower", label: "Shower", target: 1 },
     { id: "sleep-log", label: "Log sleep", target: 1 }
-  ]
+  ],
+  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
 };

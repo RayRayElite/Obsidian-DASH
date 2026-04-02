@@ -51,6 +51,8 @@ The Day Flow card now also includes a grouped time-allocation summary for the cu
 
 The logical day repair flow now includes a manual timeline editor for work, nap, relax, break, and bowel sessions, plus the Day Flow card shows a live session strip for the current logical day. That makes it possible to repair bad timer history directly instead of only patching totals.
 
+Day Flow now also supports recurring routine templates tied to time windows. Define them in settings using `Label|HH:MM|HH:MM`, and the dashboard will surface them when they are due, let you queue them into `Next Up`, and dismiss them for the rest of the day once handled.
+
 Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
 
 ## AI Integration

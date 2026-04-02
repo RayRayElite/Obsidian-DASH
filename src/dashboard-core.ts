@@ -15,6 +15,7 @@ import {
   type NoteIndexEntry,
   type TodayFocusItem,
   type TodayFocusStatus,
+  type RoutineTemplateDefinition,
   type TodoSnapshot
 } from "./dashboard-types";
 
@@ -59,7 +60,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarWarningHours,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
-    habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
+    habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
+    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
 }
 
@@ -793,4 +795,27 @@ export function computeMissedHabits(habits: Record<string, number>, definitions:
   return definitions
     .filter((definition) => (habits[definition.id] ?? 0) < definition.target)
     .map((definition) => definition.label);
+}
+
+export function parseRoutineTemplates(value: string): RoutineTemplateDefinition[] {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  return lines
+    .map((line, index) => {
+      const [rawLabel, rawStart, rawEnd] = line.split("|").map((item) => item?.trim() ?? "");
+      if (!rawLabel || !/^\d{2}:\d{2}$/.test(rawStart) || !/^\d{2}:\d{2}$/.test(rawEnd) || rawStart >= rawEnd) {
+        return null;
+      }
+
+      return {
+        id: createHabitId(`${rawLabel}-${rawStart}-${rawEnd}-${index}`),
+        label: rawLabel,
+        startTime: rawStart,
+        endTime: rawEnd
+      };
+    })
+    .filter((item): item is RoutineTemplateDefinition => item !== null);
 }

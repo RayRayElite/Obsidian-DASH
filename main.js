@@ -70,7 +70,8 @@ var DEFAULT_SETTINGS = {
     { id: "floss", label: "Floss", target: 2 },
     { id: "shower", label: "Shower", target: 1 },
     { id: "sleep-log", label: "Log sleep", target: 1 }
-  ]
+  ],
+  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
 };
 
 // src/dashboard-core.ts
@@ -114,7 +115,8 @@ function sanitizeSettings(settings) {
     calendarWarningHours,
     wallpaperFolder: normalizeFolderPath(((_w = settings.wallpaperFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_x = settings.selectedWallpaper) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
-    habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
+    habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
+    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
 }
 function normalizeFolderPath(value) {
@@ -707,6 +709,24 @@ function computeMissedHabits(habits, definitions) {
     var _a;
     return ((_a = habits[definition.id]) != null ? _a : 0) < definition.target;
   }).map((definition) => definition.label);
+}
+function parseRoutineTemplates(value) {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  return lines.map((line, index) => {
+    const [rawLabel, rawStart, rawEnd] = line.split("|").map((item2) => {
+      var _a;
+      return (_a = item2 == null ? void 0 : item2.trim()) != null ? _a : "";
+    });
+    if (!rawLabel || !/^\d{2}:\d{2}$/.test(rawStart) || !/^\d{2}:\d{2}$/.test(rawEnd) || rawStart >= rawEnd) {
+      return null;
+    }
+    return {
+      id: createHabitId(`${rawLabel}-${rawStart}-${rawEnd}-${index}`),
+      label: rawLabel,
+      startTime: rawStart,
+      endTime: rawEnd
+    };
+  }).filter((item2) => item2 !== null);
 }
 
 // src/dashboard-logs.ts
@@ -2845,6 +2865,34 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         dayState.status === "in-progress" && dayState.activeDate === todayEntry.date ? formatDateTimeKey(/* @__PURE__ */ new Date()) : todayEntry.dayEndedAt || todayEntry.sleepTime || formatDateTimeKey(/* @__PURE__ */ new Date()),
         "No tracked sessions yet for this logical day."
       );
+      const routineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-routines", "Routine windows", "Recurring prompts tied to time windows so the dashboard can nudge the right routine at the right part of the day.");
+      const routineTemplates = this.plugin.getRoutineTemplates();
+      const dismissedRoutineIds = getDismissedRoutineState(todayEntry.date);
+      const currentMinutes = getClockMinutes(/* @__PURE__ */ new Date());
+      const visibleRoutines = routineTemplates.filter((template) => !dismissedRoutineIds.has(template.id));
+      if (visibleRoutines.length === 0) {
+        routineSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No routine templates left for this day. Add definitions in settings or clear daily dismissals tomorrow." });
+      } else {
+        const routineList = routineSection.createDiv({ cls: "daily-dashboard-project-list" });
+        visibleRoutines.forEach((template) => {
+          const startMinutes = getClockMinutes(template.startTime);
+          const endMinutes = getClockMinutes(template.endTime);
+          const isActiveWindow = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+          const isUpcoming = currentMinutes < startMinutes;
+          const row = routineList.createDiv({ cls: "daily-dashboard-project-row" });
+          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, `${template.startTime}-${template.endTime}`, isActiveWindow ? "focus" : isUpcoming ? "neutral" : "done");
+          createSemanticChip(chipRow, isActiveWindow ? "Due now" : isUpcoming ? "Later today" : "Window passed", isActiveWindow ? "alert" : isUpcoming ? "neutral" : "done");
+          row.createEl("strong", { text: template.label });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: isActiveWindow ? "Inside the active time window." : isUpcoming ? `Starts in ${formatMinutesAsHours(Math.max(0, startMinutes - currentMinutes))}.` : "Still available as a reference, but the target window has already passed." });
+          const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions2, "Queue next up", async () => this.plugin.addNextUpFocusItem({ text: template.label }), false, "plus-circle");
+          createButton(actions2, "Done today", async () => {
+            setDismissedRoutine(todayEntry.date, template.id);
+            await this.render();
+          }, false, "check");
+        });
+      }
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
@@ -5059,6 +5107,16 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
       textArea.inputEl.rows = 8;
       textArea.inputEl.cols = 36;
     });
+    new import_obsidian3.Setting(containerEl).setName("Routine templates").setDesc("One routine per line using Label|HH:MM|HH:MM. These appear in Day Flow when their time window is due or coming up.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30").setValue(settings.routineTemplates).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          routineTemplates: value
+        });
+      });
+      textArea.inputEl.rows = 6;
+      textArea.inputEl.cols = 36;
+    });
   }
 };
 var DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
@@ -5067,6 +5125,7 @@ var DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 var DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
 var DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
 var DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-session-tag";
+var DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routines";
 function createCard(parent, title, description, options) {
   const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
@@ -5429,6 +5488,39 @@ function clearDismissedReminder(date, reminderId) {
     window.localStorage.setItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY, JSON.stringify(parsed));
   } catch (e) {
   }
+}
+function getDismissedRoutineState(date) {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY);
+    if (!stored) {
+      return /* @__PURE__ */ new Set();
+    }
+    const parsed = JSON.parse(stored);
+    const values = Array.isArray(parsed == null ? void 0 : parsed[date]) ? parsed[date] : [];
+    return new Set(values.filter((item2) => typeof item2 === "string"));
+  } catch (e) {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function setDismissedRoutine(date, routineId) {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : {};
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.add(routineId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY, JSON.stringify(parsed));
+  } catch (e) {
+  }
+}
+function getClockMinutes(value) {
+  if (value instanceof Date) {
+    return value.getHours() * 60 + value.getMinutes();
+  }
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
 }
 
 // main.ts
@@ -5941,6 +6033,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getWallpaperFiles() {
     return this.wallpaperOptions;
+  }
+  getRoutineTemplates() {
+    return parseRoutineTemplates(this.data.settings.routineTemplates);
   }
   getSelectedWallpaperPath() {
     var _a, _b, _c, _d;

@@ -23,6 +23,7 @@ import {
   normalizeTodayFocusItems,
   normalizeNoteIndexCache,
   normalizeDayState,
+  parseRoutineTemplates,
   renderAiRelevantNotes,
   renderRoutineSignalsForAi,
   renderTodoSnapshotForAi,
@@ -118,6 +119,7 @@ import {
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
   type RetrievalIndexStatus,
+  type RoutineTemplateDefinition,
   type SleepInsights,
   type TimeAllocationBucket,
   type TimeAllocationInsights,
@@ -733,6 +735,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getWallpaperFiles(): WallpaperOption[] {
     return this.wallpaperOptions;
+  }
+
+  getRoutineTemplates(): RoutineTemplateDefinition[] {
+    return parseRoutineTemplates(this.data.settings.routineTemplates);
   }
 
   getSelectedWallpaperPath(): string {

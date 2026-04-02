@@ -578,6 +578,35 @@ export class DailyDashboardView extends ItemView {
         "No tracked sessions yet for this logical day."
       );
 
+      const routineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-routines", "Routine windows", "Recurring prompts tied to time windows so the dashboard can nudge the right routine at the right part of the day.");
+      const routineTemplates = this.plugin.getRoutineTemplates();
+      const dismissedRoutineIds = getDismissedRoutineState(todayEntry.date);
+      const currentMinutes = getClockMinutes(new Date());
+      const visibleRoutines = routineTemplates.filter((template) => !dismissedRoutineIds.has(template.id));
+      if (visibleRoutines.length === 0) {
+        routineSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No routine templates left for this day. Add definitions in settings or clear daily dismissals tomorrow." });
+      } else {
+        const routineList = routineSection.createDiv({ cls: "daily-dashboard-project-list" });
+        visibleRoutines.forEach((template) => {
+          const startMinutes = getClockMinutes(template.startTime);
+          const endMinutes = getClockMinutes(template.endTime);
+          const isActiveWindow = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+          const isUpcoming = currentMinutes < startMinutes;
+          const row = routineList.createDiv({ cls: "daily-dashboard-project-row" });
+          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, `${template.startTime}-${template.endTime}`, isActiveWindow ? "focus" : isUpcoming ? "neutral" : "done");
+          createSemanticChip(chipRow, isActiveWindow ? "Due now" : isUpcoming ? "Later today" : "Window passed", isActiveWindow ? "alert" : isUpcoming ? "neutral" : "done");
+          row.createEl("strong", { text: template.label });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: isActiveWindow ? "Inside the active time window." : isUpcoming ? `Starts in ${formatMinutesAsHours(Math.max(0, startMinutes - currentMinutes))}.` : "Still available as a reference, but the target window has already passed." });
+          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions, "Queue next up", async () => this.plugin.addNextUpFocusItem({ text: template.label }), false, "plus-circle");
+          createButton(actions, "Done today", async () => {
+            setDismissedRoutine(todayEntry.date, template.id);
+            await this.render();
+          }, false, "check");
+        });
+      }
+
       const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
@@ -3315,6 +3344,24 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
         textArea.inputEl.rows = 8;
         textArea.inputEl.cols = 36;
       });
+
+    new Setting(containerEl)
+      .setName("Routine templates")
+      .setDesc("One routine per line using Label|HH:MM|HH:MM. These appear in Day Flow when their time window is due or coming up.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30")
+          .setValue(settings.routineTemplates)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              routineTemplates: value
+            });
+          });
+
+        textArea.inputEl.rows = 6;
+        textArea.inputEl.cols = 36;
+      });
   }
 }
 
@@ -3324,6 +3371,7 @@ const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 const DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
 const DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
 const DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-session-tag";
+const DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routines";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -3811,4 +3859,43 @@ function clearDismissedReminder(date: string, reminderId: string): void {
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }
+}
+
+function getDismissedRoutineState(date: string): Set<string> {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY);
+    if (!stored) {
+      return new Set<string>();
+    }
+
+    const parsed = JSON.parse(stored) as Record<string, string[]>;
+    const values = Array.isArray(parsed?.[date]) ? parsed[date] : [];
+    return new Set(values.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function setDismissedRoutine(date: string, routineId: string): void {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) as Record<string, string[]> : {};
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.add(routineId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getClockMinutes(value: string | Date): number {
+  if (value instanceof Date) {
+    return (value.getHours() * 60) + value.getMinutes();
+  }
+
+  const [hoursText, minutesText] = value.split(":");
+  const hours = Number(hoursText);
+  const minutes = Number(minutesText);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
 }
