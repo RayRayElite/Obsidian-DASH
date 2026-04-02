@@ -112,8 +112,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add mobile mode tuned for the current vertical 9:16 layout.
 - [x] Add horizontal / widescreen mode designed intentionally instead of stretched mobile layout.
 - [x] Add a lower-right hero control button for switching view modes.
-- [ ] Keep all modes visually balanced and as symmetrical as possible.
-- [ ] Add layout customization for card order, hidden cards, and pinned cards.
+- [x] Keep all modes visually balanced and as symmetrical as possible.
+- [x] Add layout customization for card order, hidden cards, and pinned cards.
 - [x] Add nested collapsible subsections inside cards for finer-grained control.
 - [ ] Add keyboard shortcuts for major dashboard actions.
 - [ ] Add undo for destructive actions.

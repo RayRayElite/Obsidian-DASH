@@ -304,11 +304,24 @@
   --daily-dashboard-card-accent: #7ace89;
 }
 
+.daily-dashboard-card.is-layout-hidden {
+  display: none;
+}
+
+.daily-dashboard-card.is-layout-pinned {
+  border-color: color-mix(in srgb, var(--daily-dashboard-card-accent) 28%, var(--background-modifier-border));
+}
+
+.daily-dashboard-card--weekly-agenda,
 .daily-dashboard-card--top-3-for-today,
 .daily-dashboard-card--state-and-friction,
+.daily-dashboard-card--gamification-center,
 .daily-dashboard-card--habits,
 .daily-dashboard-card--food-log,
+.daily-dashboard-card--symptoms-and-pain,
 .daily-dashboard-card--sleep-and-notes,
+.daily-dashboard-card--timeline-search,
+.daily-dashboard-card--heatmaps,
 .daily-dashboard-card--quick-add-to-project,
 .daily-dashboard-card--completed-today,
 .daily-dashboard-card--searchable-work-log,
@@ -685,10 +698,17 @@
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--day-flow {
   grid-column: span 18;
 }
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--weekly-agenda,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--gamification-center,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--timeline-search,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--heatmaps {
+  grid-column: span 9;
+}
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--top-3-for-today,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--state-and-friction,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--habits,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--food-log,
+.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--symptoms-and-pain,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--sleep-and-notes,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--quick-add-to-project,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--completed-today,
@@ -1212,6 +1232,47 @@
   justify-content: flex-end;
   justify-self: end;
   align-self: center;
+}
+
+.daily-dashboard-layout-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.daily-dashboard-layout-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.daily-dashboard-layout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--daily-dashboard-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+}
+
+.daily-dashboard-layout-row.is-hidden {
+  opacity: 0.72;
+}
+
+.daily-dashboard-layout-row.is-pinned {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 24%, var(--background-modifier-border));
+}
+
+.daily-dashboard-layout-row .daily-dashboard-actions-inline {
+  margin-left: auto;
+}
+
+.daily-dashboard-layout-row .daily-dashboard-secondary-button[disabled] {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
 }
 
 .daily-dashboard-date-pill.is-compact,

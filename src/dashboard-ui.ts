@@ -193,6 +193,64 @@ export class DailyDashboardView extends ItemView {
     return { label: "Mobile", icon: "smartphone", nextLabel: "Compact" };
   }
 
+  private openLayoutCustomizationFlow(): void {
+    new DashboardLayoutModal(this.app, {
+      cards: getDashboardCardLayoutState(),
+      onApply: async (cards) => {
+        setDashboardCardLayoutState(cards);
+        await this.render();
+      }
+    }).open();
+  }
+
+  private registerGridCard(
+    card: HTMLElement,
+    title: string,
+    bindings: DashboardLayoutCardBinding[],
+    layoutByKey: Map<string, DashboardLayoutCardState>
+  ): HTMLElement {
+    const key = toClassSlug(title);
+    const config = layoutByKey.get(key);
+    if (config?.pinned) {
+      card.addClass("is-layout-pinned");
+      const controls = card.querySelector<HTMLElement>(".daily-dashboard-card-header-controls");
+      if (controls) {
+        createSemanticChip(controls, "Pinned", "focus");
+      }
+    }
+    if (config?.hidden) {
+      card.addClass("is-layout-hidden");
+    }
+
+    bindings.push({ key, card });
+    return card;
+  }
+
+  private applyGridLayout(grid: HTMLElement, bindings: DashboardLayoutCardBinding[], layoutByKey: Map<string, DashboardLayoutCardState>): void {
+    const visible = bindings
+      .filter((binding) => !layoutByKey.get(binding.key)?.hidden)
+      .sort((left, right) => {
+        const leftConfig = layoutByKey.get(left.key);
+        const rightConfig = layoutByKey.get(right.key);
+        const pinDelta = Number(Boolean(rightConfig?.pinned)) - Number(Boolean(leftConfig?.pinned));
+        if (pinDelta !== 0) {
+          return pinDelta;
+        }
+
+        const orderDelta = (leftConfig?.order ?? Number.MAX_SAFE_INTEGER) - (rightConfig?.order ?? Number.MAX_SAFE_INTEGER);
+        if (orderDelta !== 0) {
+          return orderDelta;
+        }
+
+        return left.key.localeCompare(right.key);
+      });
+
+    const hidden = bindings.filter((binding) => layoutByKey.get(binding.key)?.hidden);
+    [...visible, ...hidden].forEach((binding) => {
+      grid.appendChild(binding.card);
+    });
+  }
+
   private getSessionTagTone(tag: string): DashboardTone {
     const normalized = tag.trim().toLowerCase();
     if (normalized === "deep work") {
@@ -330,6 +388,10 @@ export class DailyDashboardView extends ItemView {
       const workLogEntries = this.getFilteredWorkLogEntries();
       const timelineResults = this.getTimelineSearchResults();
       const savedDashboardFilters = getSavedDashboardFilters();
+      const layoutCards = getDashboardCardLayoutState();
+      const layoutByKey = new Map(layoutCards.map((card) => [card.key, card]));
+      const hiddenLayoutCardCount = layoutCards.filter((card) => card.hidden).length;
+      const gridCardBindings: DashboardLayoutCardBinding[] = [];
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
       const viewModeMeta = this.getViewModeMeta(viewMode);
@@ -374,9 +436,16 @@ export class DailyDashboardView extends ItemView {
       stalePill.addClass("is-compact");
       const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} • Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
       statePill.addClass("is-compact");
+      if (hiddenLayoutCardCount > 0) {
+        const hiddenPill = createStatPill(heroMeta, `${hiddenLayoutCardCount} hidden`, "layout-dashboard", "log");
+        hiddenPill.addClass("is-compact");
+      }
 
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, viewModeMeta.icon, `View mode ${viewModeMeta.label}. Switch to ${viewModeMeta.nextLabel}.`, async () => this.cycleViewMode());
+      createIconButton(utilityActions, "sliders-horizontal", "Customize dashboard layout", async () => {
+        this.openLayoutCustomizationFlow();
+      });
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
@@ -425,8 +494,14 @@ export class DailyDashboardView extends ItemView {
       this.renderWeekLegendItem(weekLegend, "Unknown", "unknown");
 
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const createGridCard = (title: string, description: string, options: CardVisualOptions): HTMLElement => this.registerGridCard(
+        createCard(grid, title, description, options),
+        title,
+        gridCardBindings,
+        layoutByKey
+      );
 
-      const weeklyAgendaCard = createCard(grid, "Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
+      const weeklyAgendaCard = createGridCard("Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
         icon: "calendar-days",
         eyebrow: "Planning",
         tone: "capture",
@@ -509,7 +584,7 @@ export class DailyDashboardView extends ItemView {
       const dayToggleAction = dayState.status === "in-progress"
         ? async () => this.plugin.endLogicalDay()
         : async () => this.plugin.beginLogicalDay();
-      const dayFlowCard = createCard(grid, "Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
+      const dayFlowCard = createGridCard("Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
         tone: "focus",
@@ -692,7 +767,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const focusCard = createCard(grid, "Top 3 For Today", "Keep today concrete with just three active focus items.", {
+      const focusCard = createGridCard("Top 3 For Today", "Keep today concrete with just three active focus items.", {
         icon: "target",
         eyebrow: "Execution",
         tone: "focus",
@@ -1064,7 +1139,7 @@ export class DailyDashboardView extends ItemView {
       }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
-      const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
+      const stateCard = createGridCard("State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
         eyebrow: "State",
         tone: "state",
@@ -1131,7 +1206,7 @@ export class DailyDashboardView extends ItemView {
         void this.plugin.updateFrictionLog(frictionInput.value);
       });
 
-      const gamificationCard = createCard(grid, "Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
+      const gamificationCard = createGridCard("Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
         icon: "trophy",
         eyebrow: "Scores",
         tone: "done",
@@ -1156,7 +1231,7 @@ export class DailyDashboardView extends ItemView {
       createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
       createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
 
-      const habitsCard = createCard(grid, "Habits", "Repeatables with misses and timing kept visible.", {
+      const habitsCard = createGridCard("Habits", "Repeatables with misses and timing kept visible.", {
         icon: "check-square",
         eyebrow: "Routines",
         tone: "state",
@@ -1223,7 +1298,7 @@ export class DailyDashboardView extends ItemView {
         }
       });
 
-      const quickAddCard = createCard(grid, "Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
+      const quickAddCard = createGridCard("Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
         icon: "plus-circle",
         eyebrow: "Capture",
         tone: "capture",
@@ -1267,7 +1342,7 @@ export class DailyDashboardView extends ItemView {
         void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
       });
 
-      const foodCard = createCard(grid, "Food Log", "Quick meal capture so routine and energy stay analyzable.", {
+      const foodCard = createGridCard("Food Log", "Quick meal capture so routine and energy stay analyzable.", {
         icon: "utensils-crossed",
         eyebrow: "Body",
         tone: "log",
@@ -1382,7 +1457,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const symptomsCard = createCard(grid, "Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
+      const symptomsCard = createGridCard("Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
         icon: "heart-pulse",
         eyebrow: "Body",
         tone: "health",
@@ -1416,7 +1491,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const notesCard = createCard(grid, "Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
+      const notesCard = createGridCard("Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
         icon: "moon-star",
         eyebrow: "Recovery",
         tone: "log",
@@ -1491,7 +1566,7 @@ export class DailyDashboardView extends ItemView {
         void this.plugin.updateReflection("hurt", hurtInput.value);
       });
 
-      const timelineCard = createCard(grid, "Timeline Search", "Search across tasks, sessions, logs, and calendar events from one place instead of hopping between cards.", {
+      const timelineCard = createGridCard("Timeline Search", "Search across tasks, sessions, logs, and calendar events from one place instead of hopping between cards.", {
         icon: "scan-search",
         eyebrow: "History",
         tone: "log",
@@ -1627,7 +1702,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const heatmapCard = createCard(grid, "Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
+      const heatmapCard = createGridCard("Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
         icon: "grid-2x2",
         eyebrow: "Patterns",
         tone: "capture",
@@ -1638,7 +1713,7 @@ export class DailyDashboardView extends ItemView {
       this.renderHeatmapMetric(heatmapShell, "Sleep", "Tracked sleep minutes per day", this.buildHeatmapSeries("sleep"));
       this.renderHeatmapMetric(heatmapShell, "Habits", "Weighted habit completion percentage per day", this.buildHeatmapSeries("habits"));
 
-      const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
+      const workLogCard = createGridCard("Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
         icon: "search",
         eyebrow: "History",
         tone: "log",
@@ -1689,7 +1764,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const aiCard = createCard(grid, "AI Workspace", "Plan, review, and ask grounded questions against your dashboard and vault without leaving the page.", {
+      const aiCard = createGridCard("AI Workspace", "Plan, review, and ask grounded questions against your dashboard and vault without leaving the page.", {
         icon: "sparkles",
         eyebrow: "AI",
         tone: "capture",
@@ -1791,7 +1866,7 @@ export class DailyDashboardView extends ItemView {
         latestPanel.createDiv({ cls: "daily-dashboard-ai-empty-state", text: "No AI notes yet. Run a workflow or ask a question to create the first output." });
       }
 
-      const projectsCard = createCard(grid, "Project Health", "Score projects by backlog, staleness, output, and momentum.", {
+      const projectsCard = createGridCard("Project Health", "Score projects by backlog, staleness, output, and momentum.", {
         icon: "shield-check",
         eyebrow: "Portfolio",
         tone: "health",
@@ -1842,7 +1917,7 @@ export class DailyDashboardView extends ItemView {
       createButton(projectActions, projectsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("project-health-details"), false, projectsExpanded ? "chevrons-up" : "chevrons-down");
       createButton(projectActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
 
-      const alertsCard = createCard(grid, "Stale Work And Cleanup", "Catch stale projects, vague tasks, duplicates, and empty sections.", {
+      const alertsCard = createGridCard("Stale Work And Cleanup", "Catch stale projects, vague tasks, duplicates, and empty sections.", {
         icon: "triangle-alert",
         eyebrow: "Triage",
         tone: "alert",
@@ -1904,7 +1979,7 @@ export class DailyDashboardView extends ItemView {
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
 
-      const completedCard = createCard(grid, "Completed Today", "Keep today's completed work visible for review and reinforcement.", {
+      const completedCard = createGridCard("Completed Today", "Keep today's completed work visible for review and reinforcement.", {
         icon: "badge-check",
         eyebrow: "Done",
         tone: "done",
@@ -1926,6 +2001,8 @@ export class DailyDashboardView extends ItemView {
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
         });
       }
+
+      this.applyGridLayout(grid, gridCardBindings, layoutByKey);
 
       this.lastRenderAt = Date.now();
     } catch (error) {
@@ -3249,6 +3326,125 @@ export class CalendarEventModal extends Modal {
   }
 }
 
+export class DashboardLayoutModal extends Modal {
+  private options: DashboardLayoutModalOptions;
+  private cards: DashboardLayoutCardState[];
+
+  constructor(app: App, options: DashboardLayoutModalOptions) {
+    super(app);
+    this.options = options;
+    this.cards = normalizeDashboardCardLayoutState(options.cards);
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-layout-modal");
+    this.setTitle("Customize Dashboard Layout");
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-layout-modal");
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Reorder cards, hide sections you do not use, and pin the few cards that should always rise to the top. Pinned cards still respect their relative order."
+    });
+
+    const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
+    sortDashboardLayoutCardsByOrder(this.cards).forEach((card, index, orderedCards) => {
+      const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
+      if (card.hidden) {
+        row.addClass("is-hidden");
+      }
+      if (card.pinned) {
+        row.addClass("is-pinned");
+      }
+
+      const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+      copy.createEl("strong", { text: `${index + 1}. ${card.title}` });
+      copy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: [card.pinned ? "Pinned" : "Standard order", card.hidden ? "Hidden" : "Visible"].join(" • ")
+      });
+
+      const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(controls, "Up", async () => {
+        this.moveCard(card.key, -1);
+        this.renderContent();
+      }, false, "arrow-up");
+      createButton(controls, "Down", async () => {
+        this.moveCard(card.key, 1);
+        this.renderContent();
+      }, false, "arrow-down");
+      createButton(controls, card.pinned ? "Unpin" : "Pin", async () => {
+        this.togglePinned(card.key);
+        this.renderContent();
+      }, false, "pin");
+      createButton(controls, card.hidden ? "Show" : "Hide", async () => {
+        this.toggleHidden(card.key);
+        this.renderContent();
+      }, false, card.hidden ? "eye" : "eye-off");
+
+      if (index === 0) {
+        controls.querySelector("button")?.setAttribute("disabled", "true");
+      }
+      if (index === orderedCards.length - 1) {
+        controls.querySelectorAll("button")[1]?.setAttribute("disabled", "true");
+      }
+    });
+
+    const preview = contentEl.createDiv({ cls: "daily-dashboard-chip-row" });
+    const orderedPreview = sortDashboardLayoutCards(this.cards).filter((card) => !card.hidden);
+    createSemanticChip(preview, `${orderedPreview.length} visible`, orderedPreview.length > 0 ? "done" : "alert");
+    createSemanticChip(preview, `${this.cards.filter((card) => card.pinned).length} pinned`, this.cards.some((card) => card.pinned) ? "focus" : "neutral");
+    createSemanticChip(preview, `${this.cards.filter((card) => card.hidden).length} hidden`, this.cards.some((card) => card.hidden) ? "log" : "neutral");
+
+    const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(footer, "Reset defaults", async () => {
+      this.cards = DEFAULT_DASHBOARD_LAYOUT_CARDS.map((card) => ({ ...card }));
+      this.renderContent();
+    }, false, "rotate-ccw");
+    createButton(footer, "Apply layout", async () => {
+      const normalized = normalizeDashboardCardLayoutState(this.cards);
+      await this.options.onApply(normalized);
+      this.close();
+    }, true, "check");
+    createButton(footer, "Cancel", async () => {
+      this.close();
+    }, false, "x");
+  }
+
+  private moveCard(cardKey: string, direction: -1 | 1): void {
+    const ordered = sortDashboardLayoutCardsByOrder(this.cards);
+    const index = ordered.findIndex((card) => card.key === cardKey);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
+      return;
+    }
+
+    const current = ordered[index];
+    const target = ordered[targetIndex];
+    const next = ordered.map((card) => ({ ...card }));
+    next[index] = { ...target, order: current.order };
+    next[targetIndex] = { ...current, order: target.order };
+    this.cards = normalizeDashboardCardLayoutState(next);
+  }
+
+  private togglePinned(cardKey: string): void {
+    this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, pinned: !card.pinned } : card);
+  }
+
+  private toggleHidden(cardKey: string): void {
+    this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, hidden: !card.hidden } : card);
+  }
+}
+
 export class CreateProjectModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private categories: string[];
@@ -4443,6 +4639,24 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
   }
 }
 
+type DashboardLayoutCardState = {
+  key: string;
+  title: string;
+  order: number;
+  hidden: boolean;
+  pinned: boolean;
+};
+
+type DashboardLayoutCardBinding = {
+  key: string;
+  card: HTMLElement;
+};
+
+type DashboardLayoutModalOptions = {
+  cards: DashboardLayoutCardState[];
+  onApply: (cards: DashboardLayoutCardState[]) => Promise<void>;
+};
+
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
@@ -4452,6 +4666,27 @@ const DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-ses
 const DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routines";
 const DASHBOARD_SAVED_FILTERS_STORAGE_KEY = "daily-dashboard-saved-filters";
 const DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
+const DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
+
+const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
+  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
+  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false },
+  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
+  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
+  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
+  { key: "quick-add-to-project", title: "Quick Add To Project", order: 6, hidden: false, pinned: false },
+  { key: "food-log", title: "Food Log", order: 7, hidden: false, pinned: false },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 8, hidden: false, pinned: false },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
+  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
+  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
+  { key: "searchable-work-log", title: "Searchable Work Log", order: 12, hidden: false, pinned: false },
+  { key: "ai-workspace", title: "AI Workspace", order: 13, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
+  { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+];
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -4769,6 +5004,78 @@ function setSavedDashboardFilters(filters: SavedDashboardFilter[]): void {
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }
+}
+
+function getDashboardCardLayoutState(): DashboardLayoutCardState[] {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_CARD_LAYOUT_STORAGE_KEY);
+    if (!stored) {
+      return DEFAULT_DASHBOARD_LAYOUT_CARDS.map((card) => ({ ...card }));
+    }
+
+    const parsed = JSON.parse(stored);
+    return normalizeDashboardCardLayoutState(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return DEFAULT_DASHBOARD_LAYOUT_CARDS.map((card) => ({ ...card }));
+  }
+}
+
+function setDashboardCardLayoutState(cards: DashboardLayoutCardState[]): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_CARD_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeDashboardCardLayoutState(cards)));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function normalizeDashboardCardLayoutState(cards: unknown[]): DashboardLayoutCardState[] {
+  const storedByKey = new Map<string, Partial<DashboardLayoutCardState>>();
+  cards.forEach((card) => {
+    if (!card || typeof card !== "object") {
+      return;
+    }
+
+    const candidate = card as Partial<DashboardLayoutCardState>;
+    if (typeof candidate.key !== "string") {
+      return;
+    }
+
+    storedByKey.set(candidate.key, candidate);
+  });
+
+  return DEFAULT_DASHBOARD_LAYOUT_CARDS
+    .map((card) => {
+      const stored = storedByKey.get(card.key);
+      return {
+        key: card.key,
+        title: card.title,
+        order: typeof stored?.order === "number" && Number.isFinite(stored.order) ? stored.order : card.order,
+        hidden: Boolean(stored?.hidden),
+        pinned: typeof stored?.pinned === "boolean" ? stored.pinned : card.pinned
+      };
+    })
+    .sort((left, right) => left.order - right.order)
+    .map((card, index) => ({ ...card, order: index }));
+}
+
+function sortDashboardLayoutCards(cards: DashboardLayoutCardState[]): DashboardLayoutCardState[] {
+  return [...cards].sort((left, right) => {
+    const pinDelta = Number(right.pinned) - Number(left.pinned);
+    if (pinDelta !== 0) {
+      return pinDelta;
+    }
+
+    const orderDelta = left.order - right.order;
+    if (orderDelta !== 0) {
+      return orderDelta;
+    }
+
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function sortDashboardLayoutCardsByOrder(cards: DashboardLayoutCardState[]): DashboardLayoutCardState[] {
+  return [...cards].sort((left, right) => left.order - right.order || left.title.localeCompare(right.title));
 }
 
 function getCollapsedSubsectionState(): Set<string> {
