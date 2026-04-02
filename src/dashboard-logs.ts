@@ -58,6 +58,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
   const totalPoopMinutes = getTrackedPoopMinutes(entry);
+  const totalPoopCount = getTrackedPoopCount(entry);
 
   return [
     "---",
@@ -75,6 +76,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
     `trackedPoopMinutes: ${totalPoopMinutes}`,
+    `trackedPoopCount: ${totalPoopCount}`,
     `workMinutesOverride: ${entry.workMinutesOverride ?? ""}`,
     `napMinutesOverride: ${entry.napMinutesOverride ?? ""}`,
     `relaxMinutesOverride: ${entry.relaxMinutesOverride ?? ""}`,
@@ -100,6 +102,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,
     `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     `- Tracked poop: ${formatMinutesAsHours(totalPoopMinutes)}`,
+    `- Bowel movements: ${totalPoopCount}`,
     "",
     "## Habits",
     ...habitLines,
@@ -296,6 +299,7 @@ export function renderPeriodReport(input: {
   let trackedRelaxMinutes = 0;
   let trackedBreakMinutes = 0;
   let trackedPoopMinutes = 0;
+  let trackedPoopCount = 0;
   let daysWithNaps = 0;
 
   input.entries.forEach((entry) => {
@@ -331,6 +335,7 @@ export function renderPeriodReport(input: {
     trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
     trackedBreakMinutes += getTrackedBreakMinutes(entry);
     trackedPoopMinutes += getTrackedPoopMinutes(entry);
+    trackedPoopCount += getTrackedPoopCount(entry);
     if (entry.napSessions.length > 0) {
       daysWithNaps += 1;
     }
@@ -359,7 +364,9 @@ export function renderPeriodReport(input: {
     const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0
       ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed`
       : "no relax tracked";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
+    const poopCount = getTrackedPoopCount(entry);
+    const poopSummary = poopCount > 0 ? `${poopCount} bowel movement${poopCount === 1 ? "" : "s"}` : "no bowel movements tracked";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${poopSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
   });
 
   return [
@@ -378,6 +385,7 @@ export function renderPeriodReport(input: {
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
     `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
     `- Tracked bowel time: ${formatMinutesAsHours(trackedPoopMinutes)}`,
+    `- Bowel movements tracked: ${trackedPoopCount}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
@@ -434,6 +442,10 @@ export function getTrackedBreakMinutes(entry: DailyEntry): number {
 
 export function getTrackedPoopMinutes(entry: DailyEntry): number {
   return getTrackedMinutes(entry.poopSessions);
+}
+
+export function getTrackedPoopCount(entry: DailyEntry): number {
+  return entry.poopSessions.length;
 }
 
 function resolveTrackedMinutes(sessions: WorkSession[], override: number | null | undefined): number {

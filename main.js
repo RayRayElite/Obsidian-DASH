@@ -694,6 +694,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
   const totalBreakMinutes = getTrackedBreakMinutes(entry);
   const totalPoopMinutes = getTrackedPoopMinutes(entry);
+  const totalPoopCount = getTrackedPoopCount(entry);
   return [
     "---",
     `date: ${entry.date}`,
@@ -710,6 +711,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
     `trackedPoopMinutes: ${totalPoopMinutes}`,
+    `trackedPoopCount: ${totalPoopCount}`,
     `workMinutesOverride: ${(_b = entry.workMinutesOverride) != null ? _b : ""}`,
     `napMinutesOverride: ${(_c = entry.napMinutesOverride) != null ? _c : ""}`,
     `relaxMinutesOverride: ${(_d = entry.relaxMinutesOverride) != null ? _d : ""}`,
@@ -735,6 +737,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `- Tracked relaxing: ${formatMinutesAsHours(totalRelaxMinutes)}`,
     `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     `- Tracked poop: ${formatMinutesAsHours(totalPoopMinutes)}`,
+    `- Bowel movements: ${totalPoopCount}`,
     "",
     "## Habits",
     ...habitLines,
@@ -906,6 +909,7 @@ function renderPeriodReport(input) {
   let trackedRelaxMinutes = 0;
   let trackedBreakMinutes = 0;
   let trackedPoopMinutes = 0;
+  let trackedPoopCount = 0;
   let daysWithNaps = 0;
   input.entries.forEach((entry) => {
     if (entry.foodLog.length > 0) {
@@ -934,6 +938,7 @@ function renderPeriodReport(input) {
     trackedRelaxMinutes += getTrackedRelaxMinutes(entry);
     trackedBreakMinutes += getTrackedBreakMinutes(entry);
     trackedPoopMinutes += getTrackedPoopMinutes(entry);
+    trackedPoopCount += getTrackedPoopCount(entry);
     if (entry.napSessions.length > 0) {
       daysWithNaps += 1;
     }
@@ -958,7 +963,9 @@ function renderPeriodReport(input) {
     const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
     const dreamSummary = entry.dreamLog.trim().length > 0 ? "dream logged" : "no dream log";
     const relaxSummary = entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 ? `${formatMinutesAsHours(getTrackedRelaxMinutes(entry) + getTrackedBreakMinutes(entry))} relaxed` : "no relax tracked";
-    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
+    const poopCount = getTrackedPoopCount(entry);
+    const poopSummary = poopCount > 0 ? `${poopCount} bowel movement${poopCount === 1 ? "" : "s"}` : "no bowel movements tracked";
+    return `- ${entry.date}: ${entry.completedTasks.length} archived tasks, ${foodSummary}, ${napSummary}, ${relaxSummary}, ${poopSummary}, ${dreamSummary}, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}, anxiety ${renderScore(entry.anxietyScore)}`;
   });
   return [
     `# ${input.title}`,
@@ -976,6 +983,7 @@ function renderPeriodReport(input) {
     `- Tracked nap time: ${formatMinutesAsHours(trackedNapMinutes)}`,
     `- Tracked relaxing time: ${formatMinutesAsHours(trackedRelaxMinutes + trackedBreakMinutes)}`,
     `- Tracked bowel time: ${formatMinutesAsHours(trackedPoopMinutes)}`,
+    `- Bowel movements tracked: ${trackedPoopCount}`,
     `- Average mood: ${moodDays > 0 ? `${(moodTotal / moodDays).toFixed(1)}/5` : "No mood data"}`,
     `- Average energy: ${energyDays > 0 ? `${(energyTotal / energyDays).toFixed(1)}/5` : "No energy data"}`,
     `- Average anxiety: ${anxietyDays > 0 ? `${(anxietyTotal / anxietyDays).toFixed(1)}/5` : "No anxiety data"}`,
@@ -1022,6 +1030,9 @@ function getTrackedBreakMinutes(entry) {
 }
 function getTrackedPoopMinutes(entry) {
   return getTrackedMinutes(entry.poopSessions);
+}
+function getTrackedPoopCount(entry) {
+  return entry.poopSessions.length;
 }
 function resolveTrackedMinutes(sessions, override) {
   const trackedMinutes = getTrackedMinutes(sessions);
@@ -2252,6 +2263,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
+      const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
       const activeWorkSession = (_e = todayEntry.workSessions.find((session) => session.end === null)) != null ? _e : null;
       const activeNapSession = (_f = todayEntry.napSessions.find((session) => session.end === null)) != null ? _f : null;
       const activeRelaxSession = (_g = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _g : null;
@@ -2285,6 +2297,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked breaks", formatMinutesAsHours(trackedBreakMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked poop", formatMinutesAsHours(trackedPoopMinutes));
+      this.renderDayMetric(dayFlowGrid, "Bowel count", `${trackedPoopCount}`);
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
@@ -4470,6 +4483,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getTrackedPoopMinutes(entry = this.getTodayEntry()) {
     return getTrackedPoopMinutes(entry);
+  }
+  getTrackedPoopCount(entry = this.getTodayEntry()) {
+    return getTrackedPoopCount(entry);
   }
   getTrackedSleepMinutes(entry = this.getTodayEntry()) {
     return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));

@@ -244,6 +244,7 @@ export class DailyDashboardView extends ItemView {
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
+      const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
       const activeNapSession = todayEntry.napSessions.find((session) => session.end === null) ?? null;
       const activeRelaxSession = todayEntry.relaxSessions.find((session) => session.end === null) ?? null;
@@ -292,6 +293,7 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked breaks", formatMinutesAsHours(trackedBreakMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked poop", formatMinutesAsHours(trackedPoopMinutes));
+      this.renderDayMetric(dayFlowGrid, "Bowel count", `${trackedPoopCount}`);
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date()))) : "Not active");

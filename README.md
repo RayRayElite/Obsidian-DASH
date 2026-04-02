@@ -7,7 +7,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - tracks repeat daily habits with per-day counts
 - stores mood, energy, Top 3 focus, friction log, timestamped food entries, sleep log, dream log, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
-- tracks work sessions and nap sessions inside the active logical day for more accurate sleep and activity history
+- tracks work sessions, nap sessions, and bowel movement count plus duration inside the active logical day for more accurate sleep and activity history
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, surface upcoming reminders below the Execution block, and sync events into markdown for later AI analysis
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs

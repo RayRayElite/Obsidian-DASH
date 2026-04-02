@@ -40,6 +40,7 @@ import {
   getTrackedBreakMinutes,
   getTrackedMinutes,
   getTrackedNapMinutes,
+  getTrackedPoopCount,
   getTrackedPoopMinutes,
   getTrackedRelaxMinutes,
   getSleepMinutesForDay,
@@ -573,6 +574,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getTrackedPoopMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedPoopMinutes(entry);
+  }
+
+  getTrackedPoopCount(entry: DailyEntry = this.getTodayEntry()): number {
+    return getTrackedPoopCount(entry);
   }
 
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
