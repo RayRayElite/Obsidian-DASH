@@ -7,9 +7,9 @@ import {
   normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
-import type { DailyEntry, HabitDefinition, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
-export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry): string {
+export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry, calendarEvents: CalendarEventOccurrence[] = []): string {
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
     const events = entry.habitEvents[habit.id] ?? [];
@@ -40,6 +40,18 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const poopSessionLines = entry.poopSessions.length > 0
     ? entry.poopSessions.map((session) => `- ${session.start} -> ${session.end ?? "Still active"}`)
     : ["- No tracked bowel movement sessions"];
+  const calendarEventLines = calendarEvents.length > 0
+    ? calendarEvents.map((event) => {
+        const timeLabel = event.startTime
+          ? `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
+          : "All day";
+        const repeatLabel = event.repeatCadence !== "none"
+          ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})`
+          : "";
+        const notesLabel = event.notes ? ` - ${event.notes}` : "";
+        return `- ${timeLabel}: ${event.title}${repeatLabel}${notesLabel}`;
+      })
+    : ["- No calendar events"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
@@ -94,6 +106,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     "## Top 3 For Today",
     ...focusLines,
+    "",
+    "## Calendar Events",
+    ...calendarEventLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,

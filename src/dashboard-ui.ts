@@ -15,6 +15,8 @@ import {
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
   type CalendarEventEntry,
+  type CalendarEventOccurrence,
+  type CalendarRepeatCadence,
   type CalendarSnapshot,
   type CardVisualOptions,
   type CreateProjectInput,
@@ -1035,7 +1037,7 @@ export class DailyDashboardView extends ItemView {
       copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
 
       const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(actions, "Delete", async () => this.plugin.removeCalendarEvent(event.id), false, "trash-2");
+      createButton(actions, event.isRecurring ? "Delete series" : "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
     });
   }
 
@@ -1220,6 +1222,8 @@ export class CalendarEventModal extends Modal {
   private startTimeValue = "";
   private endTimeValue = "";
   private notesValue = "";
+  private repeatCadenceValue: CalendarRepeatCadence = "none";
+  private repeatUntilValue = "";
 
   constructor(app: App, plugin: DailyDashboardPlugin, date: string) {
     super(app);
@@ -1249,11 +1253,12 @@ export class CalendarEventModal extends Modal {
           .setDesc([
             event.startTime || "All day",
             event.endTime ? `to ${event.endTime}` : "",
+            event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
             event.notes
           ].filter((value) => value.length > 0).join(" • "))
           .addButton((button) => {
-            button.setButtonText("Delete").onClick(async () => {
-              await this.plugin.removeCalendarEvent(event.id);
+            button.setButtonText(event.isRecurring ? "Delete series" : "Delete").onClick(async () => {
+              await this.plugin.removeCalendarEvent(event.sourceEventId);
               this.renderContent();
             });
           });
@@ -1315,6 +1320,37 @@ export class CalendarEventModal extends Modal {
       });
 
     new Setting(contentEl)
+      .setName("Repeat")
+      .setDesc("Make this event recurring.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("none", "Does not repeat");
+        dropdown.addOption("daily", "Daily");
+        dropdown.addOption("weekly", "Weekly");
+        dropdown.addOption("monthly", "Monthly");
+        dropdown.addOption("yearly", "Yearly");
+        dropdown.setValue(this.repeatCadenceValue);
+        dropdown.onChange((value) => {
+          this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
+          this.renderContent();
+        });
+      });
+
+    if (this.repeatCadenceValue !== "none") {
+      new Setting(contentEl)
+        .setName("Repeat until")
+        .setDesc("Optional end date for the recurring series.")
+        .addText((text) => {
+          text
+            .setPlaceholder("2026-12-31")
+            .setValue(this.repeatUntilValue)
+            .onChange((value) => {
+              this.repeatUntilValue = value.trim();
+            });
+          text.inputEl.type = "date";
+        });
+    }
+
+    new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Add event").setCta().onClick(async () => {
           await this.plugin.addCalendarEvent({
@@ -1322,12 +1358,16 @@ export class CalendarEventModal extends Modal {
             date: this.date,
             startTime: this.startTimeValue,
             endTime: this.endTimeValue,
-            notes: this.notesValue
+            notes: this.notesValue,
+            repeatCadence: this.repeatCadenceValue,
+            repeatUntil: this.repeatUntilValue
           });
           this.titleValue = "";
           this.startTimeValue = "";
           this.endTimeValue = "";
           this.notesValue = "";
+          this.repeatCadenceValue = "none";
+          this.repeatUntilValue = "";
           this.renderContent();
         });
       })
@@ -1915,7 +1955,22 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Calendar behavior")
-      .setDesc("Events are stored directly in plugin data from the mini calendar at the bottom of the Execution card. Click any day to add or remove them.");
+      .setDesc("Events are stored in plugin data, synced to a calendar markdown note, and rendered into daily logs when those days are written.");
+
+    new Setting(containerEl)
+      .setName("Calendar document path")
+      .setDesc("Markdown note that stores the full calendar event list and upcoming occurrences for AI and manual review.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.calendarDocumentPath)
+          .setValue(settings.calendarDocumentPath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              calendarDocumentPath: value.trim() || DEFAULT_SETTINGS.calendarDocumentPath
+            });
+          });
+      });
 
     new Setting(containerEl)
       .setName("Calendar lookahead hours")

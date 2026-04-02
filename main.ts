@@ -90,6 +90,8 @@ import {
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
   type CalendarEventEntry,
+  type CalendarEventOccurrence,
+  type CalendarRepeatCadence,
   type CalendarSnapshot,
   type CreateProjectInput,
   type DayRepairInput,
@@ -109,6 +111,8 @@ import {
 } from "./src/dashboard-types";
 
 export default class DailyDashboardPlugin extends Plugin {
+  private static readonly CALENDAR_ARTIFACT_HORIZON_DAYS = 90;
+
   private data: DashboardPluginData = {
     settings: { ...DEFAULT_SETTINGS },
     entries: {},
@@ -140,6 +144,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.ensureTodayEntry();
     await this.backfillDailyLogsFromEntries();
+    await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
   }
 
@@ -623,9 +628,8 @@ export default class DailyDashboardPlugin extends Plugin {
       };
     }
 
-    const reminders = this.data.calendarEvents
+    const reminders = this.getCalendarOccurrencesInRange(now, new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1000))
       .map((event) => this.toCalendarReminderItem(event))
-      .filter((item): item is NonNullable<typeof item> => item !== null)
       .filter((item) => this.isCalendarReminderVisible(item, now))
       .map((item) => ({
         ...item,
@@ -640,6 +644,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.maybeWarnUpcomingCalendarEvents(snapshot.reminders, now);
     return snapshot;
   }
+
   getCalendarEvents(): CalendarEventEntry[] {
     return [...this.data.calendarEvents].sort((left, right) => {
       const leftKey = `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`;
@@ -648,8 +653,8 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
-  getCalendarEventsForDate(date: string): CalendarEventEntry[] {
-    return this.getCalendarEvents().filter((event) => event.date === date);
+  getCalendarEventsForDate(date: string): CalendarEventOccurrence[] {
+    return this.getCalendarOccurrencesForDate(date);
   }
 
   async addCalendarEvent(input: {
@@ -658,12 +663,16 @@ export default class DailyDashboardPlugin extends Plugin {
     startTime: string;
     endTime: string;
     notes: string;
+    repeatCadence: CalendarRepeatCadence;
+    repeatUntil: string;
   }): Promise<void> {
     const title = input.title.trim();
     const date = input.date.trim();
     const startTime = input.startTime.trim();
     const endTime = input.endTime.trim();
     const notes = input.notes.trim();
+    const repeatCadence = input.repeatCadence;
+    const repeatUntil = input.repeatUntil.trim();
 
     if (!title) {
       new Notice("Calendar event title is required.");
@@ -690,6 +699,21 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
+    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
+      new Notice("Unsupported repeat cadence.");
+      return;
+    }
+
+    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
+      new Notice("Repeat-until must use YYYY-MM-DD.");
+      return;
+    }
+
+    if (repeatUntil && repeatUntil < date) {
+      new Notice("Repeat-until must be on or after the event date.");
+      return;
+    }
+
     const timestamp = formatPreciseDateTimeKey(new Date());
     this.data.calendarEvents = [
       ...this.data.calendarEvents,
@@ -700,10 +724,13 @@ export default class DailyDashboardPlugin extends Plugin {
         startTime,
         endTime,
         notes,
+        repeatCadence,
+        repeatUntil,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
+    await this.syncCalendarArtifacts([date]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new Notice(`Added calendar event for ${date}.`);
@@ -716,27 +743,91 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     this.data.calendarEvents = nextEvents;
+    await this.syncCalendarArtifacts();
     await this.savePluginData();
     this.refreshDashboardViews();
   }
 
-  private toCalendarReminderItem(event: CalendarEventEntry): CalendarSnapshot["reminders"][number] | null {
-    const startDate = this.getCalendarEventStartDate(event);
-    const endDate = this.getCalendarEventEndDate(event);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      return null;
-    }
-
+  private toCalendarReminderItem(event: CalendarEventOccurrence): CalendarSnapshot["reminders"][number] {
+    const startDate = this.getCalendarOccurrenceStartDate(event);
+    const endDate = this.getCalendarOccurrenceEndDate(event);
     return {
-      id: event.id,
+      id: event.sourceEventId,
       title: event.title,
       date: event.date,
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       notes: event.notes,
+      repeatCadence: event.repeatCadence,
       allDay: event.startTime.length === 0,
       warningLevel: "upcoming"
     };
+  }
+
+  getCalendarOccurrencesForDate(date: string): CalendarEventOccurrence[] {
+    const target = new Date(`${date}T00:00:00`);
+    return this.getCalendarOccurrencesInRange(target, target)
+      .filter((event) => event.date === date)
+      .sort((left, right) => `${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+
+  private getCalendarOccurrencesInRange(start: Date, end: Date): CalendarEventOccurrence[] {
+    const safeStart = this.startOfToday(start);
+    const safeEnd = this.startOfToday(end);
+    const occurrences: CalendarEventOccurrence[] = [];
+
+    this.getCalendarEvents().forEach((event) => {
+      let cursor = new Date(`${event.date}T00:00:00`);
+      const repeatUntil = event.repeatUntil ? new Date(`${event.repeatUntil}T00:00:00`) : null;
+      const hardLimit = repeatUntil ?? new Date(Math.min(safeEnd.getTime(), new Date(safeStart.getFullYear() + 2, safeStart.getMonth(), safeStart.getDate()).getTime()));
+
+      while (cursor.getTime() <= hardLimit.getTime()) {
+        if (cursor.getTime() >= safeStart.getTime() && cursor.getTime() <= safeEnd.getTime()) {
+          occurrences.push({
+            id: `${event.id}:${formatDateKey(cursor)}`,
+            sourceEventId: event.id,
+            title: event.title,
+            date: formatDateKey(cursor),
+            startTime: event.startTime,
+            endTime: event.endTime,
+            notes: event.notes,
+            repeatCadence: event.repeatCadence,
+            repeatUntil: event.repeatUntil,
+            isRecurring: event.repeatCadence !== "none"
+          });
+        }
+
+        if (event.repeatCadence === "none") {
+          break;
+        }
+
+        cursor = this.advanceCalendarOccurrence(cursor, event.repeatCadence);
+        if (repeatUntil && cursor.getTime() > repeatUntil.getTime()) {
+          break;
+        }
+      }
+    });
+
+    return occurrences;
+  }
+
+  private advanceCalendarOccurrence(date: Date, cadence: CalendarRepeatCadence): Date {
+    const next = new Date(date);
+    if (cadence === "daily") {
+      next.setDate(next.getDate() + 1);
+    } else if (cadence === "weekly") {
+      next.setDate(next.getDate() + 7);
+    } else if (cadence === "monthly") {
+      const originalDate = next.getDate();
+      next.setMonth(next.getMonth() + 1, 1);
+      next.setDate(Math.min(originalDate, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()));
+    } else if (cadence === "yearly") {
+      const month = next.getMonth();
+      const day = next.getDate();
+      next.setFullYear(next.getFullYear() + 1, month, 1);
+      next.setDate(Math.min(day, new Date(next.getFullYear(), month + 1, 0).getDate()));
+    }
+    return next;
   }
 
   private isCalendarReminderVisible(item: CalendarSnapshot["reminders"][number], now: Date): boolean {
@@ -799,7 +890,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return start.getTime() - now.getTime() <= warningWindowMs ? "warning" : "upcoming";
   }
 
-  private getCalendarEventStartDate(event: CalendarEventEntry): Date {
+  private getCalendarOccurrenceStartDate(event: Pick<CalendarEventOccurrence, "date" | "startTime">): Date {
     if (!event.startTime) {
       return new Date(`${event.date}T00:00:00`);
     }
@@ -807,7 +898,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return new Date(`${event.date}T${event.startTime}:00`);
   }
 
-  private getCalendarEventEndDate(event: CalendarEventEntry): Date {
+  private getCalendarOccurrenceEndDate(event: Pick<CalendarEventOccurrence, "date" | "startTime" | "endTime">): Date {
     if (!event.endTime) {
       return event.startTime
         ? new Date(`${event.date}T${event.startTime}:00`)
@@ -886,6 +977,8 @@ export default class DailyDashboardPlugin extends Plugin {
       this.data.entries[date] = this.normalizeEntry(this.data.entries[date], date);
       await this.syncDailyLog(this.data.entries[date]);
     }
+
+    await this.syncCalendarArtifacts();
 
     await this.savePluginData();
     if (shouldRebuildAiIndex(previousSettings, this.data.settings)) {
@@ -2025,7 +2118,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date)),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date), this.getCalendarOccurrencesForDate(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -2679,6 +2772,13 @@ export default class DailyDashboardPlugin extends Plugin {
     const date = typeof event.date === "string" ? event.date.trim() : "";
     const startTime = typeof event.startTime === "string" ? event.startTime.trim() : "";
     const endTime = typeof event.endTime === "string" ? event.endTime.trim() : "";
+    const repeatCadence = event.repeatCadence === "daily"
+      || event.repeatCadence === "weekly"
+      || event.repeatCadence === "monthly"
+      || event.repeatCadence === "yearly"
+      ? event.repeatCadence
+      : "none";
+    const repeatUntil = typeof event.repeatUntil === "string" ? event.repeatUntil.trim() : "";
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return null;
     }
@@ -2698,6 +2798,8 @@ export default class DailyDashboardPlugin extends Plugin {
       startTime,
       endTime,
       notes: typeof event.notes === "string" ? event.notes : "",
+      repeatCadence,
+      repeatUntil,
       createdAt: typeof event.createdAt === "string" ? event.createdAt : "",
       updatedAt: typeof event.updatedAt === "string" ? event.updatedAt : ""
     };
@@ -3092,8 +3194,88 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async syncDailyLog(entry: DailyEntry): Promise<void> {
-    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date));
+    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+  }
+
+  private async syncCalendarArtifacts(seedDates: string[] = []): Promise<void> {
+    await this.syncCalendarDocument();
+
+    const dates = new Set(seedDates);
+    Object.keys(this.data.entries).forEach((date) => dates.add(date));
+    this.getCalendarArtifactDates().forEach((date) => dates.add(date));
+    dates.forEach((date) => {
+      if (!this.data.entries[date] && this.getCalendarOccurrencesForDate(date).length > 0) {
+        this.data.entries[date] = this.createEmptyEntry(date);
+      }
+    });
+
+    for (const date of Array.from(dates).sort()) {
+      const entry = this.data.entries[date];
+      if (entry) {
+        await this.syncDailyLog(entry);
+      }
+    }
+  }
+
+  private getCalendarArtifactDates(): string[] {
+    const horizonEnd = new Date();
+    horizonEnd.setDate(horizonEnd.getDate() + DailyDashboardPlugin.CALENDAR_ARTIFACT_HORIZON_DAYS);
+    return Array.from(new Set(this.getCalendarOccurrencesInRange(new Date(), horizonEnd).map((event) => event.date))).sort();
+  }
+
+  private async syncCalendarDocument(): Promise<void> {
+    const content = this.renderCalendarDocument();
+    await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+  }
+
+  private renderCalendarDocument(): string {
+    const payload = JSON.stringify(this.data.calendarEvents, null, 2);
+    const sourceLines = this.getCalendarEvents().length > 0
+      ? this.getCalendarEvents().map((event) => {
+          const timing = event.startTime
+            ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
+            : `${event.date} All day`;
+          const recurrence = event.repeatCadence !== "none"
+            ? ` • repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}`
+            : "";
+          const notes = event.notes ? ` • ${event.notes}` : "";
+          return `- ${timing}: ${event.title}${recurrence}${notes}`;
+        })
+      : ["- No calendar events yet."];
+    const upcomingOccurrences = this.getCalendarOccurrencesInRange(new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1000));
+      
+    const upcomingLines = upcomingOccurrences.length > 0
+      ? upcomingOccurrences.slice(0, 200).map((event) => {
+          const timing = event.startTime
+            ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
+            : `${event.date} All day`;
+          const recurrence = event.isRecurring ? ` • from ${event.repeatCadence} series` : "";
+          const notes = event.notes ? ` • ${event.notes}` : "";
+          return `- ${timing}: ${event.title}${recurrence}${notes}`;
+        })
+      : ["- No upcoming occurrences."];
+
+    return [
+      "---",
+      `updatedAt: ${formatDateTimeKey(new Date())}`,
+      `eventCount: ${this.data.calendarEvents.length}`,
+      "---",
+      "",
+      "# Calendar",
+      "",
+      "## Event Series",
+      ...sourceLines,
+      "",
+      "## Upcoming Occurrences",
+      ...upcomingLines,
+      "",
+      "## Calendar Payload",
+      "```json",
+      payload,
+      "```",
+      ""
+    ].join("\n");
   }
 
   private async upsertMarkdownFile(path: string, content: string): Promise<TFile> {

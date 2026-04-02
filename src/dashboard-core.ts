@@ -53,6 +53,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiEmbeddingModel: settings.aiEmbeddingModel?.trim() || DEFAULT_SETTINGS.aiEmbeddingModel,
     aiEmbeddingApiUrl: settings.aiEmbeddingApiUrl?.trim() || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
     calendarEnabled: settings.calendarEnabled ?? DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: settings.calendarDocumentPath?.trim() || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),

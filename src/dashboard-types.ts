@@ -29,6 +29,8 @@ export type AiApiKeySource = "settings" | "env";
 
 export type TodayFocusStatus = "pending" | "working" | "done";
 
+export type CalendarRepeatCadence = "none" | "daily" | "weekly" | "monthly" | "yearly";
+
 export interface CalendarEventEntry {
   id: string;
   title: string;
@@ -36,8 +38,23 @@ export interface CalendarEventEntry {
   startTime: string;
   endTime: string;
   notes: string;
+  repeatCadence: CalendarRepeatCadence;
+  repeatUntil: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CalendarEventOccurrence {
+  id: string;
+  sourceEventId: string;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+  repeatCadence: CalendarRepeatCadence;
+  repeatUntil: string;
+  isRecurring: boolean;
 }
 
 export interface TodayFocusItem {
@@ -130,6 +147,7 @@ export interface DashboardSettings {
   aiEmbeddingModel: string;
   aiEmbeddingApiUrl: string;
   calendarEnabled: boolean;
+  calendarDocumentPath: string;
   calendarLookaheadHours: number;
   calendarWarningHours: number;
   wallpaperFolder: string;
@@ -144,6 +162,7 @@ export interface CalendarReminderItem {
   start: string;
   end: string;
   notes: string;
+  repeatCadence: CalendarRepeatCadence;
   allDay: boolean;
   warningLevel: "warning" | "upcoming";
 }
@@ -376,6 +395,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiEmbeddingModel: "text-embedding-3-small",
   aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
   calendarEnabled: false,
+  calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   wallpaperFolder: "Wallpapers",

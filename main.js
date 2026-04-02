@@ -58,6 +58,7 @@ var DEFAULT_SETTINGS = {
   aiEmbeddingModel: "text-embedding-3-small",
   aiEmbeddingApiUrl: "https://api.openai.com/v1/embeddings",
   calendarEnabled: false,
+  calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   wallpaperFolder: "Wallpapers",
@@ -73,7 +74,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2;
     return {
@@ -107,10 +108,11 @@ function sanitizeSettings(settings) {
     aiEmbeddingModel: ((_s = settings.aiEmbeddingModel) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
     aiEmbeddingApiUrl: ((_t = settings.aiEmbeddingApiUrl) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
     calendarEnabled: (_u = settings.calendarEnabled) != null ? _u : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_v = settings.calendarDocumentPath) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
-    wallpaperFolder: normalizeFolderPath(((_v = settings.wallpaperFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_w = settings.selectedWallpaper) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath(((_w = settings.wallpaperFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_x = settings.selectedWallpaper) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions
   };
 }
@@ -648,7 +650,7 @@ function computeMissedHabits(habits, definitions) {
 }
 
 // src/dashboard-logs.ts
-function renderDailyLog(entry, habits, nextEntry) {
+function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   var _a, _b, _c, _d, _e;
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
@@ -680,6 +682,12 @@ function renderDailyLog(entry, habits, nextEntry) {
     var _a2;
     return `- ${session.start} -> ${(_a2 = session.end) != null ? _a2 : "Still active"}`;
   }) : ["- No tracked bowel movement sessions"];
+  const calendarEventLines = calendarEvents.length > 0 ? calendarEvents.map((event) => {
+    const timeLabel = event.startTime ? `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : "All day";
+    const repeatLabel = event.repeatCadence !== "none" ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})` : "";
+    const notesLabel = event.notes ? ` - ${event.notes}` : "";
+    return `- ${timeLabel}: ${event.title}${repeatLabel}${notesLabel}`;
+  }) : ["- No calendar events"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
@@ -733,6 +741,9 @@ function renderDailyLog(entry, habits, nextEntry) {
     "",
     "## Top 3 For Today",
     ...focusLines,
+    "",
+    "## Calendar Events",
+    ...calendarEventLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
@@ -2971,7 +2982,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", { cls: "daily-dashboard-row-meta", text: event.notes || "No notes" });
       const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(actions, "Delete", async () => this.plugin.removeCalendarEvent(event.id), false, "trash-2");
+      createButton(actions, event.isRecurring ? "Delete series" : "Delete", async () => this.plugin.removeCalendarEvent(event.sourceEventId), false, "trash-2");
     });
   }
   getCalendarMonthDays(currentMonth) {
@@ -3118,6 +3129,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.startTimeValue = "";
     this.endTimeValue = "";
     this.notesValue = "";
+    this.repeatCadenceValue = "none";
+    this.repeatUntilValue = "";
     this.plugin = plugin;
     this.date = date;
   }
@@ -3138,10 +3151,11 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         new import_obsidian3.Setting(contentEl).setName(event.title).setDesc([
           event.startTime || "All day",
           event.endTime ? `to ${event.endTime}` : "",
+          event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
           event.notes
         ].filter((value) => value.length > 0).join(" \u2022 ")).addButton((button) => {
-          button.setButtonText("Delete").onClick(async () => {
-            await this.plugin.removeCalendarEvent(event.id);
+          button.setButtonText(event.isRecurring ? "Delete series" : "Delete").onClick(async () => {
+            await this.plugin.removeCalendarEvent(event.sourceEventId);
             this.renderContent();
           });
         });
@@ -3172,6 +3186,26 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       });
       textArea.inputEl.rows = 3;
     });
+    new import_obsidian3.Setting(contentEl).setName("Repeat").setDesc("Make this event recurring.").addDropdown((dropdown) => {
+      dropdown.addOption("none", "Does not repeat");
+      dropdown.addOption("daily", "Daily");
+      dropdown.addOption("weekly", "Weekly");
+      dropdown.addOption("monthly", "Monthly");
+      dropdown.addOption("yearly", "Yearly");
+      dropdown.setValue(this.repeatCadenceValue);
+      dropdown.onChange((value) => {
+        this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
+        this.renderContent();
+      });
+    });
+    if (this.repeatCadenceValue !== "none") {
+      new import_obsidian3.Setting(contentEl).setName("Repeat until").setDesc("Optional end date for the recurring series.").addText((text) => {
+        text.setPlaceholder("2026-12-31").setValue(this.repeatUntilValue).onChange((value) => {
+          this.repeatUntilValue = value.trim();
+        });
+        text.inputEl.type = "date";
+      });
+    }
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Add event").setCta().onClick(async () => {
         await this.plugin.addCalendarEvent({
@@ -3179,12 +3213,16 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           date: this.date,
           startTime: this.startTimeValue,
           endTime: this.endTimeValue,
-          notes: this.notesValue
+          notes: this.notesValue,
+          repeatCadence: this.repeatCadenceValue,
+          repeatUntil: this.repeatUntilValue
         });
         this.titleValue = "";
         this.startTimeValue = "";
         this.endTimeValue = "";
         this.notesValue = "";
+        this.repeatCadenceValue = "none";
+        this.repeatUntilValue = "";
         this.renderContent();
       });
     }).addExtraButton((button) => {
@@ -3587,7 +3625,15 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         this.display();
       });
     });
-    new import_obsidian3.Setting(containerEl).setName("Calendar behavior").setDesc("Events are stored directly in plugin data from the mini calendar at the bottom of the Execution card. Click any day to add or remove them.");
+    new import_obsidian3.Setting(containerEl).setName("Calendar behavior").setDesc("Events are stored in plugin data, synced to a calendar markdown note, and rendered into daily logs when those days are written.");
+    new import_obsidian3.Setting(containerEl).setName("Calendar document path").setDesc("Markdown note that stores the full calendar event list and upcoming occurrences for AI and manual review.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.calendarDocumentPath).setValue(settings.calendarDocumentPath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          calendarDocumentPath: value.trim() || DEFAULT_SETTINGS.calendarDocumentPath
+        });
+      });
+    });
     new import_obsidian3.Setting(containerEl).setName("Calendar lookahead hours").setDesc("How far ahead the Execution card should look when listing upcoming reminders.").addText((text) => {
       text.setPlaceholder(`${DEFAULT_SETTINGS.calendarLookaheadHours}`).setValue(`${settings.calendarLookaheadHours}`).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -3954,7 +4000,7 @@ var AddHabitModal = class extends import_obsidian3.Modal {
 };
 
 // main.ts
-var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
+var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4.Plugin {
   constructor() {
     super(...arguments);
     this.data = {
@@ -3986,6 +4032,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
   async initializeWorkspaceArtifacts() {
     await this.ensureTodayEntry();
     await this.backfillDailyLogsFromEntries();
+    await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
   }
   async onload() {
@@ -4389,7 +4436,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
         enabled: false
       };
     }
-    const reminders = this.data.calendarEvents.map((event) => this.toCalendarReminderItem(event)).filter((item) => item !== null).filter((item) => this.isCalendarReminderVisible(item, now)).map((item) => ({
+    const reminders = this.getCalendarOccurrencesInRange(now, new Date(now.getTime() + this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3)).map((event) => this.toCalendarReminderItem(event)).filter((item) => this.isCalendarReminderVisible(item, now)).map((item) => ({
       ...item,
       warningLevel: this.getCalendarReminderWarningLevel(item, now)
     })).sort((left, right) => left.start.localeCompare(right.start));
@@ -4408,7 +4455,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     });
   }
   getCalendarEventsForDate(date) {
-    return this.getCalendarEvents().filter((event) => event.date === date);
+    return this.getCalendarOccurrencesForDate(date);
   }
   async addCalendarEvent(input) {
     const title = input.title.trim();
@@ -4416,6 +4463,8 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     const startTime = input.startTime.trim();
     const endTime = input.endTime.trim();
     const notes = input.notes.trim();
+    const repeatCadence = input.repeatCadence;
+    const repeatUntil = input.repeatUntil.trim();
     if (!title) {
       new import_obsidian4.Notice("Calendar event title is required.");
       return;
@@ -4436,6 +4485,18 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       new import_obsidian4.Notice("End time must be after start time.");
       return;
     }
+    if (!["none", "daily", "weekly", "monthly", "yearly"].includes(repeatCadence)) {
+      new import_obsidian4.Notice("Unsupported repeat cadence.");
+      return;
+    }
+    if (repeatUntil && !/^\d{4}-\d{2}-\d{2}$/.test(repeatUntil)) {
+      new import_obsidian4.Notice("Repeat-until must use YYYY-MM-DD.");
+      return;
+    }
+    if (repeatUntil && repeatUntil < date) {
+      new import_obsidian4.Notice("Repeat-until must be on or after the event date.");
+      return;
+    }
     const timestamp = formatPreciseDateTimeKey(/* @__PURE__ */ new Date());
     this.data.calendarEvents = [
       ...this.data.calendarEvents,
@@ -4446,10 +4507,13 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
         startTime,
         endTime,
         notes,
+        repeatCadence,
+        repeatUntil,
         createdAt: timestamp,
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
+    await this.syncCalendarArtifacts([date]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`Added calendar event for ${date}.`);
@@ -4460,25 +4524,80 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       return;
     }
     this.data.calendarEvents = nextEvents;
+    await this.syncCalendarArtifacts();
     await this.savePluginData();
     this.refreshDashboardViews();
   }
   toCalendarReminderItem(event) {
-    const startDate = this.getCalendarEventStartDate(event);
-    const endDate = this.getCalendarEventEndDate(event);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      return null;
-    }
+    const startDate = this.getCalendarOccurrenceStartDate(event);
+    const endDate = this.getCalendarOccurrenceEndDate(event);
     return {
-      id: event.id,
+      id: event.sourceEventId,
       title: event.title,
       date: event.date,
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       notes: event.notes,
+      repeatCadence: event.repeatCadence,
       allDay: event.startTime.length === 0,
       warningLevel: "upcoming"
     };
+  }
+  getCalendarOccurrencesForDate(date) {
+    const target = /* @__PURE__ */ new Date(`${date}T00:00:00`);
+    return this.getCalendarOccurrencesInRange(target, target).filter((event) => event.date === date).sort((left, right) => `${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+  getCalendarOccurrencesInRange(start, end) {
+    const safeStart = this.startOfToday(start);
+    const safeEnd = this.startOfToday(end);
+    const occurrences = [];
+    this.getCalendarEvents().forEach((event) => {
+      let cursor = /* @__PURE__ */ new Date(`${event.date}T00:00:00`);
+      const repeatUntil = event.repeatUntil ? /* @__PURE__ */ new Date(`${event.repeatUntil}T00:00:00`) : null;
+      const hardLimit = repeatUntil != null ? repeatUntil : new Date(Math.min(safeEnd.getTime(), new Date(safeStart.getFullYear() + 2, safeStart.getMonth(), safeStart.getDate()).getTime()));
+      while (cursor.getTime() <= hardLimit.getTime()) {
+        if (cursor.getTime() >= safeStart.getTime() && cursor.getTime() <= safeEnd.getTime()) {
+          occurrences.push({
+            id: `${event.id}:${formatDateKey(cursor)}`,
+            sourceEventId: event.id,
+            title: event.title,
+            date: formatDateKey(cursor),
+            startTime: event.startTime,
+            endTime: event.endTime,
+            notes: event.notes,
+            repeatCadence: event.repeatCadence,
+            repeatUntil: event.repeatUntil,
+            isRecurring: event.repeatCadence !== "none"
+          });
+        }
+        if (event.repeatCadence === "none") {
+          break;
+        }
+        cursor = this.advanceCalendarOccurrence(cursor, event.repeatCadence);
+        if (repeatUntil && cursor.getTime() > repeatUntil.getTime()) {
+          break;
+        }
+      }
+    });
+    return occurrences;
+  }
+  advanceCalendarOccurrence(date, cadence) {
+    const next = new Date(date);
+    if (cadence === "daily") {
+      next.setDate(next.getDate() + 1);
+    } else if (cadence === "weekly") {
+      next.setDate(next.getDate() + 7);
+    } else if (cadence === "monthly") {
+      const originalDate = next.getDate();
+      next.setMonth(next.getMonth() + 1, 1);
+      next.setDate(Math.min(originalDate, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()));
+    } else if (cadence === "yearly") {
+      const month = next.getMonth();
+      const day = next.getDate();
+      next.setFullYear(next.getFullYear() + 1, month, 1);
+      next.setDate(Math.min(day, new Date(next.getFullYear(), month + 1, 0).getDate()));
+    }
+    return next;
   }
   isCalendarReminderVisible(item, now) {
     const start = new Date(item.start);
@@ -4527,13 +4646,13 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
     }
     return start.getTime() - now.getTime() <= warningWindowMs ? "warning" : "upcoming";
   }
-  getCalendarEventStartDate(event) {
+  getCalendarOccurrenceStartDate(event) {
     if (!event.startTime) {
       return /* @__PURE__ */ new Date(`${event.date}T00:00:00`);
     }
     return /* @__PURE__ */ new Date(`${event.date}T${event.startTime}:00`);
   }
-  getCalendarEventEndDate(event) {
+  getCalendarOccurrenceEndDate(event) {
     if (!event.endTime) {
       return event.startTime ? /* @__PURE__ */ new Date(`${event.date}T${event.startTime}:00`) : /* @__PURE__ */ new Date(`${event.date}T23:59:00`);
     }
@@ -4598,6 +4717,7 @@ var DailyDashboardPlugin = class extends import_obsidian4.Plugin {
       this.data.entries[date] = this.normalizeEntry(this.data.entries[date], date);
       await this.syncDailyLog(this.data.entries[date]);
     }
+    await this.syncCalendarArtifacts();
     await this.savePluginData();
     if (shouldRebuildAiIndex(previousSettings, this.data.settings)) {
       this.scheduleNoteIndexRefresh();
@@ -5577,7 +5697,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       `Current logical day: ${this.data.dayState.activeDate} (${this.data.dayState.status})`,
       question ? `User question: ${question}` : "",
       "## Today Entry",
-      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date)),
+      renderDailyLog(todayEntry, this.getHabitDefinitions(), this.getNextEntry(todayEntry.date), this.getCalendarOccurrencesForDate(todayEntry.date)),
       "",
       "## Routine Signals",
       renderRoutineSignalsForAi(recentEntries, this.getHabitDefinitions()),
@@ -6099,6 +6219,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     const date = typeof event.date === "string" ? event.date.trim() : "";
     const startTime = typeof event.startTime === "string" ? event.startTime.trim() : "";
     const endTime = typeof event.endTime === "string" ? event.endTime.trim() : "";
+    const repeatCadence = event.repeatCadence === "daily" || event.repeatCadence === "weekly" || event.repeatCadence === "monthly" || event.repeatCadence === "yearly" ? event.repeatCadence : "none";
+    const repeatUntil = typeof event.repeatUntil === "string" ? event.repeatUntil.trim() : "";
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return null;
     }
@@ -6115,6 +6237,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       startTime,
       endTime,
       notes: typeof event.notes === "string" ? event.notes : "",
+      repeatCadence,
+      repeatUntil,
       createdAt: typeof event.createdAt === "string" ? event.createdAt : "",
       updatedAt: typeof event.updatedAt === "string" ? event.updatedAt : ""
     };
@@ -6439,8 +6563,70 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return Object.keys(this.data.entries).filter((date) => date >= startKey && date <= endKey).sort().map((date) => this.data.entries[date]);
   }
   async syncDailyLog(entry) {
-    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date));
+    const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+  }
+  async syncCalendarArtifacts(seedDates = []) {
+    await this.syncCalendarDocument();
+    const dates = new Set(seedDates);
+    Object.keys(this.data.entries).forEach((date) => dates.add(date));
+    this.getCalendarArtifactDates().forEach((date) => dates.add(date));
+    dates.forEach((date) => {
+      if (!this.data.entries[date] && this.getCalendarOccurrencesForDate(date).length > 0) {
+        this.data.entries[date] = this.createEmptyEntry(date);
+      }
+    });
+    for (const date of Array.from(dates).sort()) {
+      const entry = this.data.entries[date];
+      if (entry) {
+        await this.syncDailyLog(entry);
+      }
+    }
+  }
+  getCalendarArtifactDates() {
+    const horizonEnd = /* @__PURE__ */ new Date();
+    horizonEnd.setDate(horizonEnd.getDate() + _DailyDashboardPlugin.CALENDAR_ARTIFACT_HORIZON_DAYS);
+    return Array.from(new Set(this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), horizonEnd).map((event) => event.date))).sort();
+  }
+  async syncCalendarDocument() {
+    const content = this.renderCalendarDocument();
+    await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+  }
+  renderCalendarDocument() {
+    const payload = JSON.stringify(this.data.calendarEvents, null, 2);
+    const sourceLines = this.getCalendarEvents().length > 0 ? this.getCalendarEvents().map((event) => {
+      const timing = event.startTime ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : `${event.date} All day`;
+      const recurrence = event.repeatCadence !== "none" ? ` \u2022 repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "";
+      const notes = event.notes ? ` \u2022 ${event.notes}` : "";
+      return `- ${timing}: ${event.title}${recurrence}${notes}`;
+    }) : ["- No calendar events yet."];
+    const upcomingOccurrences = this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1e3));
+    const upcomingLines = upcomingOccurrences.length > 0 ? upcomingOccurrences.slice(0, 200).map((event) => {
+      const timing = event.startTime ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : `${event.date} All day`;
+      const recurrence = event.isRecurring ? ` \u2022 from ${event.repeatCadence} series` : "";
+      const notes = event.notes ? ` \u2022 ${event.notes}` : "";
+      return `- ${timing}: ${event.title}${recurrence}${notes}`;
+    }) : ["- No upcoming occurrences."];
+    return [
+      "---",
+      `updatedAt: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `eventCount: ${this.data.calendarEvents.length}`,
+      "---",
+      "",
+      "# Calendar",
+      "",
+      "## Event Series",
+      ...sourceLines,
+      "",
+      "## Upcoming Occurrences",
+      ...upcomingLines,
+      "",
+      "## Calendar Payload",
+      "```json",
+      payload,
+      "```",
+      ""
+    ].join("\n");
   }
   async upsertMarkdownFile(path, content) {
     return this.upsertTextFile(path, content);
@@ -6539,3 +6725,5 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return Array.from(candidates);
   }
 };
+_DailyDashboardPlugin.CALENDAR_ARTIFACT_HORIZON_DAYS = 90;
+var DailyDashboardPlugin = _DailyDashboardPlugin;
