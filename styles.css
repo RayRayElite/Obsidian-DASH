@@ -1355,7 +1355,7 @@ input.daily-dashboard-input {
   text-align: center;
   position: relative;
   z-index: 2;
-  margin-top: -2px;
+  margin-top: -12px;
 }
 
 .daily-dashboard-week-labels strong {
