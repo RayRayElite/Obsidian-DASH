@@ -51,6 +51,7 @@ export class DailyDashboardView extends ItemView {
 
   private plugin: DailyDashboardPlugin;
   private hasDeferredRefreshListeners = false;
+  private hasKeyboardShortcutListener = false;
   private pendingRefresh = false;
   private workLogFilters: WorkLogFilters = {
     project: "",
@@ -81,6 +82,27 @@ export class DailyDashboardView extends ItemView {
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
+  private readonly handleDashboardKeydown = (event: KeyboardEvent): void => {
+    if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
+      return;
+    }
+
+    if (!this.contentEl.contains(event.target as Node) && event.target !== this.contentEl) {
+      return;
+    }
+
+    if (this.shouldIgnoreShortcutEvent(event)) {
+      return;
+    }
+
+    const action = this.getShortcutAction(event);
+    if (!action) {
+      return;
+    }
+
+    event.preventDefault();
+    void action();
+  };
 
   constructor(leaf: WorkspaceLeaf, plugin: DailyDashboardPlugin) {
     super(leaf);
@@ -102,10 +124,12 @@ export class DailyDashboardView extends ItemView {
   async onOpen(): Promise<void> {
     await this.render();
     this.attachDeferredRefreshListeners();
+    this.attachKeyboardShortcutListener();
     this.startAutoRefresh();
   }
 
   async onClose(): Promise<void> {
+    this.detachKeyboardShortcutListener();
     this.stopAutoRefresh();
     this.pendingRefresh = false;
   }
@@ -143,6 +167,24 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
+  private attachKeyboardShortcutListener(): void {
+    if (this.hasKeyboardShortcutListener) {
+      return;
+    }
+
+    this.hasKeyboardShortcutListener = true;
+    this.contentEl.addEventListener("keydown", this.handleDashboardKeydown);
+  }
+
+  private detachKeyboardShortcutListener(): void {
+    if (!this.hasKeyboardShortcutListener) {
+      return;
+    }
+
+    this.hasKeyboardShortcutListener = false;
+    this.contentEl.removeEventListener("keydown", this.handleDashboardKeydown);
+  }
+
   private isEditingTextField(): boolean {
     const activeElement = document.activeElement;
     if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
@@ -155,6 +197,46 @@ export class DailyDashboardView extends ItemView {
 
     return activeElement instanceof HTMLTextAreaElement
       || ["text", "search", "number"].includes(activeElement.type);
+  }
+
+  private shouldIgnoreShortcutEvent(event: KeyboardEvent): boolean {
+    if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) {
+      return true;
+    }
+
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+      return true;
+    }
+
+    return target instanceof HTMLElement && target.isContentEditable;
+  }
+
+  private getShortcutAction(event: KeyboardEvent): (() => Promise<void>) | null {
+    const key = event.key.toLowerCase();
+    switch (key) {
+      case "v":
+        return async () => this.cycleViewMode();
+      case "l":
+        return async () => this.openLayoutCustomizationFlow();
+      case "n":
+        return async () => this.plugin.openCreateProjectFlow();
+      case "w":
+        return async () => this.plugin.generateWeeklyReview();
+      case "r":
+        return async () => this.requestRefresh();
+      case "f":
+        return async () => this.plugin.openQuickCaptureFocusFlow();
+      case "a":
+        return async () => this.plugin.openAskAiFlow();
+      case "s":
+        return async () => this.plugin.syncRepeatingProjectTasks(true);
+      case "/":
+      case "?":
+        return async () => this.openShortcutHelpFlow();
+      default:
+        return null;
+    }
   }
 
   private async flushPendingRefresh(): Promise<void> {
@@ -201,6 +283,10 @@ export class DailyDashboardView extends ItemView {
         await this.render();
       }
     }).open();
+  }
+
+  private openShortcutHelpFlow(): void {
+    new DashboardShortcutHelpModal(this.app).open();
   }
 
   private registerGridCard(
@@ -443,6 +529,9 @@ export class DailyDashboardView extends ItemView {
 
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, viewModeMeta.icon, `View mode ${viewModeMeta.label}. Switch to ${viewModeMeta.nextLabel}.`, async () => this.cycleViewMode());
+      createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
+        this.openShortcutHelpFlow();
+      });
       createIconButton(utilityActions, "sliders-horizontal", "Customize dashboard layout", async () => {
         this.openLayoutCustomizationFlow();
       });
@@ -3445,6 +3534,29 @@ export class DashboardLayoutModal extends Modal {
   }
 }
 
+export class DashboardShortcutHelpModal extends Modal {
+  onOpen(): void {
+    this.setTitle("Dashboard Keyboard Shortcuts");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    DASHBOARD_SHORTCUTS.forEach((shortcut) => {
+      new Setting(contentEl)
+        .setName(shortcut.label)
+        .setDesc(`${shortcut.keys} • ${shortcut.description}`);
+    });
+
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Shortcuts only fire while focus is inside the dashboard and never while you are typing in an input, textarea, or select field."
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 export class CreateProjectModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private categories: string[];
@@ -4657,6 +4769,12 @@ type DashboardLayoutModalOptions = {
   onApply: (cards: DashboardLayoutCardState[]) => Promise<void>;
 };
 
+type DashboardShortcutDefinition = {
+  keys: string;
+  label: string;
+  description: string;
+};
+
 const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
@@ -4686,6 +4804,18 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
   { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
   { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+];
+
+const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
+  { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
+  { keys: "Alt+Shift+L", label: "Open layout editor", description: "Customize card order, pinned cards, and hidden cards." },
+  { keys: "Alt+Shift+N", label: "Create project", description: "Open the new-project flow from anywhere inside the dashboard." },
+  { keys: "Alt+Shift+W", label: "Weekly review", description: "Generate the weekly review note." },
+  { keys: "Alt+Shift+R", label: "Refresh dashboard", description: "Rerender the dashboard with the latest state." },
+  { keys: "Alt+Shift+F", label: "Quick capture focus", description: "Open the fast focus-capture flow." },
+  { keys: "Alt+Shift+A", label: "Ask AI", description: "Open the dashboard ask-AI modal." },
+  { keys: "Alt+Shift+S", label: "Sync repeating tasks", description: "Run repeating-task sync against the project hub." },
+  { keys: "Alt+Shift+?", label: "Show shortcut help", description: "Open this shortcut list." }
 ];
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {

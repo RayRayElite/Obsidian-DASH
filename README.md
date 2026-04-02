@@ -16,7 +16,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
-- includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, and collapsible subsections to keep dense cards usable
+- includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, and collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
 Task lines in the master hub can now include lightweight annotations such as `[due: 2026-04-05]`, `[blocked: waiting on API key]`, and `[unblock: 2026-04-08]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, and blocked work in project health, cleanup alerts, promotion flows, and AI context.
@@ -77,6 +77,8 @@ Weekly and monthly reports now also surface repeated blocker patterns from frict
 The dashboard now also includes a full `Timeline Search` card that searches archived tasks, tracked sessions, calendar events, and text logs from one surface instead of splitting history across separate cards. The same area can store reusable dashboard filter presets and now ships with recent heatmaps for work, sleep, and weighted habit completion.
 
 Dashboard layout is now user-tunable instead of fixed. The lower-right hero controls include a layout editor that can reorder the main grid cards, hide sections you do not want on screen, and pin the few cards that should always rise to the top. Compact and widescreen modes were also rebalanced so major cards land in cleaner, more symmetrical rows instead of feeling like stretched mobile leftovers.
+
+The same hero control cluster now exposes a shortcut help button, and the dashboard responds to fixed `Alt+Shift` shortcuts for the most common actions while focus is inside the view: cycling view mode, opening the layout editor, creating a project, refreshing the dashboard, opening quick focus capture, launching Ask AI, syncing repeating tasks, and opening the shortcut sheet itself.
 
 ## AI Integration
 

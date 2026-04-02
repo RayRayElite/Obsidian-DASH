@@ -3432,6 +3432,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   constructor(leaf, plugin) {
     super(leaf);
     this.hasDeferredRefreshListeners = false;
+    this.hasKeyboardShortcutListener = false;
     this.pendingRefresh = false;
     this.workLogFilters = {
       project: "",
@@ -3462,6 +3463,23 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
     this.selectedCalendarDate = formatDateKey(/* @__PURE__ */ new Date());
+    this.handleDashboardKeydown = (event) => {
+      if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
+        return;
+      }
+      if (!this.contentEl.contains(event.target) && event.target !== this.contentEl) {
+        return;
+      }
+      if (this.shouldIgnoreShortcutEvent(event)) {
+        return;
+      }
+      const action = this.getShortcutAction(event);
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      void action();
+    };
     this.plugin = plugin;
   }
   getViewType() {
@@ -3476,9 +3494,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   async onOpen() {
     await this.render();
     this.attachDeferredRefreshListeners();
+    this.attachKeyboardShortcutListener();
     this.startAutoRefresh();
   }
   async onClose() {
+    this.detachKeyboardShortcutListener();
     this.stopAutoRefresh();
     this.pendingRefresh = false;
   }
@@ -3509,6 +3529,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }, 0);
     });
   }
+  attachKeyboardShortcutListener() {
+    if (this.hasKeyboardShortcutListener) {
+      return;
+    }
+    this.hasKeyboardShortcutListener = true;
+    this.contentEl.addEventListener("keydown", this.handleDashboardKeydown);
+  }
+  detachKeyboardShortcutListener() {
+    if (!this.hasKeyboardShortcutListener) {
+      return;
+    }
+    this.hasKeyboardShortcutListener = false;
+    this.contentEl.removeEventListener("keydown", this.handleDashboardKeydown);
+  }
   isEditingTextField() {
     const activeElement = document.activeElement;
     if (!(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement)) {
@@ -3518,6 +3552,42 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       return false;
     }
     return activeElement instanceof HTMLTextAreaElement || ["text", "search", "number"].includes(activeElement.type);
+  }
+  shouldIgnoreShortcutEvent(event) {
+    if (!event.altKey || !event.shiftKey || event.ctrlKey || event.metaKey) {
+      return true;
+    }
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+      return true;
+    }
+    return target instanceof HTMLElement && target.isContentEditable;
+  }
+  getShortcutAction(event) {
+    const key = event.key.toLowerCase();
+    switch (key) {
+      case "v":
+        return async () => this.cycleViewMode();
+      case "l":
+        return async () => this.openLayoutCustomizationFlow();
+      case "n":
+        return async () => this.plugin.openCreateProjectFlow();
+      case "w":
+        return async () => this.plugin.generateWeeklyReview();
+      case "r":
+        return async () => this.requestRefresh();
+      case "f":
+        return async () => this.plugin.openQuickCaptureFocusFlow();
+      case "a":
+        return async () => this.plugin.openAskAiFlow();
+      case "s":
+        return async () => this.plugin.syncRepeatingProjectTasks(true);
+      case "/":
+      case "?":
+        return async () => this.openShortcutHelpFlow();
+      default:
+        return null;
+    }
   }
   async flushPendingRefresh() {
     if (!this.pendingRefresh || this.isEditingTextField()) {
@@ -3552,6 +3622,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         await this.render();
       }
     }).open();
+  }
+  openShortcutHelpFlow() {
+    new DashboardShortcutHelpModal(this.app).open();
   }
   registerGridCard(card, title, bindings, layoutByKey) {
     const key = toClassSlug(title);
@@ -3757,6 +3830,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, viewModeMeta.icon, `View mode ${viewModeMeta.label}. Switch to ${viewModeMeta.nextLabel}.`, async () => this.cycleViewMode());
+      createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
+        this.openShortcutHelpFlow();
+      });
       createIconButton(utilityActions, "sliders-horizontal", "Customize dashboard layout", async () => {
         this.openLayoutCustomizationFlow();
       });
@@ -6444,6 +6520,23 @@ var DashboardLayoutModal = class extends import_obsidian3.Modal {
     this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, hidden: !card.hidden } : card);
   }
 };
+var DashboardShortcutHelpModal = class extends import_obsidian3.Modal {
+  onOpen() {
+    this.setTitle("Dashboard Keyboard Shortcuts");
+    const { contentEl } = this;
+    contentEl.empty();
+    DASHBOARD_SHORTCUTS.forEach((shortcut) => {
+      new import_obsidian3.Setting(contentEl).setName(shortcut.label).setDesc(`${shortcut.keys} \u2022 ${shortcut.description}`);
+    });
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Shortcuts only fire while focus is inside the dashboard and never while you are typing in an input, textarea, or select field."
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var CreateProjectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, categories) {
     var _a;
@@ -7289,6 +7382,17 @@ var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
   { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
   { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+];
+var DASHBOARD_SHORTCUTS = [
+  { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
+  { keys: "Alt+Shift+L", label: "Open layout editor", description: "Customize card order, pinned cards, and hidden cards." },
+  { keys: "Alt+Shift+N", label: "Create project", description: "Open the new-project flow from anywhere inside the dashboard." },
+  { keys: "Alt+Shift+W", label: "Weekly review", description: "Generate the weekly review note." },
+  { keys: "Alt+Shift+R", label: "Refresh dashboard", description: "Rerender the dashboard with the latest state." },
+  { keys: "Alt+Shift+F", label: "Quick capture focus", description: "Open the fast focus-capture flow." },
+  { keys: "Alt+Shift+A", label: "Ask AI", description: "Open the dashboard ask-AI modal." },
+  { keys: "Alt+Shift+S", label: "Sync repeating tasks", description: "Run repeating-task sync against the project hub." },
+  { keys: "Alt+Shift+?", label: "Show shortcut help", description: "Open this shortcut list." }
 ];
 function createCard(parent, title, description, options) {
   const cardKey = toClassSlug(title);
