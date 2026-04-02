@@ -1186,7 +1186,7 @@ input.daily-dashboard-input {
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 12px 10px 8px;
+  padding: 30px 10px 8px;
 }
 
 .daily-dashboard-week-stage::-webkit-scrollbar {
@@ -1225,22 +1225,23 @@ input.daily-dashboard-input {
   align-items: end;
   min-width: var(--daily-dashboard-week-stage-min-width);
   height: 316px;
-  padding: 30px var(--daily-dashboard-week-stage-padding) 32px;
+  padding: 14px var(--daily-dashboard-week-stage-padding) 24px;
 }
 
 .daily-dashboard-week-column {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  gap: 8px;
+  height: 100%;
   min-width: 0;
   position: relative;
-  transform: translateY(-14px);
 }
 
 .daily-dashboard-week-active-indicator {
   position: absolute;
-  top: -26px;
+  top: -24px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -1356,7 +1357,7 @@ input.daily-dashboard-input {
   text-align: center;
   position: relative;
   z-index: 2;
-  margin-top: 0;
+  margin-top: 4px;
 }
 
 .daily-dashboard-week-labels strong {
