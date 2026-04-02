@@ -340,6 +340,7 @@ function createEmptyEntry(date, habits) {
     anxietyScore: 0,
     todayFocus: [],
     nextUpFocus: [],
+    calendarFollowThroughCompleted: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],
@@ -731,6 +732,7 @@ function parseRoutineTemplates(value) {
 
 // src/dashboard-logs.ts
 var DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
+var CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
 function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   var _a, _b, _c, _d, _e;
   const payload = JSON.stringify(entry, null, 2);
@@ -750,12 +752,11 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   const relaxSessionLines = entry.relaxSessions.length > 0 ? entry.relaxSessions.map((session) => renderSessionLine(session)) : ["- No tracked relaxing sessions"];
   const breakSessionLines = entry.breakSessions.length > 0 ? entry.breakSessions.map((session) => renderSessionLine(session)) : ["- No tracked breaks"];
   const poopSessionLines = entry.poopSessions.length > 0 ? entry.poopSessions.map((session) => renderSessionLine(session)) : ["- No tracked bowel movement sessions"];
-  const calendarEventLines = calendarEvents.length > 0 ? calendarEvents.map((event) => {
-    const timeLabel = event.startTime ? `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : "All day";
-    const repeatLabel = event.repeatCadence !== "none" ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})` : "";
-    const notesLabel = event.notes ? ` - ${event.notes}` : "";
-    return `- ${timeLabel}: ${event.title}${repeatLabel}${notesLabel}`;
-  }) : ["- No calendar events"];
+  const calendarEventLines = calendarEvents.length > 0 ? calendarEvents.map((event) => renderCalendarEventLine(event)) : ["- No calendar events"];
+  const calendarFollowThroughLines = calendarEvents.length > 0 ? calendarEvents.map((event) => {
+    const checked = entry.calendarFollowThroughCompleted.includes(event.id) ? "x" : " ";
+    return `- [${checked}] Follow through on ${event.title} ${renderCalendarEventContextLabel(event)} <!-- ${CALENDAR_FOLLOW_THROUGH_MARKER}${event.id} -->`;
+  }) : ["- No follow-through items"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
@@ -821,6 +822,9 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "",
     "## Calendar Events",
     ...calendarEventLines,
+    "",
+    "## Calendar Follow-Through",
+    ...calendarFollowThroughLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
@@ -899,6 +903,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
   const payloadLines = [];
   const focusLines = [];
   const nextUpLines = [];
+  const calendarFollowThroughCompleted = /* @__PURE__ */ new Set();
   let currentSection = "";
   let inPayload = false;
   for (; index < lines.length; index += 1) {
@@ -913,6 +918,14 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     }
     if (currentSection === "next up" && trimmed.startsWith("- ")) {
       nextUpLines.push(trimmed.slice(2).trim());
+      continue;
+    }
+    if (currentSection === "calendar follow-through") {
+      const markerMatch = lines[index].match(new RegExp(`<!--\\s*${CALENDAR_FOLLOW_THROUGH_MARKER}([^\\s]+)\\s*-->`));
+      const checklistMatch = lines[index].match(CHECKLIST_REGEX);
+      if (markerMatch && checklistMatch && checklistMatch[1].toLowerCase() === "x") {
+        calendarFollowThroughCompleted.add(markerMatch[1]);
+      }
       continue;
     }
     if (currentSection !== "entry payload") {
@@ -959,6 +972,10 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     habitEvents: (_r = parsedEntry.habitEvents) != null ? _r : baseEntry.habitEvents,
     todayFocus,
     nextUpFocus,
+    calendarFollowThroughCompleted: Array.from(/* @__PURE__ */ new Set([
+      ...Array.isArray(parsedEntry.calendarFollowThroughCompleted) ? parsedEntry.calendarFollowThroughCompleted.filter((item2) => typeof item2 === "string" && item2.trim().length > 0) : [],
+      ...Array.from(calendarFollowThroughCompleted)
+    ])).sort(),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -1421,6 +1438,50 @@ function parseDurationLabel(value) {
   }
   const plainNumber = Number(normalized);
   return Number.isFinite(plainNumber) ? Math.round(plainNumber) : null;
+}
+function renderCalendarEventLine(event) {
+  const repeatLabel = event.repeatCadence !== "none" ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})` : "";
+  const contextParts = [`${event.category}`];
+  const leadSummary = renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
+  if (leadSummary) {
+    contextParts.push(leadSummary);
+  }
+  const noteLinks = extractWikiLinks(event.notes);
+  if (noteLinks.length > 0) {
+    contextParts.push(`links ${noteLinks.join(", ")}`);
+  }
+  if (event.notes.trim().length > 0) {
+    contextParts.push(event.notes.trim());
+  }
+  return `- ${renderCalendarEventWindowLabel(event)}: ${event.title}${repeatLabel}${contextParts.length > 0 ? ` - ${contextParts.join(" \u2022 ")}` : ""}`;
+}
+function renderCalendarEventContextLabel(event) {
+  const windowLabel = renderCalendarEventWindowLabel(event);
+  return `(${windowLabel})`;
+}
+function renderCalendarEventWindowLabel(event) {
+  const sameDay = event.date === event.endDate;
+  if (!event.startTime) {
+    return sameDay ? "All day" : `All day ${event.date} -> ${event.endDate}`;
+  }
+  if (sameDay) {
+    return `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`;
+  }
+  return `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`;
+}
+function renderCalendarLeadSummary(prepMinutes, travelMinutes) {
+  const parts = [];
+  if (prepMinutes > 0) {
+    parts.push(`prep ${prepMinutes}m`);
+  }
+  if (travelMinutes > 0) {
+    parts.push(`travel ${travelMinutes}m`);
+  }
+  return parts.join(" + ");
+}
+function extractWikiLinks(value) {
+  const matches = value.match(/\[\[[^\]]+\]\]/g);
+  return matches ? Array.from(new Set(matches)) : [];
 }
 
 // src/dashboard-todo.ts
@@ -2740,7 +2801,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           day.events.slice(0, 3).forEach((event) => {
             copy.createEl("span", {
               cls: "daily-dashboard-row-meta",
-              text: `${event.allDay ? "All day" : `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}`} \u2022 ${event.title}${event.notes ? ` \u2022 ${event.notes}` : ""}`
+              text: `${event.allDay ? event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day` : event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`} \u2022 ${event.title}${event.notes ? ` \u2022 ${event.notes}` : ""}`
             });
           });
           if (day.events.length > 3) {
@@ -3876,16 +3937,19 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     snapshot.reminders.forEach((event) => {
       const row = list.createDiv({ cls: `daily-dashboard-calendar-row is-${event.warningLevel}` });
       const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
-      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay) });
+      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay, new Date(event.end)) });
       time.createEl("span", { text: this.formatCalendarTimeLabel(new Date(event.start), new Date(event.end), event.allDay) });
       const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
+        text: [event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")].filter((value) => value.length > 0).join(" \u2022 ")
       });
       const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(chips, event.warningLevel === "warning" ? "Soon" : "Later", event.warningLevel === "warning" ? "alert" : "neutral");
+      if (event.leadSummary) {
+        createSemanticChip(chips, event.leadSummary, "focus");
+      }
       if (event.allDay) {
         createSemanticChip(chips, "All day", "log");
       }
@@ -3897,6 +3961,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       return [
         item2.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
         timeLabel,
+        item2.calendarLeadSummary || "",
         item2.calendarNotes || "From calendar"
       ].filter((value) => value.length > 0).join(" \u2022 ");
     }
@@ -4022,14 +4087,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     selectedEvents.forEach((event) => {
       const row = list.createDiv({ cls: "daily-dashboard-calendar-row" });
       const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
-      time.createEl("strong", { text: event.startTime || "All day" });
-      time.createEl("span", { text: event.endTime || (event.startTime ? "No end" : "Runs all day") });
+      time.createEl("strong", { text: event.date === event.endDate ? event.startTime || "All day" : `${event.date} -> ${event.endDate}` });
+      time.createEl("span", { text: event.endTime || (event.startTime ? event.date === event.endDate ? "No end" : `ends ${event.endDate}` : event.date === event.endDate ? "Runs all day" : "Runs all day across multiple days") });
       const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
         text: [
           `Category ${event.category}`,
+          event.prepMinutes > 0 ? `Prep ${event.prepMinutes}m` : "",
+          event.travelMinutes > 0 ? `Travel ${event.travelMinutes}m` : "",
           event.notes || "No notes",
           event.isException ? `${event.exceptionKind === "move" ? "Moved once" : event.exceptionKind === "cancel" ? "Cancelled once" : "Skipped once"} from ${event.originalDate}` : ""
         ].filter((value) => value.length > 0).join(" \u2022 ")
@@ -4068,8 +4135,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       return date;
     });
   }
-  formatCalendarDayLabel(date, allDay) {
+  formatCalendarDayLabel(date, allDay, endDate) {
     if (allDay) {
+      if (endDate && formatDateKey(date) !== formatDateKey(endDate)) {
+        return `${date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} -> ${endDate.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+      }
       return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
     }
     const todayKey = formatDateKey(/* @__PURE__ */ new Date());
@@ -4086,7 +4156,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   formatCalendarTimeLabel(start, end, allDay) {
     if (allDay) {
-      return "All day";
+      return formatDateKey(start) === formatDateKey(end) ? "All day" : `All day \u2022 ${start.toLocaleDateString([], { month: "short", day: "numeric" })} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })}`;
     }
     const sameDay = formatDateKey(start) === formatDateKey(end);
     const startLabel = start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -4094,7 +4164,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (sameDay) {
       return `${startLabel} - ${endLabel}`;
     }
-    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${endLabel}`;
+    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })} ${endLabel}`;
   }
   renderDayMetric(parent, label, value) {
     const metric = parent.createDiv({ cls: "daily-dashboard-day-metric" });
@@ -4268,8 +4338,11 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, date, editingEventId = null, editingOccurrenceOriginalDate = null) {
     super(app);
     this.titleValue = "";
+    this.endDateValue = "";
     this.startTimeValue = "";
     this.endTimeValue = "";
+    this.prepMinutesValue = "0";
+    this.travelMinutesValue = "0";
     this.categoryValue = "personal";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
@@ -4296,8 +4369,10 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       contentEl.createEl("h3", { text: "Existing events" });
       existingEvents.forEach((event) => {
         new import_obsidian3.Setting(contentEl).setName(event.title).setDesc([
-          event.startTime || "All day",
+          event.date === event.endDate ? event.startTime || "All day" : `${event.date} -> ${event.endDate}`,
           event.endTime ? `to ${event.endTime}` : "",
+          event.prepMinutes > 0 ? `prep ${event.prepMinutes}m` : "",
+          event.travelMinutes > 0 ? `travel ${event.travelMinutes}m` : "",
           `category ${event.category}`,
           event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
           event.isException ? `${event.exceptionKind === "move" ? "moved" : event.exceptionKind} once from ${event.originalDate}` : "",
@@ -4307,9 +4382,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
             this.editingEventId = event.sourceEventId;
             this.editingOccurrenceOriginalDate = event.isRecurring ? event.originalDate : null;
             this.date = event.date;
+            this.endDateValue = event.endDate;
             this.titleValue = event.title;
             this.startTimeValue = event.startTime;
             this.endTimeValue = event.endTime;
+            this.prepMinutesValue = `${event.prepMinutes}`;
+            this.travelMinutesValue = `${event.travelMinutes}`;
             this.categoryValue = event.category;
             this.notesValue = event.notes;
             if (!event.isRecurring) {
@@ -4329,9 +4407,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               this.editingEventId = sourceEvent.id;
               this.editingOccurrenceOriginalDate = null;
               this.date = sourceEvent.date;
+              this.endDateValue = sourceEvent.endDate;
               this.titleValue = sourceEvent.title;
               this.startTimeValue = sourceEvent.startTime;
               this.endTimeValue = sourceEvent.endTime;
+              this.prepMinutesValue = `${sourceEvent.prepMinutes}`;
+              this.travelMinutesValue = `${sourceEvent.travelMinutes}`;
               this.categoryValue = sourceEvent.category;
               this.notesValue = sourceEvent.notes;
               this.repeatCadenceValue = sourceEvent.repeatCadence;
@@ -4393,6 +4474,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       });
       text.inputEl.type = "date";
     });
+    new import_obsidian3.Setting(contentEl).setName("End date").setDesc("Same day unless this spans multiple days.").addText((text) => {
+      text.setPlaceholder("2026-04-01").setValue(this.endDateValue || this.date).onChange((value) => {
+        this.endDateValue = value.trim();
+      });
+      text.inputEl.type = "date";
+    });
     new import_obsidian3.Setting(contentEl).setName("Start time").setDesc("Leave blank for all-day events.").addText((text) => {
       text.setPlaceholder("09:30").setValue(this.startTimeValue).onChange((value) => {
         this.startTimeValue = value.trim();
@@ -4421,6 +4508,20 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         this.notesValue = value;
       });
       textArea.inputEl.rows = 3;
+    });
+    new import_obsidian3.Setting(contentEl).setName("Prep minutes").setDesc("How early prep should start before the event begins.").addText((text) => {
+      text.setPlaceholder("0").setValue(this.prepMinutesValue).onChange((value) => {
+        this.prepMinutesValue = value.trim();
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Travel minutes").setDesc("Extra lead time before the event for travel.").addText((text) => {
+      text.setPlaceholder("0").setValue(this.travelMinutesValue).onChange((value) => {
+        this.travelMinutesValue = value.trim();
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
     });
     if (!this.editingOccurrenceOriginalDate) {
       new import_obsidian3.Setting(contentEl).setName("Repeat").setDesc("Make this event recurring.").addDropdown((dropdown) => {
@@ -4454,8 +4555,11 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         const input = {
           title: this.titleValue,
           date: this.date,
+          endDate: this.endDateValue || this.date,
           startTime: this.startTimeValue,
           endTime: this.endTimeValue,
+          prepMinutes: Number(this.prepMinutesValue || 0),
+          travelMinutes: Number(this.travelMinutesValue || 0),
           category: this.categoryValue,
           notes: this.notesValue,
           repeatCadence: this.repeatCadenceValue,
@@ -4493,9 +4597,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         return;
       }
       this.date = occurrence.date;
+      this.endDateValue = occurrence.endDate;
       this.titleValue = occurrence.title;
       this.startTimeValue = occurrence.startTime;
       this.endTimeValue = occurrence.endTime;
+      this.prepMinutesValue = `${occurrence.prepMinutes}`;
+      this.travelMinutesValue = `${occurrence.travelMinutes}`;
       this.categoryValue = occurrence.category;
       this.notesValue = occurrence.notes;
       return;
@@ -4506,9 +4613,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       return;
     }
     this.date = event.date;
+    this.endDateValue = event.endDate;
     this.titleValue = event.title;
     this.startTimeValue = event.startTime;
     this.endTimeValue = event.endTime;
+    this.prepMinutesValue = `${event.prepMinutes}`;
+    this.travelMinutesValue = `${event.travelMinutes}`;
     this.categoryValue = event.category;
     this.notesValue = event.notes;
     this.repeatCadenceValue = event.repeatCadence;
@@ -4519,8 +4629,11 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.editingOccurrenceOriginalDate = null;
     this.date = this.initialDate;
     this.titleValue = "";
+    this.endDateValue = this.initialDate;
     this.startTimeValue = "";
     this.endTimeValue = "";
+    this.prepMinutesValue = "0";
+    this.travelMinutesValue = "0";
     this.categoryValue = "personal";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
@@ -6254,10 +6367,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const occurrences = this.getCalendarOccurrencesInRange(start, end);
     const byDate = /* @__PURE__ */ new Map();
     occurrences.forEach((event) => {
-      var _a;
-      const bucket = (_a = byDate.get(event.date)) != null ? _a : [];
-      bucket.push(event);
-      byDate.set(event.date, bucket);
+      this.getDateKeysInSpan(event.date, event.endDate).filter((dateKey) => dateKey >= formatDateKey(start) && dateKey <= formatDateKey(end)).forEach((dateKey) => {
+        var _a;
+        const bucket = (_a = byDate.get(dateKey)) != null ? _a : [];
+        bucket.push(event);
+        byDate.set(dateKey, bucket);
+      });
     });
     return Array.from({ length: 7 }, (_, index) => {
       var _a;
@@ -6272,6 +6387,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         events: ((_a = byDate.get(dateKey)) != null ? _a : []).map((event) => ({
           id: event.id,
           title: event.title,
+          date: event.date,
+          endDate: event.endDate,
           startTime: event.startTime,
           endTime: event.endTime,
           allDay: !event.startTime,
@@ -6372,8 +6489,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.addCalendarEvent({
       title,
       date,
+      endDate: date,
       startTime: slot.startTime,
       endTime: slot.endTime,
+      prepMinutes: 0,
+      travelMinutes: 0,
       category: "work",
       notes: typeof input.notes === "string" && input.notes.trim().length > 0 ? input.notes.trim() : "Blocked from dashboard focus planning.",
       repeatCadence: "none",
@@ -6408,15 +6528,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...event,
       title: normalized.title,
       date: normalized.date,
+      endDate: normalized.endDate,
       startTime: normalized.startTime,
       endTime: normalized.endTime,
+      prepMinutes: normalized.prepMinutes,
+      travelMinutes: normalized.travelMinutes,
       category: normalized.category,
       notes: normalized.notes,
       repeatCadence: normalized.repeatCadence,
       repeatUntil: normalized.repeatUntil,
       updatedAt: formatPreciseDateTimeKey(/* @__PURE__ */ new Date())
     } : event).sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([existingEvent.date, normalized.date]);
+    await this.syncCalendarArtifacts([existingEvent.date, existingEvent.endDate, normalized.date, normalized.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`Updated calendar event for ${normalized.date}.`);
@@ -6444,10 +6567,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         ...event.occurrenceExceptions.filter((exception) => exception.originalDate !== originalDate),
         {
           originalDate,
-          kind: normalized.date === originalDate && normalized.title === event.title && normalized.startTime === event.startTime && normalized.endTime === event.endTime && normalized.notes === event.notes ? "move" : "move",
+          kind: normalized.date === originalDate && normalized.title === event.title && normalized.startTime === event.startTime && normalized.endTime === event.endTime && normalized.endDate === event.endDate && normalized.prepMinutes === event.prepMinutes && normalized.travelMinutes === event.travelMinutes && normalized.notes === event.notes ? "move" : "move",
           date: normalized.date,
+          endDate: normalized.endDate,
           startTime: normalized.startTime,
           endTime: normalized.endTime,
+          prepMinutes: normalized.prepMinutes,
+          travelMinutes: normalized.travelMinutes,
           title: normalized.title,
           notes: normalized.notes,
           category: normalized.category,
@@ -6460,7 +6586,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         updatedAt: timestamp
       };
     });
-    await this.syncCalendarArtifacts([originalDate, normalized.date, existingEvent.date]);
+    await this.syncCalendarArtifacts([originalDate, normalized.date, normalized.endDate, existingEvent.date, existingEvent.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`Updated occurrence for ${originalDate}.`);
@@ -6482,8 +6608,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           originalDate,
           kind,
           date: originalDate,
+          endDate: this.shiftDateKey(originalDate, this.getDateSpanDays(event.date, event.endDate)),
           startTime: event.startTime,
           endTime: event.endTime,
+          prepMinutes: event.prepMinutes,
+          travelMinutes: event.travelMinutes,
           category: event.category,
           title: event.title,
           notes: event.notes,
@@ -6496,7 +6625,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         updatedAt: timestamp
       };
     });
-    await this.syncCalendarArtifacts([originalDate, existingEvent.date]);
+    await this.syncCalendarArtifacts([originalDate, existingEvent.date, existingEvent.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`${kind === "skip" ? "Skipped" : "Cancelled"} occurrence on ${originalDate}.`);
@@ -6538,7 +6667,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([normalized.date]);
+    await this.syncCalendarArtifacts([normalized.date, normalized.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`Added calendar event for ${normalized.date}.`);
@@ -6581,6 +6710,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       calendarDate: reminder.date,
       calendarStart: reminder.start,
       calendarEnd: reminder.end,
+      calendarLeadSummary: reminder.leadSummary,
       allDay: reminder.allDay,
       calendarNotes: reminder.notes,
       repeatCadence: reminder.repeatCadence,
@@ -6618,13 +6748,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   toCalendarReminderItem(event) {
     const startDate = this.getCalendarOccurrenceStartDate(event);
     const endDate = this.getCalendarOccurrenceEndDate(event);
+    const leadMinutes = Math.max(0, event.prepMinutes + event.travelMinutes);
+    const reminderAt = new Date(startDate.getTime() - leadMinutes * 60 * 1e3);
     return {
       id: event.sourceEventId,
       title: event.title,
       date: event.date,
       start: startDate.toISOString(),
       end: endDate.toISOString(),
+      reminderAt: reminderAt.toISOString(),
       notes: event.notes,
+      leadMinutes,
+      leadSummary: this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes),
       repeatCadence: event.repeatCadence,
       allDay: event.startTime.length === 0,
       warningLevel: "upcoming"
@@ -6632,7 +6767,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getCalendarOccurrencesForDate(date) {
     const target = /* @__PURE__ */ new Date(`${date}T00:00:00`);
-    return this.getCalendarOccurrencesInRange(target, target).filter((event) => event.date === date).sort((left, right) => `${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+    return this.getCalendarOccurrencesInRange(target, target).filter((event) => this.isDateWithinEventSpan(date, event.date, event.endDate)).sort((left, right) => `${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
   }
   getCalendarOccurrencesInRange(start, end) {
     const safeStart = this.startOfToday(start);
@@ -6644,11 +6779,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       const repeatUntil = event.repeatUntil ? /* @__PURE__ */ new Date(`${event.repeatUntil}T00:00:00`) : null;
       const hardLimit = repeatUntil != null ? repeatUntil : new Date(Math.min(safeEnd.getTime(), new Date(safeStart.getFullYear() + 2, safeStart.getMonth(), safeStart.getDate()).getTime()));
       const exceptionMap = new Map(event.occurrenceExceptions.map((exception) => [exception.originalDate, exception]));
+      const spanDays = this.getDateSpanDays(event.date, event.endDate);
       while (cursor.getTime() <= hardLimit.getTime()) {
         const originalDate = formatDateKey(cursor);
         const exception = exceptionMap.get(originalDate);
         const occurrenceDate = (exception == null ? void 0 : exception.kind) === "move" ? exception.date : originalDate;
-        if ((!exception || exception.kind === "move") && this.isDateWithinRange(occurrenceDate, safeStart, safeEnd)) {
+        const occurrenceEndDate = (exception == null ? void 0 : exception.kind) === "move" ? exception.endDate : this.shiftDateKey(originalDate, spanDays);
+        if ((!exception || exception.kind === "move") && this.doesEventSpanOverlapRange(occurrenceDate, occurrenceEndDate, safeStart, safeEnd)) {
           const occurrenceId = `${event.id}:${originalDate}`;
           occurrences.push({
             id: occurrenceId,
@@ -6656,8 +6793,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
             originalDate,
             title: (exception == null ? void 0 : exception.kind) === "move" ? exception.title : event.title,
             date: occurrenceDate,
+            endDate: occurrenceEndDate,
             startTime: (exception == null ? void 0 : exception.kind) === "move" ? exception.startTime : event.startTime,
             endTime: (exception == null ? void 0 : exception.kind) === "move" ? exception.endTime : event.endTime,
+            prepMinutes: (exception == null ? void 0 : exception.kind) === "move" ? exception.prepMinutes : event.prepMinutes,
+            travelMinutes: (exception == null ? void 0 : exception.kind) === "move" ? exception.travelMinutes : event.travelMinutes,
             category: (exception == null ? void 0 : exception.kind) === "move" ? exception.category : event.category,
             notes: (exception == null ? void 0 : exception.kind) === "move" ? exception.notes : event.notes,
             repeatCadence: event.repeatCadence,
@@ -6678,7 +6818,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
       event.occurrenceExceptions.filter((exception) => exception.kind === "move").forEach((exception) => {
         const occurrenceId = `${event.id}:${exception.originalDate}`;
-        if (seenOccurrenceIds.has(occurrenceId) || !this.isDateWithinRange(exception.date, safeStart, safeEnd)) {
+        if (seenOccurrenceIds.has(occurrenceId) || !this.doesEventSpanOverlapRange(exception.date, exception.endDate, safeStart, safeEnd)) {
           return;
         }
         occurrences.push({
@@ -6687,8 +6827,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           originalDate: exception.originalDate,
           title: exception.title,
           date: exception.date,
+          endDate: exception.endDate,
           startTime: exception.startTime,
           endTime: exception.endTime,
+          prepMinutes: exception.prepMinutes,
+          travelMinutes: exception.travelMinutes,
           category: exception.category,
           notes: exception.notes,
           repeatCadence: event.repeatCadence,
@@ -6751,6 +6894,33 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const date = /* @__PURE__ */ new Date(`${dateKey}T00:00:00`);
     return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
   }
+  isDateWithinEventSpan(dateKey, startDateKey, endDateKey) {
+    return dateKey >= startDateKey && dateKey <= endDateKey;
+  }
+  doesEventSpanOverlapRange(startDateKey, endDateKey, start, end) {
+    const spanStart = /* @__PURE__ */ new Date(`${startDateKey}T00:00:00`);
+    const spanEnd = /* @__PURE__ */ new Date(`${endDateKey}T23:59:59`);
+    return spanEnd.getTime() >= start.getTime() && spanStart.getTime() <= end.getTime();
+  }
+  getDateSpanDays(startDateKey, endDateKey) {
+    const start = /* @__PURE__ */ new Date(`${startDateKey}T00:00:00`);
+    const end = /* @__PURE__ */ new Date(`${endDateKey}T00:00:00`);
+    return Math.max(0, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1e3)));
+  }
+  shiftDateKey(dateKey, days) {
+    const date = /* @__PURE__ */ new Date(`${dateKey}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return formatDateKey(date);
+  }
+  getDateKeysInSpan(startDateKey, endDateKey) {
+    const keys = [];
+    let cursor = startDateKey;
+    while (cursor <= endDateKey) {
+      keys.push(cursor);
+      cursor = this.shiftDateKey(cursor, 1);
+    }
+    return keys;
+  }
   advanceCalendarOccurrence(date, cadence) {
     const next = new Date(date);
     if (cadence === "daily") {
@@ -6772,13 +6942,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   isCalendarReminderVisible(item2, now) {
     const start = new Date(item2.start);
     const end = new Date(item2.end);
+    const reminderAt = new Date(item2.reminderAt);
     const lookaheadMs = this.data.settings.calendarLookaheadHours * 60 * 60 * 1e3;
     if (item2.allDay) {
-      const startOfDay = new Date(start);
-      startOfDay.setHours(0, 0, 0, 0);
-      return startOfDay.getTime() >= this.startOfToday(now).getTime() && startOfDay.getTime() <= this.startOfToday(new Date(now.getTime() + lookaheadMs)).getTime();
+      const endOfDay = this.startOfToday(end);
+      return endOfDay.getTime() >= this.startOfToday(now).getTime() && reminderAt.getTime() <= now.getTime() + lookaheadMs;
     }
-    return end.getTime() >= now.getTime() && start.getTime() <= now.getTime() + lookaheadMs;
+    return end.getTime() >= now.getTime() && reminderAt.getTime() <= now.getTime() + lookaheadMs;
   }
   maybeWarnUpcomingCalendarEvents(reminders, now) {
     const currentDay = formatDateKey(now);
@@ -6791,25 +6961,25 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...reminder,
       warningLevel: this.getCalendarReminderWarningLevel(reminder, now)
     })).filter((event) => {
-      const startTime = new Date(event.start).getTime();
+      const reminderTime = new Date(event.reminderAt).getTime();
       if (event.allDay) {
-        const startOfDay = this.startOfToday(new Date(event.start));
-        return startOfDay.getTime() >= this.startOfToday(now).getTime() && startOfDay.getTime() - this.startOfToday(now).getTime() <= warningWindowMs;
+        const reminderDay = this.startOfToday(new Date(event.reminderAt));
+        return reminderDay.getTime() >= this.startOfToday(now).getTime() && reminderDay.getTime() - this.startOfToday(now).getTime() <= warningWindowMs;
       }
-      return startTime >= now.getTime() && startTime - now.getTime() <= warningWindowMs;
+      return reminderTime >= now.getTime() && reminderTime - now.getTime() <= warningWindowMs;
     }).forEach((event) => {
-      const eventKey = `${currentDay}|${event.id}|${event.start}`;
+      const eventKey = `${currentDay}|${event.id}|${event.reminderAt}`;
       if (this.warnedCalendarEventKeys.has(eventKey)) {
         return;
       }
       this.warnedCalendarEventKeys.add(eventKey);
       const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
-      new import_obsidian4.Notice(`Upcoming activity: ${event.title} \u2022 ${timeLabel}`, 1e4);
+      new import_obsidian4.Notice(`Upcoming activity: ${event.title} \u2022 ${timeLabel}${event.leadSummary ? ` \u2022 ${event.leadSummary}` : ""}`, 1e4);
     });
   }
   getCalendarReminderWarningLevel(reminder, now) {
     const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1e3;
-    const start = new Date(reminder.start);
+    const start = new Date(reminder.reminderAt);
     if (reminder.allDay) {
       const dayOffset = this.startOfToday(start).getTime() - this.startOfToday(now).getTime();
       return dayOffset <= warningWindowMs ? "warning" : "upcoming";
@@ -6824,9 +6994,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getCalendarOccurrenceEndDate(event) {
     if (!event.endTime) {
-      return event.startTime ? /* @__PURE__ */ new Date(`${event.date}T${event.startTime}:00`) : /* @__PURE__ */ new Date(`${event.date}T23:59:00`);
+      return event.startTime ? /* @__PURE__ */ new Date(`${event.endDate}T${event.startTime}:00`) : /* @__PURE__ */ new Date(`${event.endDate}T23:59:00`);
     }
-    return /* @__PURE__ */ new Date(`${event.date}T${event.endTime}:00`);
+    return /* @__PURE__ */ new Date(`${event.endDate}T${event.endTime}:00`);
   }
   startOfToday(date) {
     const next = new Date(date);
@@ -6835,12 +7005,22 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   formatCalendarEventWindow(start, end, allDay) {
     if (allDay) {
-      return "All day";
+      return formatDateKey(start) === formatDateKey(end) ? "All day" : `All day \u2022 ${start.toLocaleDateString([], { month: "short", day: "numeric" })} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })}`;
     }
     const sameDay = formatDateKey(start) === formatDateKey(end);
     const startLabel = start.toLocaleString([], sameDay ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    const endLabel = end.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleString([], sameDay ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     return `${startLabel} - ${endLabel}`;
+  }
+  renderCalendarLeadSummary(prepMinutes, travelMinutes) {
+    const parts = [];
+    if (prepMinutes > 0) {
+      parts.push(`prep ${prepMinutes}m`);
+    }
+    if (travelMinutes > 0) {
+      parts.push(`travel ${travelMinutes}m`);
+    }
+    return parts.join(" + ");
   }
   getAiStatus() {
     return {
@@ -8398,6 +8578,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       anxietyScore: clamp(Number((_d = entry.anxietyScore) != null ? _d : 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
+      calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted) ? entry.calendarFollowThroughCompleted.filter((item2) => typeof item2 === "string" && item2.trim().length > 0) : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item2) => normalizeFoodEntry(item2)).filter((item2) => item2 !== null) : [],
@@ -8641,8 +8822,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     const title = typeof event.title === "string" ? event.title.trim() : "";
     const date = typeof event.date === "string" ? event.date.trim() : "";
+    const endDate = typeof event.endDate === "string" && event.endDate.trim().length > 0 ? event.endDate.trim() : date;
     const startTime = typeof event.startTime === "string" ? event.startTime.trim() : "";
     const endTime = typeof event.endTime === "string" ? event.endTime.trim() : "";
+    const prepMinutes = Number.isFinite(Number(event.prepMinutes)) ? clamp(Number(event.prepMinutes), 0, 720) : 0;
+    const travelMinutes = Number.isFinite(Number(event.travelMinutes)) ? clamp(Number(event.travelMinutes), 0, 720) : 0;
     const category = event.category === "work" || event.category === "health" || event.category === "errands" || event.category === "social" ? event.category : "personal";
     const repeatCadence = event.repeatCadence === "daily" || event.repeatCadence === "weekly" || event.repeatCadence === "monthly" || event.repeatCadence === "yearly" ? event.repeatCadence : "none";
     const repeatUntil = typeof event.repeatUntil === "string" ? event.repeatUntil.trim() : "";
@@ -8650,14 +8834,17 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       originalDate: item2.originalDate.trim(),
       kind: item2.kind === "skip" || item2.kind === "cancel" ? item2.kind : "move",
       date: typeof item2.date === "string" ? item2.date.trim() : item2.originalDate.trim(),
+      endDate: typeof item2.endDate === "string" && item2.endDate.trim().length > 0 ? item2.endDate.trim() : typeof item2.date === "string" ? item2.date.trim() : item2.originalDate.trim(),
       startTime: typeof item2.startTime === "string" ? item2.startTime.trim() : "",
       endTime: typeof item2.endTime === "string" ? item2.endTime.trim() : "",
+      prepMinutes: Number.isFinite(Number(item2.prepMinutes)) ? clamp(Number(item2.prepMinutes), 0, 720) : prepMinutes,
+      travelMinutes: Number.isFinite(Number(item2.travelMinutes)) ? clamp(Number(item2.travelMinutes), 0, 720) : travelMinutes,
       category: item2.category === "work" || item2.category === "health" || item2.category === "errands" || item2.category === "social" ? item2.category : category,
       title: typeof item2.title === "string" ? item2.title : title,
       notes: typeof item2.notes === "string" ? item2.notes : "",
       updatedAt: typeof item2.updatedAt === "string" ? item2.updatedAt : ""
-    })).filter((item2) => /^\d{4}-\d{2}-\d{2}$/.test(item2.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item2.date)) : [];
-    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    })).filter((item2) => /^\d{4}-\d{2}-\d{2}$/.test(item2.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item2.date) && /^\d{4}-\d{2}-\d{2}$/.test(item2.endDate)) : [];
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < date) {
       return null;
     }
     if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
@@ -8670,8 +8857,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       id: typeof event.id === "string" && event.id.trim().length > 0 ? event.id : `calendar-${date}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
       title,
       date,
+      endDate,
       startTime,
       endTime,
+      prepMinutes,
+      travelMinutes,
       category,
       notes: typeof event.notes === "string" ? event.notes : "",
       repeatCadence,
@@ -8684,8 +8874,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   validateCalendarEventInput(input) {
     const title = input.title.trim();
     const date = input.date.trim();
+    const endDate = input.endDate.trim() || date;
     const startTime = input.startTime.trim();
     const endTime = input.endTime.trim();
+    const prepMinutes = Number.isFinite(Number(input.prepMinutes)) ? clamp(Number(input.prepMinutes), 0, 720) : 0;
+    const travelMinutes = Number.isFinite(Number(input.travelMinutes)) ? clamp(Number(input.travelMinutes), 0, 720) : 0;
     const category = input.category;
     const notes = input.notes.trim();
     const repeatCadence = input.repeatCadence;
@@ -8702,6 +8895,14 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       new import_obsidian4.Notice("Calendar event date must use YYYY-MM-DD.");
       return null;
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      new import_obsidian4.Notice("Calendar event end date must use YYYY-MM-DD.");
+      return null;
+    }
+    if (endDate < date) {
+      new import_obsidian4.Notice("Calendar event end date must be on or after the start date.");
+      return null;
+    }
     if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
       new import_obsidian4.Notice("Start time must use HH:MM.");
       return null;
@@ -8710,7 +8911,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       new import_obsidian4.Notice("End time must use HH:MM.");
       return null;
     }
-    if (startTime && endTime && endTime < startTime) {
+    if (startTime && endTime && endDate === date && endTime < startTime) {
       new import_obsidian4.Notice("End time must be after start time.");
       return null;
     }
@@ -8729,8 +8930,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     return {
       title,
       date,
+      endDate,
       startTime,
       endTime,
+      prepMinutes,
+      travelMinutes,
       category,
       notes,
       repeatCadence,
@@ -9188,7 +9392,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   getCalendarArtifactDates() {
     const horizonEnd = /* @__PURE__ */ new Date();
     horizonEnd.setDate(horizonEnd.getDate() + _DailyDashboardPlugin.CALENDAR_ARTIFACT_HORIZON_DAYS);
-    return Array.from(new Set(this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), horizonEnd).map((event) => event.date))).sort();
+    return Array.from(new Set(
+      this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), horizonEnd).flatMap((event) => this.getDateKeysInSpan(event.date, event.endDate))
+    )).sort();
   }
   async syncCalendarDocument() {
     const content = this.renderCalendarDocument();
@@ -9258,21 +9464,23 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   renderCalendarDocument() {
     const payload = JSON.stringify(this.data.calendarEvents, null, 2);
     const sourceLines = this.getCalendarEvents().length > 0 ? this.getCalendarEvents().map((event) => {
-      const timing = event.startTime ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : `${event.date} All day`;
+      const timing = event.startTime ? `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}` : event.date === event.endDate ? `${event.date} All day` : `${event.date} -> ${event.endDate} All day`;
       const category = ` \u2022 ${event.category}`;
+      const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
       const recurrence = event.repeatCadence !== "none" ? ` \u2022 repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "";
       const exceptions = event.occurrenceExceptions.length > 0 ? ` \u2022 ${event.occurrenceExceptions.length} one-off change${event.occurrenceExceptions.length === 1 ? "" : "s"}` : "";
       const notes = event.notes ? ` \u2022 ${event.notes}` : "";
-      return `- ${timing}: ${event.title}${category}${recurrence}${exceptions}${notes}`;
+      return `- ${timing}: ${event.title}${category}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exceptions}${notes}`;
     }) : ["- No calendar events yet."];
     const upcomingOccurrences = this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1e3));
     const upcomingLines = upcomingOccurrences.length > 0 ? upcomingOccurrences.slice(0, 200).map((event) => {
-      const timing = event.startTime ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}` : `${event.date} All day`;
+      const timing = event.startTime ? `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}` : event.date === event.endDate ? `${event.date} All day` : `${event.date} -> ${event.endDate} All day`;
       const category = ` \u2022 ${event.category}`;
+      const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
       const recurrence = event.isRecurring ? ` \u2022 from ${event.repeatCadence} series` : "";
       const exception = event.isException ? ` \u2022 ${event.exceptionKind === "move" ? `moved from ${event.originalDate}` : `${event.exceptionKind} once on ${event.originalDate}`}` : "";
       const notes = event.notes ? ` \u2022 ${event.notes}` : "";
-      return `- ${timing}: ${event.title}${category}${recurrence}${exception}${notes}`;
+      return `- ${timing}: ${event.title}${category}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exception}${notes}`;
     }) : ["- No upcoming occurrences."];
     return [
       "---",

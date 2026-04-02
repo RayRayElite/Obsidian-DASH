@@ -47,8 +47,11 @@ export interface CalendarOccurrenceException {
   originalDate: string;
   kind: CalendarOccurrenceExceptionKind;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
+  prepMinutes: number;
+  travelMinutes: number;
   category: CalendarEventCategory;
   title: string;
   notes: string;
@@ -59,8 +62,11 @@ export interface CalendarEventEntry {
   id: string;
   title: string;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
+  prepMinutes: number;
+  travelMinutes: number;
   category: CalendarEventCategory;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
@@ -76,8 +82,11 @@ export interface CalendarEventOccurrence {
   originalDate: string;
   title: string;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
+  prepMinutes: number;
+  travelMinutes: number;
   category: CalendarEventCategory;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
@@ -108,6 +117,7 @@ export interface DashboardFocusDisplayItem {
   calendarDate?: string;
   calendarStart?: string;
   calendarEnd?: string;
+  calendarLeadSummary?: string;
   allDay?: boolean;
   calendarNotes?: string;
   repeatCadence?: CalendarRepeatCadence;
@@ -157,6 +167,7 @@ export interface DailyEntry {
   anxietyScore: number;
   todayFocus: TodayFocusItem[];
   nextUpFocus: NextUpFocusItem[];
+  calendarFollowThroughCompleted: string[];
   frictionLog: string;
   missedHabits: string[];
   foodLog: FoodEntry[];
@@ -307,7 +318,10 @@ export interface CalendarReminderItem {
   date: string;
   start: string;
   end: string;
+  reminderAt: string;
   notes: string;
+  leadMinutes: number;
+  leadSummary: string;
   repeatCadence: CalendarRepeatCadence;
   allDay: boolean;
   warningLevel: "warning" | "upcoming";
@@ -321,6 +335,8 @@ export interface CalendarSnapshot {
 export interface WeeklyAgendaEvent {
   id: string;
   title: string;
+  date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
   allDay: boolean;

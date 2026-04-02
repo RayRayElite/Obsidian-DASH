@@ -345,6 +345,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     anxietyScore: 0,
     todayFocus: [],
     nextUpFocus: [],
+    calendarFollowThroughCompleted: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
     foodLog: [],

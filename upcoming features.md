@@ -44,12 +44,12 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## Calendar And Planning
 
-- [ ] Add travel / prep lead times for reminders.
-- [ ] Add multi-day events.
+- [x] Add travel / prep lead times for reminders.
+- [x] Add multi-day events.
 - [x] Add a weekly agenda card.
 - [x] Add time-blocking from focus items into the calendar.
 - [x] Generate suggested Top 3 based on calendar, stale work, and due repeating tasks.
-- [ ] Render richer calendar context into daily notes with project links and follow-through checkboxes.
+- [x] Render richer calendar context into daily notes with project links and follow-through checkboxes.
 
 ## Project And Task Workflow
 

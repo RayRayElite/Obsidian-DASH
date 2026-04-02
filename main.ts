@@ -827,9 +827,13 @@ export default class DailyDashboardPlugin extends Plugin {
     const byDate = new Map<string, CalendarEventOccurrence[]>();
 
     occurrences.forEach((event) => {
-      const bucket = byDate.get(event.date) ?? [];
-      bucket.push(event);
-      byDate.set(event.date, bucket);
+      this.getDateKeysInSpan(event.date, event.endDate)
+        .filter((dateKey) => dateKey >= formatDateKey(start) && dateKey <= formatDateKey(end))
+        .forEach((dateKey) => {
+          const bucket = byDate.get(dateKey) ?? [];
+          bucket.push(event);
+          byDate.set(dateKey, bucket);
+        });
     });
 
     return Array.from({ length: 7 }, (_, index) => {
@@ -844,6 +848,8 @@ export default class DailyDashboardPlugin extends Plugin {
         events: (byDate.get(dateKey) ?? []).map((event) => ({
           id: event.id,
           title: event.title,
+          date: event.date,
+          endDate: event.endDate,
           startTime: event.startTime,
           endTime: event.endTime,
           allDay: !event.startTime,
@@ -963,8 +969,11 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.addCalendarEvent({
       title,
       date,
+      endDate: date,
       startTime: slot.startTime,
       endTime: slot.endTime,
+      prepMinutes: 0,
+      travelMinutes: 0,
       category: "work",
       notes: typeof input.notes === "string" && input.notes.trim().length > 0
         ? input.notes.trim()
@@ -993,8 +1002,11 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateCalendarEvent(eventId: string, input: {
     title: string;
     date: string;
+    endDate: string;
     startTime: string;
     endTime: string;
+    prepMinutes: number;
+    travelMinutes: number;
     category: CalendarEventCategory;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
@@ -1017,8 +1029,11 @@ export default class DailyDashboardPlugin extends Plugin {
             ...event,
             title: normalized.title,
             date: normalized.date,
+          endDate: normalized.endDate,
             startTime: normalized.startTime,
             endTime: normalized.endTime,
+          prepMinutes: normalized.prepMinutes,
+          travelMinutes: normalized.travelMinutes,
             category: normalized.category,
             notes: normalized.notes,
             repeatCadence: normalized.repeatCadence,
@@ -1027,7 +1042,7 @@ export default class DailyDashboardPlugin extends Plugin {
           }
         : event)
       .sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([existingEvent.date, normalized.date]);
+    await this.syncCalendarArtifacts([existingEvent.date, existingEvent.endDate, normalized.date, normalized.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new Notice(`Updated calendar event for ${normalized.date}.`);
@@ -1036,8 +1051,11 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateCalendarOccurrence(eventId: string, originalDate: string, input: {
     title: string;
     date: string;
+    endDate: string;
     startTime: string;
     endTime: string;
+    prepMinutes: number;
+    travelMinutes: number;
     category: CalendarEventCategory;
     notes: string;
   }): Promise<void> {
@@ -1070,12 +1088,18 @@ export default class DailyDashboardPlugin extends Plugin {
             && normalized.title === event.title
             && normalized.startTime === event.startTime
             && normalized.endTime === event.endTime
+            && normalized.endDate === event.endDate
+            && normalized.prepMinutes === event.prepMinutes
+            && normalized.travelMinutes === event.travelMinutes
             && normalized.notes === event.notes
             ? "move"
             : "move",
           date: normalized.date,
+          endDate: normalized.endDate,
           startTime: normalized.startTime,
           endTime: normalized.endTime,
+          prepMinutes: normalized.prepMinutes,
+          travelMinutes: normalized.travelMinutes,
           title: normalized.title,
           notes: normalized.notes,
           category: normalized.category,
@@ -1090,7 +1114,7 @@ export default class DailyDashboardPlugin extends Plugin {
       };
     });
 
-    await this.syncCalendarArtifacts([originalDate, normalized.date, existingEvent.date]);
+    await this.syncCalendarArtifacts([originalDate, normalized.date, normalized.endDate, existingEvent.date, existingEvent.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new Notice(`Updated occurrence for ${originalDate}.`);
@@ -1115,8 +1139,11 @@ export default class DailyDashboardPlugin extends Plugin {
           originalDate,
           kind,
           date: originalDate,
+          endDate: this.shiftDateKey(originalDate, this.getDateSpanDays(event.date, event.endDate)),
           startTime: event.startTime,
           endTime: event.endTime,
+          prepMinutes: event.prepMinutes,
+          travelMinutes: event.travelMinutes,
           category: event.category,
           title: event.title,
           notes: event.notes,
@@ -1131,7 +1158,7 @@ export default class DailyDashboardPlugin extends Plugin {
       };
     });
 
-    await this.syncCalendarArtifacts([originalDate, existingEvent.date]);
+    await this.syncCalendarArtifacts([originalDate, existingEvent.date, existingEvent.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new Notice(`${kind === "skip" ? "Skipped" : "Cancelled"} occurrence on ${originalDate}.`);
@@ -1165,8 +1192,11 @@ export default class DailyDashboardPlugin extends Plugin {
   async addCalendarEvent(input: {
     title: string;
     date: string;
+    endDate: string;
     startTime: string;
     endTime: string;
+    prepMinutes: number;
+    travelMinutes: number;
     category: CalendarEventCategory;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
@@ -1188,7 +1218,7 @@ export default class DailyDashboardPlugin extends Plugin {
         updatedAt: timestamp
       }
     ].sort((left, right) => `${left.date} ${left.startTime || "00:00"}`.localeCompare(`${right.date} ${right.startTime || "00:00"}`));
-    await this.syncCalendarArtifacts([normalized.date]);
+    await this.syncCalendarArtifacts([normalized.date, normalized.endDate]);
     await this.savePluginData();
     this.refreshDashboardViews();
     new Notice(`Added calendar event for ${normalized.date}.`);
@@ -1236,6 +1266,7 @@ export default class DailyDashboardPlugin extends Plugin {
         calendarDate: reminder.date,
         calendarStart: reminder.start,
         calendarEnd: reminder.end,
+        calendarLeadSummary: reminder.leadSummary,
         allDay: reminder.allDay,
         calendarNotes: reminder.notes,
         repeatCadence: reminder.repeatCadence,
@@ -1287,13 +1318,18 @@ export default class DailyDashboardPlugin extends Plugin {
   private toCalendarReminderItem(event: CalendarEventOccurrence): CalendarSnapshot["reminders"][number] {
     const startDate = this.getCalendarOccurrenceStartDate(event);
     const endDate = this.getCalendarOccurrenceEndDate(event);
+    const leadMinutes = Math.max(0, event.prepMinutes + event.travelMinutes);
+    const reminderAt = new Date(startDate.getTime() - (leadMinutes * 60 * 1000));
     return {
       id: event.sourceEventId,
       title: event.title,
       date: event.date,
       start: startDate.toISOString(),
       end: endDate.toISOString(),
+      reminderAt: reminderAt.toISOString(),
       notes: event.notes,
+      leadMinutes,
+      leadSummary: this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes),
       repeatCadence: event.repeatCadence,
       allDay: event.startTime.length === 0,
       warningLevel: "upcoming"
@@ -1303,7 +1339,7 @@ export default class DailyDashboardPlugin extends Plugin {
   getCalendarOccurrencesForDate(date: string): CalendarEventOccurrence[] {
     const target = new Date(`${date}T00:00:00`);
     return this.getCalendarOccurrencesInRange(target, target)
-      .filter((event) => event.date === date)
+      .filter((event) => this.isDateWithinEventSpan(date, event.date, event.endDate))
       .sort((left, right) => `${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
   }
 
@@ -1318,12 +1354,16 @@ export default class DailyDashboardPlugin extends Plugin {
       const repeatUntil = event.repeatUntil ? new Date(`${event.repeatUntil}T00:00:00`) : null;
       const hardLimit = repeatUntil ?? new Date(Math.min(safeEnd.getTime(), new Date(safeStart.getFullYear() + 2, safeStart.getMonth(), safeStart.getDate()).getTime()));
       const exceptionMap = new Map(event.occurrenceExceptions.map((exception) => [exception.originalDate, exception]));
+      const spanDays = this.getDateSpanDays(event.date, event.endDate);
 
       while (cursor.getTime() <= hardLimit.getTime()) {
         const originalDate = formatDateKey(cursor);
         const exception = exceptionMap.get(originalDate);
         const occurrenceDate = exception?.kind === "move" ? exception.date : originalDate;
-        if ((!exception || exception.kind === "move") && this.isDateWithinRange(occurrenceDate, safeStart, safeEnd)) {
+        const occurrenceEndDate = exception?.kind === "move"
+          ? exception.endDate
+          : this.shiftDateKey(originalDate, spanDays);
+        if ((!exception || exception.kind === "move") && this.doesEventSpanOverlapRange(occurrenceDate, occurrenceEndDate, safeStart, safeEnd)) {
           const occurrenceId = `${event.id}:${originalDate}`;
           occurrences.push({
             id: occurrenceId,
@@ -1331,8 +1371,11 @@ export default class DailyDashboardPlugin extends Plugin {
             originalDate,
             title: exception?.kind === "move" ? exception.title : event.title,
             date: occurrenceDate,
+            endDate: occurrenceEndDate,
             startTime: exception?.kind === "move" ? exception.startTime : event.startTime,
             endTime: exception?.kind === "move" ? exception.endTime : event.endTime,
+            prepMinutes: exception?.kind === "move" ? exception.prepMinutes : event.prepMinutes,
+            travelMinutes: exception?.kind === "move" ? exception.travelMinutes : event.travelMinutes,
             category: exception?.kind === "move" ? exception.category : event.category,
             notes: exception?.kind === "move" ? exception.notes : event.notes,
             repeatCadence: event.repeatCadence,
@@ -1358,7 +1401,7 @@ export default class DailyDashboardPlugin extends Plugin {
         .filter((exception) => exception.kind === "move")
         .forEach((exception) => {
           const occurrenceId = `${event.id}:${exception.originalDate}`;
-          if (seenOccurrenceIds.has(occurrenceId) || !this.isDateWithinRange(exception.date, safeStart, safeEnd)) {
+          if (seenOccurrenceIds.has(occurrenceId) || !this.doesEventSpanOverlapRange(exception.date, exception.endDate, safeStart, safeEnd)) {
             return;
           }
 
@@ -1368,8 +1411,11 @@ export default class DailyDashboardPlugin extends Plugin {
             originalDate: exception.originalDate,
             title: exception.title,
             date: exception.date,
+            endDate: exception.endDate,
             startTime: exception.startTime,
             endTime: exception.endTime,
+            prepMinutes: exception.prepMinutes,
+            travelMinutes: exception.travelMinutes,
             category: exception.category,
             notes: exception.notes,
             repeatCadence: event.repeatCadence,
@@ -1450,6 +1496,38 @@ export default class DailyDashboardPlugin extends Plugin {
     return date.getTime() >= start.getTime() && date.getTime() <= end.getTime();
   }
 
+  private isDateWithinEventSpan(dateKey: string, startDateKey: string, endDateKey: string): boolean {
+    return dateKey >= startDateKey && dateKey <= endDateKey;
+  }
+
+  private doesEventSpanOverlapRange(startDateKey: string, endDateKey: string, start: Date, end: Date): boolean {
+    const spanStart = new Date(`${startDateKey}T00:00:00`);
+    const spanEnd = new Date(`${endDateKey}T23:59:59`);
+    return spanEnd.getTime() >= start.getTime() && spanStart.getTime() <= end.getTime();
+  }
+
+  private getDateSpanDays(startDateKey: string, endDateKey: string): number {
+    const start = new Date(`${startDateKey}T00:00:00`);
+    const end = new Date(`${endDateKey}T00:00:00`);
+    return Math.max(0, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+  }
+
+  private shiftDateKey(dateKey: string, days: number): string {
+    const date = new Date(`${dateKey}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return formatDateKey(date);
+  }
+
+  private getDateKeysInSpan(startDateKey: string, endDateKey: string): string[] {
+    const keys: string[] = [];
+    let cursor = startDateKey;
+    while (cursor <= endDateKey) {
+      keys.push(cursor);
+      cursor = this.shiftDateKey(cursor, 1);
+    }
+    return keys;
+  }
+
   private advanceCalendarOccurrence(date: Date, cadence: CalendarRepeatCadence): Date {
     const next = new Date(date);
     if (cadence === "daily") {
@@ -1472,15 +1550,15 @@ export default class DailyDashboardPlugin extends Plugin {
   private isCalendarReminderVisible(item: CalendarSnapshot["reminders"][number], now: Date): boolean {
     const start = new Date(item.start);
     const end = new Date(item.end);
+    const reminderAt = new Date(item.reminderAt);
     const lookaheadMs = this.data.settings.calendarLookaheadHours * 60 * 60 * 1000;
     if (item.allDay) {
-      const startOfDay = new Date(start);
-      startOfDay.setHours(0, 0, 0, 0);
-      return startOfDay.getTime() >= this.startOfToday(now).getTime()
-        && startOfDay.getTime() <= this.startOfToday(new Date(now.getTime() + lookaheadMs)).getTime();
+      const endOfDay = this.startOfToday(end);
+      return endOfDay.getTime() >= this.startOfToday(now).getTime()
+        && reminderAt.getTime() <= now.getTime() + lookaheadMs;
     }
 
-    return end.getTime() >= now.getTime() && start.getTime() <= now.getTime() + lookaheadMs;
+    return end.getTime() >= now.getTime() && reminderAt.getTime() <= now.getTime() + lookaheadMs;
   }
 
   private maybeWarnUpcomingCalendarEvents(reminders: CalendarSnapshot["reminders"], now: Date): void {
@@ -1497,30 +1575,30 @@ export default class DailyDashboardPlugin extends Plugin {
         warningLevel: this.getCalendarReminderWarningLevel(reminder, now)
       }))
       .filter((event) => {
-        const startTime = new Date(event.start).getTime();
+        const reminderTime = new Date(event.reminderAt).getTime();
         if (event.allDay) {
-          const startOfDay = this.startOfToday(new Date(event.start));
-          return startOfDay.getTime() >= this.startOfToday(now).getTime()
-            && startOfDay.getTime() - this.startOfToday(now).getTime() <= warningWindowMs;
+          const reminderDay = this.startOfToday(new Date(event.reminderAt));
+          return reminderDay.getTime() >= this.startOfToday(now).getTime()
+            && reminderDay.getTime() - this.startOfToday(now).getTime() <= warningWindowMs;
         }
 
-        return startTime >= now.getTime() && startTime - now.getTime() <= warningWindowMs;
+        return reminderTime >= now.getTime() && reminderTime - now.getTime() <= warningWindowMs;
       })
       .forEach((event) => {
-        const eventKey = `${currentDay}|${event.id}|${event.start}`;
+        const eventKey = `${currentDay}|${event.id}|${event.reminderAt}`;
         if (this.warnedCalendarEventKeys.has(eventKey)) {
           return;
         }
 
         this.warnedCalendarEventKeys.add(eventKey);
         const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
-        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}`, 10000);
+        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}${event.leadSummary ? ` • ${event.leadSummary}` : ""}`, 10000);
       });
   }
 
   private getCalendarReminderWarningLevel(reminder: CalendarSnapshot["reminders"][number], now: Date): "warning" | "upcoming" {
     const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1000;
-    const start = new Date(reminder.start);
+    const start = new Date(reminder.reminderAt);
     if (reminder.allDay) {
       const dayOffset = this.startOfToday(start).getTime() - this.startOfToday(now).getTime();
       return dayOffset <= warningWindowMs ? "warning" : "upcoming";
@@ -1537,14 +1615,14 @@ export default class DailyDashboardPlugin extends Plugin {
     return new Date(`${event.date}T${event.startTime}:00`);
   }
 
-  private getCalendarOccurrenceEndDate(event: Pick<CalendarEventOccurrence, "date" | "startTime" | "endTime">): Date {
+  private getCalendarOccurrenceEndDate(event: Pick<CalendarEventOccurrence, "date" | "endDate" | "startTime" | "endTime">): Date {
     if (!event.endTime) {
       return event.startTime
-        ? new Date(`${event.date}T${event.startTime}:00`)
-        : new Date(`${event.date}T23:59:00`);
+        ? new Date(`${event.endDate}T${event.startTime}:00`)
+        : new Date(`${event.endDate}T23:59:00`);
     }
 
-    return new Date(`${event.date}T${event.endTime}:00`);
+    return new Date(`${event.endDate}T${event.endTime}:00`);
   }
 
   private startOfToday(date: Date): Date {
@@ -1555,15 +1633,30 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private formatCalendarEventWindow(start: Date, end: Date, allDay: boolean): string {
     if (allDay) {
-      return "All day";
+      return formatDateKey(start) === formatDateKey(end)
+        ? "All day"
+        : `All day • ${start.toLocaleDateString([], { month: "short", day: "numeric" })} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })}`;
     }
 
     const sameDay = formatDateKey(start) === formatDateKey(end);
     const startLabel = start.toLocaleString([], sameDay
       ? { hour: "numeric", minute: "2-digit" }
       : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-    const endLabel = end.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+    const endLabel = end.toLocaleString([], sameDay
+      ? { hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     return `${startLabel} - ${endLabel}`;
+  }
+
+  private renderCalendarLeadSummary(prepMinutes: number, travelMinutes: number): string {
+    const parts: string[] = [];
+    if (prepMinutes > 0) {
+      parts.push(`prep ${prepMinutes}m`);
+    }
+    if (travelMinutes > 0) {
+      parts.push(`travel ${travelMinutes}m`);
+    }
+    return parts.join(" + ");
   }
 
   getAiStatus(): AiStatus {
@@ -3416,6 +3509,9 @@ export default class DailyDashboardPlugin extends Plugin {
       anxietyScore: clamp(Number(entry.anxietyScore ?? 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
+      calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted)
+        ? entry.calendarFollowThroughCompleted.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
       foodLog: Array.isArray(entry.foodLog)
@@ -3713,8 +3809,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const title = typeof event.title === "string" ? event.title.trim() : "";
     const date = typeof event.date === "string" ? event.date.trim() : "";
+    const endDate = typeof event.endDate === "string" && event.endDate.trim().length > 0 ? event.endDate.trim() : date;
     const startTime = typeof event.startTime === "string" ? event.startTime.trim() : "";
     const endTime = typeof event.endTime === "string" ? event.endTime.trim() : "";
+    const prepMinutes = Number.isFinite(Number(event.prepMinutes)) ? clamp(Number(event.prepMinutes), 0, 720) : 0;
+    const travelMinutes = Number.isFinite(Number(event.travelMinutes)) ? clamp(Number(event.travelMinutes), 0, 720) : 0;
     const category = event.category === "work"
       || event.category === "health"
       || event.category === "errands"
@@ -3735,8 +3834,11 @@ export default class DailyDashboardPlugin extends Plugin {
             originalDate: item.originalDate.trim(),
             kind: item.kind === "skip" || item.kind === "cancel" ? item.kind : "move",
             date: typeof item.date === "string" ? item.date.trim() : item.originalDate.trim(),
+            endDate: typeof item.endDate === "string" && item.endDate.trim().length > 0 ? item.endDate.trim() : (typeof item.date === "string" ? item.date.trim() : item.originalDate.trim()),
             startTime: typeof item.startTime === "string" ? item.startTime.trim() : "",
             endTime: typeof item.endTime === "string" ? item.endTime.trim() : "",
+            prepMinutes: Number.isFinite(Number(item.prepMinutes)) ? clamp(Number(item.prepMinutes), 0, 720) : prepMinutes,
+            travelMinutes: Number.isFinite(Number(item.travelMinutes)) ? clamp(Number(item.travelMinutes), 0, 720) : travelMinutes,
             category: item.category === "work"
               || item.category === "health"
               || item.category === "errands"
@@ -3747,9 +3849,9 @@ export default class DailyDashboardPlugin extends Plugin {
             notes: typeof item.notes === "string" ? item.notes : "",
             updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : ""
           }))
-          .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item.date))
+          .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && /^\d{4}-\d{2}-\d{2}$/.test(item.endDate))
       : [];
-    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < date) {
       return null;
     }
 
@@ -3765,8 +3867,11 @@ export default class DailyDashboardPlugin extends Plugin {
       id: typeof event.id === "string" && event.id.trim().length > 0 ? event.id : `calendar-${date}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
       title,
       date,
+      endDate,
       startTime,
       endTime,
+      prepMinutes,
+      travelMinutes,
       category,
       notes: typeof event.notes === "string" ? event.notes : "",
       repeatCadence,
@@ -3780,8 +3885,11 @@ export default class DailyDashboardPlugin extends Plugin {
   private validateCalendarEventInput(input: {
     title: string;
     date: string;
+    endDate: string;
     startTime: string;
     endTime: string;
+    prepMinutes: number;
+    travelMinutes: number;
     category: CalendarEventCategory;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
@@ -3789,8 +3897,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }): Omit<CalendarEventEntry, "id" | "createdAt" | "updatedAt"> | null {
     const title = input.title.trim();
     const date = input.date.trim();
+    const endDate = input.endDate.trim() || date;
     const startTime = input.startTime.trim();
     const endTime = input.endTime.trim();
+    const prepMinutes = Number.isFinite(Number(input.prepMinutes)) ? clamp(Number(input.prepMinutes), 0, 720) : 0;
+    const travelMinutes = Number.isFinite(Number(input.travelMinutes)) ? clamp(Number(input.travelMinutes), 0, 720) : 0;
     const category = input.category;
     const notes = input.notes.trim();
     const repeatCadence = input.repeatCadence;
@@ -3811,6 +3922,16 @@ export default class DailyDashboardPlugin extends Plugin {
       return null;
     }
 
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      new Notice("Calendar event end date must use YYYY-MM-DD.");
+      return null;
+    }
+
+    if (endDate < date) {
+      new Notice("Calendar event end date must be on or after the start date.");
+      return null;
+    }
+
     if (startTime && !/^\d{2}:\d{2}$/.test(startTime)) {
       new Notice("Start time must use HH:MM.");
       return null;
@@ -3821,7 +3942,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return null;
     }
 
-    if (startTime && endTime && endTime < startTime) {
+    if (startTime && endTime && endDate === date && endTime < startTime) {
       new Notice("End time must be after start time.");
       return null;
     }
@@ -3844,8 +3965,11 @@ export default class DailyDashboardPlugin extends Plugin {
     return {
       title,
       date,
+      endDate,
       startTime,
       endTime,
+      prepMinutes,
+      travelMinutes,
       category,
       notes,
       repeatCadence,
@@ -4423,7 +4547,10 @@ export default class DailyDashboardPlugin extends Plugin {
   private getCalendarArtifactDates(): string[] {
     const horizonEnd = new Date();
     horizonEnd.setDate(horizonEnd.getDate() + DailyDashboardPlugin.CALENDAR_ARTIFACT_HORIZON_DAYS);
-    return Array.from(new Set(this.getCalendarOccurrencesInRange(new Date(), horizonEnd).map((event) => event.date))).sort();
+    return Array.from(new Set(
+      this.getCalendarOccurrencesInRange(new Date(), horizonEnd)
+        .flatMap((event) => this.getDateKeysInSpan(event.date, event.endDate))
+    )).sort();
   }
 
   private async syncCalendarDocument(): Promise<void> {
@@ -4513,9 +4640,10 @@ export default class DailyDashboardPlugin extends Plugin {
     const sourceLines = this.getCalendarEvents().length > 0
       ? this.getCalendarEvents().map((event) => {
           const timing = event.startTime
-            ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
-            : `${event.date} All day`;
+            ? `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`
+            : event.date === event.endDate ? `${event.date} All day` : `${event.date} -> ${event.endDate} All day`;
           const category = ` • ${event.category}`;
+          const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
           const recurrence = event.repeatCadence !== "none"
             ? ` • repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}`
             : "";
@@ -4523,7 +4651,7 @@ export default class DailyDashboardPlugin extends Plugin {
             ? ` • ${event.occurrenceExceptions.length} one-off change${event.occurrenceExceptions.length === 1 ? "" : "s"}`
             : "";
           const notes = event.notes ? ` • ${event.notes}` : "";
-          return `- ${timing}: ${event.title}${category}${recurrence}${exceptions}${notes}`;
+          return `- ${timing}: ${event.title}${category}${lead ? ` • ${lead}` : ""}${recurrence}${exceptions}${notes}`;
         })
       : ["- No calendar events yet."];
     const upcomingOccurrences = this.getCalendarOccurrencesInRange(new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1000));
@@ -4531,15 +4659,16 @@ export default class DailyDashboardPlugin extends Plugin {
     const upcomingLines = upcomingOccurrences.length > 0
       ? upcomingOccurrences.slice(0, 200).map((event) => {
           const timing = event.startTime
-            ? `${event.date} ${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
-            : `${event.date} All day`;
+            ? `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`
+            : event.date === event.endDate ? `${event.date} All day` : `${event.date} -> ${event.endDate} All day`;
           const category = ` • ${event.category}`;
+          const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
           const recurrence = event.isRecurring ? ` • from ${event.repeatCadence} series` : "";
           const exception = event.isException
             ? ` • ${event.exceptionKind === "move" ? `moved from ${event.originalDate}` : `${event.exceptionKind} once on ${event.originalDate}`}`
             : "";
           const notes = event.notes ? ` • ${event.notes}` : "";
-          return `- ${timing}: ${event.title}${category}${recurrence}${exception}${notes}`;
+          return `- ${timing}: ${event.title}${category}${lead ? ` • ${lead}` : ""}${recurrence}${exception}${notes}`;
         })
       : ["- No upcoming occurrences."];
 

@@ -424,7 +424,7 @@ export class DailyDashboardView extends ItemView {
           day.events.slice(0, 3).forEach((event) => {
             copy.createEl("span", {
               cls: "daily-dashboard-row-meta",
-              text: `${event.allDay ? "All day" : `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}`} • ${event.title}${event.notes ? ` • ${event.notes}` : ""}`
+              text: `${event.allDay ? (event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day`) : (event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`)} • ${event.title}${event.notes ? ` • ${event.notes}` : ""}`
             });
           });
           if (day.events.length > 3) {
@@ -1633,18 +1633,23 @@ export class DailyDashboardView extends ItemView {
     snapshot.reminders.forEach((event) => {
       const row = list.createDiv({ cls: `daily-dashboard-calendar-row is-${event.warningLevel}` });
       const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
-      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay) });
+      time.createEl("strong", { text: this.formatCalendarDayLabel(new Date(event.start), event.allDay, new Date(event.end)) });
       time.createEl("span", { text: this.formatCalendarTimeLabel(new Date(event.start), new Date(event.end), event.allDay) });
 
       const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")
+        text: [event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")]
+          .filter((value) => value.length > 0)
+          .join(" • ")
       });
 
       const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(chips, event.warningLevel === "warning" ? "Soon" : "Later", event.warningLevel === "warning" ? "alert" : "neutral");
+      if (event.leadSummary) {
+        createSemanticChip(chips, event.leadSummary, "focus");
+      }
       if (event.allDay) {
         createSemanticChip(chips, "All day", "log");
       }
@@ -1659,6 +1664,7 @@ export class DailyDashboardView extends ItemView {
       return [
         item.warningLevel === "warning" ? "Upcoming soon" : "Reminder",
         timeLabel,
+        item.calendarLeadSummary || "",
         item.calendarNotes || "From calendar"
       ].filter((value) => value.length > 0).join(" • ");
     }
@@ -1799,8 +1805,8 @@ export class DailyDashboardView extends ItemView {
     selectedEvents.forEach((event) => {
       const row = list.createDiv({ cls: "daily-dashboard-calendar-row" });
       const time = row.createDiv({ cls: "daily-dashboard-calendar-time" });
-      time.createEl("strong", { text: event.startTime || "All day" });
-      time.createEl("span", { text: event.endTime || (event.startTime ? "No end" : "Runs all day") });
+      time.createEl("strong", { text: event.date === event.endDate ? (event.startTime || "All day") : `${event.date} -> ${event.endDate}` });
+      time.createEl("span", { text: event.endTime || (event.startTime ? (event.date === event.endDate ? "No end" : `ends ${event.endDate}`) : event.date === event.endDate ? "Runs all day" : "Runs all day across multiple days") });
 
       const copy = row.createDiv({ cls: "daily-dashboard-calendar-copy" });
       copy.createEl("strong", { text: event.title });
@@ -1808,6 +1814,8 @@ export class DailyDashboardView extends ItemView {
         cls: "daily-dashboard-row-meta",
         text: [
           `Category ${event.category}`,
+          event.prepMinutes > 0 ? `Prep ${event.prepMinutes}m` : "",
+          event.travelMinutes > 0 ? `Travel ${event.travelMinutes}m` : "",
           event.notes || "No notes",
           event.isException ? `${event.exceptionKind === "move" ? "Moved once" : event.exceptionKind === "cancel" ? "Cancelled once" : "Skipped once"} from ${event.originalDate}` : ""
         ].filter((value) => value.length > 0).join(" • ")
@@ -1850,8 +1858,12 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private formatCalendarDayLabel(date: Date, allDay: boolean): string {
+  private formatCalendarDayLabel(date: Date, allDay: boolean, endDate?: Date): string {
     if (allDay) {
+      if (endDate && formatDateKey(date) !== formatDateKey(endDate)) {
+        return `${date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} -> ${endDate.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+      }
+
       return date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
     }
 
@@ -1872,7 +1884,9 @@ export class DailyDashboardView extends ItemView {
 
   private formatCalendarTimeLabel(start: Date, end: Date, allDay: boolean): string {
     if (allDay) {
-      return "All day";
+      return formatDateKey(start) === formatDateKey(end)
+        ? "All day"
+        : `All day • ${start.toLocaleDateString([], { month: "short", day: "numeric" })} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })}`;
     }
 
     const sameDay = formatDateKey(start) === formatDateKey(end);
@@ -1882,7 +1896,7 @@ export class DailyDashboardView extends ItemView {
       return `${startLabel} - ${endLabel}`;
     }
 
-    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${endLabel}`;
+    return `${start.toLocaleDateString([], { month: "short", day: "numeric" })} ${startLabel} - ${end.toLocaleDateString([], { month: "short", day: "numeric" })} ${endLabel}`;
   }
 
   private renderDayMetric(parent: HTMLElement, label: string, value: string): HTMLElement {
@@ -2083,8 +2097,11 @@ export class CalendarEventModal extends Modal {
   private editingEventId: string | null;
   private editingOccurrenceOriginalDate: string | null;
   private titleValue = "";
+  private endDateValue = "";
   private startTimeValue = "";
   private endTimeValue = "";
+  private prepMinutesValue = "0";
+  private travelMinutesValue = "0";
   private categoryValue: CalendarEventCategory = "personal";
   private notesValue = "";
   private repeatCadenceValue: CalendarRepeatCadence = "none";
@@ -2120,8 +2137,10 @@ export class CalendarEventModal extends Modal {
         new Setting(contentEl)
           .setName(event.title)
           .setDesc([
-            event.startTime || "All day",
+            event.date === event.endDate ? event.startTime || "All day" : `${event.date} -> ${event.endDate}`,
             event.endTime ? `to ${event.endTime}` : "",
+            event.prepMinutes > 0 ? `prep ${event.prepMinutes}m` : "",
+            event.travelMinutes > 0 ? `travel ${event.travelMinutes}m` : "",
             `category ${event.category}`,
             event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
             event.isException ? `${event.exceptionKind === "move" ? "moved" : event.exceptionKind} once from ${event.originalDate}` : "",
@@ -2132,9 +2151,12 @@ export class CalendarEventModal extends Modal {
               this.editingEventId = event.sourceEventId;
               this.editingOccurrenceOriginalDate = event.isRecurring ? event.originalDate : null;
               this.date = event.date;
+              this.endDateValue = event.endDate;
               this.titleValue = event.title;
               this.startTimeValue = event.startTime;
               this.endTimeValue = event.endTime;
+              this.prepMinutesValue = `${event.prepMinutes}`;
+              this.travelMinutesValue = `${event.travelMinutes}`;
               this.categoryValue = event.category;
               this.notesValue = event.notes;
               if (!event.isRecurring) {
@@ -2157,9 +2179,12 @@ export class CalendarEventModal extends Modal {
                 this.editingEventId = sourceEvent.id;
                 this.editingOccurrenceOriginalDate = null;
                 this.date = sourceEvent.date;
+                this.endDateValue = sourceEvent.endDate;
                 this.titleValue = sourceEvent.title;
                 this.startTimeValue = sourceEvent.startTime;
                 this.endTimeValue = sourceEvent.endTime;
+                this.prepMinutesValue = `${sourceEvent.prepMinutes}`;
+                this.travelMinutesValue = `${sourceEvent.travelMinutes}`;
                 this.categoryValue = sourceEvent.category;
                 this.notesValue = sourceEvent.notes;
                 this.repeatCadenceValue = sourceEvent.repeatCadence;
@@ -2243,6 +2268,19 @@ export class CalendarEventModal extends Modal {
       });
 
     new Setting(contentEl)
+      .setName("End date")
+      .setDesc("Same day unless this spans multiple days.")
+      .addText((text) => {
+        text
+          .setPlaceholder("2026-04-01")
+          .setValue(this.endDateValue || this.date)
+          .onChange((value) => {
+            this.endDateValue = value.trim();
+          });
+        text.inputEl.type = "date";
+      });
+
+    new Setting(contentEl)
       .setName("Start time")
       .setDesc("Leave blank for all-day events.")
       .addText((text) => {
@@ -2296,6 +2334,34 @@ export class CalendarEventModal extends Modal {
         textArea.inputEl.rows = 3;
       });
 
+    new Setting(contentEl)
+      .setName("Prep minutes")
+      .setDesc("How early prep should start before the event begins.")
+      .addText((text) => {
+        text
+          .setPlaceholder("0")
+          .setValue(this.prepMinutesValue)
+          .onChange((value) => {
+            this.prepMinutesValue = value.trim();
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+      });
+
+    new Setting(contentEl)
+      .setName("Travel minutes")
+      .setDesc("Extra lead time before the event for travel.")
+      .addText((text) => {
+        text
+          .setPlaceholder("0")
+          .setValue(this.travelMinutesValue)
+          .onChange((value) => {
+            this.travelMinutesValue = value.trim();
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+      });
+
     if (!this.editingOccurrenceOriginalDate) {
       new Setting(contentEl)
         .setName("Repeat")
@@ -2340,8 +2406,11 @@ export class CalendarEventModal extends Modal {
           const input = {
             title: this.titleValue,
             date: this.date,
+            endDate: this.endDateValue || this.date,
             startTime: this.startTimeValue,
             endTime: this.endTimeValue,
+            prepMinutes: Number(this.prepMinutesValue || 0),
+            travelMinutes: Number(this.travelMinutesValue || 0),
             category: this.categoryValue,
             notes: this.notesValue,
             repeatCadence: this.repeatCadenceValue,
@@ -2386,9 +2455,12 @@ export class CalendarEventModal extends Modal {
       }
 
       this.date = occurrence.date;
+      this.endDateValue = occurrence.endDate;
       this.titleValue = occurrence.title;
       this.startTimeValue = occurrence.startTime;
       this.endTimeValue = occurrence.endTime;
+      this.prepMinutesValue = `${occurrence.prepMinutes}`;
+      this.travelMinutesValue = `${occurrence.travelMinutes}`;
       this.categoryValue = occurrence.category;
       this.notesValue = occurrence.notes;
       return;
@@ -2401,9 +2473,12 @@ export class CalendarEventModal extends Modal {
     }
 
     this.date = event.date;
+    this.endDateValue = event.endDate;
     this.titleValue = event.title;
     this.startTimeValue = event.startTime;
     this.endTimeValue = event.endTime;
+    this.prepMinutesValue = `${event.prepMinutes}`;
+    this.travelMinutesValue = `${event.travelMinutes}`;
     this.categoryValue = event.category;
     this.notesValue = event.notes;
     this.repeatCadenceValue = event.repeatCadence;
@@ -2415,8 +2490,11 @@ export class CalendarEventModal extends Modal {
     this.editingOccurrenceOriginalDate = null;
     this.date = this.initialDate;
     this.titleValue = "";
+    this.endDateValue = this.initialDate;
     this.startTimeValue = "";
     this.endTimeValue = "";
+    this.prepMinutesValue = "0";
+    this.travelMinutesValue = "0";
     this.categoryValue = "personal";
     this.notesValue = "";
     this.repeatCadenceValue = "none";

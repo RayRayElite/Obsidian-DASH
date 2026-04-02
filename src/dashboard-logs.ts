@@ -7,9 +7,11 @@ import {
   normalizeTodayFocusItems,
   renderScore
 } from "./dashboard-core";
+import { CHECKLIST_REGEX } from "./dashboard-types";
 import type { CalendarEventOccurrence, DailyEntry, HabitDefinition, NextUpFocusItem, SleepInsights, SleepNightSnapshot, TodayFocusItem, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
 const DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
+const CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
 
 export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry, calendarEvents: CalendarEventOccurrence[] = []): string {
   const payload = JSON.stringify(entry, null, 2);
@@ -49,17 +51,14 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     ? entry.poopSessions.map((session) => renderSessionLine(session))
     : ["- No tracked bowel movement sessions"];
   const calendarEventLines = calendarEvents.length > 0
-    ? calendarEvents.map((event) => {
-        const timeLabel = event.startTime
-          ? `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`
-          : "All day";
-        const repeatLabel = event.repeatCadence !== "none"
-          ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})`
-          : "";
-        const notesLabel = event.notes ? ` - ${event.notes}` : "";
-        return `- ${timeLabel}: ${event.title}${repeatLabel}${notesLabel}`;
-      })
+    ? calendarEvents.map((event) => renderCalendarEventLine(event))
     : ["- No calendar events"];
+  const calendarFollowThroughLines = calendarEvents.length > 0
+    ? calendarEvents.map((event) => {
+        const checked = entry.calendarFollowThroughCompleted.includes(event.id) ? "x" : " ";
+        return `- [${checked}] Follow through on ${event.title} ${renderCalendarEventContextLabel(event)} <!-- ${CALENDAR_FOLLOW_THROUGH_MARKER}${event.id} -->`;
+      })
+    : ["- No follow-through items"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
@@ -126,6 +125,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     "## Calendar Events",
     ...calendarEventLines,
+    "",
+    "## Calendar Follow-Through",
+    ...calendarFollowThroughLines,
     "",
     "## State",
     `- Mood: ${renderScore(entry.moodScore)}`,
@@ -209,6 +211,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
   const payloadLines: string[] = [];
   const focusLines: string[] = [];
   const nextUpLines: string[] = [];
+  const calendarFollowThroughCompleted = new Set<string>();
   let currentSection = "";
   let inPayload = false;
 
@@ -226,6 +229,15 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
 
     if (currentSection === "next up" && trimmed.startsWith("- ")) {
       nextUpLines.push(trimmed.slice(2).trim());
+      continue;
+    }
+
+    if (currentSection === "calendar follow-through") {
+      const markerMatch = lines[index].match(new RegExp(`<!--\\s*${CALENDAR_FOLLOW_THROUGH_MARKER}([^\\s]+)\\s*-->`));
+      const checklistMatch = lines[index].match(CHECKLIST_REGEX);
+      if (markerMatch && checklistMatch && checklistMatch[1].toLowerCase() === "x") {
+        calendarFollowThroughCompleted.add(markerMatch[1]);
+      }
       continue;
     }
 
@@ -290,6 +302,12 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     habitEvents: parsedEntry.habitEvents ?? baseEntry.habitEvents,
     todayFocus,
     nextUpFocus,
+    calendarFollowThroughCompleted: Array.from(new Set([
+      ...(Array.isArray(parsedEntry.calendarFollowThroughCompleted)
+        ? parsedEntry.calendarFollowThroughCompleted.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : []),
+      ...Array.from(calendarFollowThroughCompleted)
+    ])).sort(),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
@@ -851,4 +869,58 @@ function parseDurationLabel(value: string | null): number | null {
 
   const plainNumber = Number(normalized);
   return Number.isFinite(plainNumber) ? Math.round(plainNumber) : null;
+}
+
+function renderCalendarEventLine(event: CalendarEventOccurrence): string {
+  const repeatLabel = event.repeatCadence !== "none"
+    ? ` (${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""})`
+    : "";
+  const contextParts = [`${event.category}`];
+  const leadSummary = renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
+  if (leadSummary) {
+    contextParts.push(leadSummary);
+  }
+  const noteLinks = extractWikiLinks(event.notes);
+  if (noteLinks.length > 0) {
+    contextParts.push(`links ${noteLinks.join(", ")}`);
+  }
+  if (event.notes.trim().length > 0) {
+    contextParts.push(event.notes.trim());
+  }
+
+  return `- ${renderCalendarEventWindowLabel(event)}: ${event.title}${repeatLabel}${contextParts.length > 0 ? ` - ${contextParts.join(" • ")}` : ""}`;
+}
+
+function renderCalendarEventContextLabel(event: CalendarEventOccurrence): string {
+  const windowLabel = renderCalendarEventWindowLabel(event);
+  return `(${windowLabel})`;
+}
+
+function renderCalendarEventWindowLabel(event: Pick<CalendarEventOccurrence, "date" | "endDate" | "startTime" | "endTime">): string {
+  const sameDay = event.date === event.endDate;
+  if (!event.startTime) {
+    return sameDay ? "All day" : `All day ${event.date} -> ${event.endDate}`;
+  }
+
+  if (sameDay) {
+    return `${event.startTime}${event.endTime ? ` -> ${event.endTime}` : ""}`;
+  }
+
+  return `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`;
+}
+
+function renderCalendarLeadSummary(prepMinutes: number, travelMinutes: number): string {
+  const parts: string[] = [];
+  if (prepMinutes > 0) {
+    parts.push(`prep ${prepMinutes}m`);
+  }
+  if (travelMinutes > 0) {
+    parts.push(`travel ${travelMinutes}m`);
+  }
+  return parts.join(" + ");
+}
+
+function extractWikiLinks(value: string): string[] {
+  const matches = value.match(/\[\[[^\]]+\]\]/g);
+  return matches ? Array.from(new Set(matches)) : [];
 }
