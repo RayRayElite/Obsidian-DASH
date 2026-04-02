@@ -373,7 +373,9 @@ export function normalizeDayState(dayState: Partial<DayLifecycleState> | undefin
 
   return {
     activeDate,
-    status
+    status,
+    lastInactivityPromptActivityAt: typeof dayState?.lastInactivityPromptActivityAt === "string" ? dayState.lastInactivityPromptActivityAt : "",
+    lastLateNightWarningKey: typeof dayState?.lastLateNightWarningKey === "string" ? dayState.lastLateNightWarningKey : ""
   };
 }
 
@@ -767,6 +769,8 @@ export function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): stri
     ...(Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.relaxSessions) ? entry.relaxSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.breakSessions) ? entry.breakSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.poopSessions) ? entry.poopSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
+    ...(Array.isArray(entry.todayFocus) ? entry.todayFocus.flatMap((item) => [item.completedAt ?? "", ...item.workSessions.flatMap((session) => [session.start, session.end ?? ""])]) : []),
     ...(Array.isArray(entry.completedTasks) ? entry.completedTasks.map((task) => task.archivedAt) : []),
     ...(entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : [])
   ].filter((value): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(value));

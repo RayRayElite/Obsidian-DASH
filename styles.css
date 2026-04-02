@@ -758,6 +758,14 @@
   font-size: 0.86rem;
 }
 
+.daily-dashboard-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
 .daily-dashboard-project-row,
 .daily-dashboard-completed-row {
   flex-direction: column;

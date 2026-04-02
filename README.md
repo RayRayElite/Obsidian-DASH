@@ -6,7 +6,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 
 - tracks repeat daily habits with per-day counts
 - stores mood, energy, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, friction log, timestamped food entries, sleep log, dream log, and daily notes
-- supports user-controlled logical days with begin-day/end-day tracking so late-night work does not roll into the wrong calendar day
+- supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, and sync events into markdown for later AI analysis
 - writes a markdown daily log note for every tracked day
@@ -40,6 +40,8 @@ The dashboard now separates your real day from the calendar date.
 2. Use `End logical day` when you are done and heading to bed, even if the clock has passed midnight.
 3. Use `Start work session` and `Stop work session` to track actual focused work time inside that logical day.
 4. Use `Start nap session` and `Stop nap session` whenever you sleep during the day so naps are logged separately from your final sleep time.
+
+The `Day Flow` card now also watches for long stretches of inactivity and shows an automatic prompt when the logical day looks finished. If the clock rolls past midnight while the logical day is still active, the card and notice system warn that new sessions and edits are still landing on yesterday until you explicitly end the day.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 

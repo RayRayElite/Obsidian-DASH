@@ -363,7 +363,9 @@ function normalizeDayState(dayState, entries) {
   const status = (dayState == null ? void 0 : dayState.status) === "in-progress" || (dayState == null ? void 0 : dayState.status) === "ended" ? dayState.status : "not-started";
   return {
     activeDate,
-    status
+    status,
+    lastInactivityPromptActivityAt: typeof (dayState == null ? void 0 : dayState.lastInactivityPromptActivityAt) === "string" ? dayState.lastInactivityPromptActivityAt : "",
+    lastLateNightWarningKey: typeof (dayState == null ? void 0 : dayState.lastLateNightWarningKey) === "string" ? dayState.lastLateNightWarningKey : ""
   };
 }
 function normalizeTodayFocusStatus(value) {
@@ -673,6 +675,17 @@ function getEntryRecencyKey(entry) {
     ...Array.isArray(entry.breakSessions) ? entry.breakSessions.flatMap((session) => {
       var _a2;
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.poopSessions) ? entry.poopSessions.flatMap((session) => {
+      var _a2;
+      return [session.start, (_a2 = session.end) != null ? _a2 : ""];
+    }) : [],
+    ...Array.isArray(entry.todayFocus) ? entry.todayFocus.flatMap((item2) => {
+      var _a2;
+      return [(_a2 = item2.completedAt) != null ? _a2 : "", ...item2.workSessions.flatMap((session) => {
+        var _a3;
+        return [session.start, (_a3 = session.end) != null ? _a3 : ""];
+      })];
     }) : [],
     ...Array.isArray(entry.completedTasks) ? entry.completedTasks.map((task) => task.archivedAt) : [],
     ...entry.habitEvents ? Object.values(entry.habitEvents).flatMap((items) => items) : []
@@ -2559,6 +2572,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderWeekLegendItem(weekLegend, "Unknown", "unknown");
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
       const dayState = this.plugin.getDayState();
+      const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const aiStatus = this.plugin.getAiStatus();
       const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
@@ -2595,9 +2609,31 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
       createSemanticChip(dayFlowStatus, activeSessionTag ? `Tag ${activeSessionTag}` : `Default ${this.selectedSessionTag}`, activeSessionTag ? this.getSessionTagTone(activeSessionTag) : this.getSessionTagTone(this.selectedSessionTag));
+      createSemanticChip(dayFlowStatus, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
+      createSemanticChip(
+        dayFlowStatus,
+        logicalDayInsights.hasActiveSession ? "Session active" : logicalDayInsights.inactiveMinutes !== null ? `Inactive ${formatMinutesAsHours(logicalDayInsights.inactiveMinutes)}` : "No activity yet",
+        logicalDayInsights.hasActiveSession ? "capture" : logicalDayInsights.inactiveMinutes !== null && logicalDayInsights.inactiveMinutes >= 120 ? "alert" : "neutral"
+      );
       createSemanticChip(dayFlowStatus, activeRelaxSession ? "Relaxing tracked" : "No relax active", activeRelaxSession ? "health" : "neutral");
       createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
       createSemanticChip(dayFlowStatus, activePoopSession ? "Poop tracked" : "No poop active", activePoopSession ? "alert" : "neutral");
+      const dayPromptSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-prompts", "Auto prompts", "Automatic nudges help you end an inactive day cleanly and warn when you are still logging to yesterday after midnight.");
+      if (logicalDayInsights.prompts.length === 0) {
+        dayPromptSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No automatic day-end or rollover prompts right now." });
+      } else {
+        logicalDayInsights.prompts.forEach((prompt) => {
+          const row = dayPromptSection.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, prompt.kind === "late-night-warning" ? "Rollover" : "Inactivity", prompt.tone);
+          copy.createEl("strong", { text: prompt.title });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: prompt.description });
+          const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions2, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+          createButton(actions2, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
+        });
+      }
       const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and bowel tracking for the active logical day.");
       const dayFlowGrid = dayFlowMetrics.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
@@ -2616,6 +2652,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live break", activeBreakSession ? formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live poop", activePoopSession ? formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Last activity", logicalDayInsights.lastActivityAt ? formatSyncTimestamp(logicalDayInsights.lastActivityAt) : "No activity yet");
+      this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
       const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
@@ -4993,7 +5031,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       calendarEvents: [],
       dayState: {
         activeDate: formatDateKey(/* @__PURE__ */ new Date()),
-        status: "not-started"
+        status: "not-started",
+        lastInactivityPromptActivityAt: "",
+        lastLateNightWarningKey: ""
       },
       noteIndex: createEmptyNoteIndexCache()
     };
@@ -5358,6 +5398,31 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getDayState() {
     return this.data.dayState;
+  }
+  getLogicalDayInsights(referenceDate = /* @__PURE__ */ new Date()) {
+    if (this.data.dayState.status !== "in-progress") {
+      return {
+        lastActivityAt: "",
+        inactiveMinutes: null,
+        hasActiveSession: false,
+        isRollover: false,
+        prompts: []
+      };
+    }
+    const entry = this.getTodayEntry();
+    const lastActivityAt = this.getLogicalDayLastActivityAt(entry);
+    const lastActivityDate = this.parseDashboardDateTime(lastActivityAt);
+    const inactiveMinutes = lastActivityDate ? Math.max(0, Math.round((referenceDate.getTime() - lastActivityDate.getTime()) / 6e4)) : null;
+    const hasActiveSession = this.hasActiveLogicalDaySessions(entry);
+    const calendarDate = formatDateKey(referenceDate);
+    const isRollover = calendarDate !== entry.date;
+    return {
+      lastActivityAt,
+      inactiveMinutes,
+      hasActiveSession,
+      isRollover,
+      prompts: this.buildLogicalDayPrompts(entry, referenceDate, lastActivityAt, inactiveMinutes, hasActiveSession, isRollover)
+    };
   }
   isWorkSessionActive() {
     return this.getTodayEntry().workSessions.some((session) => session.end === null);
@@ -6090,7 +6155,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const timestamp = formatDateTimeKey(now);
     this.data.dayState = {
       activeDate: nextDate,
-      status: "in-progress"
+      status: "in-progress",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
     const entry = this.getOrCreateEntry(nextDate);
     if (!entry.dayStartedAt) {
@@ -6125,7 +6192,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     closeOpenPoopSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
-      status: "ended"
+      status: "ended",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
     await this.persistEntry(entry);
     await this.savePluginData();
@@ -7973,6 +8042,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       }
     }
     await this.ensureTodayEntry();
+    await this.maybeNotifyLogicalDayPrompts();
     if (this.data.dayState.status === "in-progress") {
       const calendarKey = formatDateKey(/* @__PURE__ */ new Date());
       if (calendarKey !== this.data.dayState.activeDate) {
@@ -8000,6 +8070,97 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   async syncDailyLog(entry) {
     const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+  }
+  buildLogicalDayPrompts(entry, referenceDate, lastActivityAt, inactiveMinutes, hasActiveSession, isRollover) {
+    const prompts = [];
+    const calendarDate = formatDateKey(referenceDate);
+    const thresholdMinutes = isRollover ? 60 : referenceDate.getHours() >= 21 ? 120 : 240;
+    if (!hasActiveSession && inactiveMinutes !== null && inactiveMinutes >= thresholdMinutes && !entry.dayEndedAt && lastActivityAt && this.hasMeaningfulLogicalDayActivity(entry)) {
+      prompts.push({
+        id: `end-day-${entry.date}`,
+        kind: "end-day-suggestion",
+        title: "Day looks inactive",
+        description: `No tracked activity for ${this.formatDurationMinutes(inactiveMinutes)}. If you're done, end ${entry.date} so sleep and tomorrow's work land on the right day.`,
+        tone: isRollover ? "alert" : "focus"
+      });
+    }
+    if (isRollover && !entry.dayEndedAt) {
+      prompts.push({
+        id: `late-night-${entry.date}-${calendarDate}`,
+        kind: "late-night-warning",
+        title: `Still logging to ${entry.date}`,
+        description: `It's ${referenceDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} on ${calendarDate}. New sessions and edits still belong to ${entry.date} until you end the logical day.`,
+        tone: "alert"
+      });
+    }
+    return prompts;
+  }
+  getLogicalDayLastActivityAt(entry) {
+    return getEntryRecencyKey(entry);
+  }
+  hasActiveLogicalDaySessions(entry) {
+    return entry.workSessions.some((session) => session.end === null) || entry.napSessions.some((session) => session.end === null) || entry.relaxSessions.some((session) => session.end === null) || entry.breakSessions.some((session) => session.end === null) || entry.poopSessions.some((session) => session.end === null) || entry.todayFocus.some((item2) => item2.workSessions.some((session) => session.end === null));
+  }
+  hasMeaningfulLogicalDayActivity(entry) {
+    return entry.workSessions.length > 0 || entry.napSessions.length > 0 || entry.relaxSessions.length > 0 || entry.breakSessions.length > 0 || entry.poopSessions.length > 0 || entry.foodLog.length > 0 || entry.completedTasks.length > 0 || entry.todayFocus.some((item2) => item2.workSessions.length > 0 || item2.status === "done") || Object.values(entry.habitEvents).some((events) => events.length > 0) || entry.notes.trim().length > 0 || entry.frictionLog.trim().length > 0;
+  }
+  parseDashboardDateTime(value) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const normalized = trimmed.length === 16 ? `${trimmed}:00` : trimmed;
+    const parsed = new Date(normalized.replace(" ", "T"));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  formatDurationMinutes(minutes) {
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+  }
+  async maybeNotifyLogicalDayPrompts(referenceDate = /* @__PURE__ */ new Date()) {
+    var _a;
+    if (this.data.dayState.status !== "in-progress") {
+      if (this.data.dayState.lastInactivityPromptActivityAt || this.data.dayState.lastLateNightWarningKey) {
+        this.data.dayState.lastInactivityPromptActivityAt = "";
+        this.data.dayState.lastLateNightWarningKey = "";
+        await this.savePluginData();
+      }
+      return;
+    }
+    const insights = this.getLogicalDayInsights(referenceDate);
+    const entry = this.getTodayEntry();
+    let changed = false;
+    const hasInactivityPrompt = insights.prompts.some((prompt) => prompt.kind === "end-day-suggestion");
+    if (hasInactivityPrompt) {
+      if (insights.lastActivityAt && this.data.dayState.lastInactivityPromptActivityAt !== insights.lastActivityAt) {
+        this.data.dayState.lastInactivityPromptActivityAt = insights.lastActivityAt;
+        changed = true;
+        new import_obsidian4.Notice(`Day-end suggestion: ${entry.date} has been inactive for ${this.formatDurationMinutes((_a = insights.inactiveMinutes) != null ? _a : 0)}. End it when you're done.`, 9e3);
+      }
+    } else if (this.data.dayState.lastInactivityPromptActivityAt) {
+      this.data.dayState.lastInactivityPromptActivityAt = "";
+      changed = true;
+    }
+    const calendarDate = formatDateKey(referenceDate);
+    const lateNightWarningKey = insights.isRollover ? `${entry.date}|${calendarDate}` : "";
+    if (lateNightWarningKey) {
+      if (this.data.dayState.lastLateNightWarningKey !== lateNightWarningKey) {
+        this.data.dayState.lastLateNightWarningKey = lateNightWarningKey;
+        changed = true;
+        new import_obsidian4.Notice(`Late-night rollover: you are still logging to ${entry.date}. End the logical day when you want new activity on ${calendarDate}.`, 1e4);
+      }
+    } else if (this.data.dayState.lastLateNightWarningKey) {
+      this.data.dayState.lastLateNightWarningKey = "";
+      changed = true;
+    }
+    if (changed) {
+      await this.savePluginData();
+      this.refreshDashboardViews();
+    }
   }
   async syncCalendarArtifacts(seedDates = []) {
     await this.syncCalendarDocument();

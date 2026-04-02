@@ -108,6 +108,8 @@ import {
   type DayLifecycleState,
   type FoodEntry,
   type HabitDefinition,
+  type LogicalDayInsights,
+  type LogicalDayPrompt,
   type NoteIndexEntry,
   type NextUpFocusItem,
   type ProjectReviewOption,
@@ -127,7 +129,9 @@ export default class DailyDashboardPlugin extends Plugin {
     calendarEvents: [],
     dayState: {
       activeDate: formatDateKey(new Date()),
-      status: "not-started"
+      status: "not-started",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     },
     noteIndex: createEmptyNoteIndexCache()
   };
@@ -559,6 +563,36 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getDayState(): DayLifecycleState {
     return this.data.dayState;
+  }
+
+  getLogicalDayInsights(referenceDate: Date = new Date()): LogicalDayInsights {
+    if (this.data.dayState.status !== "in-progress") {
+      return {
+        lastActivityAt: "",
+        inactiveMinutes: null,
+        hasActiveSession: false,
+        isRollover: false,
+        prompts: []
+      };
+    }
+
+    const entry = this.getTodayEntry();
+    const lastActivityAt = this.getLogicalDayLastActivityAt(entry);
+    const lastActivityDate = this.parseDashboardDateTime(lastActivityAt);
+    const inactiveMinutes = lastActivityDate
+      ? Math.max(0, Math.round((referenceDate.getTime() - lastActivityDate.getTime()) / 60000))
+      : null;
+    const hasActiveSession = this.hasActiveLogicalDaySessions(entry);
+    const calendarDate = formatDateKey(referenceDate);
+    const isRollover = calendarDate !== entry.date;
+
+    return {
+      lastActivityAt,
+      inactiveMinutes,
+      hasActiveSession,
+      isRollover,
+      prompts: this.buildLogicalDayPrompts(entry, referenceDate, lastActivityAt, inactiveMinutes, hasActiveSession, isRollover)
+    };
   }
 
   isWorkSessionActive(): boolean {
@@ -1466,7 +1500,9 @@ export default class DailyDashboardPlugin extends Plugin {
     const timestamp = formatDateTimeKey(now);
     this.data.dayState = {
       activeDate: nextDate,
-      status: "in-progress"
+      status: "in-progress",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
 
     const entry = this.getOrCreateEntry(nextDate);
@@ -1504,7 +1540,9 @@ export default class DailyDashboardPlugin extends Plugin {
     closeOpenPoopSessions(entry, timestamp);
     this.data.dayState = {
       activeDate: entry.date,
-      status: "ended"
+      status: "ended",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
     };
     await this.persistEntry(entry);
     await this.savePluginData();
@@ -3761,6 +3799,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     await this.ensureTodayEntry();
+    await this.maybeNotifyLogicalDayPrompts();
 
     if (this.data.dayState.status === "in-progress") {
       const calendarKey = formatDateKey(new Date());
@@ -3798,6 +3837,141 @@ export default class DailyDashboardPlugin extends Plugin {
   private async syncDailyLog(entry: DailyEntry): Promise<void> {
     const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
     await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+  }
+
+  private buildLogicalDayPrompts(
+    entry: DailyEntry,
+    referenceDate: Date,
+    lastActivityAt: string,
+    inactiveMinutes: number | null,
+    hasActiveSession: boolean,
+    isRollover: boolean
+  ): LogicalDayPrompt[] {
+    const prompts: LogicalDayPrompt[] = [];
+    const calendarDate = formatDateKey(referenceDate);
+    const thresholdMinutes = isRollover ? 60 : referenceDate.getHours() >= 21 ? 120 : 240;
+
+    if (
+      !hasActiveSession
+      && inactiveMinutes !== null
+      && inactiveMinutes >= thresholdMinutes
+      && !entry.dayEndedAt
+      && lastActivityAt
+      && this.hasMeaningfulLogicalDayActivity(entry)
+    ) {
+      prompts.push({
+        id: `end-day-${entry.date}`,
+        kind: "end-day-suggestion",
+        title: "Day looks inactive",
+        description: `No tracked activity for ${this.formatDurationMinutes(inactiveMinutes)}. If you're done, end ${entry.date} so sleep and tomorrow's work land on the right day.`,
+        tone: isRollover ? "alert" : "focus"
+      });
+    }
+
+    if (isRollover && !entry.dayEndedAt) {
+      prompts.push({
+        id: `late-night-${entry.date}-${calendarDate}`,
+        kind: "late-night-warning",
+        title: `Still logging to ${entry.date}`,
+        description: `It's ${referenceDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} on ${calendarDate}. New sessions and edits still belong to ${entry.date} until you end the logical day.`,
+        tone: "alert"
+      });
+    }
+
+    return prompts;
+  }
+
+  private getLogicalDayLastActivityAt(entry: DailyEntry): string {
+    return getEntryRecencyKey(entry);
+  }
+
+  private hasActiveLogicalDaySessions(entry: DailyEntry): boolean {
+    return entry.workSessions.some((session) => session.end === null)
+      || entry.napSessions.some((session) => session.end === null)
+      || entry.relaxSessions.some((session) => session.end === null)
+      || entry.breakSessions.some((session) => session.end === null)
+      || entry.poopSessions.some((session) => session.end === null)
+      || entry.todayFocus.some((item) => item.workSessions.some((session) => session.end === null));
+  }
+
+  private hasMeaningfulLogicalDayActivity(entry: DailyEntry): boolean {
+    return entry.workSessions.length > 0
+      || entry.napSessions.length > 0
+      || entry.relaxSessions.length > 0
+      || entry.breakSessions.length > 0
+      || entry.poopSessions.length > 0
+      || entry.foodLog.length > 0
+      || entry.completedTasks.length > 0
+      || entry.todayFocus.some((item) => item.workSessions.length > 0 || item.status === "done")
+      || Object.values(entry.habitEvents).some((events) => events.length > 0)
+      || entry.notes.trim().length > 0
+      || entry.frictionLog.trim().length > 0;
+  }
+
+  private parseDashboardDateTime(value: string): Date | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const normalized = trimmed.length === 16 ? `${trimmed}:00` : trimmed;
+    const parsed = new Date(normalized.replace(" ", "T"));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private formatDurationMinutes(minutes: number): string {
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder > 0 ? `${hours}h ${remainder}m` : `${hours}h`;
+  }
+
+  private async maybeNotifyLogicalDayPrompts(referenceDate: Date = new Date()): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      if (this.data.dayState.lastInactivityPromptActivityAt || this.data.dayState.lastLateNightWarningKey) {
+        this.data.dayState.lastInactivityPromptActivityAt = "";
+        this.data.dayState.lastLateNightWarningKey = "";
+        await this.savePluginData();
+      }
+      return;
+    }
+
+    const insights = this.getLogicalDayInsights(referenceDate);
+    const entry = this.getTodayEntry();
+    let changed = false;
+
+    const hasInactivityPrompt = insights.prompts.some((prompt) => prompt.kind === "end-day-suggestion");
+    if (hasInactivityPrompt) {
+      if (insights.lastActivityAt && this.data.dayState.lastInactivityPromptActivityAt !== insights.lastActivityAt) {
+        this.data.dayState.lastInactivityPromptActivityAt = insights.lastActivityAt;
+        changed = true;
+        new Notice(`Day-end suggestion: ${entry.date} has been inactive for ${this.formatDurationMinutes(insights.inactiveMinutes ?? 0)}. End it when you're done.`, 9000);
+      }
+    } else if (this.data.dayState.lastInactivityPromptActivityAt) {
+      this.data.dayState.lastInactivityPromptActivityAt = "";
+      changed = true;
+    }
+
+    const calendarDate = formatDateKey(referenceDate);
+    const lateNightWarningKey = insights.isRollover ? `${entry.date}|${calendarDate}` : "";
+    if (lateNightWarningKey) {
+      if (this.data.dayState.lastLateNightWarningKey !== lateNightWarningKey) {
+        this.data.dayState.lastLateNightWarningKey = lateNightWarningKey;
+        changed = true;
+        new Notice(`Late-night rollover: you are still logging to ${entry.date}. End the logical day when you want new activity on ${calendarDate}.`, 10000);
+      }
+    } else if (this.data.dayState.lastLateNightWarningKey) {
+      this.data.dayState.lastLateNightWarningKey = "";
+      changed = true;
+    }
+
+    if (changed) {
+      await this.savePluginData();
+      this.refreshDashboardViews();
+    }
   }
 
   private async syncCalendarArtifacts(seedDates: string[] = []): Promise<void> {

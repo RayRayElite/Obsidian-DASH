@@ -182,6 +182,24 @@ export interface DayRepairInput {
 export interface DayLifecycleState {
   activeDate: string;
   status: "not-started" | "in-progress" | "ended";
+  lastInactivityPromptActivityAt: string;
+  lastLateNightWarningKey: string;
+}
+
+export interface LogicalDayPrompt {
+  id: string;
+  kind: "end-day-suggestion" | "late-night-warning";
+  title: string;
+  description: string;
+  tone: DashboardTone;
+}
+
+export interface LogicalDayInsights {
+  lastActivityAt: string;
+  inactiveMinutes: number | null;
+  hasActiveSession: boolean;
+  isRollover: boolean;
+  prompts: LogicalDayPrompt[];
 }
 
 export interface DashboardSettings {

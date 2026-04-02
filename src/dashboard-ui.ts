@@ -396,6 +396,7 @@ export class DailyDashboardView extends ItemView {
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
 
       const dayState = this.plugin.getDayState();
+      const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const aiStatus = this.plugin.getAiStatus();
       const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
@@ -446,9 +447,37 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
       createSemanticChip(dayFlowStatus, activeSessionTag ? `Tag ${activeSessionTag}` : `Default ${this.selectedSessionTag}`, activeSessionTag ? this.getSessionTagTone(activeSessionTag) : this.getSessionTagTone(this.selectedSessionTag));
+      createSemanticChip(dayFlowStatus, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
+      createSemanticChip(
+        dayFlowStatus,
+        logicalDayInsights.hasActiveSession
+          ? "Session active"
+          : logicalDayInsights.inactiveMinutes !== null
+            ? `Inactive ${formatMinutesAsHours(logicalDayInsights.inactiveMinutes)}`
+            : "No activity yet",
+        logicalDayInsights.hasActiveSession ? "capture" : logicalDayInsights.inactiveMinutes !== null && logicalDayInsights.inactiveMinutes >= 120 ? "alert" : "neutral"
+      );
       createSemanticChip(dayFlowStatus, activeRelaxSession ? "Relaxing tracked" : "No relax active", activeRelaxSession ? "health" : "neutral");
       createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
       createSemanticChip(dayFlowStatus, activePoopSession ? "Poop tracked" : "No poop active", activePoopSession ? "alert" : "neutral");
+
+      const dayPromptSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-prompts", "Auto prompts", "Automatic nudges help you end an inactive day cleanly and warn when you are still logging to yesterday after midnight.");
+      if (logicalDayInsights.prompts.length === 0) {
+        dayPromptSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No automatic day-end or rollover prompts right now." });
+      } else {
+        logicalDayInsights.prompts.forEach((prompt) => {
+          const row = dayPromptSection.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, prompt.kind === "late-night-warning" ? "Rollover" : "Inactivity", prompt.tone);
+          copy.createEl("strong", { text: prompt.title });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: prompt.description });
+
+          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
+          createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
+        });
+      }
 
       const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and bowel tracking for the active logical day.");
       const dayFlowGrid = dayFlowMetrics.createDiv({ cls: "daily-dashboard-dayflow-grid" });
@@ -468,6 +497,8 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live break", activeBreakSession ? formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live poop", activePoopSession ? formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date()))) : "Not active");
+      this.renderDayMetric(dayFlowGrid, "Last activity", logicalDayInsights.lastActivityAt ? formatSyncTimestamp(logicalDayInsights.lastActivityAt) : "No activity yet");
+      this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
 

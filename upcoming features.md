@@ -31,9 +31,9 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## Logical Day And Tracking
 
-- [ ] Add automatic day-end suggestions after inactivity.
+- [x] Add automatic day-end suggestions after inactivity.
 - [ ] Add sleep debt and sleep consistency views.
-- [ ] Add late-night rollover warnings.
+- [x] Add late-night rollover warnings.
 - [ ] Add wake quality check-ins.
 - [ ] Add energy timeline check-ins during the day.
 - [ ] Add better unknown-time diagnosis.
@@ -127,5 +127,6 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Expand calendar recurrence editing and exception handling.
 - [x] Improve Top 3 editing, carry-forward, and reminder acceptance.
 - [x] Add due dates / blocked states to project workflow.
+- [x] Add automatic day-end suggestions and rollover warnings before deeper sleep analytics.
 - [ ] Build the Gamification Center once the underlying metrics are richer and more stable.
 - [ ] Add AI morning and shutdown workflows after the execution/planning data model is stronger.
