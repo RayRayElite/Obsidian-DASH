@@ -96,9 +96,9 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## Search, Review, And Reporting
 
-- [ ] Add full timeline search across sessions, tasks, logs, and calendar.
-- [ ] Add saved dashboard filters.
-- [ ] Add heatmaps for work, sleep, and habits.
+- [x] Add full timeline search across sessions, tasks, logs, and calendar.
+- [x] Add saved dashboard filters.
+- [x] Add heatmaps for work, sleep, and habits.
 - [x] Add blocker-pattern reporting from friction logs.
 - [x] Add accomplishment reports grouped by project and period.
 - [x] Add richer month-end narrative reports.

@@ -1101,6 +1101,14 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getCalendarOccurrencesForDate(date);
   }
 
+  getCalendarOccurrencesBetween(startDate: string, endDate: string): CalendarEventOccurrence[] {
+    const normalizedStart = /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? startDate : formatDateKey(new Date());
+    const normalizedEnd = /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : normalizedStart;
+    const start = new Date(`${normalizedStart}T00:00:00`);
+    const end = new Date(`${normalizedEnd}T00:00:00`);
+    return this.getCalendarOccurrencesInRange(start.getTime() <= end.getTime() ? start : end, start.getTime() <= end.getTime() ? end : start);
+  }
+
   getCalendarEventEntry(eventId: string): CalendarEventEntry | null {
     return this.data.calendarEvents.find((event) => event.id === eventId) ?? null;
   }

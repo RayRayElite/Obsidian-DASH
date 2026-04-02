@@ -529,6 +529,37 @@ export interface WorkLogFilters {
   toDate: string;
 }
 
+export type TimelineSearchKind = "task" | "session" | "calendar" | "log";
+
+export interface TimelineSearchFilters {
+  keyword: string;
+  project: string;
+  tag: string;
+  kinds: TimelineSearchKind[];
+  fromDate: string;
+  toDate: string;
+  onlyWithNotes: boolean;
+}
+
+export interface TimelineSearchResult {
+  id: string;
+  date: string;
+  sortKey: string;
+  kind: TimelineSearchKind;
+  title: string;
+  summary: string;
+  detail: string;
+  tone: DashboardTone;
+  project: string;
+  tag: string;
+}
+
+export interface SavedDashboardFilter {
+  name: string;
+  workLogFilters: WorkLogFilters;
+  timelineFilters: TimelineSearchFilters;
+}
+
 export interface QuickAddState {
   projectName: string;
   sectionName: string;

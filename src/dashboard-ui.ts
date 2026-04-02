@@ -11,7 +11,7 @@ import {
   parseHabitDefinitions,
   renderScore
 } from "./dashboard-core";
-import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay } from "./dashboard-logs";
+import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes } from "./dashboard-logs";
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
@@ -34,9 +34,13 @@ import {
   type QuickAddState,
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
+  type SavedDashboardFilter,
   type SuggestedTop3Candidate,
   type TodoTaskSummary,
   type TodoProjectSummary,
+  type TimelineSearchFilters,
+  type TimelineSearchKind,
+  type TimelineSearchResult,
   type WeeklyAgendaDay,
   type WorkSession,
   type WorkLogFilters
@@ -54,6 +58,15 @@ export class DailyDashboardView extends ItemView {
     fromDate: "",
     toDate: ""
   };
+  private timelineFilters: TimelineSearchFilters = {
+    keyword: "",
+    project: "",
+    tag: "",
+    kinds: ["task", "session", "calendar", "log"],
+    fromDate: "",
+    toDate: "",
+    onlyWithNotes: false
+  };
   private autoRefreshHandle: number | null = null;
   private lastRenderAt = 0;
   private quickAddState: QuickAddState = {
@@ -65,6 +78,7 @@ export class DailyDashboardView extends ItemView {
   private editingFocusText = "";
   private draggedFocusIndex: number | null = null;
   private selectedSessionTag = getDashboardSelectedSessionTag();
+  private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
 
@@ -314,6 +328,8 @@ export class DailyDashboardView extends ItemView {
       const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const gamificationSummary = this.plugin.getGamificationSummary(todoSnapshot);
       const workLogEntries = this.getFilteredWorkLogEntries();
+      const timelineResults = this.getTimelineSearchResults();
+      const savedDashboardFilters = getSavedDashboardFilters();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
       const viewModeMeta = this.getViewModeMeta(viewMode);
@@ -1475,6 +1491,153 @@ export class DailyDashboardView extends ItemView {
         void this.plugin.updateReflection("hurt", hurtInput.value);
       });
 
+      const timelineCard = createCard(grid, "Timeline Search", "Search across tasks, sessions, logs, and calendar events from one place instead of hopping between cards.", {
+        icon: "scan-search",
+        eyebrow: "History",
+        tone: "log",
+        tag: `${timelineResults.length} matches`
+      });
+      const timelinePresetRow = timelineCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      const presetSelect = timelinePresetRow.createEl("select", { cls: "daily-dashboard-input" });
+      const defaultPresetOption = presetSelect.createEl("option", { text: "Saved dashboard filters" });
+      defaultPresetOption.value = "";
+      savedDashboardFilters.forEach((filter) => {
+        const option = presetSelect.createEl("option", { text: filter.name });
+        option.value = filter.name;
+        option.selected = filter.name === this.selectedSavedFilterName;
+      });
+      presetSelect.addEventListener("change", () => {
+        if (!presetSelect.value) {
+          this.selectedSavedFilterName = "";
+          setDashboardSelectedFilterName("");
+          return;
+        }
+
+        this.applySavedDashboardFilter(presetSelect.value);
+        void this.render();
+      });
+      createButton(timelinePresetRow, "Save current", async () => {
+        this.saveCurrentDashboardFilter();
+        await this.render();
+      }, false, "save");
+      createButton(timelinePresetRow, "Delete saved", async () => {
+        this.deleteSelectedDashboardFilter();
+        await this.render();
+      }, false, "trash-2");
+      createButton(timelinePresetRow, "Reset", async () => {
+        this.resetDashboardFilters();
+        await this.render();
+      }, false, "rotate-ccw");
+
+      const timelineFilterGrid = timelineCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      this.createFilterInput(timelineFilterGrid, "Keyword", this.timelineFilters.keyword, (value) => {
+        this.timelineFilters.keyword = value;
+        void this.render();
+      });
+      const timelineProjectFilter = timelineFilterGrid.createEl("select", { cls: "daily-dashboard-input" });
+      const allTimelineProjectsOption = timelineProjectFilter.createEl("option", { text: "All projects" });
+      allTimelineProjectsOption.value = "";
+      projects.forEach((project) => {
+        const option = timelineProjectFilter.createEl("option", { text: project.name });
+        option.value = project.name;
+        option.selected = project.name === this.timelineFilters.project;
+      });
+      timelineProjectFilter.addEventListener("change", () => {
+        this.timelineFilters.project = timelineProjectFilter.value;
+        void this.render();
+      });
+      const timelineTagFilter = timelineFilterGrid.createEl("select", { cls: "daily-dashboard-input" });
+      const allTimelineTagsOption = timelineTagFilter.createEl("option", { text: "All tags" });
+      allTimelineTagsOption.value = "";
+      SESSION_TAG_OPTIONS.forEach((tag) => {
+        const option = timelineTagFilter.createEl("option", { text: tag });
+        option.value = tag;
+        option.selected = tag === this.timelineFilters.tag;
+      });
+      timelineTagFilter.addEventListener("change", () => {
+        this.timelineFilters.tag = timelineTagFilter.value;
+        void this.render();
+      });
+      this.createFilterInput(timelineFilterGrid, "From date (YYYY-MM-DD)", this.timelineFilters.fromDate, (value) => {
+        this.timelineFilters.fromDate = value;
+        void this.render();
+      });
+      this.createFilterInput(timelineFilterGrid, "To date (YYYY-MM-DD)", this.timelineFilters.toDate, (value) => {
+        this.timelineFilters.toDate = value;
+        void this.render();
+      });
+      const notesOnlyLabel = timelineFilterGrid.createEl("label", { cls: "daily-dashboard-row-meta" });
+      const notesOnlyCheckbox = notesOnlyLabel.createEl("input", { attr: { type: "checkbox" } });
+      notesOnlyCheckbox.checked = this.timelineFilters.onlyWithNotes;
+      notesOnlyCheckbox.addEventListener("change", () => {
+        this.timelineFilters.onlyWithNotes = notesOnlyCheckbox.checked;
+        void this.render();
+      });
+      notesOnlyLabel.appendText(" Only show items with notes or descriptive detail");
+      const timelineKindRow = timelineCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      ([
+        { key: "task", label: "Tasks" },
+        { key: "session", label: "Sessions" },
+        { key: "calendar", label: "Calendar" },
+        { key: "log", label: "Logs" }
+      ] satisfies Array<{ key: TimelineSearchKind; label: string }>).forEach((item) => {
+        const button = timelineKindRow.createEl("button", {
+          cls: this.timelineFilters.kinds.includes(item.key) ? "daily-dashboard-filter-chip is-active" : "daily-dashboard-filter-chip",
+          text: item.label
+        });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          if (this.timelineFilters.kinds.includes(item.key)) {
+            this.timelineFilters.kinds = this.timelineFilters.kinds.filter((candidate) => candidate !== item.key);
+          } else {
+            this.timelineFilters.kinds = [...this.timelineFilters.kinds, item.key];
+          }
+          if (this.timelineFilters.kinds.length === 0) {
+            this.timelineFilters.kinds = ["task", "session", "calendar", "log"];
+          }
+          void this.render();
+        });
+      });
+      const timelineSummary = timelineCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "task").length} tasks`, timelineResults.some((item) => item.kind === "task") ? "done" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "session").length} sessions`, timelineResults.some((item) => item.kind === "session") ? "capture" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
+      createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
+      const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
+      if (timelineResults.length === 0) {
+        timelineList.createDiv({ cls: "daily-dashboard-empty-state", text: "No timeline entries match the current filters." });
+      } else {
+        timelineResults.slice(0, 60).forEach((result) => {
+          const row = timelineList.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, result.kind, result.tone);
+          createSemanticChip(chipRow, result.date, "log");
+          if (result.project) {
+            createSemanticChip(chipRow, result.project, "neutral");
+          }
+          if (result.tag) {
+            createSemanticChip(chipRow, result.tag, this.getSessionTagTone(result.tag));
+          }
+          copy.createEl("strong", { text: result.title });
+          copy.createEl("span", { text: result.summary });
+          if (result.detail) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: result.detail });
+          }
+        });
+      }
+
+      const heatmapCard = createCard(grid, "Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
+        icon: "grid-2x2",
+        eyebrow: "Patterns",
+        tone: "capture",
+        tag: "84 days"
+      });
+      const heatmapShell = heatmapCard.createDiv({ cls: "daily-dashboard-heatmap-stack" });
+      this.renderHeatmapMetric(heatmapShell, "Work", "Tracked work minutes per day", this.buildHeatmapSeries("work"));
+      this.renderHeatmapMetric(heatmapShell, "Sleep", "Tracked sleep minutes per day", this.buildHeatmapSeries("sleep"));
+      this.renderHeatmapMetric(heatmapShell, "Habits", "Weighted habit completion percentage per day", this.buildHeatmapSeries("habits"));
+
       const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
         icon: "search",
         eyebrow: "History",
@@ -2208,6 +2371,317 @@ export class DailyDashboardView extends ItemView {
       const matchesTo = !this.workLogFilters.toDate || datePart <= this.workLogFilters.toDate;
       return matchesProject && matchesKeyword && matchesFrom && matchesTo;
     });
+  }
+
+  private getTimelineSearchResults(): TimelineSearchResult[] {
+    const entries = this.plugin.getAllEntries();
+    const todayKey = formatDateKey(new Date());
+    const lastEntryKey = entries[entries.length - 1]?.date ?? todayKey;
+    const defaultStart = entries[0]?.date ?? formatDateKey(new Date(Date.now() - (90 * 24 * 60 * 60 * 1000)));
+    const defaultEnd = formatDateKey(new Date(Math.max(new Date(`${lastEntryKey}T00:00:00`).getTime(), Date.now() + (180 * 24 * 60 * 60 * 1000))));
+    const fromDate = this.timelineFilters.fromDate || defaultStart;
+    const toDate = this.timelineFilters.toDate || defaultEnd;
+    const entryMap = new Map(entries.map((entry) => [entry.date, entry]));
+    const nextEntryMap = new Map(entries.map((entry, index) => [entry.date, entries[index + 1]]));
+    const keyword = this.timelineFilters.keyword.trim().toLowerCase();
+
+    const results: TimelineSearchResult[] = [];
+
+    entries
+      .filter((entry) => entry.date >= fromDate && entry.date <= toDate)
+      .forEach((entry) => {
+        entry.completedTasks.forEach((task, index) => {
+          results.push({
+            id: `task-${entry.date}-${index}-${task.archivedAt}`,
+            date: task.archivedAt.slice(0, 10),
+            sortKey: task.archivedAt,
+            kind: "task",
+            title: task.text,
+            summary: `${task.project} • ${task.section}`,
+            detail: task.note?.trim() ?? "",
+            tone: "done",
+            project: task.project,
+            tag: ""
+          });
+        });
+
+        this.pushTimelineSessionResults(results, entry.date, "work", entry.workSessions);
+        this.pushTimelineSessionResults(results, entry.date, "nap", entry.napSessions);
+        this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
+        this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
+        this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
+
+        this.pushTimelineLogResult(results, entry.date, "friction", "Friction log", entry.frictionLog, "alert");
+        this.pushTimelineLogResult(results, entry.date, "sleep", "Sleep log", entry.sleepLog, "health");
+        this.pushTimelineLogResult(results, entry.date, "dream", "Dream log", entry.dreamLog, "log");
+        this.pushTimelineLogResult(results, entry.date, "notes", "Daily notes", entry.notes, "neutral");
+        this.pushTimelineLogResult(results, entry.date, "helped", "What helped today", entry.helpedToday, "done");
+        this.pushTimelineLogResult(results, entry.date, "hurt", "What hurt today", entry.hurtToday, "alert");
+
+        entry.symptomLog.forEach((item, index) => {
+          results.push({
+            id: `symptom-${entry.date}-${index}-${item.loggedAt}`,
+            date: entry.date,
+            sortKey: item.loggedAt || `${entry.date} 23:59`,
+            kind: "log",
+            title: `Symptom • ${item.symptom}`,
+            summary: `Severity ${item.severity}/5`,
+            detail: item.note.trim(),
+            tone: item.severity >= 4 ? "alert" : "log",
+            project: "",
+            tag: ""
+          });
+        });
+
+        entry.intakeLog.forEach((item, index) => {
+          results.push({
+            id: `intake-${entry.date}-${index}-${item.loggedAt}`,
+            date: entry.date,
+            sortKey: item.loggedAt || `${entry.date} 23:59`,
+            kind: "log",
+            title: `Intake • ${item.label}`,
+            summary: `${item.kind} • ${item.amount} ${item.unit}`,
+            detail: item.note.trim(),
+            tone: item.kind === "caffeine" ? "alert" : "health",
+            project: "",
+            tag: ""
+          });
+        });
+
+        entry.foodLog.forEach((item, index) => {
+          results.push({
+            id: `food-${entry.date}-${index}-${item.loggedAt}`,
+            date: entry.date,
+            sortKey: item.loggedAt || `${entry.date} 23:59`,
+            kind: "log",
+            title: `Food • ${item.text}`,
+            summary: `${item.amount} serving${item.amount === 1 ? "" : "s"}`,
+            detail: item.loggedAt ? `Logged ${item.loggedAt.slice(11, 16)}` : "",
+            tone: "health",
+            project: "",
+            tag: ""
+          });
+        });
+
+        const nextEntry = nextEntryMap.get(entry.date);
+        const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+        if (sleepMinutes > 0) {
+          results.push({
+            id: `sleep-metric-${entry.date}`,
+            date: entry.date,
+            sortKey: `${entry.date} 23:58`,
+            kind: "log",
+            title: "Sleep metric",
+            summary: `${formatMinutesAsHours(sleepMinutes)} tracked sleep`,
+            detail: entry.wakeTime || entry.sleepTime ? `Bed ${entry.sleepTime || "unknown"} • Wake ${nextEntry?.wakeTime || entry.wakeTime || "unknown"}` : "",
+            tone: "health",
+            project: "",
+            tag: ""
+          });
+        }
+      });
+
+    this.plugin.getCalendarOccurrencesBetween(fromDate, toDate).forEach((event) => {
+      results.push({
+        id: `calendar-${event.id}`,
+        date: event.date,
+        sortKey: `${event.date} ${event.startTime || "00:00"}`,
+        kind: "calendar",
+        title: event.title,
+        summary: [event.category, event.startTime ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : "All day"].join(" • "),
+        detail: event.notes.trim(),
+        tone: event.category === "work" ? "capture" : event.category === "health" ? "health" : "focus",
+        project: "",
+        tag: ""
+      });
+    });
+
+    return results
+      .filter((result) => this.timelineFilters.kinds.includes(result.kind))
+      .filter((result) => !this.timelineFilters.project || result.project === this.timelineFilters.project)
+      .filter((result) => !this.timelineFilters.tag || result.tag.toLowerCase() === this.timelineFilters.tag.toLowerCase())
+      .filter((result) => !this.timelineFilters.onlyWithNotes || result.detail.trim().length > 0)
+      .filter((result) => !keyword || `${result.title} ${result.summary} ${result.detail} ${result.project} ${result.tag}`.toLowerCase().includes(keyword))
+      .sort((left, right) => right.sortKey.localeCompare(left.sortKey));
+  }
+
+  private pushTimelineSessionResults(results: TimelineSearchResult[], date: string, kind: "work" | "nap" | "relax" | "break" | "poop", sessions: WorkSession[]): void {
+    sessions.forEach((session, index) => {
+      const start = session.start.slice(11, 16);
+      const endRaw = session.end ?? formatDateTimeKey(new Date());
+      const end = endRaw.slice(11, 16);
+      const minutes = Math.max(0, getMinutesBetween(session.start, endRaw));
+      results.push({
+        id: `${kind}-${date}-${index}-${session.start}`,
+        date,
+        sortKey: session.start,
+        kind: "session",
+        title: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} session`,
+        summary: `${start}-${end} • ${formatMinutesAsHours(minutes)}`,
+        detail: session.tag.trim() ? `Tag ${session.tag.trim()}` : "",
+        tone: kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health",
+        project: "",
+        tag: session.tag.trim()
+      });
+    });
+  }
+
+  private pushTimelineLogResult(results: TimelineSearchResult[], date: string, suffix: string, title: string, value: string, tone: TimelineSearchResult["tone"]): void {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    results.push({
+      id: `${suffix}-${date}`,
+      date,
+      sortKey: `${date} 23:59`,
+      kind: "log",
+      title,
+      summary: this.truncateTimelineText(trimmed, 120),
+      detail: trimmed,
+      tone,
+      project: "",
+      tag: ""
+    });
+  }
+
+  private truncateTimelineText(value: string, limit: number): string {
+    return value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
+  }
+
+  private buildHeatmapSeries(kind: "work" | "sleep" | "habits"): Array<{ date: string; value: number; label: string }> {
+    const entries = this.plugin.getAllEntries();
+    const today = new Date();
+    const days = 84;
+    const start = new Date(today);
+    start.setDate(start.getDate() - (days - 1));
+    const entryMap = new Map(entries.map((entry) => [entry.date, entry]));
+    const nextEntryMap = new Map(entries.map((entry, index) => [entry.date, entries[index + 1]]));
+    const habitDefinitions = this.plugin.getHabitDefinitions();
+
+    return Array.from({ length: days }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const dateKey = formatDateKey(date);
+      const entry = entryMap.get(dateKey);
+      if (!entry) {
+        return { date: dateKey, value: 0, label: "No data" };
+      }
+
+      if (kind === "work") {
+        const minutes = getTrackedWorkMinutes(entry);
+        return { date: dateKey, value: Math.min(1, minutes / 240), label: `${formatMinutesAsHours(minutes)} work` };
+      }
+
+      if (kind === "sleep") {
+        const minutes = getSleepMinutesForDay(entry, nextEntryMap.get(dateKey));
+        return { date: dateKey, value: Math.min(1, minutes / 540), label: `${formatMinutesAsHours(minutes)} sleep` };
+      }
+
+      const completion = getHabitWeightedCompletion(entry, habitDefinitions).percentage;
+      return { date: dateKey, value: Math.min(1, completion / 100), label: `${completion}% habits` };
+    });
+  }
+
+  private renderHeatmapMetric(parent: HTMLElement, title: string, description: string, values: Array<{ date: string; value: number; label: string }>): void {
+    const section = parent.createDiv({ cls: "daily-dashboard-heatmap-metric" });
+    const header = section.createDiv({ cls: "daily-dashboard-score-header" });
+    header.createEl("strong", { text: title });
+    header.createEl("span", { cls: "daily-dashboard-row-meta", text: description });
+    const grid = section.createDiv({ cls: "daily-dashboard-heatmap-grid" });
+    values.forEach((item) => {
+      const cell = grid.createDiv({ cls: this.getHeatmapCellClass(item.value) });
+      cell.title = `${item.date} • ${item.label}`;
+    });
+    const summary = section.createDiv({ cls: "daily-dashboard-chip-row" });
+    const average = values.length > 0 ? Math.round((values.reduce((sum, item) => sum + item.value, 0) / values.length) * 100) : 0;
+    const strongest = values.reduce((best, item) => item.value > best.value ? item : best, values[0] ?? { date: "", value: 0, label: "No data" });
+    createSemanticChip(summary, `Average ${average}%`, average >= 60 ? "done" : average >= 35 ? "focus" : "neutral");
+    createSemanticChip(summary, strongest.date ? `Peak ${strongest.date}` : "No peak", strongest.value >= 0.7 ? "capture" : "neutral");
+  }
+
+  private getHeatmapCellClass(value: number): string {
+    if (value >= 0.8) {
+      return "daily-dashboard-heatmap-cell is-4";
+    }
+    if (value >= 0.6) {
+      return "daily-dashboard-heatmap-cell is-3";
+    }
+    if (value >= 0.35) {
+      return "daily-dashboard-heatmap-cell is-2";
+    }
+    if (value > 0) {
+      return "daily-dashboard-heatmap-cell is-1";
+    }
+    return "daily-dashboard-heatmap-cell is-0";
+  }
+
+  private resetDashboardFilters(): void {
+    this.workLogFilters = {
+      project: "",
+      keyword: "",
+      fromDate: "",
+      toDate: ""
+    };
+    this.timelineFilters = {
+      keyword: "",
+      project: "",
+      tag: "",
+      kinds: ["task", "session", "calendar", "log"],
+      fromDate: "",
+      toDate: "",
+      onlyWithNotes: false
+    };
+    this.selectedSavedFilterName = "";
+    setDashboardSelectedFilterName("");
+  }
+
+  private saveCurrentDashboardFilter(): void {
+    const suggestedName = this.selectedSavedFilterName || `Filter ${formatDateKey(new Date())}`;
+    const name = window.prompt("Name this dashboard filter preset:", suggestedName)?.trim() ?? "";
+    if (!name) {
+      return;
+    }
+
+    const filters = getSavedDashboardFilters().filter((item) => item.name !== name);
+    filters.push({
+      name,
+      workLogFilters: { ...this.workLogFilters },
+      timelineFilters: {
+        ...this.timelineFilters,
+        kinds: [...this.timelineFilters.kinds]
+      }
+    });
+    setSavedDashboardFilters(filters.sort((left, right) => left.name.localeCompare(right.name)));
+    this.selectedSavedFilterName = name;
+    setDashboardSelectedFilterName(name);
+  }
+
+  private applySavedDashboardFilter(name: string): void {
+    const filter = getSavedDashboardFilters().find((item) => item.name === name);
+    if (!filter) {
+      return;
+    }
+
+    this.workLogFilters = { ...filter.workLogFilters };
+    this.timelineFilters = {
+      ...filter.timelineFilters,
+      kinds: filter.timelineFilters.kinds.length > 0 ? [...filter.timelineFilters.kinds] : ["task", "session", "calendar", "log"]
+    };
+    this.selectedSavedFilterName = filter.name;
+    setDashboardSelectedFilterName(filter.name);
+  }
+
+  private deleteSelectedDashboardFilter(): void {
+    if (!this.selectedSavedFilterName) {
+      return;
+    }
+
+    const nextFilters = getSavedDashboardFilters().filter((item) => item.name !== this.selectedSavedFilterName);
+    setSavedDashboardFilters(nextFilters);
+    this.selectedSavedFilterName = "";
+    setDashboardSelectedFilterName("");
   }
 
   private renderScoreControl(
@@ -3916,6 +4390,8 @@ const DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-s
 const DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
 const DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-session-tag";
 const DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routines";
+const DASHBOARD_SAVED_FILTERS_STORAGE_KEY = "daily-dashboard-saved-filters";
+const DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -4161,6 +4637,75 @@ function setDashboardSelectedSessionTag(tag: string): void {
       DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY,
       SESSION_TAG_OPTIONS.includes(normalized as typeof SESSION_TAG_OPTIONS[number]) ? normalized : SESSION_TAG_OPTIONS[0]
     );
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getDashboardSelectedFilterName(): string {
+  try {
+    return window.localStorage.getItem(DASHBOARD_SELECTED_FILTER_STORAGE_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function setDashboardSelectedFilterName(name: string): void {
+  try {
+    if (!name.trim()) {
+      window.localStorage.removeItem(DASHBOARD_SELECTED_FILTER_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(DASHBOARD_SELECTED_FILTER_STORAGE_KEY, name.trim());
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function getSavedDashboardFilters(): SavedDashboardFilter[] {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_SAVED_FILTERS_STORAGE_KEY);
+    if (!stored) {
+      return [];
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is SavedDashboardFilter => Boolean(item && typeof item === "object" && typeof item.name === "string"))
+      .map((item) => ({
+        name: item.name.trim(),
+        workLogFilters: {
+          project: item.workLogFilters?.project?.trim?.() ?? "",
+          keyword: item.workLogFilters?.keyword?.trim?.() ?? "",
+          fromDate: item.workLogFilters?.fromDate?.trim?.() ?? "",
+          toDate: item.workLogFilters?.toDate?.trim?.() ?? ""
+        },
+        timelineFilters: {
+          keyword: item.timelineFilters?.keyword?.trim?.() ?? "",
+          project: item.timelineFilters?.project?.trim?.() ?? "",
+          tag: item.timelineFilters?.tag?.trim?.() ?? "",
+          kinds: Array.isArray(item.timelineFilters?.kinds)
+            ? item.timelineFilters.kinds.filter((kind): kind is TimelineSearchKind => kind === "task" || kind === "session" || kind === "calendar" || kind === "log")
+            : ["task", "session", "calendar", "log"],
+          fromDate: item.timelineFilters?.fromDate?.trim?.() ?? "",
+          toDate: item.timelineFilters?.toDate?.trim?.() ?? "",
+          onlyWithNotes: Boolean(item.timelineFilters?.onlyWithNotes)
+        }
+      }))
+      .filter((item) => item.name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function setSavedDashboardFilters(filters: SavedDashboardFilter[]): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_SAVED_FILTERS_STORAGE_KEY, JSON.stringify(filters));
   } catch {
     // Ignore storage failures and keep the dashboard usable.
   }

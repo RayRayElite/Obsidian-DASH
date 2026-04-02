@@ -1778,6 +1778,74 @@ input.daily-dashboard-input {
   gap: 10px;
 }
 
+.daily-dashboard-filter-chip {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 90%, var(--background-secondary));
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.daily-dashboard-filter-chip:hover,
+.daily-dashboard-filter-chip.is-active {
+  color: var(--text-normal);
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 46%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-primary));
+}
+
+.daily-dashboard-filter-chip:hover {
+  transform: translateY(-1px);
+}
+
+.daily-dashboard-heatmap-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.daily-dashboard-heatmap-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.daily-dashboard-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.daily-dashboard-heatmap-cell {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 76%, transparent);
+  background: color-mix(in srgb, var(--background-secondary) 88%, transparent);
+}
+
+.daily-dashboard-heatmap-cell.is-0 {
+  background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+}
+
+.daily-dashboard-heatmap-cell.is-1 {
+  background: color-mix(in srgb, #7f9f7a 28%, var(--background-primary));
+}
+
+.daily-dashboard-heatmap-cell.is-2 {
+  background: color-mix(in srgb, #7f9f7a 48%, var(--background-primary));
+}
+
+.daily-dashboard-heatmap-cell.is-3 {
+  background: color-mix(in srgb, #7f9f7a 68%, var(--background-primary));
+}
+
+.daily-dashboard-heatmap-cell.is-4 {
+  background: color-mix(in srgb, #7f9f7a 88%, var(--background-primary));
+}
+
 .daily-dashboard-ai-shell {
   display: flex;
   flex-direction: column;
