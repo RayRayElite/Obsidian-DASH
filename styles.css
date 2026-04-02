@@ -1225,7 +1225,7 @@ input.daily-dashboard-input {
   align-items: end;
   min-width: var(--daily-dashboard-week-stage-min-width);
   height: 316px;
-  padding: 18px var(--daily-dashboard-week-stage-padding) 32px;
+  padding: 30px var(--daily-dashboard-week-stage-padding) 32px;
 }
 
 .daily-dashboard-week-column {
