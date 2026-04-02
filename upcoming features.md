@@ -22,11 +22,11 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [ ] Drag to reorder Top 3 items.
 - [x] Carry forward unfinished Top 3 items into the next logical day with confirmation.
 - [x] Let calendar reminders become real temporary focus rows with accept / dismiss actions.
-- [ ] Add notes on Top 3 items for links, context, or next steps.
-- [ ] Track estimate versus actual time for Top 3 items.
-- [ ] Add a Next Up queue under Top 3.
-- [ ] Add quick-capture actions for Top 3 from commands and anywhere in Obsidian.
-- [ ] Add pause-all / start-break flow.
+- [x] Add notes on Top 3 items for links, context, or next steps.
+- [x] Track estimate versus actual time for Top 3 items.
+- [x] Add a Next Up queue under Top 3.
+- [x] Add quick-capture actions for Top 3 from commands and anywhere in Obsidian.
+- [x] Add pause-all / start-break flow.
 - [ ] Add session tags like deep work, admin, creative, errands, and recovery.
 
 ## Logical Day And Tracking
