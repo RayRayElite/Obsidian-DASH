@@ -9,10 +9,13 @@ import {
   type DayLifecycleState,
   type FoodEntry,
   type HabitDefinition,
+  type HabitCompletionWindow,
+  type IntakeEntry,
   type NextUpFocusItem,
   type NoteIndexCache,
   type NoteIndexChunk,
   type NoteIndexEntry,
+  type SymptomEntry,
   type TodayFocusItem,
   type TodayFocusStatus,
   type RoutineTemplateDefinition,
@@ -25,7 +28,9 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .map((habit) => ({
           id: createHabitId(habit.id || habit.label || "habit"),
           label: typeof habit.label === "string" ? habit.label.trim() : "Habit",
-          target: clamp(Number(habit.target ?? 1), 1, 12)
+          target: clamp(Number(habit.target ?? 1), 1, 12),
+          completionWindow: normalizeHabitWindow(habit.completionWindow),
+          difficultyWeight: clamp(Number(habit.difficultyWeight ?? 1), 1, 3)
         }))
         .filter((habit) => habit.label.length > 0)
     : DEFAULT_SETTINGS.habitDefinitions;
@@ -348,11 +353,16 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     calendarFollowThroughCompleted: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
+    habitMissNotes: {},
     foodLog: [],
+    intakeLog: [],
+    symptomLog: [],
     energyCheckIns: [],
     dietInsight: "",
     sleepLog: "",
     dreamLog: "",
+    helpedToday: "",
+    hurtToday: "",
     notes: "",
     workSessions: [],
     workMinutesOverride: null,
@@ -363,6 +373,7 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     breakSessions: [],
     breakMinutesOverride: null,
     poopSessions: [],
+    poopQualityByStart: {},
     completedTasks: []
   };
 }
@@ -488,15 +499,73 @@ export function parseHabitDefinitions(value: string): HabitDefinition[] {
   }
 
   return lines.map((line) => {
-    const [rawLabel, rawTarget] = line.split("|");
+    const [rawLabel, rawTarget, rawWindow, rawWeight] = line.split("|");
     const label = rawLabel?.trim() || "Habit";
     const target = clamp(Number(rawTarget?.trim() || 1), 1, 12);
     return {
       id: createHabitId(label),
       label,
-      target
+      target,
+      completionWindow: normalizeHabitWindow(rawWindow),
+      difficultyWeight: clamp(Number(rawWeight?.trim() || 1), 1, 3)
     };
   });
+}
+
+export function normalizeHabitWindow(value: unknown): HabitCompletionWindow {
+  return value === "morning" || value === "afternoon" || value === "evening" || value === "before-bed"
+    ? value
+    : "anytime";
+}
+
+export function formatHabitWindowLabel(window: HabitCompletionWindow): string {
+  return window === "before-bed"
+    ? "Before bed"
+    : `${window.charAt(0).toUpperCase()}${window.slice(1)}`;
+}
+
+export function getHabitWeightedCompletion(entry: DailyEntry, definitions: HabitDefinition[]): { completed: number; target: number; percentage: number } {
+  const completed = definitions.reduce((sum, definition) => {
+    const capped = Math.min(entry.habits[definition.id] ?? 0, definition.target);
+    return sum + (capped * definition.difficultyWeight);
+  }, 0);
+  const target = definitions.reduce((sum, definition) => sum + (definition.target * definition.difficultyWeight), 0);
+  return {
+    completed,
+    target,
+    percentage: target > 0 ? Math.round((completed / target) * 100) : 0
+  };
+}
+
+export function countHabitEventsInWindow(events: string[], window: HabitCompletionWindow): number {
+  if (window === "anytime") {
+    return events.length;
+  }
+
+  return events.filter((timestamp) => isTimestampInHabitWindow(timestamp, window)).length;
+}
+
+export function isTimestampInHabitWindow(timestamp: string, window: HabitCompletionWindow): boolean {
+  if (window === "anytime") {
+    return true;
+  }
+
+  const hour = Number(timestamp.slice(11, 13));
+  if (!Number.isFinite(hour)) {
+    return false;
+  }
+
+  if (window === "morning") {
+    return hour >= 5 && hour < 12;
+  }
+  if (window === "afternoon") {
+    return hour >= 12 && hour < 17;
+  }
+  if (window === "evening") {
+    return hour >= 17 && hour < 22;
+  }
+
+  return hour >= 22 || hour < 3;
 }
 
 export function createHabitId(value: string): string {
@@ -648,22 +717,29 @@ export function renderRoutineSignalsForAi(entries: DailyEntry[], habits: HabitDe
   const habitLines = habits.map((habit) => {
     const timestamps = entries.flatMap((entry) => entry.habitEvents[habit.id] ?? []).map((item) => item.slice(11));
     const averageCount = (entries.reduce((sum, entry) => sum + (entry.habits[habit.id] ?? 0), 0) / entries.length).toFixed(1);
-    return `- ${habit.label}: avg ${averageCount}/${habit.target}, recent times ${timestamps.slice(-8).join(", ") || "none"}`;
+    const missNotes = entries.map((entry) => entry.habitMissNotes[habit.id]).filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return `- ${habit.label}: avg ${averageCount}/${habit.target}, window ${formatHabitWindowLabel(habit.completionWindow)}, weight ${habit.difficultyWeight}/3, recent times ${timestamps.slice(-8).join(", ") || "none"}, miss notes ${missNotes.slice(-3).join(" | ") || "none"}`;
   });
 
   const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
+  const intakeLines = entries.flatMap((entry) => entry.intakeLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.kind} ${item.amount} ${item.unit} ${item.label}`));
+  const symptomLines = entries.flatMap((entry) => entry.symptomLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.symptom} ${item.severity}/5${item.note ? ` ${item.note}` : ""}`));
   const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
   const wakeQualityValues = entries.filter((entry) => entry.wakeQualityScore > 0).map((entry) => entry.wakeQualityScore);
   const energyCheckInLines = entries.flatMap((entry) => entry.energyCheckIns.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.score}/5${item.note ? ` ${item.note}` : ""}`));
+  const reflectionLines = entries.flatMap((entry) => [entry.helpedToday ? `${entry.date} helped: ${entry.helpedToday}` : "", entry.hurtToday ? `${entry.date} hurt: ${entry.hurtToday}` : ""]).filter((item) => item.length > 0);
 
   return [
     "Habit timing:",
     ...habitLines,
     "",
     `Recent food times: ${foodTimes.slice(-12).join(", ") || "none"}`,
+    `Recent intake log: ${intakeLines.slice(0, 10).join(" | ") || "none"}`,
+    `Recent symptoms: ${symptomLines.slice(0, 10).join(" | ") || "none"}`,
     `Dream log days: ${dreamDays.join(", ") || "none"}`,
     `Average wake quality: ${wakeQualityValues.length > 0 ? `${(wakeQualityValues.reduce((sum, value) => sum + value, 0) / wakeQualityValues.length).toFixed(1)}/5` : "none"}`,
-    `Recent energy check-ins: ${energyCheckInLines.slice(0, 10).join(" | ") || "none"}`
+    `Recent energy check-ins: ${energyCheckInLines.slice(0, 10).join(" | ") || "none"}`,
+    `Recent reflections: ${reflectionLines.slice(-6).join(" | ") || "none"}`
   ].join("\n");
 }
 
@@ -762,6 +838,46 @@ export function normalizeFoodEntry(input: unknown): FoodEntry | null {
   };
 }
 
+export function normalizeIntakeEntry(input: unknown): IntakeEntry | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<IntakeEntry>;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  if (!label) {
+    return null;
+  }
+
+  return {
+    kind: candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water",
+    label,
+    amount: clamp(Math.round(Number(candidate.amount ?? 1)), 1, 64),
+    unit: typeof candidate.unit === "string" && candidate.unit.trim().length > 0 ? candidate.unit.trim() : "serving",
+    note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
+
+export function normalizeSymptomEntry(input: unknown): SymptomEntry | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<SymptomEntry>;
+  const symptom = typeof candidate.symptom === "string" ? candidate.symptom.trim() : "";
+  if (!symptom) {
+    return null;
+  }
+
+  return {
+    symptom,
+    severity: clamp(Math.round(Number(candidate.severity ?? 1)), 1, 5),
+    note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
+
 export function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): string {
   if (!entry) {
     return "";
@@ -775,6 +891,8 @@ export function getEntryRecencyKey(entry: Partial<DailyEntry> | undefined): stri
     ...(Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.map((item) => item.loggedAt) : []),
     typeof entry.sleepTime === "string" ? entry.sleepTime : "",
     ...(Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => item.loggedAt) : []),
+    ...(Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item) => item.loggedAt) : []),
+    ...(Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item) => item.loggedAt) : []),
     ...(Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.napSessions) ? entry.napSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),
     ...(Array.isArray(entry.relaxSessions) ? entry.relaxSessions.flatMap((session) => [session.start, session.end ?? ""]) : []),

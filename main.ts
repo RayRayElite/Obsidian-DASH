@@ -19,7 +19,9 @@ import {
   getRelevantIndexedNotes,
   normalizeFoodEntry,
   normalizeFolderPath,
+  normalizeIntakeEntry,
   normalizeNextUpFocusItems,
+  normalizeSymptomEntry,
   normalizeTodayFocusItems,
   normalizeNoteIndexCache,
   normalizeDayState,
@@ -111,6 +113,7 @@ import {
   type EnergyCheckIn,
   type FoodEntry,
   type HabitDefinition,
+  type IntakeEntry,
   type LogicalDayInsights,
   type LogicalDayPrompt,
   type NoteIndexEntry,
@@ -122,6 +125,7 @@ import {
   type RoutineTemplateDefinition,
   type SleepInsights,
   type SuggestedTop3Candidate,
+  type SymptomEntry,
   type TimeAllocationBucket,
   type TimeAllocationInsights,
   type TodoSnapshot,
@@ -651,7 +655,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getSleepInsights(): SleepInsights {
-    return buildSleepInsights(this.getAllEntries());
+    return buildSleepInsights(this.getAllEntries(), undefined, this.getHabitDefinitions());
   }
 
   getTimeAllocationInsights(date: string = this.getTodayKey(), referenceDate: Date = new Date()): TimeAllocationInsights {
@@ -1766,7 +1770,18 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
-  async addHabitDefinition(label: string, target: number): Promise<void> {
+  async updateHabitMissNote(habitId: string, value: string): Promise<void> {
+    const entry = this.getTodayEntry();
+    const trimmedValue = value.trim();
+    if (trimmedValue) {
+      entry.habitMissNotes[habitId] = trimmedValue;
+    } else {
+      delete entry.habitMissNotes[habitId];
+    }
+    await this.persistEntry(entry);
+  }
+
+  async addHabitDefinition(label: string, target: number, completionWindow = "anytime", difficultyWeight = 1): Promise<void> {
     const normalizedLabel = label.trim();
     if (!normalizedLabel) {
       new Notice("Habit name is required.");
@@ -1786,7 +1801,11 @@ export default class DailyDashboardPlugin extends Plugin {
         {
           id: nextHabitId,
           label: normalizedLabel,
-          target: clamp(Math.round(target), 1, 12)
+          target: clamp(Math.round(target), 1, 12),
+          completionWindow: completionWindow === "morning" || completionWindow === "afternoon" || completionWindow === "evening" || completionWindow === "before-bed"
+            ? completionWindow
+            : "anytime",
+          difficultyWeight: clamp(Math.round(difficultyWeight), 1, 3)
         }
       ]
     });
@@ -1817,6 +1836,52 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const entry = this.getTodayEntry();
     entry.foodLog = [{ text: trimmedValue, amount: clamp(Math.round(amount), 1, 24), loggedAt: formatDateTimeKey(new Date()) }, ...entry.foodLog];
+    await this.persistEntry(entry);
+  }
+
+  async addIntakeEntry(kind: string, label: string, amount = 1, unit = "serving", note = ""): Promise<void> {
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    entry.intakeLog = [{
+      kind: kind === "caffeine" || kind === "supplement" || kind === "medication" ? kind : "water",
+      label: trimmedLabel,
+      amount: clamp(Math.round(amount), 1, 64),
+      unit: unit.trim() || "serving",
+      note: note.trim(),
+      loggedAt: formatDateTimeKey(new Date())
+    }, ...entry.intakeLog].slice(0, 40);
+    await this.persistEntry(entry);
+  }
+
+  async removeIntakeEntry(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.intakeLog = entry.intakeLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async addSymptomEntry(symptom: string, severity: number, note = ""): Promise<void> {
+    const trimmedSymptom = symptom.trim();
+    if (!trimmedSymptom) {
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    entry.symptomLog = [{
+      symptom: trimmedSymptom,
+      severity: clamp(Math.round(severity), 1, 5),
+      note: note.trim(),
+      loggedAt: formatDateTimeKey(new Date())
+    }, ...entry.symptomLog].slice(0, 30);
+    await this.persistEntry(entry);
+  }
+
+  async removeSymptomEntry(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.symptomLog = entry.symptomLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
 
@@ -1865,6 +1930,27 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateDreamLog(value: string): Promise<void> {
     const entry = this.getTodayEntry();
     entry.dreamLog = value.trim();
+    await this.persistEntry(entry);
+  }
+
+  async updateReflection(kind: "helped" | "hurt", value: string): Promise<void> {
+    const entry = this.getTodayEntry();
+    if (kind === "helped") {
+      entry.helpedToday = value.trim();
+    } else {
+      entry.hurtToday = value.trim();
+    }
+    await this.persistEntry(entry);
+  }
+
+  async updatePoopQuality(sessionStart: string, quality: string): Promise<void> {
+    const entry = this.getTodayEntry();
+    const trimmedQuality = quality.trim();
+    if (trimmedQuality) {
+      entry.poopQualityByStart[sessionStart] = trimmedQuality;
+    } else {
+      delete entry.poopQualityByStart[sessionStart];
+    }
     await this.persistEntry(entry);
   }
 
@@ -3608,10 +3694,23 @@ export default class DailyDashboardPlugin extends Plugin {
         : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
+      habitMissNotes: entry.habitMissNotes && typeof entry.habitMissNotes === "object"
+        ? Object.fromEntries(Object.entries(entry.habitMissNotes).filter((item): item is [string, string] => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()]))
+        : {},
       foodLog: Array.isArray(entry.foodLog)
         ? entry.foodLog
             .map((item) => normalizeFoodEntry(item))
             .filter((item): item is FoodEntry => item !== null)
+        : [],
+      intakeLog: Array.isArray(entry.intakeLog)
+        ? entry.intakeLog
+            .map((item) => normalizeIntakeEntry(item))
+            .filter((item): item is IntakeEntry => item !== null)
+        : [],
+      symptomLog: Array.isArray(entry.symptomLog)
+        ? entry.symptomLog
+            .map((item) => normalizeSymptomEntry(item))
+            .filter((item): item is SymptomEntry => item !== null)
         : [],
       energyCheckIns: Array.isArray(entry.energyCheckIns)
         ? entry.energyCheckIns
@@ -3625,6 +3724,8 @@ export default class DailyDashboardPlugin extends Plugin {
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
+      helpedToday: typeof entry.helpedToday === "string" ? entry.helpedToday : "",
+      hurtToday: typeof entry.hurtToday === "string" ? entry.hurtToday : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
       workSessions: Array.isArray(entry.workSessions)
         ? entry.workSessions
@@ -3675,6 +3776,9 @@ export default class DailyDashboardPlugin extends Plugin {
               tag: typeof item.tag === "string" ? item.tag.trim() : ""
             }))
         : [],
+      poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object"
+        ? Object.fromEntries(Object.entries(entry.poopQualityByStart).filter((item): item is [string, string] => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()]))
+        : {},
       completedTasks: Array.isArray(entry.completedTasks)
         ? entry.completedTasks
             .filter((item): item is ArchivedTaskSnapshot => Boolean(item && typeof item === "object"))

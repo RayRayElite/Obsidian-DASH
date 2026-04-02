@@ -7,10 +7,18 @@ export const NOTE_LINK_REGEX = /\[\[([^\]]+)\]\]/g;
 export const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"]);
 export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"] as const;
 
+export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
+export const INTAKE_KIND_OPTIONS = ["water", "caffeine", "supplement", "medication"] as const;
+
+export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
+export type IntakeKind = (typeof INTAKE_KIND_OPTIONS)[number];
+
 export interface HabitDefinition {
   id: string;
   label: string;
   target: number;
+  completionWindow: HabitCompletionWindow;
+  difficultyWeight: number;
 }
 
 export interface RoutineTemplateDefinition {
@@ -145,6 +153,22 @@ export interface FoodEntry {
   loggedAt: string;
 }
 
+export interface IntakeEntry {
+  kind: IntakeKind;
+  label: string;
+  amount: number;
+  unit: string;
+  note: string;
+  loggedAt: string;
+}
+
+export interface SymptomEntry {
+  symptom: string;
+  severity: number;
+  note: string;
+  loggedAt: string;
+}
+
 export interface EnergyCheckIn {
   loggedAt: string;
   score: number;
@@ -170,11 +194,16 @@ export interface DailyEntry {
   calendarFollowThroughCompleted: string[];
   frictionLog: string;
   missedHabits: string[];
+  habitMissNotes: Record<string, string>;
   foodLog: FoodEntry[];
+  intakeLog: IntakeEntry[];
+  symptomLog: SymptomEntry[];
   energyCheckIns: EnergyCheckIn[];
   dietInsight: string;
   sleepLog: string;
   dreamLog: string;
+  helpedToday: string;
+  hurtToday: string;
   notes: string;
   workSessions: WorkSession[];
   workMinutesOverride: number | null;
@@ -185,6 +214,7 @@ export interface DailyEntry {
   breakSessions: WorkSession[];
   breakMinutesOverride: number | null;
   poopSessions: WorkSession[];
+  poopQualityByStart: Record<string, string>;
   completedTasks: ArchivedTaskSnapshot[];
 }
 
@@ -245,6 +275,8 @@ export interface SleepNightSnapshot {
   bedtime: string;
   wakeTime: string;
   wakeQualityScore: number;
+  recoveryScore: number;
+  recoveryLabel: string;
 }
 
 export interface SleepInsights {
@@ -254,6 +286,8 @@ export interface SleepInsights {
   debtMinutes: number;
   consistencyScore: number;
   consistencyLabel: string;
+  averageRecoveryScore: number;
+  recoveryLabel: string;
   averageBedtime: string;
   averageWakeTime: string;
   recentNights: SleepNightSnapshot[];
@@ -632,11 +666,11 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
-    { id: "pills", label: "Take pills", target: 1 },
-    { id: "brush-teeth", label: "Brush teeth", target: 2 },
-    { id: "floss", label: "Floss", target: 2 },
-    { id: "shower", label: "Shower", target: 1 },
-    { id: "sleep-log", label: "Log sleep", target: 1 }
+    { id: "pills", label: "Take pills", target: 1, completionWindow: "morning", difficultyWeight: 2 },
+    { id: "brush-teeth", label: "Brush teeth", target: 2, completionWindow: "anytime", difficultyWeight: 2 },
+    { id: "floss", label: "Floss", target: 2, completionWindow: "before-bed", difficultyWeight: 2 },
+    { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", difficultyWeight: 1 },
+    { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", difficultyWeight: 2 }
   ],
   routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
 };

@@ -62,14 +62,14 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 ## Habits, Health, And Personal Data
 
-- [ ] Add habit completion windows such as morning, afternoon, evening, and before bed.
-- [ ] Add habit miss notes.
-- [ ] Add habit difficulty weighting.
-- [ ] Add water, caffeine, supplements, and medication tracking.
-- [ ] Add symptom or pain tracking.
-- [ ] Add bowel movement quality tags in addition to count and duration.
-- [ ] Add recovery score blending sleep, naps, relax time, anxiety, and misses.
-- [ ] Add "What helped today?" and "What hurt today?" micro-reflections.
+- [x] Add habit completion windows such as morning, afternoon, evening, and before bed.
+- [x] Add habit miss notes.
+- [x] Add habit difficulty weighting.
+- [x] Add water, caffeine, supplements, and medication tracking.
+- [x] Add symptom or pain tracking.
+- [x] Add bowel movement quality tags in addition to count and duration.
+- [x] Add recovery score blending sleep, naps, relax time, anxiety, and misses.
+- [x] Add "What helped today?" and "What hurt today?" micro-reflections.
 - [ ] Add weekly personal trend reporting.
 
 ## Gamification Center

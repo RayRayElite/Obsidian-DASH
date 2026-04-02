@@ -4,10 +4,10 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 
 ## What It Does
 
-- tracks repeat daily habits with per-day counts
-- stores mood, energy, wake quality, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped energy check-ins, sleep log, dream log, and daily notes
+- tracks repeat daily habits with per-day counts, preferred completion windows, difficulty weights, and per-habit miss notes
+- stores mood, energy, wake quality, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
-- tracks work sessions, nap sessions, and bowel movement count plus duration inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery
+- tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
@@ -49,7 +49,7 @@ The `Day Flow` card now also watches for long stretches of inactivity and shows 
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 
-The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card also supports timestamped energy check-ins with optional notes during the day.
+The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card also supports timestamped energy check-ins with optional notes during the day.
 
 The Day Flow card now also includes a grouped time-allocation summary for the current logical day, plus unknown-time diagnostics that call out missing timestamps, active days, and likely timer gaps. That makes the old generic "unknown" bucket actionable instead of just vague leftover time.
 
@@ -61,7 +61,7 @@ The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3
 
 Calendar events can now span multiple days and carry event-specific prep and travel lead times, so reminders can surface before the actual start instead of only at the start itself. Daily log notes also render richer calendar context with linked project references pulled from event notes plus persistent follow-through checkboxes for each day’s events.
 
-Habit completions now also capture timestamps for each completion step, and food entries capture the time they were logged, so the dashboard and AI features can reason about routine timing instead of only totals.
+Habit completions now also capture timestamps for each completion step, can be assigned morning/afternoon/evening/before-bed windows plus difficulty weights, and support daily miss notes. Food entries capture the time they were logged, the body log now tracks water/caffeine/supplements/medication plus symptoms and pain, and the notes block includes quick "What helped today?" and "What hurt today?" reflections.
 
 ## AI Integration
 

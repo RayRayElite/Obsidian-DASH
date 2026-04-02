@@ -2,8 +2,11 @@ import { App, ItemView, Modal, Notice, PluginSettingTab, Setting, WorkspaceLeaf,
 
 import type DailyDashboardPlugin from "../main";
 import {
+  countHabitEventsInWindow,
+  formatHabitWindowLabel,
   formatDateKey,
   formatDateTimeKey,
+  getHabitWeightedCompletion,
   formatSyncTimestamp,
   parseHabitDefinitions,
   renderScore
@@ -12,6 +15,7 @@ import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay } from "
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
+  HABIT_WINDOW_OPTIONS,
   SESSION_TAG_OPTIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ArchivedTaskSnapshot,
@@ -550,6 +554,25 @@ export class DailyDashboardView extends ItemView {
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
+      if (todayEntry.poopSessions.length > 0) {
+        const bowelQualityList = dayFlowMetrics.createDiv({ cls: "daily-dashboard-project-list" });
+        todayEntry.poopSessions.slice().reverse().slice(0, 3).forEach((session) => {
+          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}` });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
+            const button = controls.createEl("button", {
+              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+              text: quality
+            });
+            button.type = "button";
+            button.addEventListener("click", () => {
+              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
+            });
+          });
+        });
+      }
 
       const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
       const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
@@ -1096,21 +1119,31 @@ export class DailyDashboardView extends ItemView {
       });
       const habitActions = habitsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(habitActions, "Add habit", async () => this.plugin.openAddHabitFlow(), false, "plus-circle");
+      const habitSummary = getHabitWeightedCompletion(todayEntry, this.plugin.getHabitDefinitions());
+      const habitSummaryChips = habitsCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(habitSummaryChips, `${habitSummary.percentage}% weighted completion`, habitSummary.percentage >= 80 ? "done" : habitSummary.percentage >= 55 ? "state" : "alert");
+      createSemanticChip(habitSummaryChips, `${todayEntry.missedHabits.length} misses`, todayEntry.missedHabits.length === 0 ? "done" : "alert");
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit) => {
         const currentValue = todayEntry.habits[habit.id] ?? 0;
         const habitEvents = todayEntry.habitEvents[habit.id] ?? [];
+        const inWindowCount = countHabitEventsInWindow(habitEvents, habit.completionWindow);
         const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak • best ${this.plugin.getHabitBestStreak(habit.id)}`
+          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak • best ${this.plugin.getHabitBestStreak(habit.id)} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")}`
+            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")} • in-window ${inWindowCount}/${habitEvents.length}`
+          });
+        } else {
+          copy.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Window ${formatHabitWindowLabel(habit.completionWindow)} • no completions yet`
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
@@ -1133,6 +1166,16 @@ export class DailyDashboardView extends ItemView {
         removeButton.addEventListener("click", () => {
           void this.plugin.removeHabitDefinition(habit.id);
         });
+        if (currentValue < habit.target || (todayEntry.habitMissNotes[habit.id] ?? "").length > 0) {
+          const missNote = row.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: `Miss note for ${habit.label}` }
+          });
+          missNote.value = todayEntry.habitMissNotes[habit.id] ?? "";
+          missNote.addEventListener("change", () => {
+            void this.plugin.updateHabitMissNote(habit.id, missNote.value);
+          });
+        }
       });
 
       const quickAddCard = createCard(grid, "Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
@@ -1251,6 +1294,82 @@ export class DailyDashboardView extends ItemView {
           });
         });
       }
+      const intakeSection = this.createCollapsibleSubsection(foodCard, "body-intake", "Water, caffeine, meds", "Track hydration, stimulants, supplements, and medication without burying them in notes.");
+      const intakeForm = intakeSection.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const intakeKind = intakeForm.createEl("select", { cls: "daily-dashboard-input" });
+      [
+        ["water", "Water"],
+        ["caffeine", "Caffeine"],
+        ["supplement", "Supplement"],
+        ["medication", "Medication"]
+      ].forEach(([value, label]) => {
+        const option = intakeKind.createEl("option", { text: label });
+        option.value = value;
+      });
+      const intakeLabel = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "What did you take or drink?" } });
+      const intakeMeta = intakeForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "64", value: "1" } });
+      const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "oz, cup, pill, serving" } });
+      const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
+      const intakeButtons = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(intakeButtons, "Add intake", async () => {
+        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
+        intakeLabel.value = "";
+        intakeAmount.value = "1";
+        intakeUnit.value = "";
+        intakeNote.value = "";
+      }, false, "droplets");
+      createButton(intakeButtons, "Water 8 oz", async () => this.plugin.addIntakeEntry("water", "Water", 8, "oz"), false, "glass-water");
+      createButton(intakeButtons, "Coffee", async () => this.plugin.addIntakeEntry("caffeine", "Coffee", 1, "cup"), false, "coffee");
+      const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.intakeLog.length === 0) {
+        intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
+      } else {
+        todayEntry.intakeLog.slice(0, 10).forEach((item, index) => {
+          const row = intakeList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item.kind} • ${item.label}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} • ${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeIntakeEntry(index);
+          });
+        });
+      }
+
+      const symptomsCard = createCard(grid, "Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
+        icon: "heart-pulse",
+        eyebrow: "Body",
+        tone: "health",
+        tag: "Observe"
+      });
+      const symptomForm = symptomsCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
+      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
+      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
+      const symptomButtons = symptomsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(symptomButtons, "Log symptom", async () => {
+        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
+        symptomInput.value = "";
+        symptomSeverity.value = "3";
+        symptomNote.value = "";
+      }, false, "heart-pulse");
+      const symptomList = symptomsCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.symptomLog.length === 0) {
+        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
+      } else {
+        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
+          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item.symptom} • ${item.severity}/5` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeSymptomEntry(index);
+          });
+        });
+      }
 
       const notesCard = createCard(grid, "Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
         icon: "moon-star",
@@ -1264,11 +1383,13 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Debt ${formatMinutesAsHours(sleepInsights.debtMinutes)}` : "No debt data", sleepInsights.debtMinutes >= 180 ? "alert" : sleepInsights.nightsTracked > 0 ? "health" : "neutral");
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 ${sleepInsights.consistencyLabel}` : "No consistency data", sleepInsights.consistencyScore >= 70 ? "done" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Avg ${formatMinutesAsHours(sleepInsights.averageSleepMinutes)}` : "No average sleep yet", sleepInsights.averageSleepMinutes >= 420 ? "health" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
+      createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Recovery ${sleepInsights.averageRecoveryScore}/100 ${sleepInsights.recoveryLabel}` : "No recovery data", sleepInsights.averageRecoveryScore >= 70 ? "done" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
       const recoveryGrid = recoverySection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
       this.renderDayMetric(recoveryGrid, "Nights tracked", `${sleepInsights.nightsTracked}`);
       this.renderDayMetric(recoveryGrid, "Sleep target", formatMinutesAsHours(sleepInsights.targetMinutes));
       this.renderDayMetric(recoveryGrid, "Avg bedtime", sleepInsights.averageBedtime || "Not enough data");
       this.renderDayMetric(recoveryGrid, "Avg wake", sleepInsights.averageWakeTime || "Not enough data");
+      this.renderDayMetric(recoveryGrid, "Avg recovery", sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100` : "No data");
       if (sleepInsights.recentNights.length > 0) {
         const recentNights = recoverySection.createDiv({ cls: "daily-dashboard-project-list" });
         sleepInsights.recentNights.slice().reverse().forEach((night) => {
@@ -1276,7 +1397,7 @@ export class DailyDashboardView extends ItemView {
           row.createEl("strong", { text: `${night.date} • ${formatMinutesAsHours(night.sleepMinutes)}` });
           row.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Bed ${night.bedtime || "unknown"} • Wake ${night.wakeTime || "unknown"} • Wake quality ${night.wakeQualityScore > 0 ? `${night.wakeQualityScore}/5` : "not logged"}`
+            text: `Bed ${night.bedtime || "unknown"} • Wake ${night.wakeTime || "unknown"} • Wake quality ${night.wakeQualityScore > 0 ? `${night.wakeQualityScore}/5` : "not logged"} • Recovery ${night.recoveryScore}/100 ${night.recoveryLabel}`
           });
         });
       }
@@ -1300,6 +1421,20 @@ export class DailyDashboardView extends ItemView {
       notesInput.placeholder = "Wins, blockers, symptoms, context, or anything worth remembering later.";
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What helped today?" });
+      const helpedInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      helpedInput.value = todayEntry.helpedToday;
+      helpedInput.placeholder = "Small things that improved the day, energy, focus, or recovery.";
+      helpedInput.addEventListener("change", () => {
+        void this.plugin.updateReflection("helped", helpedInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What hurt today?" });
+      const hurtInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      hurtInput.value = todayEntry.hurtToday;
+      hurtInput.placeholder = "Stressors, pain, missed habits, interruptions, or anything that dragged the day down.";
+      hurtInput.addEventListener("change", () => {
+        void this.plugin.updateReflection("hurt", hurtInput.value);
       });
 
       const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
@@ -4122,6 +4257,8 @@ export class AddHabitModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private habitName = "";
   private targetCount = "1";
+  private completionWindow = "anytime";
+  private difficultyWeight = "1";
 
   constructor(app: App, plugin: DailyDashboardPlugin) {
     super(app);
@@ -4161,9 +4298,35 @@ export class AddHabitModal extends Modal {
       });
 
     new Setting(contentEl)
+      .setName("Completion window")
+      .setDesc("Optional preferred time of day for the habit.")
+      .addDropdown((dropdown) => {
+        HABIT_WINDOW_OPTIONS.forEach((window) => dropdown.addOption(window, window === "before-bed" ? "Before bed" : `${window.charAt(0).toUpperCase()}${window.slice(1)}`));
+        dropdown.setValue(this.completionWindow);
+        dropdown.onChange((value) => {
+          this.completionWindow = value;
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Difficulty weight")
+      .setDesc("Higher weights make the habit count more in weighted completion and recovery scoring.")
+      .addText((text) => {
+        text
+          .setPlaceholder("1")
+          .setValue(this.difficultyWeight)
+          .onChange((value) => {
+            this.difficultyWeight = value;
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "1";
+        text.inputEl.max = "3";
+      });
+
+    new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Add habit").setCta().onClick(async () => {
-          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount));
+          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight));
           this.close();
         });
       })

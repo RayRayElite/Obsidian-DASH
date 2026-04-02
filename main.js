@@ -37,6 +37,7 @@ var PROJECT_META_REGEX = /^([A-Za-z][A-Za-z ]+)::\s*(.+)$/;
 var NOTE_LINK_REGEX = /\[\[([^\]]+)\]\]/g;
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"]);
 var SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"];
+var HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"];
 var DEFAULT_SETTINGS = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -65,11 +66,11 @@ var DEFAULT_SETTINGS = {
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
-    { id: "pills", label: "Take pills", target: 1 },
-    { id: "brush-teeth", label: "Brush teeth", target: 2 },
-    { id: "floss", label: "Floss", target: 2 },
-    { id: "shower", label: "Shower", target: 1 },
-    { id: "sleep-log", label: "Log sleep", target: 1 }
+    { id: "pills", label: "Take pills", target: 1, completionWindow: "morning", difficultyWeight: 2 },
+    { id: "brush-teeth", label: "Brush teeth", target: 2, completionWindow: "anytime", difficultyWeight: 2 },
+    { id: "floss", label: "Floss", target: 2, completionWindow: "before-bed", difficultyWeight: 2 },
+    { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", difficultyWeight: 1 },
+    { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", difficultyWeight: 2 }
   ],
   routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
 };
@@ -78,11 +79,13 @@ var DEFAULT_SETTINGS = {
 function sanitizeSettings(settings) {
   var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
-    var _a2;
+    var _a2, _b2;
     return {
       id: createHabitId(habit.id || habit.label || "habit"),
       label: typeof habit.label === "string" ? habit.label.trim() : "Habit",
-      target: clamp(Number((_a2 = habit.target) != null ? _a2 : 1), 1, 12)
+      target: clamp(Number((_a2 = habit.target) != null ? _a2 : 1), 1, 12),
+      completionWindow: normalizeHabitWindow(habit.completionWindow),
+      difficultyWeight: clamp(Number((_b2 = habit.difficultyWeight) != null ? _b2 : 1), 1, 3)
     };
   }).filter((habit) => habit.label.length > 0) : DEFAULT_SETTINGS.habitDefinitions;
   const aiApiKeySource = settings.aiApiKeySource === "env" ? "env" : "settings";
@@ -343,11 +346,16 @@ function createEmptyEntry(date, habits) {
     calendarFollowThroughCompleted: [],
     frictionLog: "",
     missedHabits: computeMissedHabits(habitValues, habits),
+    habitMissNotes: {},
     foodLog: [],
+    intakeLog: [],
+    symptomLog: [],
     energyCheckIns: [],
     dietInsight: "",
     sleepLog: "",
     dreamLog: "",
+    helpedToday: "",
+    hurtToday: "",
     notes: "",
     workSessions: [],
     workMinutesOverride: null,
@@ -358,6 +366,7 @@ function createEmptyEntry(date, habits) {
     breakSessions: [],
     breakMinutesOverride: null,
     poopSessions: [],
+    poopQualityByStart: {},
     completedTasks: []
   };
 }
@@ -443,15 +452,61 @@ function parseHabitDefinitions(value) {
     return DEFAULT_SETTINGS.habitDefinitions;
   }
   return lines.map((line) => {
-    const [rawLabel, rawTarget] = line.split("|");
+    const [rawLabel, rawTarget, rawWindow, rawWeight] = line.split("|");
     const label = (rawLabel == null ? void 0 : rawLabel.trim()) || "Habit";
     const target = clamp(Number((rawTarget == null ? void 0 : rawTarget.trim()) || 1), 1, 12);
     return {
       id: createHabitId(label),
       label,
-      target
+      target,
+      completionWindow: normalizeHabitWindow(rawWindow),
+      difficultyWeight: clamp(Number((rawWeight == null ? void 0 : rawWeight.trim()) || 1), 1, 3)
     };
   });
+}
+function normalizeHabitWindow(value) {
+  return value === "morning" || value === "afternoon" || value === "evening" || value === "before-bed" ? value : "anytime";
+}
+function formatHabitWindowLabel(window2) {
+  return window2 === "before-bed" ? "Before bed" : `${window2.charAt(0).toUpperCase()}${window2.slice(1)}`;
+}
+function getHabitWeightedCompletion(entry, definitions) {
+  const completed = definitions.reduce((sum, definition) => {
+    var _a;
+    const capped = Math.min((_a = entry.habits[definition.id]) != null ? _a : 0, definition.target);
+    return sum + capped * definition.difficultyWeight;
+  }, 0);
+  const target = definitions.reduce((sum, definition) => sum + definition.target * definition.difficultyWeight, 0);
+  return {
+    completed,
+    target,
+    percentage: target > 0 ? Math.round(completed / target * 100) : 0
+  };
+}
+function countHabitEventsInWindow(events, window2) {
+  if (window2 === "anytime") {
+    return events.length;
+  }
+  return events.filter((timestamp) => isTimestampInHabitWindow(timestamp, window2)).length;
+}
+function isTimestampInHabitWindow(timestamp, window2) {
+  if (window2 === "anytime") {
+    return true;
+  }
+  const hour = Number(timestamp.slice(11, 13));
+  if (!Number.isFinite(hour)) {
+    return false;
+  }
+  if (window2 === "morning") {
+    return hour >= 5 && hour < 12;
+  }
+  if (window2 === "afternoon") {
+    return hour >= 12 && hour < 17;
+  }
+  if (window2 === "evening") {
+    return hour >= 17 && hour < 22;
+  }
+  return hour >= 22 || hour < 3;
 }
 function createHabitId(value) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "habit";
@@ -578,20 +633,27 @@ function renderRoutineSignalsForAi(entries, habits) {
       var _a;
       return sum + ((_a = entry.habits[habit.id]) != null ? _a : 0);
     }, 0) / entries.length).toFixed(1);
-    return `- ${habit.label}: avg ${averageCount}/${habit.target}, recent times ${timestamps.slice(-8).join(", ") || "none"}`;
+    const missNotes = entries.map((entry) => entry.habitMissNotes[habit.id]).filter((item2) => typeof item2 === "string" && item2.trim().length > 0);
+    return `- ${habit.label}: avg ${averageCount}/${habit.target}, window ${formatHabitWindowLabel(habit.completionWindow)}, weight ${habit.difficultyWeight}/3, recent times ${timestamps.slice(-8).join(", ") || "none"}, miss notes ${missNotes.slice(-3).join(" | ") || "none"}`;
   });
   const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item2) => item2.loggedAt.slice(11))).filter((item2) => item2.length > 0);
+  const intakeLines = entries.flatMap((entry) => entry.intakeLog.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.kind} ${item2.amount} ${item2.unit} ${item2.label}`));
+  const symptomLines = entries.flatMap((entry) => entry.symptomLog.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.symptom} ${item2.severity}/5${item2.note ? ` ${item2.note}` : ""}`));
   const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
   const wakeQualityValues = entries.filter((entry) => entry.wakeQualityScore > 0).map((entry) => entry.wakeQualityScore);
   const energyCheckInLines = entries.flatMap((entry) => entry.energyCheckIns.slice(0, 3).map((item2) => `${item2.loggedAt.slice(0, 16)} ${item2.score}/5${item2.note ? ` ${item2.note}` : ""}`));
+  const reflectionLines = entries.flatMap((entry) => [entry.helpedToday ? `${entry.date} helped: ${entry.helpedToday}` : "", entry.hurtToday ? `${entry.date} hurt: ${entry.hurtToday}` : ""]).filter((item2) => item2.length > 0);
   return [
     "Habit timing:",
     ...habitLines,
     "",
     `Recent food times: ${foodTimes.slice(-12).join(", ") || "none"}`,
+    `Recent intake log: ${intakeLines.slice(0, 10).join(" | ") || "none"}`,
+    `Recent symptoms: ${symptomLines.slice(0, 10).join(" | ") || "none"}`,
     `Dream log days: ${dreamDays.join(", ") || "none"}`,
     `Average wake quality: ${wakeQualityValues.length > 0 ? `${(wakeQualityValues.reduce((sum, value) => sum + value, 0) / wakeQualityValues.length).toFixed(1)}/5` : "none"}`,
-    `Recent energy check-ins: ${energyCheckInLines.slice(0, 10).join(" | ") || "none"}`
+    `Recent energy check-ins: ${energyCheckInLines.slice(0, 10).join(" | ") || "none"}`,
+    `Recent reflections: ${reflectionLines.slice(-6).join(" | ") || "none"}`
   ].join("\n");
 }
 function renderAiRelevantNotes(notes) {
@@ -657,6 +719,42 @@ function normalizeFoodEntry(input) {
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
   };
 }
+function normalizeIntakeEntry(input) {
+  var _a;
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  if (!label) {
+    return null;
+  }
+  return {
+    kind: candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water",
+    label,
+    amount: clamp(Math.round(Number((_a = candidate.amount) != null ? _a : 1)), 1, 64),
+    unit: typeof candidate.unit === "string" && candidate.unit.trim().length > 0 ? candidate.unit.trim() : "serving",
+    note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
+function normalizeSymptomEntry(input) {
+  var _a;
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const symptom = typeof candidate.symptom === "string" ? candidate.symptom.trim() : "";
+  if (!symptom) {
+    return null;
+  }
+  return {
+    symptom,
+    severity: clamp(Math.round(Number((_a = candidate.severity) != null ? _a : 1)), 1, 5),
+    note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
 function getEntryRecencyKey(entry) {
   var _a;
   if (!entry) {
@@ -670,6 +768,8 @@ function getEntryRecencyKey(entry) {
     ...Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.map((item2) => item2.loggedAt) : [],
     typeof entry.sleepTime === "string" ? entry.sleepTime : "",
     ...Array.isArray(entry.foodLog) ? entry.foodLog.map((item2) => item2.loggedAt) : [],
+    ...Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item2) => item2.loggedAt) : [],
+    ...Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item2) => item2.loggedAt) : [],
     ...Array.isArray(entry.workSessions) ? entry.workSessions.flatMap((session) => {
       var _a2;
       return [session.start, (_a2 = session.end) != null ? _a2 : ""];
@@ -740,9 +840,16 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     var _a2, _b2;
     const events = (_a2 = entry.habitEvents[habit.id]) != null ? _a2 : [];
     const timing = events.length > 0 ? ` at ${events.map((item2) => item2.slice(11)).join(", ")}` : "";
-    return `- ${habit.label}: ${(_b2 = entry.habits[habit.id]) != null ? _b2 : 0}/${habit.target}${timing}`;
+    const inWindowCount = countHabitEventsInWindow(events, habit.completionWindow);
+    return `- ${habit.label}: ${(_b2 = entry.habits[habit.id]) != null ? _b2 : 0}/${habit.target}${timing} \u2022 ${formatHabitWindowLabel(habit.completionWindow)} \u2022 difficulty ${habit.difficultyWeight}/3 \u2022 in window ${inWindowCount}/${events.length || 0}`;
   });
+  const habitMissNoteLines = habits.filter((habit) => {
+    var _a2;
+    return ((_a2 = entry.habitMissNotes[habit.id]) != null ? _a2 : "").trim().length > 0;
+  }).map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
   const foodLines = entry.foodLog.length > 0 ? entry.foodLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.amount > 1 ? `${item2.amount}x ` : ""}${item2.text}`) : ["- None logged"];
+  const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.kind} \u2022 ${item2.amount} ${item2.unit} ${item2.label}${item2.note ? ` - ${item2.note}` : ""}`) : ["- None logged"];
+  const symptomLines = entry.symptomLog.length > 0 ? entry.symptomLog.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.symptom} \u2022 ${item2.severity}/5${item2.note ? ` - ${item2.note}` : ""}`) : ["- None logged"];
   const energyCheckInLines = entry.energyCheckIns.length > 0 ? entry.energyCheckIns.map((item2) => `- ${item2.loggedAt ? `${item2.loggedAt}: ` : ""}${item2.score}/5${item2.note ? ` - ${item2.note}` : ""}`) : ["- No energy check-ins logged"];
   const completedTaskLines = entry.completedTasks.length > 0 ? entry.completedTasks.map((task) => `- ${task.project} / ${task.section}: ${task.text}`) : ["- No archived tasks today"];
   const focusLines = entry.todayFocus.length > 0 ? entry.todayFocus.map((item2) => renderTodayFocusLine(item2)) : ["- No focus items set"];
@@ -751,7 +858,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   const napSessionLines = entry.napSessions.length > 0 ? entry.napSessions.map((session) => renderSessionLine(session)) : ["- No tracked naps"];
   const relaxSessionLines = entry.relaxSessions.length > 0 ? entry.relaxSessions.map((session) => renderSessionLine(session)) : ["- No tracked relaxing sessions"];
   const breakSessionLines = entry.breakSessions.length > 0 ? entry.breakSessions.map((session) => renderSessionLine(session)) : ["- No tracked breaks"];
-  const poopSessionLines = entry.poopSessions.length > 0 ? entry.poopSessions.map((session) => renderSessionLine(session)) : ["- No tracked bowel movement sessions"];
+  const poopSessionLines = entry.poopSessions.length > 0 ? entry.poopSessions.map((session) => `${renderSessionLine(session)}${entry.poopQualityByStart[session.start] ? ` \u2022 quality ${entry.poopQualityByStart[session.start]}` : ""}`) : ["- No tracked bowel movement sessions"];
   const calendarEventLines = calendarEvents.length > 0 ? calendarEvents.map((event) => renderCalendarEventLine(event)) : ["- No calendar events"];
   const calendarFollowThroughLines = calendarEvents.length > 0 ? calendarEvents.map((event) => {
     const checked = entry.calendarFollowThroughCompleted.includes(event.id) ? "x" : " ";
@@ -788,6 +895,8 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `breakMinutesOverride: ${(_e = entry.breakMinutesOverride) != null ? _e : ""}`,
     `workCompleted: ${entry.completedTasks.length}`,
     `foodEntryCount: ${entry.foodLog.length}`,
+    `intakeEntryCount: ${entry.intakeLog.length}`,
+    `symptomEntryCount: ${entry.symptomLog.length}`,
     `energyCheckInCount: ${entry.energyCheckIns.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
@@ -814,6 +923,9 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "## Habits",
     ...habitLines,
     "",
+    "## Habit Miss Notes",
+    ...habitMissNoteLines.length > 0 ? habitMissNoteLines : ["- No miss notes yet."],
+    "",
     "## Top 3 For Today",
     ...focusLines,
     "",
@@ -837,6 +949,12 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "## Food Log",
     ...foodLines,
     "",
+    "## Intake Log",
+    ...intakeLines,
+    "",
+    "## Symptoms And Pain",
+    ...symptomLines,
+    "",
     "## Diet Insight",
     entry.dietInsight || "No AI nutrition summary yet.",
     "",
@@ -845,6 +963,10 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "",
     "## Dream Log",
     entry.dreamLog || "No dream log yet.",
+    "",
+    "## Micro Reflections",
+    `- What helped today?: ${entry.helpedToday || "Nothing logged yet."}`,
+    `- What hurt today?: ${entry.hurtToday || "Nothing logged yet."}`,
     "",
     "## Work Sessions",
     ...workSessionLines,
@@ -978,11 +1100,16 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     ])).sort(),
     frictionLog: typeof parsedEntry.frictionLog === "string" ? parsedEntry.frictionLog : baseEntry.frictionLog,
     missedHabits: Array.isArray(parsedEntry.missedHabits) ? parsedEntry.missedHabits : baseEntry.missedHabits,
+    habitMissNotes: parsedEntry.habitMissNotes && typeof parsedEntry.habitMissNotes === "object" ? parsedEntry.habitMissNotes : baseEntry.habitMissNotes,
     foodLog: Array.isArray(parsedEntry.foodLog) ? parsedEntry.foodLog : baseEntry.foodLog,
+    intakeLog: Array.isArray(parsedEntry.intakeLog) ? parsedEntry.intakeLog : baseEntry.intakeLog,
+    symptomLog: Array.isArray(parsedEntry.symptomLog) ? parsedEntry.symptomLog : baseEntry.symptomLog,
     energyCheckIns: Array.isArray(parsedEntry.energyCheckIns) ? parsedEntry.energyCheckIns : baseEntry.energyCheckIns,
     dietInsight: typeof parsedEntry.dietInsight === "string" ? parsedEntry.dietInsight : baseEntry.dietInsight,
     sleepLog: typeof parsedEntry.sleepLog === "string" ? parsedEntry.sleepLog : baseEntry.sleepLog,
     dreamLog: typeof parsedEntry.dreamLog === "string" ? parsedEntry.dreamLog : baseEntry.dreamLog,
+    helpedToday: typeof parsedEntry.helpedToday === "string" ? parsedEntry.helpedToday : baseEntry.helpedToday,
+    hurtToday: typeof parsedEntry.hurtToday === "string" ? parsedEntry.hurtToday : baseEntry.hurtToday,
     notes: typeof parsedEntry.notes === "string" ? parsedEntry.notes : baseEntry.notes,
     workSessions: Array.isArray(parsedEntry.workSessions) ? parsedEntry.workSessions : baseEntry.workSessions,
     workMinutesOverride: normalizeOptionalMinutes((_s = frontmatter.get("workMinutesOverride")) != null ? _s : parsedEntry.workMinutesOverride),
@@ -993,11 +1120,12 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     breakSessions: Array.isArray(parsedEntry.breakSessions) ? parsedEntry.breakSessions : baseEntry.breakSessions,
     breakMinutesOverride: normalizeOptionalMinutes((_v = frontmatter.get("breakMinutesOverride")) != null ? _v : parsedEntry.breakMinutesOverride),
     poopSessions: Array.isArray(parsedEntry.poopSessions) ? parsedEntry.poopSessions : baseEntry.poopSessions,
+    poopQualityByStart: parsedEntry.poopQualityByStart && typeof parsedEntry.poopQualityByStart === "object" ? parsedEntry.poopQualityByStart : baseEntry.poopQualityByStart,
     completedTasks: Array.isArray(parsedEntry.completedTasks) ? parsedEntry.completedTasks : baseEntry.completedTasks
   };
 }
 function renderPeriodReport(input) {
-  const sleepInsights = buildSleepInsights(input.entries);
+  const sleepInsights = buildSleepInsights(input.entries, void 0, input.habitDefinitions);
   const workByProject = /* @__PURE__ */ new Map();
   let daysWithFood = 0;
   let daysWithSleep = 0;
@@ -1097,6 +1225,7 @@ function renderPeriodReport(input) {
     `- Tracked bowel time: ${formatMinutesAsHours(trackedPoopMinutes)}`,
     `- Bowel movements tracked: ${trackedPoopCount}`,
     `- Average sleep: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.averageSleepMinutes) : "No sleep data"}`,
+    `- Average recovery: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100 (${sleepInsights.recoveryLabel})` : "No recovery data"}`,
     `- Sleep debt: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.debtMinutes) : "No sleep data"}`,
     `- Sleep consistency: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 (${sleepInsights.consistencyLabel})` : "No sleep data"}`,
     `- Average wake quality: ${wakeQualityDays > 0 ? `${(wakeQualityTotal / wakeQualityDays).toFixed(1)}/5` : "No wake-quality data"}`,
@@ -1193,7 +1322,7 @@ function formatMinutesAsHours(totalMinutes) {
 }
 function renderWeeklyReview(input) {
   var _a, _b, _c, _d;
-  const sleepInsights = buildSleepInsights(input.entries);
+  const sleepInsights = buildSleepInsights(input.entries, void 0, input.habits);
   const totalTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
   const moodEntries = input.entries.filter((entry) => entry.moodScore > 0);
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
@@ -1217,6 +1346,7 @@ function renderWeeklyReview(input) {
     `- Average energy: ${averageEnergy === "n/a" ? "No data" : `${averageEnergy}/5`}`,
     `- Average wake quality: ${averageWakeQuality === "n/a" ? "No data" : `${averageWakeQuality}/5`}`,
     `- Average sleep: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.averageSleepMinutes) : "No sleep data"}`,
+    `- Average recovery: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100 (${sleepInsights.recoveryLabel})` : "No recovery data"}`,
     `- Sleep debt: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.debtMinutes) : "No sleep data"}`,
     `- Sleep consistency: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 (${sleepInsights.consistencyLabel})` : "No sleep data"}`,
     `- Days captured: ${input.entries.length}`,
@@ -1252,9 +1382,9 @@ function getSleepMinutesForDay(entry, nextEntry) {
   }
   return napMinutes + getMinutesBetween(entry.sleepTime, nextEntry.wakeTime);
 }
-function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTES) {
+function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTES, habits = []) {
   const orderedEntries = [...entries].sort((left, right) => left.date.localeCompare(right.date));
-  const recentNights = orderedEntries.map((entry, index) => buildSleepNightSnapshot(entry, orderedEntries[index + 1])).filter((item2) => item2 !== null).slice(-7);
+  const recentNights = orderedEntries.map((entry, index) => buildSleepNightSnapshot(entry, orderedEntries[index + 1], targetMinutes, habits)).filter((item2) => item2 !== null).slice(-7);
   if (recentNights.length === 0) {
     return {
       targetMinutes,
@@ -1263,12 +1393,15 @@ function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTE
       debtMinutes: 0,
       consistencyScore: 0,
       consistencyLabel: "No data",
+      averageRecoveryScore: 0,
+      recoveryLabel: "No data",
       averageBedtime: "",
       averageWakeTime: "",
       recentNights: []
     };
   }
   const averageSleepMinutes = Math.round(recentNights.reduce((sum, item2) => sum + item2.sleepMinutes, 0) / recentNights.length);
+  const averageRecoveryScore = Math.round(recentNights.reduce((sum, item2) => sum + item2.recoveryScore, 0) / recentNights.length);
   const debtMinutes = Math.max(0, recentNights.reduce((sum, item2) => sum + Math.max(0, targetMinutes - item2.sleepMinutes), 0));
   const bedtimeValues = recentNights.map((item2) => normalizeBedtimeMinutes(item2.bedtime)).filter((value) => value !== null);
   const wakeValues = recentNights.map((item2) => parseClockMinutes(item2.wakeTime)).filter((value) => value !== null);
@@ -1282,24 +1415,45 @@ function buildSleepInsights(entries, targetMinutes = DEFAULT_SLEEP_TARGET_MINUTE
     debtMinutes,
     consistencyScore,
     consistencyLabel: consistencyScore >= 85 ? "Very steady" : consistencyScore >= 70 ? "Stable" : consistencyScore >= 50 ? "Drifting" : "Irregular",
+    averageRecoveryScore,
+    recoveryLabel: averageRecoveryScore >= 80 ? "Recovered" : averageRecoveryScore >= 65 ? "Holding" : averageRecoveryScore >= 45 ? "Strained" : "Depleted",
     averageBedtime: formatAverageClock(bedtimeValues, true),
     averageWakeTime: formatAverageClock(wakeValues, false),
     recentNights
   };
 }
-function buildSleepNightSnapshot(entry, nextEntry) {
+function buildSleepNightSnapshot(entry, nextEntry, targetMinutes, habits) {
   var _a;
   const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   if (sleepMinutes <= 0) {
     return null;
   }
+  const recoveryScore = computeRecoveryScore(entry, sleepMinutes, targetMinutes, habits);
   return {
     date: entry.date,
     sleepMinutes,
     bedtime: entry.sleepTime ? entry.sleepTime.slice(11, 16) : "",
     wakeTime: (nextEntry == null ? void 0 : nextEntry.wakeTime) ? nextEntry.wakeTime.slice(11, 16) : "",
-    wakeQualityScore: (_a = nextEntry == null ? void 0 : nextEntry.wakeQualityScore) != null ? _a : 0
+    wakeQualityScore: (_a = nextEntry == null ? void 0 : nextEntry.wakeQualityScore) != null ? _a : 0,
+    recoveryScore,
+    recoveryLabel: recoveryScore >= 80 ? "Recovered" : recoveryScore >= 65 ? "Holding" : recoveryScore >= 45 ? "Strained" : "Depleted"
   };
+}
+function computeRecoveryScore(entry, sleepMinutes, targetMinutes, habits) {
+  const sleepComponent = Math.min(50, Math.round(sleepMinutes / targetMinutes * 50));
+  const napMinutes = getTrackedNapMinutes(entry);
+  const relaxMinutes = getTrackedRelaxMinutes(entry);
+  const wakeQualityComponent = Math.round(entry.wakeQualityScore / 5 * 15);
+  const anxietyComponent = Math.round((5 - entry.anxietyScore) / 5 * 15);
+  const relaxComponent = Math.min(10, Math.round(relaxMinutes / 60 * 10));
+  const napComponent = napMinutes === 0 ? 5 : napMinutes <= 90 ? 10 : napMinutes <= 150 ? 7 : 4;
+  const missedWeight = habits.reduce((sum, habit) => {
+    var _a;
+    const remaining = Math.max(0, habit.target - ((_a = entry.habits[habit.id]) != null ? _a : 0));
+    return sum + remaining * habit.difficultyWeight;
+  }, 0);
+  const missPenalty = Math.min(20, missedWeight * 2);
+  return clamp(sleepComponent + wakeQualityComponent + anxietyComponent + relaxComponent + napComponent - missPenalty, 0, 100);
 }
 function parseClockMinutes(value) {
   if (!/^\d{2}:\d{2}$/.test(value.trim())) {
@@ -3007,6 +3161,25 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
+      if (todayEntry.poopSessions.length > 0) {
+        const bowelQualityList = dayFlowMetrics.createDiv({ cls: "daily-dashboard-project-list" });
+        todayEntry.poopSessions.slice().reverse().slice(0, 3).forEach((session) => {
+          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}` });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
+            const button = controls.createEl("button", {
+              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+              text: quality
+            });
+            button.type = "button";
+            button.addEventListener("click", () => {
+              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
+            });
+          });
+        });
+      }
       const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
       const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
@@ -3537,22 +3710,32 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       });
       const habitActions = habitsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(habitActions, "Add habit", async () => this.plugin.openAddHabitFlow(), false, "plus-circle");
+      const habitSummary = getHabitWeightedCompletion(todayEntry, this.plugin.getHabitDefinitions());
+      const habitSummaryChips = habitsCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(habitSummaryChips, `${habitSummary.percentage}% weighted completion`, habitSummary.percentage >= 80 ? "done" : habitSummary.percentage >= 55 ? "state" : "alert");
+      createSemanticChip(habitSummaryChips, `${todayEntry.missedHabits.length} misses`, todayEntry.missedHabits.length === 0 ? "done" : "alert");
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit) => {
-        var _a2, _b2;
+        var _a2, _b2, _c2, _d2;
         const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
         const habitEvents = (_b2 = todayEntry.habitEvents[habit.id]) != null ? _b2 : [];
+        const inWindowCount = countHabitEventsInWindow(habitEvents, habit.completionWindow);
         const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak \u2022 best ${this.plugin.getHabitBestStreak(habit.id)}`
+          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} day streak \u2022 best ${this.plugin.getHabitBestStreak(habit.id)} \u2022 ${formatHabitWindowLabel(habit.completionWindow)} \u2022 difficulty ${habit.difficultyWeight}/3`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Today at ${habitEvents.map((item2) => item2.slice(11)).join(", ")}`
+            text: `Today at ${habitEvents.map((item2) => item2.slice(11)).join(", ")} \u2022 in-window ${inWindowCount}/${habitEvents.length}`
+          });
+        } else {
+          copy.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Window ${formatHabitWindowLabel(habit.completionWindow)} \u2022 no completions yet`
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
@@ -3575,6 +3758,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         removeButton.addEventListener("click", () => {
           void this.plugin.removeHabitDefinition(habit.id);
         });
+        if (currentValue < habit.target || ((_c2 = todayEntry.habitMissNotes[habit.id]) != null ? _c2 : "").length > 0) {
+          const missNote = row.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: `Miss note for ${habit.label}` }
+          });
+          missNote.value = (_d2 = todayEntry.habitMissNotes[habit.id]) != null ? _d2 : "";
+          missNote.addEventListener("change", () => {
+            void this.plugin.updateHabitMissNote(habit.id, missNote.value);
+          });
+        }
       });
       const quickAddCard = createCard(grid, "Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
         icon: "plus-circle",
@@ -3691,6 +3884,81 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         });
       }
+      const intakeSection = this.createCollapsibleSubsection(foodCard, "body-intake", "Water, caffeine, meds", "Track hydration, stimulants, supplements, and medication without burying them in notes.");
+      const intakeForm = intakeSection.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const intakeKind = intakeForm.createEl("select", { cls: "daily-dashboard-input" });
+      [
+        ["water", "Water"],
+        ["caffeine", "Caffeine"],
+        ["supplement", "Supplement"],
+        ["medication", "Medication"]
+      ].forEach(([value, label]) => {
+        const option = intakeKind.createEl("option", { text: label });
+        option.value = value;
+      });
+      const intakeLabel = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "What did you take or drink?" } });
+      const intakeMeta = intakeForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "64", value: "1" } });
+      const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "oz, cup, pill, serving" } });
+      const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
+      const intakeButtons = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(intakeButtons, "Add intake", async () => {
+        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
+        intakeLabel.value = "";
+        intakeAmount.value = "1";
+        intakeUnit.value = "";
+        intakeNote.value = "";
+      }, false, "droplets");
+      createButton(intakeButtons, "Water 8 oz", async () => this.plugin.addIntakeEntry("water", "Water", 8, "oz"), false, "glass-water");
+      createButton(intakeButtons, "Coffee", async () => this.plugin.addIntakeEntry("caffeine", "Coffee", 1, "cup"), false, "coffee");
+      const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.intakeLog.length === 0) {
+        intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
+      } else {
+        todayEntry.intakeLog.slice(0, 10).forEach((item2, index) => {
+          const row = intakeList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item2.kind} \u2022 ${item2.label}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item2.amount} ${item2.unit} \u2022 ${item2.loggedAt}${item2.note ? ` \u2022 ${item2.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeIntakeEntry(index);
+          });
+        });
+      }
+      const symptomsCard = createCard(grid, "Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
+        icon: "heart-pulse",
+        eyebrow: "Body",
+        tone: "health",
+        tag: "Observe"
+      });
+      const symptomForm = symptomsCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
+      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
+      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
+      const symptomButtons = symptomsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(symptomButtons, "Log symptom", async () => {
+        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
+        symptomInput.value = "";
+        symptomSeverity.value = "3";
+        symptomNote.value = "";
+      }, false, "heart-pulse");
+      const symptomList = symptomsCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.symptomLog.length === 0) {
+        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
+      } else {
+        todayEntry.symptomLog.slice(0, 10).forEach((item2, index) => {
+          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item2.symptom} \u2022 ${item2.severity}/5` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item2.loggedAt}${item2.note ? ` \u2022 ${item2.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeSymptomEntry(index);
+          });
+        });
+      }
       const notesCard = createCard(grid, "Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
         icon: "moon-star",
         eyebrow: "Recovery",
@@ -3703,11 +3971,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Debt ${formatMinutesAsHours(sleepInsights.debtMinutes)}` : "No debt data", sleepInsights.debtMinutes >= 180 ? "alert" : sleepInsights.nightsTracked > 0 ? "health" : "neutral");
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 ${sleepInsights.consistencyLabel}` : "No consistency data", sleepInsights.consistencyScore >= 70 ? "done" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
       createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Avg ${formatMinutesAsHours(sleepInsights.averageSleepMinutes)}` : "No average sleep yet", sleepInsights.averageSleepMinutes >= 420 ? "health" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
+      createSemanticChip(recoveryChips, sleepInsights.nightsTracked > 0 ? `Recovery ${sleepInsights.averageRecoveryScore}/100 ${sleepInsights.recoveryLabel}` : "No recovery data", sleepInsights.averageRecoveryScore >= 70 ? "done" : sleepInsights.nightsTracked > 0 ? "alert" : "neutral");
       const recoveryGrid = recoverySection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
       this.renderDayMetric(recoveryGrid, "Nights tracked", `${sleepInsights.nightsTracked}`);
       this.renderDayMetric(recoveryGrid, "Sleep target", formatMinutesAsHours(sleepInsights.targetMinutes));
       this.renderDayMetric(recoveryGrid, "Avg bedtime", sleepInsights.averageBedtime || "Not enough data");
       this.renderDayMetric(recoveryGrid, "Avg wake", sleepInsights.averageWakeTime || "Not enough data");
+      this.renderDayMetric(recoveryGrid, "Avg recovery", sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100` : "No data");
       if (sleepInsights.recentNights.length > 0) {
         const recentNights = recoverySection.createDiv({ cls: "daily-dashboard-project-list" });
         sleepInsights.recentNights.slice().reverse().forEach((night) => {
@@ -3715,7 +3985,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           row.createEl("strong", { text: `${night.date} \u2022 ${formatMinutesAsHours(night.sleepMinutes)}` });
           row.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Bed ${night.bedtime || "unknown"} \u2022 Wake ${night.wakeTime || "unknown"} \u2022 Wake quality ${night.wakeQualityScore > 0 ? `${night.wakeQualityScore}/5` : "not logged"}`
+            text: `Bed ${night.bedtime || "unknown"} \u2022 Wake ${night.wakeTime || "unknown"} \u2022 Wake quality ${night.wakeQualityScore > 0 ? `${night.wakeQualityScore}/5` : "not logged"} \u2022 Recovery ${night.recoveryScore}/100 ${night.recoveryLabel}`
           });
         });
       }
@@ -3739,6 +4009,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       notesInput.placeholder = "Wins, blockers, symptoms, context, or anything worth remembering later.";
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What helped today?" });
+      const helpedInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      helpedInput.value = todayEntry.helpedToday;
+      helpedInput.placeholder = "Small things that improved the day, energy, focus, or recovery.";
+      helpedInput.addEventListener("change", () => {
+        void this.plugin.updateReflection("helped", helpedInput.value);
+      });
+      notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What hurt today?" });
+      const hurtInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      hurtInput.value = todayEntry.hurtToday;
+      hurtInput.placeholder = "Stressors, pain, missed habits, interruptions, or anything that dragged the day down.";
+      hurtInput.addEventListener("change", () => {
+        void this.plugin.updateReflection("hurt", hurtInput.value);
       });
       const workLogCard = createCard(grid, "Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
         icon: "search",
@@ -5895,6 +6179,8 @@ var AddHabitModal = class extends import_obsidian3.Modal {
     super(app);
     this.habitName = "";
     this.targetCount = "1";
+    this.completionWindow = "anytime";
+    this.difficultyWeight = "1";
     this.plugin = plugin;
   }
   onOpen() {
@@ -5915,9 +6201,24 @@ var AddHabitModal = class extends import_obsidian3.Modal {
       text.inputEl.min = "1";
       text.inputEl.max = "12";
     });
+    new import_obsidian3.Setting(contentEl).setName("Completion window").setDesc("Optional preferred time of day for the habit.").addDropdown((dropdown) => {
+      HABIT_WINDOW_OPTIONS.forEach((window2) => dropdown.addOption(window2, window2 === "before-bed" ? "Before bed" : `${window2.charAt(0).toUpperCase()}${window2.slice(1)}`));
+      dropdown.setValue(this.completionWindow);
+      dropdown.onChange((value) => {
+        this.completionWindow = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Difficulty weight").setDesc("Higher weights make the habit count more in weighted completion and recovery scoring.").addText((text) => {
+      text.setPlaceholder("1").setValue(this.difficultyWeight).onChange((value) => {
+        this.difficultyWeight = value;
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "1";
+      text.inputEl.max = "3";
+    });
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Add habit").setCta().onClick(async () => {
-        await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount));
+        await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight));
         this.close();
       });
     }).addExtraButton((button) => {
@@ -6439,7 +6740,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
   }
   getSleepInsights() {
-    return buildSleepInsights(this.getAllEntries());
+    return buildSleepInsights(this.getAllEntries(), void 0, this.getHabitDefinitions());
   }
   getTimeAllocationInsights(date = this.getTodayKey(), referenceDate = /* @__PURE__ */ new Date()) {
     const entry = this.getOrCreateEntry(date);
@@ -7336,7 +7637,17 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.habits[habitId] = nextValue;
     await this.persistEntry(entry);
   }
-  async addHabitDefinition(label, target) {
+  async updateHabitMissNote(habitId, value) {
+    const entry = this.getTodayEntry();
+    const trimmedValue = value.trim();
+    if (trimmedValue) {
+      entry.habitMissNotes[habitId] = trimmedValue;
+    } else {
+      delete entry.habitMissNotes[habitId];
+    }
+    await this.persistEntry(entry);
+  }
+  async addHabitDefinition(label, target, completionWindow = "anytime", difficultyWeight = 1) {
     const normalizedLabel = label.trim();
     if (!normalizedLabel) {
       new import_obsidian4.Notice("Habit name is required.");
@@ -7354,7 +7665,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         {
           id: nextHabitId,
           label: normalizedLabel,
-          target: clamp(Math.round(target), 1, 12)
+          target: clamp(Math.round(target), 1, 12),
+          completionWindow: completionWindow === "morning" || completionWindow === "afternoon" || completionWindow === "evening" || completionWindow === "before-bed" ? completionWindow : "anytime",
+          difficultyWeight: clamp(Math.round(difficultyWeight), 1, 3)
         }
       ]
     });
@@ -7380,6 +7693,46 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const entry = this.getTodayEntry();
     entry.foodLog = [{ text: trimmedValue, amount: clamp(Math.round(amount), 1, 24), loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()) }, ...entry.foodLog];
+    await this.persistEntry(entry);
+  }
+  async addIntakeEntry(kind, label, amount = 1, unit = "serving", note = "") {
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      return;
+    }
+    const entry = this.getTodayEntry();
+    entry.intakeLog = [{
+      kind: kind === "caffeine" || kind === "supplement" || kind === "medication" ? kind : "water",
+      label: trimmedLabel,
+      amount: clamp(Math.round(amount), 1, 64),
+      unit: unit.trim() || "serving",
+      note: note.trim(),
+      loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    }, ...entry.intakeLog].slice(0, 40);
+    await this.persistEntry(entry);
+  }
+  async removeIntakeEntry(index) {
+    const entry = this.getTodayEntry();
+    entry.intakeLog = entry.intakeLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+  async addSymptomEntry(symptom, severity, note = "") {
+    const trimmedSymptom = symptom.trim();
+    if (!trimmedSymptom) {
+      return;
+    }
+    const entry = this.getTodayEntry();
+    entry.symptomLog = [{
+      symptom: trimmedSymptom,
+      severity: clamp(Math.round(severity), 1, 5),
+      note: note.trim(),
+      loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    }, ...entry.symptomLog].slice(0, 30);
+    await this.persistEntry(entry);
+  }
+  async removeSymptomEntry(index) {
+    const entry = this.getTodayEntry();
+    entry.symptomLog = entry.symptomLog.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
   }
   async updateFoodEntryAmount(index, amount) {
@@ -7421,6 +7774,25 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async updateDreamLog(value) {
     const entry = this.getTodayEntry();
     entry.dreamLog = value.trim();
+    await this.persistEntry(entry);
+  }
+  async updateReflection(kind, value) {
+    const entry = this.getTodayEntry();
+    if (kind === "helped") {
+      entry.helpedToday = value.trim();
+    } else {
+      entry.hurtToday = value.trim();
+    }
+    await this.persistEntry(entry);
+  }
+  async updatePoopQuality(sessionStart, quality) {
+    const entry = this.getTodayEntry();
+    const trimmedQuality = quality.trim();
+    if (trimmedQuality) {
+      entry.poopQualityByStart[sessionStart] = trimmedQuality;
+    } else {
+      delete entry.poopQualityByStart[sessionStart];
+    }
     await this.persistEntry(entry);
   }
   async generateDailyDietInsight() {
@@ -8890,7 +9262,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted) ? entry.calendarFollowThroughCompleted.filter((item2) => typeof item2 === "string" && item2.trim().length > 0) : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
       missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
+      habitMissNotes: entry.habitMissNotes && typeof entry.habitMissNotes === "object" ? Object.fromEntries(Object.entries(entry.habitMissNotes).filter((item2) => typeof item2[0] === "string" && typeof item2[1] === "string" && item2[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item2) => normalizeFoodEntry(item2)).filter((item2) => item2 !== null) : [],
+      intakeLog: Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item2) => normalizeIntakeEntry(item2)).filter((item2) => item2 !== null) : [],
+      symptomLog: Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item2) => normalizeSymptomEntry(item2)).filter((item2) => item2 !== null) : [],
       energyCheckIns: Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.loggedAt === "string")).map((item2) => {
         var _a2;
         return {
@@ -8902,6 +9277,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
+      helpedToday: typeof entry.helpedToday === "string" ? entry.helpedToday : "",
+      hurtToday: typeof entry.hurtToday === "string" ? entry.hurtToday : "",
       notes: typeof entry.notes === "string" ? entry.notes : "",
       workSessions: Array.isArray(entry.workSessions) ? entry.workSessions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.start === "string")).map((item2) => ({
         start: item2.start,
@@ -8932,6 +9309,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
         end: typeof item2.end === "string" ? item2.end : null,
         tag: typeof item2.tag === "string" ? item2.tag.trim() : ""
       })) : [],
+      poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object" ? Object.fromEntries(Object.entries(entry.poopQualityByStart).filter((item2) => typeof item2[0] === "string" && typeof item2[1] === "string" && item2[1].trim().length > 0).map(([key, value]) => [key, value.trim()])) : {},
       completedTasks: Array.isArray(entry.completedTasks) ? entry.completedTasks.filter((item2) => Boolean(item2 && typeof item2 === "object")).map((item2) => ({
         project: typeof item2.project === "string" ? item2.project : "Unknown Project",
         section: typeof item2.section === "string" ? item2.section : "General",
