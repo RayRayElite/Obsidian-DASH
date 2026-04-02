@@ -973,12 +973,12 @@ input.daily-dashboard-input {
 .daily-dashboard-calendar-detail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .daily-dashboard-calendar-block,
 .daily-dashboard-calendar-panel {
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent) 14%, var(--background-modifier-border));
 }
 
@@ -995,36 +995,50 @@ input.daily-dashboard-input {
 .daily-dashboard-calendar-toolbar-copy {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+}
+
+.daily-dashboard-calendar-panel-header strong,
+.daily-dashboard-calendar-toolbar-copy strong,
+.daily-dashboard-calendar-detail-header strong {
+  font-size: 0.98rem;
+  line-height: 1.1;
 }
 
 .daily-dashboard-calendar-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+}
+
+.daily-dashboard-calendar-nav .daily-dashboard-secondary-button,
+.daily-dashboard-calendar-nav .daily-dashboard-primary-button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 0.74rem;
 }
 
 .daily-dashboard-calendar-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .daily-dashboard-calendar-weekdays,
 .daily-dashboard-calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .daily-dashboard-calendar-weekdays {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .daily-dashboard-calendar-weekdays span {
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-align: center;
@@ -1035,9 +1049,9 @@ input.daily-dashboard-input {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 54px;
-  padding: 8px 6px;
-  border-radius: 14px;
+  min-height: 38px;
+  padding: 5px 3px;
+  border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent) 12%, var(--background-modifier-border));
   background: color-mix(in srgb, var(--background-primary) 82%, transparent);
   transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
@@ -1072,7 +1086,7 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-calendar-day-top strong {
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   line-height: 1;
 }
 
@@ -1080,13 +1094,13 @@ input.daily-dashboard-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 10px;
+  gap: 3px;
+  min-height: 8px;
 }
 
 .daily-dashboard-calendar-day-dot {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--daily-dashboard-card-accent) 78%, white);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--background-primary) 55%, transparent);
@@ -1094,17 +1108,17 @@ input.daily-dashboard-input {
 
 .daily-dashboard-calendar-day-more {
   color: var(--text-muted);
-  font-size: 0.68rem;
+  font-size: 0.56rem;
   font-weight: 700;
 }
 
 .daily-dashboard-calendar-row {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: center;
-  padding: 12px 14px;
-  border-radius: 16px;
+  padding: 9px 10px;
+  border-radius: 12px;
   background: color-mix(in srgb, var(--background-primary) 78%, var(--daily-dashboard-card-accent) 4%);
   border: 1px solid color-mix(in srgb, var(--daily-dashboard-card-accent) 12%, var(--background-modifier-border));
 }
@@ -1129,7 +1143,13 @@ input.daily-dashboard-input {
 
 .daily-dashboard-calendar-time span {
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.74rem;
+}
+
+.daily-dashboard-calendar-empty {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 4px 2px 0;
 }
 
 .daily-dashboard-food-actions {

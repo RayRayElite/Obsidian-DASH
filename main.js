@@ -2880,13 +2880,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     shellHeader.createEl("strong", { text: "Calendar" });
     shellHeader.createEl("span", {
       cls: "daily-dashboard-row-meta",
-      text: remindersEnabled ? "Upcoming events from this calendar show above as reminders." : "Turn reminders on in settings if you want upcoming events surfaced automatically."
+      text: remindersEnabled ? "Auto-reminders above" : "Reminders off"
     });
     const header = shell.createDiv({ cls: "daily-dashboard-calendar-toolbar" });
     const currentMonth = new Date(this.calendarCursorDate.getFullYear(), this.calendarCursorDate.getMonth(), 1);
     const title = header.createDiv({ cls: "daily-dashboard-calendar-toolbar-copy" });
     title.createEl("strong", { text: currentMonth.toLocaleDateString([], { month: "long", year: "numeric" }) });
-    title.createEl("span", { cls: "daily-dashboard-row-meta", text: "Click a day to add or remove events." });
     const controls = header.createDiv({ cls: "daily-dashboard-calendar-nav" });
     createButton(controls, "Prev", async () => {
       this.calendarCursorDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
@@ -2902,7 +2901,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       await this.render();
     }, false, "chevron-right");
     const weekHeader = shell.createDiv({ cls: "daily-dashboard-calendar-weekdays" });
-    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].forEach((label) => {
+    ["M", "T", "W", "T", "F", "S", "S"].forEach((label) => {
       weekHeader.createEl("span", { text: label });
     });
     const eventMap = /* @__PURE__ */ new Map();
@@ -2953,13 +2952,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     const selectedEvents = this.plugin.getCalendarEventsForDate(selectedDate);
     const detail = shell.createDiv({ cls: "daily-dashboard-calendar-detail" });
     const detailHeader = detail.createDiv({ cls: "daily-dashboard-calendar-detail-header" });
-    detailHeader.createEl("strong", { text: `Events for ${selectedDate}` });
+    detailHeader.createEl("strong", { text: selectedDate });
     const detailActions = detailHeader.createDiv({ cls: "daily-dashboard-actions-inline" });
     createButton(detailActions, "Add event", async () => {
       new CalendarEventModal(this.app, this.plugin, selectedDate).open();
     }, false, "plus-circle");
     if (selectedEvents.length === 0) {
-      detail.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact", text: "No events on this day yet." });
+      detail.createDiv({ cls: "daily-dashboard-calendar-empty", text: "No events" });
       return;
     }
     const list = detail.createDiv({ cls: "daily-dashboard-calendar-list" });
