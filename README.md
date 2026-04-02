@@ -65,6 +65,8 @@ Habit completions now also capture timestamps for each completion step, can be a
 
 The dashboard now also includes a `Gamification Center` with deterministic daily, weekly, and monthly scores, category sub-scores for execution, health, consistency, recovery, and planning, streak and personal-best tracking, low-score rebound tracking, and auditable explanation rows for why each score moved. A dedicated gamification report command writes the current score breakdown into `Dashboard Logs/Gamification`.
 
+Weekly and monthly reports now also surface repeated blocker patterns from friction logs, accomplishments grouped by project, missed-habit pattern summaries with recent miss notes, and a richer deterministic month-end narrative instead of only raw metric tables. The dashboard also includes adaptive reflection prompts in the notes card and a `Wins archive` command that writes a searchable markdown summary under `Dashboard Logs/Wins Archive`.
+
 ## AI Integration
 
 The dashboard now includes an `AI Workspace` card plus command-palette actions for:

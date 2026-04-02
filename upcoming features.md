@@ -99,12 +99,12 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [ ] Add full timeline search across sessions, tasks, logs, and calendar.
 - [ ] Add saved dashboard filters.
 - [ ] Add heatmaps for work, sleep, and habits.
-- [ ] Add blocker-pattern reporting from friction logs.
-- [ ] Add accomplishment reports grouped by project and period.
-- [ ] Add richer month-end narrative reports.
-- [ ] Add missed-habit pattern reports.
-- [ ] Add searchable wins archive.
-- [ ] Add adaptive reflection prompts based on day type.
+- [x] Add blocker-pattern reporting from friction logs.
+- [x] Add accomplishment reports grouped by project and period.
+- [x] Add richer month-end narrative reports.
+- [x] Add missed-habit pattern reports.
+- [x] Add searchable wins archive.
+- [x] Add adaptive reflection prompts based on day type.
 
 ## View Modes, Layout, And UX
 

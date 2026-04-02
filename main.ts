@@ -59,6 +59,7 @@ import {
   renderGamificationSectionLines,
   renderPersonalTrendSectionLines,
   renderPeriodReport,
+  renderWinsArchive,
   renderWeeklyReview
 } from "./src/dashboard-logs";
 import {
@@ -228,6 +229,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate monthly dashboard report",
       callback: () => {
         void this.generateMonthlyReport();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-wins-archive",
+      name: "Generate wins archive",
+      callback: () => {
+        void this.generateWinsArchive();
       }
     });
 
@@ -707,6 +716,48 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getGamificationSummary(todoSnapshot: TodoSnapshot | null): GamificationSummary {
     return buildGamificationSummary(this.getAllEntries(), this.getHabitDefinitions(), todoSnapshot);
+  }
+
+  getAdaptiveReflectionPrompts(date: string = this.getTodayKey()): string[] {
+    const entry = this.getOrCreateEntry(date);
+    const prompts: string[] = [];
+    const trackedWorkMinutes = getTrackedWorkMinutes(entry);
+
+    if (entry.completedTasks.length > 0 || trackedWorkMinutes >= 90) {
+      prompts.push("Which completion or work block mattered most today, and why did it land when other things did not?");
+    }
+
+    if (entry.frictionLog.trim().length > 0) {
+      prompts.push("Which blocker actually changed the shape of the day, and what would have reduced it earlier?");
+    } else {
+      prompts.push("What slowed the day down even if it never made it into the friction log?");
+    }
+
+    if (entry.missedHabits.length > 0) {
+      prompts.push(`Which missed habit had the biggest downstream cost today: ${entry.missedHabits.slice(0, 3).join(", ")}?`);
+    }
+
+    if (entry.energyScore > 0 && entry.energyScore <= 2) {
+      prompts.push("What drained energy earlier than expected, and what warning signs showed up before the drop?");
+    }
+
+    if (entry.anxietyScore >= 4) {
+      prompts.push("What increased pressure today, and what actually lowered it even a little?");
+    }
+
+    if (entry.helpedToday.trim().length === 0) {
+      prompts.push("What helped more than expected today, even if it was small or easy to overlook?");
+    }
+
+    if (entry.hurtToday.trim().length === 0) {
+      prompts.push("What made the day harder than it needed to be?");
+    }
+
+    if (entry.completedTasks.length === 0 && trackedWorkMinutes < 60) {
+      prompts.push("If the day felt scattered, where did the first real drift start: plan, energy, interruptions, or avoidance?");
+    }
+
+    return Array.from(new Set(prompts)).slice(0, 4);
   }
 
   getTimeAllocationInsights(date: string = this.getTodayKey(), referenceDate: Date = new Date()): TimeAllocationInsights {
@@ -2512,6 +2563,19 @@ export default class DailyDashboardPlugin extends Plugin {
 
     await this.openFile(file);
     new Notice("Monthly dashboard report generated.");
+  }
+
+  async generateWinsArchive(): Promise<void> {
+    const today = new Date();
+    const label = formatDateKey(today);
+    const content = renderWinsArchive({
+      title: `Wins Archive - ${label}`,
+      entries: this.getAllEntries()
+    });
+
+    const file = await this.upsertMarkdownFile(`Dashboard Logs/Wins Archive/${label}.md`, content);
+    await this.openFile(file);
+    new Notice("Wins archive generated.");
   }
 
   async generateGamificationReport(): Promise<void> {

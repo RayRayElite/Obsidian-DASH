@@ -374,6 +374,10 @@ export function renderPeriodReport(input: {
   const sleepInsights = buildSleepInsights(input.entries, undefined, input.habitDefinitions);
   const personalTrends = buildPersonalTrendSummary(input.entries, input.habitDefinitions);
   const gamification = buildGamificationSummary(input.entries, input.habitDefinitions, input.todoSnapshot ?? null);
+  const blockerPatterns = buildBlockerPatternLines(input.entries);
+  const accomplishmentLines = buildAccomplishmentSectionLines(input.entries);
+  const missedHabitPatterns = buildMissedHabitPatternLines(input.entries, input.habitDefinitions);
+  const narrativeLines = buildNarrativeSectionLines(input.entries, sleepInsights, personalTrends, gamification, input.todoSnapshot ?? null);
   const workByProject = new Map<string, number>();
   let daysWithFood = 0;
   let daysWithSleep = 0;
@@ -505,6 +509,16 @@ export function renderPeriodReport(input: {
     "## Gamification Center",
     ...renderGamificationSectionLines(gamification),
     "",
+    "## Blocker Patterns",
+    ...(blockerPatterns.length > 0 ? blockerPatterns : ["- No repeated blockers stood out in this period."]),
+    "",
+    "## Accomplishments By Project",
+    ...(accomplishmentLines.length > 0 ? accomplishmentLines : ["- No project accomplishments were archived in this period."]),
+    "",
+    "## Missed Habit Patterns",
+    ...(missedHabitPatterns.length > 0 ? missedHabitPatterns : ["- No repeated habit misses stood out in this period."]),
+    "",
+    ...(input.entries.length >= 20 ? ["## Month-End Narrative", ...narrativeLines, ""] : []),
     "## Work By Project",
     ...(workLines.length > 0 ? workLines : ["- No archived tasks recorded in this period"]),
     "",
@@ -610,6 +624,9 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
   const sleepInsights = buildSleepInsights(input.entries, undefined, input.habits);
   const personalTrends = buildPersonalTrendSummary(input.entries, input.habits);
   const gamification = buildGamificationSummary(input.entries, input.habits, input.todoSnapshot);
+  const blockerPatterns = buildBlockerPatternLines(input.entries);
+  const accomplishmentLines = buildAccomplishmentSectionLines(input.entries);
+  const missedHabitPatterns = buildMissedHabitPatternLines(input.entries, input.habits);
   const totalTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
   const moodEntries = input.entries.filter((entry) => entry.moodScore > 0);
   const energyEntries = input.entries.filter((entry) => entry.energyScore > 0);
@@ -655,6 +672,15 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
     "",
     "## Gamification Center",
     ...renderGamificationSectionLines(gamification),
+    "",
+    "## Blocker Patterns",
+    ...(blockerPatterns.length > 0 ? blockerPatterns : ["- No repeated blockers stood out this week."]),
+    "",
+    "## Accomplishments By Project",
+    ...(accomplishmentLines.length > 0 ? accomplishmentLines : ["- No project accomplishments were archived this week."]),
+    "",
+    "## Missed Habit Patterns",
+    ...(missedHabitPatterns.length > 0 ? missedHabitPatterns : ["- No repeated habit misses stood out this week."]),
     "",
     "## Strongest Projects",
     ...(strongestProjects.length > 0
@@ -736,6 +762,29 @@ export function buildPersonalTrendSummary(entries: DailyEntry[], habits: HabitDe
       orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Hurt: ${item}`)
     ].flat()
   };
+}
+
+export function renderWinsArchive(input: { title: string; entries: DailyEntry[] }): string {
+  const accomplishmentLines = buildAccomplishmentSectionLines(input.entries);
+  const helpedLines = input.entries
+    .filter((entry) => entry.helpedToday.trim().length > 0)
+    .map((entry) => `- ${entry.date}: ${entry.helpedToday.trim()}`);
+  const archivedTaskLines = input.entries
+    .flatMap((entry) => entry.completedTasks.slice(0, 6).map((task) => `- ${entry.date}: ${task.project} / ${task.section} - ${task.text}`));
+
+  return [
+    `# ${input.title}`,
+    "",
+    "## Accomplishments By Project",
+    ...(accomplishmentLines.length > 0 ? accomplishmentLines : ["- No accomplishments were archived in this range."]),
+    "",
+    "## Helpful Signals",
+    ...(helpedLines.length > 0 ? helpedLines : ["- No 'helped today' reflections were logged in this range."]),
+    "",
+    "## Wins By Day",
+    ...(archivedTaskLines.length > 0 ? archivedTaskLines : ["- No archived tasks were captured in this range."]),
+    ""
+  ].join("\n");
 }
 
 export function renderPersonalTrendSectionLines(summary: PersonalTrendSummary): string[] {
@@ -996,6 +1045,92 @@ function buildCategory(key: GamificationCategoryScore["key"], label: string, sco
 function averageEntryScore(entries: DailyEntry[], key: "moodScore" | "energyScore" | "anxietyScore"): number {
   const values = entries.map((entry) => entry[key]).filter((value) => value > 0);
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function buildBlockerPatternLines(entries: DailyEntry[]): string[] {
+  const counts = new Map<string, { label: string; count: number }>();
+  entries.forEach((entry) => {
+    splitPatternItems(entry.frictionLog).forEach((item) => {
+      const key = normalizePatternKey(item);
+      if (!key) {
+        return;
+      }
+
+      const current = counts.get(key);
+      counts.set(key, {
+        label: current?.label ?? item,
+        count: (current?.count ?? 0) + 1
+      });
+    });
+  });
+
+  return Array.from(counts.values())
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 6)
+    .map((item) => `- ${item.label}: showed up on ${item.count} day${item.count === 1 ? "" : "s"}.`);
+}
+
+function buildAccomplishmentSectionLines(entries: DailyEntry[]): string[] {
+  const workByProject = new Map<string, { count: number; tasks: string[] }>();
+  entries.forEach((entry) => {
+    entry.completedTasks.forEach((task) => {
+      const current = workByProject.get(task.project) ?? { count: 0, tasks: [] };
+      current.count += 1;
+      if (current.tasks.length < 4) {
+        current.tasks.push(task.text);
+      }
+      workByProject.set(task.project, current);
+    });
+  });
+
+  return Array.from(workByProject.entries())
+    .sort((left, right) => right[1].count - left[1].count)
+    .map(([project, summary]) => `- ${project}: ${summary.count} win${summary.count === 1 ? "" : "s"}${summary.tasks.length > 0 ? ` • ${summary.tasks.join(" | ")}` : ""}`);
+}
+
+function buildMissedHabitPatternLines(entries: DailyEntry[], habits: HabitDefinition[]): string[] {
+  const lines = habits.map((habit) => {
+    const missedCount = entries.filter((entry) => entry.missedHabits.includes(habit.label)).length;
+    const notes = entries
+      .map((entry) => entry.habitMissNotes[habit.id]?.trim() ?? "")
+      .filter((item) => item.length > 0)
+      .slice(-3);
+    if (missedCount === 0 && notes.length === 0) {
+      return "";
+    }
+
+    return `- ${habit.label}: missed on ${missedCount} day${missedCount === 1 ? "" : "s"}${notes.length > 0 ? ` • recent notes: ${notes.join(" | ")}` : ""}`;
+  }).filter((item) => item.length > 0);
+
+  return lines;
+}
+
+function buildNarrativeSectionLines(entries: DailyEntry[], sleepInsights: SleepInsights, personalTrends: PersonalTrendSummary, gamification: GamificationSummary, todoSnapshot: TodoSnapshot | null): string[] {
+  const totalTasks = entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
+  const blockerPatterns = buildBlockerPatternLines(entries);
+  const accomplishmentLines = buildAccomplishmentSectionLines(entries);
+  const topProject = accomplishmentLines[0]?.replace(/^-\s*/, "") ?? "No project wins stood out.";
+  const staleProjectCount = todoSnapshot?.staleProjects.length ?? 0;
+
+  return [
+    `- Execution closed ${totalTasks} archived task${totalTasks === 1 ? "" : "s"} across the period, with ${gamification.week.score}/100 weekly-style execution momentum and ${gamification.month.score}/100 monthly momentum.`,
+    `- Recovery averaged ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.averageRecoveryScore}/100` : "no scored recovery yet"}, while sleep consistency landed at ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100` : "no consistency score"}.`,
+    `- The strongest visible accomplishment pattern was ${topProject}`,
+    `- The loudest drag signals were ${blockerPatterns.length > 0 ? blockerPatterns.slice(0, 2).map((item) => item.replace(/^-\s*/, "")).join(" and ") : "not repeated often enough to form a pattern"}.`,
+    `- Trend read: ${personalTrends.strongestSignals[0] ?? "No strong positive signal clearly dominated."} ${personalTrends.driftSignals[0] ?? "No single drift signal dominated the period."}`,
+    `- Portfolio pressure: ${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"} remain visible at period end.`
+  ];
+}
+
+function splitPatternItems(value: string): string[] {
+  return value
+    .split(/\r?\n|[.;]/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter((item) => item.length >= 4);
+}
+
+function normalizePatternKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 export function getSleepMinutesForDay(entry: DailyEntry, nextEntry?: DailyEntry): number {

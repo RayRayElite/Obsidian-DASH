@@ -364,6 +364,7 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
+      createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
@@ -1450,6 +1451,15 @@ export class DailyDashboardView extends ItemView {
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
       });
+      const adaptivePrompts = this.plugin.getAdaptiveReflectionPrompts(todayEntry.date);
+      if (adaptivePrompts.length > 0) {
+        notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Adaptive reflection prompts" });
+        const promptList = notesCard.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+        adaptivePrompts.forEach((prompt) => {
+          const row = promptList.createDiv({ cls: "daily-dashboard-project-row" });
+          row.createEl("span", { text: prompt });
+        });
+      }
       notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What helped today?" });
       const helpedInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       helpedInput.value = todayEntry.helpedToday;
@@ -1496,6 +1506,10 @@ export class DailyDashboardView extends ItemView {
         this.workLogFilters.toDate = value;
         void this.render();
       });
+      const workLogActions = workLogCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(workLogActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
+      createButton(workLogActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+      createButton(workLogActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
       const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (workLogEntries.length === 0) {
         workLogList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived work matches the current filters." });
