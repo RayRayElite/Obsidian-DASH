@@ -2626,6 +2626,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
       const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
+      const weeklyAgenda = this.plugin.getWeeklyAgenda(todayEntry.date);
+      const suggestedTop3 = this.plugin.getSuggestedTop3Candidates(todoSnapshot, calendarSnapshot);
       const wallpaperUrl = this.plugin.getSelectedWallpaperUrl();
       const projects = (_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : [];
       const staleProjects = (_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _b : [];
@@ -2715,6 +2717,41 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderWeekLegendItem(weekLegend, "Poop", "poop");
       this.renderWeekLegendItem(weekLegend, "Unknown", "unknown");
       const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const weeklyAgendaCard = createCard(grid, "Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
+        icon: "calendar-days",
+        eyebrow: "Planning",
+        tone: "capture",
+        tag: weeklyAgenda.reduce((sum, day) => sum + day.events.length, 0) > 0 ? "Live" : "Clear"
+      });
+      const weeklyAgendaSummary = weeklyAgendaCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(weeklyAgendaSummary, `${weeklyAgenda.reduce((sum, day) => sum + day.events.length, 0)} events`, weeklyAgenda.some((day) => day.events.length > 0) ? "capture" : "neutral");
+      createSemanticChip(weeklyAgendaSummary, `${weeklyAgenda.filter((day) => day.events.length > 0).length} busy days`, weeklyAgenda.filter((day) => day.events.length > 0).length >= 4 ? "alert" : "neutral");
+      const weeklyAgendaList = weeklyAgendaCard.createDiv({ cls: "daily-dashboard-project-list" });
+      weeklyAgenda.forEach((day) => {
+        const row = weeklyAgendaList.createDiv({ cls: "daily-dashboard-project-row" });
+        const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+        const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(chipRow, day.shortLabel, day.isToday ? "focus" : "neutral");
+        createSemanticChip(chipRow, day.events.length > 0 ? `${day.events.length} item${day.events.length === 1 ? "" : "s"}` : "Open", day.events.length > 0 ? "capture" : "done");
+        copy.createEl("strong", { text: day.label });
+        if (day.events.length === 0) {
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: "No calendar blocks or reminders on this day yet." });
+        } else {
+          day.events.slice(0, 3).forEach((event) => {
+            copy.createEl("span", {
+              cls: "daily-dashboard-row-meta",
+              text: `${event.allDay ? "All day" : `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}`} \u2022 ${event.title}${event.notes ? ` \u2022 ${event.notes}` : ""}`
+            });
+          });
+          if (day.events.length > 3) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${day.events.length - 3} more item${day.events.length - 3 === 1 ? "" : "s"}` });
+          }
+        }
+        const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(actions2, "Add", async () => {
+          new CalendarEventModal(this.app, this.plugin, day.date).open();
+        }, false, "plus-circle");
+      });
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
@@ -2901,6 +2938,64 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       });
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
       const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot).filter((item2) => item2.kind !== "reminder" || !dismissedReminderIds.has(item2.id));
+      const activeFocusCount = todayEntry.todayFocus.filter((item2) => item2.status !== "done").length;
+      if (suggestedTop3.length > 0) {
+        const suggestedSection = this.createCollapsibleSubsection(focusCard, "focus-suggestions", "Suggested Top 3", "Generate today from calendar commitments, stale projects, and due work instead of staring at a blank list.");
+        const suggestionActions = suggestedSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(suggestionActions, "Use best fit", async () => {
+          const openSlots = Math.max(0, 3 - activeFocusCount);
+          for (const candidate of suggestedTop3.slice(0, openSlots)) {
+            await this.plugin.addTodayFocusItemWithDetails({
+              text: candidate.text,
+              notes: candidate.notes,
+              estimateMinutes: candidate.estimateMinutes
+            });
+          }
+          await this.render();
+        }, activeFocusCount >= 3, "sparkles");
+        const suggestionList = suggestedSection.createDiv({ cls: "daily-dashboard-project-list" });
+        suggestedTop3.forEach((candidate) => {
+          const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, this.getSuggestedTop3SourceLabel(candidate), this.getSuggestedTop3Tone(candidate));
+          if (candidate.estimateMinutes) {
+            createSemanticChip(chipRow, formatMinutesAsHours(candidate.estimateMinutes), "neutral");
+          }
+          copy.createEl("strong", { text: candidate.text });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: candidate.reason });
+          if (candidate.notes) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: candidate.notes });
+          }
+          const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(controls, "Top 3", async () => {
+            await this.plugin.addTodayFocusItemWithDetails({
+              text: candidate.text,
+              notes: candidate.notes,
+              estimateMinutes: candidate.estimateMinutes
+            });
+            await this.render();
+          }, activeFocusCount >= 3, "plus-circle");
+          createButton(controls, "Next Up", async () => {
+            await this.plugin.addNextUpFocusItem({
+              text: candidate.text,
+              notes: candidate.notes,
+              estimateMinutes: candidate.estimateMinutes
+            });
+            await this.render();
+          }, false, "list-plus");
+          createButton(controls, "Block", async () => {
+            var _a2;
+            await this.plugin.addFocusBlockToCalendar({
+              text: candidate.text,
+              notes: candidate.notes,
+              estimateMinutes: candidate.estimateMinutes,
+              date: (_a2 = candidate.calendarDate) != null ? _a2 : todayEntry.date
+            });
+            await this.render();
+          }, false, "calendar-plus");
+        });
+      }
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
       focusCard.createEl("span", { cls: "daily-dashboard-row-meta", text: "Drag Top 3 rows to reprioritize them without deleting and recreating items." });
       if (focusDisplayItems.length === 0) {
@@ -3047,6 +3142,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
                   }
                 }).open();
               }, false, "notebook-pen");
+              createButton(controls, "Block", async () => {
+                await this.plugin.addFocusBlockToCalendar({
+                  text: item2.text,
+                  notes: item2.notes,
+                  estimateMinutes: item2.estimateMinutes,
+                  date: todayEntry.date
+                });
+                await this.render();
+              }, item2.status === "done", "calendar-plus");
               createButton(controls, "Edit", async () => {
                 this.startEditingFocusItem(focusIndex, item2.text);
                 await this.render();
@@ -3147,6 +3251,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               await this.render();
             }
           }, false, "arrow-up-circle");
+          createButton(controls, "Block", async () => {
+            await this.plugin.addFocusBlockToCalendar({
+              text: item2.text,
+              notes: item2.notes,
+              estimateMinutes: item2.estimateMinutes,
+              date: todayEntry.date
+            });
+            await this.render();
+          }, false, "calendar-plus");
           createButton(controls, "Edit", async () => {
             new FocusCaptureModal(this.app, {
               mode: "capture",
@@ -3792,6 +3905,38 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       `${formatMinutesAsHours(item2.trackedMinutes)} tracked`,
       item2.completedAt ? `completed ${item2.completedAt.slice(11)}` : ""
     ].filter((value) => value.length > 0).join(" \u2022 ");
+  }
+  getSuggestedTop3SourceLabel(candidate) {
+    switch (candidate.source) {
+      case "calendar":
+        return "Calendar";
+      case "overdue":
+        return "Overdue";
+      case "due-soon":
+        return "Due soon";
+      case "repeating":
+        return "Repeating";
+      case "stale":
+        return "Stale work";
+      default:
+        return "Suggested";
+    }
+  }
+  getSuggestedTop3Tone(candidate) {
+    switch (candidate.source) {
+      case "calendar":
+        return "capture";
+      case "overdue":
+        return "alert";
+      case "due-soon":
+        return "focus";
+      case "repeating":
+        return "log";
+      case "stale":
+        return "health";
+      default:
+        return "neutral";
+    }
   }
   renderMonthlyCalendar(parent, todayKey, remindersEnabled) {
     const shell = parent.createDiv({ cls: "daily-dashboard-calendar-panel" });
@@ -6101,6 +6246,140 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.maybeWarnUpcomingCalendarEvents(snapshot.reminders, now);
     return snapshot;
   }
+  getWeeklyAgenda(anchorDate = formatDateKey(/* @__PURE__ */ new Date())) {
+    const baseDate = /^\d{4}-\d{2}-\d{2}$/.test(anchorDate) ? /* @__PURE__ */ new Date(`${anchorDate}T00:00:00`) : /* @__PURE__ */ new Date();
+    const { start } = getIsoWeekRange(baseDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const occurrences = this.getCalendarOccurrencesInRange(start, end);
+    const byDate = /* @__PURE__ */ new Map();
+    occurrences.forEach((event) => {
+      var _a;
+      const bucket = (_a = byDate.get(event.date)) != null ? _a : [];
+      bucket.push(event);
+      byDate.set(event.date, bucket);
+    });
+    return Array.from({ length: 7 }, (_, index) => {
+      var _a;
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const dateKey = formatDateKey(date);
+      return {
+        date: dateKey,
+        label: date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
+        shortLabel: date.toLocaleDateString([], { weekday: "short" }),
+        isToday: dateKey === formatDateKey(/* @__PURE__ */ new Date()),
+        events: ((_a = byDate.get(dateKey)) != null ? _a : []).map((event) => ({
+          id: event.id,
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          allDay: !event.startTime,
+          category: event.category,
+          notes: event.notes,
+          isRecurring: event.isRecurring
+        }))
+      };
+    });
+  }
+  getSuggestedTop3Candidates(todoSnapshot, calendarSnapshot) {
+    var _a, _b, _c, _d, _e;
+    const entry = this.getTodayEntry();
+    const existing = /* @__PURE__ */ new Set([
+      ...entry.todayFocus.map((item2) => item2.text.toLowerCase()),
+      ...entry.nextUpFocus.map((item2) => item2.text.toLowerCase())
+    ]);
+    const seen = /* @__PURE__ */ new Set();
+    const candidates = [];
+    const pushCandidate = (candidate) => {
+      const key = candidate.text.trim().toLowerCase();
+      if (!key || existing.has(key) || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      candidates.push(candidate);
+    };
+    ((_a = calendarSnapshot == null ? void 0 : calendarSnapshot.reminders) != null ? _a : []).slice(0, 3).forEach((reminder) => {
+      pushCandidate({
+        id: `calendar-${reminder.id}`,
+        text: reminder.title,
+        notes: reminder.notes,
+        estimateMinutes: this.getCalendarReminderEstimateMinutes(reminder.start, reminder.end, reminder.allDay),
+        reason: `${reminder.warningLevel === "warning" ? "Calendar soon" : "Calendar"} \u2022 ${reminder.date}${reminder.allDay ? " all day" : ` ${reminder.start.slice(11, 16)}`}`,
+        source: "calendar",
+        calendarDate: reminder.date
+      });
+    });
+    ((_b = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _b : []).slice(0, 3).forEach(({ project, task }) => {
+      pushCandidate({
+        id: `overdue-${project}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project}${task.blockedReason ? ` \u2022 blocked ${task.blockedReason}` : ""}`,
+        estimateMinutes: null,
+        reason: `Overdue in ${project}${task.dueDate ? ` \u2022 due ${task.dueDate}` : ""}`,
+        source: "overdue"
+      });
+    });
+    ((_c = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _c : []).flatMap((project) => project.dueRepeatingTaskDetails.map((task) => ({ project, task }))).sort((left, right) => {
+      var _a2, _b2;
+      return ((_a2 = right.project.staleDays) != null ? _a2 : 0) - ((_b2 = left.project.staleDays) != null ? _b2 : 0);
+    }).slice(0, 3).forEach(({ project, task }) => {
+      pushCandidate({
+        id: `repeating-${project.name}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project.name} \u2022 repeating task`,
+        estimateMinutes: null,
+        reason: `Due repeating task${project.staleDays !== null ? ` \u2022 ${project.staleDays}d stale` : ""}`,
+        source: "repeating"
+      });
+    });
+    ((_d = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _d : []).slice(0, 3).forEach((project) => {
+      var _a2, _b2, _c2, _d2;
+      const task = (_c2 = (_b2 = (_a2 = project.nowTaskDetails[0]) != null ? _a2 : project.nextTaskDetails[0]) != null ? _b2 : project.laterTaskDetails[0]) != null ? _c2 : project.dueRepeatingTaskDetails[0];
+      if (!task) {
+        return;
+      }
+      pushCandidate({
+        id: `stale-${project.name}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project.name} \u2022 ${project.focus || "stale project"}`,
+        estimateMinutes: null,
+        reason: `${project.name} has been stale for ${(_d2 = project.staleDays) != null ? _d2 : 0}d`,
+        source: "stale"
+      });
+    });
+    ((_e = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _e : []).slice(0, 2).forEach(({ project, task }) => {
+      pushCandidate({
+        id: `due-soon-${project}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project}`,
+        estimateMinutes: null,
+        reason: `Due soon${task.dueDate ? ` \u2022 ${task.dueDate}` : ""}`,
+        source: "due-soon"
+      });
+    });
+    return candidates.slice(0, 6);
+  }
+  async addFocusBlockToCalendar(input) {
+    const title = input.text.trim();
+    if (!title) {
+      new import_obsidian4.Notice("Focus block title is required.");
+      return;
+    }
+    const date = typeof input.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.date.trim()) ? input.date.trim() : this.getTodayEntry().date;
+    const durationMinutes = Number.isFinite(Number(input.estimateMinutes)) ? clamp(Math.round(Number(input.estimateMinutes)), 15, 480) : 30;
+    const slot = this.getSuggestedCalendarBlockSlot(date, durationMinutes);
+    await this.addCalendarEvent({
+      title,
+      date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      category: "work",
+      notes: typeof input.notes === "string" && input.notes.trim().length > 0 ? input.notes.trim() : "Blocked from dashboard focus planning.",
+      repeatCadence: "none",
+      repeatUntil: ""
+    });
+  }
   getCalendarEvents() {
     return [...this.data.calendarEvents].sort((left, right) => {
       const leftKey = `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`;
@@ -6422,6 +6701,51 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       });
     });
     return occurrences.sort((left, right) => `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.date} ${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+  getCalendarReminderEstimateMinutes(start, end, allDay) {
+    if (allDay) {
+      return null;
+    }
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const minutes = Math.round((endDate.getTime() - startDate.getTime()) / 6e4);
+    return minutes > 0 && minutes <= 240 ? minutes : null;
+  }
+  getSuggestedCalendarBlockSlot(date, durationMinutes) {
+    const targetDate = formatDateKey(/* @__PURE__ */ new Date()) === date ? /* @__PURE__ */ new Date() : /* @__PURE__ */ new Date(`${date}T09:00:00`);
+    let candidateMinutes = formatDateKey(/* @__PURE__ */ new Date()) === date ? Math.max(this.roundUpMinutes(targetDate.getHours() * 60 + targetDate.getMinutes(), 30), 6 * 60) : 9 * 60;
+    const timedEvents = this.getCalendarEventsForDate(date).filter((event) => event.startTime).map((event) => ({
+      start: this.getClockMinutes(event.startTime),
+      end: this.getClockMinutes(event.endTime || event.startTime) + (event.endTime ? 0 : 30)
+    })).sort((left, right) => left.start - right.start);
+    timedEvents.forEach((event) => {
+      if (candidateMinutes + durationMinutes <= event.start) {
+        return;
+      }
+      if (candidateMinutes < event.end) {
+        candidateMinutes = this.roundUpMinutes(event.end, 30);
+      }
+    });
+    if (candidateMinutes + durationMinutes > 24 * 60) {
+      candidateMinutes = Math.max(6 * 60, 24 * 60 - durationMinutes);
+    }
+    return {
+      startTime: this.formatClockMinutes(candidateMinutes),
+      endTime: this.formatClockMinutes(Math.min(candidateMinutes + durationMinutes, 24 * 60 - 1))
+    };
+  }
+  getClockMinutes(value) {
+    const [hours, minutes] = value.split(":").map((part) => Number.parseInt(part, 10));
+    return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+  }
+  formatClockMinutes(totalMinutes) {
+    const normalized = Math.max(0, Math.min(24 * 60 - 1, totalMinutes));
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}`;
+  }
+  roundUpMinutes(totalMinutes, stepMinutes) {
+    return Math.ceil(totalMinutes / stepMinutes) * stepMinutes;
   }
   isDateWithinRange(dateKey, start, end) {
     const date = /* @__PURE__ */ new Date(`${dateKey}T00:00:00`);

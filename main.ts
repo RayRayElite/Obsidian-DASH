@@ -121,10 +121,12 @@ import {
   type RetrievalIndexStatus,
   type RoutineTemplateDefinition,
   type SleepInsights,
+  type SuggestedTop3Candidate,
   type TimeAllocationBucket,
   type TimeAllocationInsights,
   type TodoSnapshot,
   type TodayFocusItem,
+  type WeeklyAgendaDay,
   type WallpaperOption,
   type WorkSession
 } from "./src/dashboard-types";
@@ -816,6 +818,162 @@ export default class DailyDashboardPlugin extends Plugin {
     return snapshot;
   }
 
+  getWeeklyAgenda(anchorDate: string = formatDateKey(new Date())): WeeklyAgendaDay[] {
+    const baseDate = /^\d{4}-\d{2}-\d{2}$/.test(anchorDate) ? new Date(`${anchorDate}T00:00:00`) : new Date();
+    const { start } = getIsoWeekRange(baseDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const occurrences = this.getCalendarOccurrencesInRange(start, end);
+    const byDate = new Map<string, CalendarEventOccurrence[]>();
+
+    occurrences.forEach((event) => {
+      const bucket = byDate.get(event.date) ?? [];
+      bucket.push(event);
+      byDate.set(event.date, bucket);
+    });
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      const dateKey = formatDateKey(date);
+      return {
+        date: dateKey,
+        label: date.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" }),
+        shortLabel: date.toLocaleDateString([], { weekday: "short" }),
+        isToday: dateKey === formatDateKey(new Date()),
+        events: (byDate.get(dateKey) ?? []).map((event) => ({
+          id: event.id,
+          title: event.title,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          allDay: !event.startTime,
+          category: event.category,
+          notes: event.notes,
+          isRecurring: event.isRecurring
+        }))
+      };
+    });
+  }
+
+  getSuggestedTop3Candidates(todoSnapshot: TodoSnapshot | null, calendarSnapshot: CalendarSnapshot | null): SuggestedTop3Candidate[] {
+    const entry = this.getTodayEntry();
+    const existing = new Set([
+      ...entry.todayFocus.map((item) => item.text.toLowerCase()),
+      ...entry.nextUpFocus.map((item) => item.text.toLowerCase())
+    ]);
+    const seen = new Set<string>();
+    const candidates: SuggestedTop3Candidate[] = [];
+    const pushCandidate = (candidate: SuggestedTop3Candidate): void => {
+      const key = candidate.text.trim().toLowerCase();
+      if (!key || existing.has(key) || seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      candidates.push(candidate);
+    };
+
+    (calendarSnapshot?.reminders ?? []).slice(0, 3).forEach((reminder) => {
+      pushCandidate({
+        id: `calendar-${reminder.id}`,
+        text: reminder.title,
+        notes: reminder.notes,
+        estimateMinutes: this.getCalendarReminderEstimateMinutes(reminder.start, reminder.end, reminder.allDay),
+        reason: `${reminder.warningLevel === "warning" ? "Calendar soon" : "Calendar"} • ${reminder.date}${reminder.allDay ? " all day" : ` ${reminder.start.slice(11, 16)}`}`,
+        source: "calendar",
+        calendarDate: reminder.date
+      });
+    });
+
+    (todoSnapshot?.overdueTasks ?? []).slice(0, 3).forEach(({ project, task }) => {
+      pushCandidate({
+        id: `overdue-${project}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project}${task.blockedReason ? ` • blocked ${task.blockedReason}` : ""}`,
+        estimateMinutes: null,
+        reason: `Overdue in ${project}${task.dueDate ? ` • due ${task.dueDate}` : ""}`,
+        source: "overdue"
+      });
+    });
+
+    (todoSnapshot?.projects ?? [])
+      .flatMap((project) => project.dueRepeatingTaskDetails.map((task) => ({ project, task })))
+      .sort((left, right) => (right.project.staleDays ?? 0) - (left.project.staleDays ?? 0))
+      .slice(0, 3)
+      .forEach(({ project, task }) => {
+        pushCandidate({
+          id: `repeating-${project.name}-${task.text}`,
+          text: task.text,
+          notes: `Project ${project.name} • repeating task`,
+          estimateMinutes: null,
+          reason: `Due repeating task${project.staleDays !== null ? ` • ${project.staleDays}d stale` : ""}`,
+          source: "repeating"
+        });
+      });
+
+    (todoSnapshot?.staleProjects ?? []).slice(0, 3).forEach((project) => {
+      const task = project.nowTaskDetails[0] ?? project.nextTaskDetails[0] ?? project.laterTaskDetails[0] ?? project.dueRepeatingTaskDetails[0];
+      if (!task) {
+        return;
+      }
+
+      pushCandidate({
+        id: `stale-${project.name}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project.name} • ${project.focus || "stale project"}`,
+        estimateMinutes: null,
+        reason: `${project.name} has been stale for ${project.staleDays ?? 0}d`,
+        source: "stale"
+      });
+    });
+
+    (todoSnapshot?.dueSoonTasks ?? []).slice(0, 2).forEach(({ project, task }) => {
+      pushCandidate({
+        id: `due-soon-${project}-${task.text}`,
+        text: task.text,
+        notes: `Project ${project}`,
+        estimateMinutes: null,
+        reason: `Due soon${task.dueDate ? ` • ${task.dueDate}` : ""}`,
+        source: "due-soon"
+      });
+    });
+
+    return candidates.slice(0, 6);
+  }
+
+  async addFocusBlockToCalendar(input: {
+    text: string;
+    notes?: string;
+    estimateMinutes?: number | null;
+    date?: string;
+  }): Promise<void> {
+    const title = input.text.trim();
+    if (!title) {
+      new Notice("Focus block title is required.");
+      return;
+    }
+
+    const date = typeof input.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.date.trim())
+      ? input.date.trim()
+      : this.getTodayEntry().date;
+    const durationMinutes = Number.isFinite(Number(input.estimateMinutes))
+      ? clamp(Math.round(Number(input.estimateMinutes)), 15, 480)
+      : 30;
+    const slot = this.getSuggestedCalendarBlockSlot(date, durationMinutes);
+    await this.addCalendarEvent({
+      title,
+      date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      category: "work",
+      notes: typeof input.notes === "string" && input.notes.trim().length > 0
+        ? input.notes.trim()
+        : "Blocked from dashboard focus planning.",
+      repeatCadence: "none",
+      repeatUntil: ""
+    });
+  }
+
   getCalendarEvents(): CalendarEventEntry[] {
     return [...this.data.calendarEvents].sort((left, right) => {
       const leftKey = `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`;
@@ -1225,6 +1383,66 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     return occurrences.sort((left, right) => `${left.date} ${left.startTime || "00:00"} ${left.title.toLowerCase()}`.localeCompare(`${right.date} ${right.startTime || "00:00"} ${right.title.toLowerCase()}`));
+  }
+
+  private getCalendarReminderEstimateMinutes(start: string, end: string, allDay: boolean): number | null {
+    if (allDay) {
+      return null;
+    }
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const minutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+    return minutes > 0 && minutes <= 240 ? minutes : null;
+  }
+
+  private getSuggestedCalendarBlockSlot(date: string, durationMinutes: number): { startTime: string; endTime: string } {
+    const targetDate = formatDateKey(new Date()) === date ? new Date() : new Date(`${date}T09:00:00`);
+    let candidateMinutes = formatDateKey(new Date()) === date
+      ? Math.max(this.roundUpMinutes(targetDate.getHours() * 60 + targetDate.getMinutes(), 30), 6 * 60)
+      : 9 * 60;
+    const timedEvents = this.getCalendarEventsForDate(date)
+      .filter((event) => event.startTime)
+      .map((event) => ({
+        start: this.getClockMinutes(event.startTime),
+        end: this.getClockMinutes(event.endTime || event.startTime) + (event.endTime ? 0 : 30)
+      }))
+      .sort((left, right) => left.start - right.start);
+
+    timedEvents.forEach((event) => {
+      if (candidateMinutes + durationMinutes <= event.start) {
+        return;
+      }
+
+      if (candidateMinutes < event.end) {
+        candidateMinutes = this.roundUpMinutes(event.end, 30);
+      }
+    });
+
+    if (candidateMinutes + durationMinutes > 24 * 60) {
+      candidateMinutes = Math.max(6 * 60, (24 * 60) - durationMinutes);
+    }
+
+    return {
+      startTime: this.formatClockMinutes(candidateMinutes),
+      endTime: this.formatClockMinutes(Math.min(candidateMinutes + durationMinutes, (24 * 60) - 1))
+    };
+  }
+
+  private getClockMinutes(value: string): number {
+    const [hours, minutes] = value.split(":").map((part) => Number.parseInt(part, 10));
+    return ((Number.isFinite(hours) ? hours : 0) * 60) + (Number.isFinite(minutes) ? minutes : 0);
+  }
+
+  private formatClockMinutes(totalMinutes: number): string {
+    const normalized = Math.max(0, Math.min((24 * 60) - 1, totalMinutes));
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}`;
+  }
+
+  private roundUpMinutes(totalMinutes: number, stepMinutes: number): number {
+    return Math.ceil(totalMinutes / stepMinutes) * stepMinutes;
   }
 
   private isDateWithinRange(dateKey: string, start: Date, end: Date): boolean {

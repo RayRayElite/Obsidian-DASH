@@ -318,6 +318,35 @@ export interface CalendarSnapshot {
   enabled: boolean;
 }
 
+export interface WeeklyAgendaEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  category: CalendarEventCategory;
+  notes: string;
+  isRecurring: boolean;
+}
+
+export interface WeeklyAgendaDay {
+  date: string;
+  label: string;
+  shortLabel: string;
+  isToday: boolean;
+  events: WeeklyAgendaEvent[];
+}
+
+export interface SuggestedTop3Candidate {
+  id: string;
+  text: string;
+  notes: string;
+  estimateMinutes: number | null;
+  reason: string;
+  source: "calendar" | "overdue" | "due-soon" | "repeating" | "stale";
+  calendarDate?: string;
+}
+
 export interface CreateProjectInput {
   projectName: string;
   categoryName: string;
