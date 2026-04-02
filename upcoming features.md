@@ -20,8 +20,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 - [x] Edit Top 3 items inline without deleting and recreating them.
 - [ ] Drag to reorder Top 3 items.
-- [ ] Carry forward unfinished Top 3 items into the next logical day with confirmation.
-- [ ] Let calendar reminders become real temporary focus rows with accept / dismiss actions.
+- [x] Carry forward unfinished Top 3 items into the next logical day with confirmation.
+- [x] Let calendar reminders become real temporary focus rows with accept / dismiss actions.
 - [ ] Add notes on Top 3 items for links, context, or next steps.
 - [ ] Track estimate versus actual time for Top 3 items.
 - [ ] Add a Next Up queue under Top 3.

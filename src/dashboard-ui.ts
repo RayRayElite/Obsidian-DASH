@@ -401,7 +401,9 @@ export class DailyDashboardView extends ItemView {
         tone: "focus",
         tag: "Focus"
       });
-      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot);
+        const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
+        const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot)
+            .filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
       if (focusDisplayItems.length === 0) {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
@@ -496,6 +498,15 @@ export class DailyDashboardView extends ItemView {
               });
             }
           } else {
+            createButton(controls, "Accept", async () => {
+                await this.plugin.addTodayFocusItem(item.text);
+                clearDismissedReminder(todayEntry.date, item.id);
+                await this.render();
+            }, true, "plus-circle");
+            createButton(controls, "Dismiss", async () => {
+                setDismissedReminder(todayEntry.date, item.id);
+                await this.render();
+            }, false, "bell-off");
             createButton(controls, "Calendar", async () => {
               new CalendarEventModal(this.app, this.plugin, item.calendarDate ?? todayEntry.date, item.sourceEventId ?? null).open();
             }, false, "calendar-days");
@@ -527,6 +538,17 @@ export class DailyDashboardView extends ItemView {
         void submitFocus();
       });
       const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
+        const carryForwardCandidates = this.plugin.getCarryForwardFocusCandidates(todayEntry.date);
+        if (carryForwardCandidates.length > 0) {
+          const carryForwardSection = this.createCollapsibleSubsection(focusCard, "focus-carry-forward", "Carry forward", "Bring unfinished Top 3 items from the previous logical day into today only when you want them.");
+          const carryForwardMeta = carryForwardSection.createDiv({ cls: "daily-dashboard-row-meta" });
+          carryForwardMeta.setText(carryForwardCandidates.join(" • "));
+          const carryForwardActions = carryForwardSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(carryForwardActions, "Carry unfinished", async () => {
+            await this.plugin.carryForwardUnfinishedFocusItems();
+            await this.render();
+          }, false, "arrow-down-to-line");
+        }
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
@@ -2535,6 +2557,7 @@ const DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 const DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 const DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 const DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
+const DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
 
 function createCard(parent: HTMLElement, title: string, description: string, options?: CardVisualOptions): HTMLElement {
   const cardKey = toClassSlug(title);
@@ -2806,5 +2829,50 @@ export class AddHabitModal extends Modal {
 
   onClose(): void {
     this.contentEl.empty();
+  }
+}
+
+function getDismissedReminderState(date: string): Set<string> {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    if (!stored) {
+      return new Set<string>();
+    }
+
+    const parsed = JSON.parse(stored) as Record<string, string[]>;
+    const values = Array.isArray(parsed?.[date]) ? parsed[date] : [];
+    return new Set(values.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function setDismissedReminder(date: string, reminderId: string): void {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) as Record<string, string[]> : {};
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.add(reminderId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
+  }
+}
+
+function clearDismissedReminder(date: string, reminderId: string): void {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    if (!stored) {
+      return;
+    }
+
+    const parsed = JSON.parse(stored) as Record<string, string[]>;
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.delete(reminderId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore storage failures and keep the dashboard usable.
   }
 }

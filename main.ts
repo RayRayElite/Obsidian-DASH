@@ -799,6 +799,40 @@ export default class DailyDashboardPlugin extends Plugin {
     return [...focusItems, ...reminderItems];
   }
 
+  getCarryForwardFocusCandidates(date: string = this.getTodayEntry().date): string[] {
+    const entry = this.getOrCreateEntry(date);
+    const previousEntry = this.getPreviousEntry(date);
+    if (!previousEntry) {
+      return [];
+    }
+
+    const existingTexts = new Set(entry.todayFocus.map((item) => item.text.trim().toLowerCase()));
+    return previousEntry.todayFocus
+      .filter((item) => item.status !== "done")
+      .map((item) => item.text.trim())
+      .filter((text) => text.length > 0)
+      .filter((text) => !existingTexts.has(text.toLowerCase()));
+  }
+
+  async carryForwardUnfinishedFocusItems(): Promise<number> {
+    const entry = this.getTodayEntry();
+    const candidates = this.getCarryForwardFocusCandidates(entry.date);
+    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item) => item.status !== "done").length);
+    const accepted = candidates.slice(0, availableSlots);
+
+    if (accepted.length === 0) {
+      new Notice(candidates.length > 0
+        ? "No Top 3 slots are available for carry-forward items."
+        : "No unfinished Top 3 items were found on the previous logical day.");
+      return 0;
+    }
+
+    entry.todayFocus = [...entry.todayFocus, ...accepted.map((text) => this.createTodayFocusItem(text))];
+    await this.persistEntry(entry);
+    new Notice(`Carried forward ${accepted.length} unfinished Top 3 item${accepted.length === 1 ? "" : "s"}.`);
+    return accepted.length;
+  }
+
   private toCalendarReminderItem(event: CalendarEventOccurrence): CalendarSnapshot["reminders"][number] {
     const startDate = this.getCalendarOccurrenceStartDate(event);
     const endDate = this.getCalendarOccurrenceEndDate(event);

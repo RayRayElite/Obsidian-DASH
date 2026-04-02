@@ -2386,7 +2386,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tone: "focus",
         tag: "Focus"
       });
-      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot);
+      const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
+      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot).filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
       const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
       if (focusDisplayItems.length === 0) {
         const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
@@ -2478,6 +2479,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               });
             }
           } else {
+            createButton(controls, "Accept", async () => {
+              await this.plugin.addTodayFocusItem(item.text);
+              clearDismissedReminder(todayEntry.date, item.id);
+              await this.render();
+            }, true, "plus-circle");
+            createButton(controls, "Dismiss", async () => {
+              setDismissedReminder(todayEntry.date, item.id);
+              await this.render();
+            }, false, "bell-off");
             createButton(controls, "Calendar", async () => {
               var _a2, _b2;
               new CalendarEventModal(this.app, this.plugin, (_a2 = item.calendarDate) != null ? _a2 : todayEntry.date, (_b2 = item.sourceEventId) != null ? _b2 : null).open();
@@ -2510,6 +2520,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         void submitFocus();
       });
       const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
+      const carryForwardCandidates = this.plugin.getCarryForwardFocusCandidates(todayEntry.date);
+      if (carryForwardCandidates.length > 0) {
+        const carryForwardSection = this.createCollapsibleSubsection(focusCard, "focus-carry-forward", "Carry forward", "Bring unfinished Top 3 items from the previous logical day into today only when you want them.");
+        const carryForwardMeta = carryForwardSection.createDiv({ cls: "daily-dashboard-row-meta" });
+        carryForwardMeta.setText(carryForwardCandidates.join(" \u2022 "));
+        const carryForwardActions = carryForwardSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(carryForwardActions, "Carry unfinished", async () => {
+          await this.plugin.carryForwardUnfinishedFocusItems();
+          await this.render();
+        }, false, "arrow-down-to-line");
+      }
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
       const stateCard = createCard(grid, "State And Friction", "Log mood, energy, and friction so weak days have context.", {
         icon: "activity",
@@ -4037,6 +4058,7 @@ var DASHBOARD_CARD_COLLAPSE_STORAGE_KEY = "daily-dashboard-collapsed-cards";
 var DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections";
 var DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 var DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
+var DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
 function createCard(parent, title, description, options) {
   const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
@@ -4252,6 +4274,44 @@ var AddHabitModal = class extends import_obsidian3.Modal {
     this.contentEl.empty();
   }
 };
+function getDismissedReminderState(date) {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    if (!stored) {
+      return /* @__PURE__ */ new Set();
+    }
+    const parsed = JSON.parse(stored);
+    const values = Array.isArray(parsed == null ? void 0 : parsed[date]) ? parsed[date] : [];
+    return new Set(values.filter((item) => typeof item === "string"));
+  } catch (e) {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function setDismissedReminder(date, reminderId) {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    const parsed = stored ? JSON.parse(stored) : {};
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.add(reminderId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY, JSON.stringify(parsed));
+  } catch (e) {
+  }
+}
+function clearDismissedReminder(date, reminderId) {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY);
+    if (!stored) {
+      return;
+    }
+    const parsed = JSON.parse(stored);
+    const current = new Set(Array.isArray(parsed[date]) ? parsed[date] : []);
+    current.delete(reminderId);
+    parsed[date] = Array.from(current);
+    window.localStorage.setItem(DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY, JSON.stringify(parsed));
+  } catch (e) {
+  }
+}
 
 // main.ts
 var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4.Plugin {
@@ -4814,6 +4874,29 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       warningLevel: reminder.warningLevel
     }));
     return [...focusItems, ...reminderItems];
+  }
+  getCarryForwardFocusCandidates(date = this.getTodayEntry().date) {
+    const entry = this.getOrCreateEntry(date);
+    const previousEntry = this.getPreviousEntry(date);
+    if (!previousEntry) {
+      return [];
+    }
+    const existingTexts = new Set(entry.todayFocus.map((item) => item.text.trim().toLowerCase()));
+    return previousEntry.todayFocus.filter((item) => item.status !== "done").map((item) => item.text.trim()).filter((text) => text.length > 0).filter((text) => !existingTexts.has(text.toLowerCase()));
+  }
+  async carryForwardUnfinishedFocusItems() {
+    const entry = this.getTodayEntry();
+    const candidates = this.getCarryForwardFocusCandidates(entry.date);
+    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item) => item.status !== "done").length);
+    const accepted = candidates.slice(0, availableSlots);
+    if (accepted.length === 0) {
+      new import_obsidian4.Notice(candidates.length > 0 ? "No Top 3 slots are available for carry-forward items." : "No unfinished Top 3 items were found on the previous logical day.");
+      return 0;
+    }
+    entry.todayFocus = [...entry.todayFocus, ...accepted.map((text) => this.createTodayFocusItem(text))];
+    await this.persistEntry(entry);
+    new import_obsidian4.Notice(`Carried forward ${accepted.length} unfinished Top 3 item${accepted.length === 1 ? "" : "s"}.`);
+    return accepted.length;
   }
   toCalendarReminderItem(event) {
     const startDate = this.getCalendarOccurrenceStartDate(event);
