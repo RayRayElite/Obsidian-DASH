@@ -32,7 +32,9 @@ This gives you a work-history trail without deleting finished tasks.
 
 The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
 
-Project health now surfaces a visible next action for every project, explains the reasons behind each health score, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
+Project health now surfaces a visible next action for every project, explains the reasons behind each health score, renders compact momentum bars from recent completion history, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
+
+The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup.
 
 ## Logical Day Tracking
 

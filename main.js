@@ -2802,6 +2802,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const dueSoonTasks = (_e = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _e : [];
       const overdueTasks = (_f = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _f : [];
       const blockedTasks = (_g = todoSnapshot == null ? void 0 : todoSnapshot.blockedTasks) != null ? _g : [];
+      const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
@@ -3886,6 +3887,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
           row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
           row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend} \u2022 ${project.status}` });
+          renderProjectMomentum(row, project);
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
           if (projectsExpanded && project.healthReasons.length > 0) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why: ${project.healthReasons.join(" \u2022 ")}` });
@@ -3929,8 +3931,36 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         ...breakdownCandidates.slice(0, 5).map((item2) => `Needs breakdown: ${item2.project} -> ${item2.task}`),
         ...cleanupSuggestions.slice(0, 5)
       ];
-      if (alertLines.length === 0) {
+      if (alertLines.length === 0 && cleanupProjects.length === 0) {
         alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
+      } else if (alertsExpanded && cleanupProjects.length > 0) {
+        cleanupProjects.sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left)).slice(0, 10).forEach((project) => {
+          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
+          createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
+          createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
+          row.createEl("strong", { text: project.name });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+          if (project.staleDays !== null) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
+          }
+          if (project.breakdownTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" \u2022 ")}` });
+          }
+          if (project.duplicateTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" \u2022 ")}` });
+          }
+          if (project.emptySections.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" \u2022 ")}` });
+          }
+          if (project.overdueTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" \u2022 ")}` });
+          }
+          if (project.blockedTasks.length > 0) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 ")}` });
+          }
+        });
       } else {
         alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
           const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
@@ -5158,19 +5188,81 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
 };
 var ProjectReviewModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, options) {
+    var _a, _b;
     super(app);
     this.plugin = plugin;
     this.options = options;
+    this.selectedProjectName = (_b = (_a = options[0]) == null ? void 0 : _a.projectName) != null ? _b : "";
   }
   onOpen() {
+    var _a;
     this.setTitle("Open Project Review Mode");
     const { contentEl } = this;
     contentEl.empty();
+    if (this.options.length > 1) {
+      new import_obsidian3.Setting(contentEl).setName("Project").setDesc("Choose which project to open in review mode.").addDropdown((dropdown) => {
+        this.options.forEach((option) => dropdown.addOption(option.projectName, option.projectName));
+        dropdown.setValue(this.selectedProjectName);
+        dropdown.onChange((value) => {
+          this.selectedProjectName = value;
+          this.onOpen();
+        });
+      });
+    }
+    const selectedOption = (_a = this.options.find((option) => option.projectName === this.selectedProjectName)) != null ? _a : this.options[0];
+    if (!selectedOption) {
+      contentEl.createEl("p", { text: "No project notes found for review mode." });
+      return;
+    }
+    const hero = contentEl.createDiv({ cls: "daily-dashboard-project-review-panel" });
+    hero.createEl("h3", { text: selectedOption.projectName });
+    const chipRow = hero.createDiv({ cls: "daily-dashboard-chip-row" });
+    createSemanticChip(chipRow, selectedOption.healthLabel, selectedOption.healthScore >= 75 ? "focus" : selectedOption.healthScore >= 50 ? "state" : "alert");
+    createSemanticChip(chipRow, selectedOption.projectState === "active" ? "Active" : selectedOption.projectState === "incubating" ? "Incubating" : "Someday", selectedOption.projectState === "active" ? "neutral" : "log");
+    createSemanticChip(chipRow, selectedOption.status, "capture");
+    hero.createEl("p", { cls: "daily-dashboard-row-meta", text: selectedOption.notePath });
+    hero.createEl("p", { cls: "daily-dashboard-row-meta", text: `Next action: ${selectedOption.nextAction}` });
+    renderProjectMomentum(hero, selectedOption);
+    const details = contentEl.createDiv({ cls: "daily-dashboard-project-list" });
+    if (selectedOption.healthReasons.length > 0) {
+      const row = details.createDiv({ cls: "daily-dashboard-project-row" });
+      row.createEl("strong", { text: "Health signals" });
+      row.createEl("span", { cls: "daily-dashboard-row-meta", text: selectedOption.healthReasons.join(" \u2022 ") });
+    }
+    const pressureRow = details.createDiv({ cls: "daily-dashboard-project-row" });
+    pressureRow.createEl("strong", { text: "Task pressure" });
+    pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue ${selectedOption.overdueTasks.length} \u2022 Due soon ${selectedOption.dueSoonTasks.length} \u2022 Blocked ${selectedOption.blockedTasks.length}` });
+    if (selectedOption.overdueTasks.length > 0) {
+      pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue tasks: ${selectedOption.overdueTasks.slice(0, 3).map((task) => task.text).join(" \u2022 ")}` });
+    }
+    if (selectedOption.blockedTasks.length > 0) {
+      pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked tasks: ${selectedOption.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 ")}` });
+    }
+    if (selectedOption.duplicateTasks.length > 0 || selectedOption.emptySections.length > 0) {
+      const cleanupRow = details.createDiv({ cls: "daily-dashboard-project-row" });
+      cleanupRow.createEl("strong", { text: "Cleanup signals" });
+      if (selectedOption.duplicateTasks.length > 0) {
+        cleanupRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${selectedOption.duplicateTasks.slice(0, 5).join(" \u2022 ")}` });
+      }
+      if (selectedOption.emptySections.length > 0) {
+        cleanupRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${selectedOption.emptySections.join(" \u2022 ")}` });
+      }
+    }
+    const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(actions, "Open split view", async () => {
+      await this.plugin.openProjectReviewMode(selectedOption);
+      this.close();
+    }, true, "layout-panel-left");
+    createButton(actions, "Structured review", async () => {
+      await this.plugin.openStructuredProjectReview(selectedOption);
+      this.close();
+    }, false, "clipboard-list");
+    const list = contentEl.createDiv({ cls: "daily-dashboard-project-list" });
     this.options.forEach((option) => {
-      new import_obsidian3.Setting(contentEl).setName(option.projectName).setDesc(option.notePath).addButton((button) => {
-        button.setButtonText("Open").setCta().onClick(async () => {
-          await this.plugin.openProjectReviewMode(option);
-          this.close();
+      new import_obsidian3.Setting(list).setName(option.projectName).setDesc(`${option.healthLabel} \u2022 ${option.completionsThisWeek} this week \u2022 ${option.status}`).addButton((button) => {
+        button.setButtonText(option.projectName === selectedOption.projectName ? "Selected" : "Select").setCta().onClick(() => {
+          this.selectedProjectName = option.projectName;
+          this.onOpen();
         });
       });
     });
@@ -5579,6 +5671,25 @@ function createStatPill(parent, text, iconName, tone) {
   (0, import_obsidian3.setIcon)(iconEl, iconName);
   pill.createSpan({ cls: "daily-dashboard-pill-label", text });
   return pill;
+}
+function renderProjectMomentum(parent, project) {
+  const maxValue = Math.max(project.completionsPreviousWeek, project.completionsThisWeek, project.completionsThisMonth, 1);
+  const wrap = parent.createDiv({ cls: "daily-dashboard-momentum" });
+  renderMomentumBar(wrap, "Prev week", project.completionsPreviousWeek, maxValue, "log");
+  renderMomentumBar(wrap, "This week", project.completionsThisWeek, maxValue, project.completionsThisWeek >= project.completionsPreviousWeek ? "done" : "alert");
+  renderMomentumBar(wrap, "Month", project.completionsThisMonth, maxValue, "focus");
+}
+function renderMomentumBar(parent, label, value, maxValue, tone) {
+  const row = parent.createDiv({ cls: "daily-dashboard-momentum-row" });
+  row.createSpan({ cls: "daily-dashboard-momentum-label", text: label });
+  const track = row.createDiv({ cls: "daily-dashboard-momentum-track" });
+  const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
+  fill.addClass(`is-${tone}`);
+  fill.style.width = `${Math.max(value / maxValue * 100, value > 0 ? 10 : 0)}%`;
+  row.createSpan({ cls: "daily-dashboard-momentum-value", text: `${value}` });
+}
+function getProjectIssueCount(project) {
+  return (project.staleDays !== null ? 1 : 0) + project.duplicateTasks.length + project.emptySections.length + project.breakdownTasks.length + project.overdueTasks.length + project.blockedTasks.length;
 }
 function getCollapsedCardState() {
   try {
@@ -8138,13 +8249,29 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
   }
   async showCleanupSuggestions() {
-    var _a;
+    var _a, _b;
     const snapshot = await this.getTodoSnapshot();
     const suggestions = (_a = snapshot == null ? void 0 : snapshot.cleanupSuggestions) != null ? _a : [];
+    const projectSections = ((_b = snapshot == null ? void 0 : snapshot.projects) != null ? _b : []).filter((project) => project.projectState === "active" && (project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0)).map((project) => {
+      const lines = [
+        `## ${project.name}`,
+        `- Health: ${project.healthLabel} (${project.healthScore})`,
+        `- Next action: ${project.nextAction}`,
+        project.staleDays !== null ? `- Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
+        project.duplicateTasks.length > 0 ? `- Duplicates: ${project.duplicateTasks.slice(0, 5).join(", ")}` : "",
+        project.emptySections.length > 0 ? `- Empty sections: ${project.emptySections.join(", ")}` : "",
+        project.breakdownTasks.length > 0 ? `- Needs breakdown: ${project.breakdownTasks.slice(0, 5).join(" \u2022 ")}` : "",
+        project.healthReasons.length > 0 ? `- Reasons: ${project.healthReasons.join(" \u2022 ")}` : ""
+      ].filter((line) => line.length > 0);
+      return [...lines, ""].join("\n");
+    });
     const content = [
       `# Master Task Hub Cleanup Suggestions - ${formatDateKey(/* @__PURE__ */ new Date())}`,
       "",
+      "## Portfolio Summary",
       ...suggestions.length > 0 ? suggestions.map((item2) => `- ${item2}`) : ["- No cleanup issues detected."],
+      "",
+      ...projectSections.length > 0 ? projectSections : ["## Projects", "- No project-level cleanup issues detected.", ""],
       ""
     ].join("\n");
     const file = await this.upsertMarkdownFile(`Dashboard Logs/Cleanup Suggestions/${formatDateKey(/* @__PURE__ */ new Date())}.md`, content);
@@ -8518,6 +8645,22 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     await rightLeaf.openFile(noteFile);
     this.app.workspace.revealLeaf(rightLeaf);
   }
+  async openStructuredProjectReview(option) {
+    const checklistFile = await this.generateProjectReviewChecklist(option);
+    const todoFile = this.getMasterTodoFile();
+    const noteFile = this.app.vault.getAbstractFileByPath(option.notePath);
+    if (!(noteFile instanceof import_obsidian4.TFile) || !(checklistFile instanceof import_obsidian4.TFile) || !todoFile) {
+      new import_obsidian4.Notice("Could not open structured project review mode for that project.");
+      return;
+    }
+    const leftLeaf = this.app.workspace.getLeaf(true);
+    await leftLeaf.openFile(todoFile);
+    const middleLeaf = this.app.workspace.getLeaf("split", "vertical");
+    await middleLeaf.openFile(noteFile);
+    const rightLeaf = this.app.workspace.getLeaf("split", "vertical");
+    await rightLeaf.openFile(checklistFile);
+    this.app.workspace.revealLeaf(rightLeaf);
+  }
   async openAiArtifact(artifact) {
     const file = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(artifact.notePath));
     if (!(file instanceof import_obsidian4.TFile)) {
@@ -8533,8 +8676,64 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     }
     return snapshot.projects.map((project) => ({
       projectName: project.name,
-      notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`
+      notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`,
+      status: project.status,
+      projectState: project.projectState,
+      nextAction: project.nextAction,
+      healthScore: project.healthScore,
+      healthLabel: project.healthLabel,
+      healthReasons: project.healthReasons,
+      completionsThisWeek: project.completionsThisWeek,
+      completionsPreviousWeek: project.completionsPreviousWeek,
+      completionsThisMonth: project.completionsThisMonth,
+      overdueTasks: project.overdueTasks,
+      dueSoonTasks: project.dueSoonTasks,
+      blockedTasks: project.blockedTasks,
+      duplicateTasks: project.duplicateTasks,
+      emptySections: project.emptySections
     })).filter((project) => this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(project.notePath)) instanceof import_obsidian4.TFile);
+  }
+  async generateProjectReviewChecklist(option) {
+    const safeName = sanitizeFileName(option.projectName);
+    const folder = "Dashboard Logs/Project Reviews";
+    const content = [
+      `# Project Review - ${option.projectName}`,
+      "",
+      `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Status: ${option.status}`,
+      `- State: ${option.projectState}`,
+      `- Health: ${option.healthLabel} (${option.healthScore})`,
+      `- Next action: ${option.nextAction}`,
+      "",
+      "## Review Checklist",
+      "- [ ] Confirm the current project status still matches reality.",
+      `- [ ] Validate or rewrite the next action: ${option.nextAction}`,
+      "- [ ] Prune stale or duplicate tasks.",
+      "- [ ] Move one real task into Now if the project is active.",
+      "- [ ] Decide whether anything should be blocked, parked, incubating, or someday.",
+      "- [ ] Capture one decision or note in the project note before closing review.",
+      "",
+      "## Momentum",
+      `- Previous week completions: ${option.completionsPreviousWeek}`,
+      `- This week completions: ${option.completionsThisWeek}`,
+      `- This month completions: ${option.completionsThisMonth}`,
+      "",
+      "## Risk Signals",
+      ...option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."],
+      "",
+      "## Task Pressure",
+      `- Overdue: ${option.overdueTasks.length}`,
+      `- Due soon: ${option.dueSoonTasks.length}`,
+      `- Blocked: ${option.blockedTasks.length}`,
+      `- Duplicate tasks: ${option.duplicateTasks.length}`,
+      `- Empty sections: ${option.emptySections.length > 0 ? option.emptySections.join(", ") : "None"}`,
+      "",
+      "## References",
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      `- Project Note: [[${stripMarkdownExtension(option.notePath)}|${option.projectName}]]`,
+      ""
+    ].join("\n");
+    return this.upsertMarkdownFile(`${folder}/${formatDateKey(/* @__PURE__ */ new Date())} ${safeName}.md`, content);
   }
   getHabitStreak(habitId) {
     var _a;

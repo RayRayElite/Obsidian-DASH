@@ -56,9 +56,9 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add project health drill-down with reasons behind score / status.
 - [x] Extract a visible next action for every project.
 - [x] Add someday / incubating project state.
-- [ ] Add project momentum charts.
-- [ ] Add duplicate / stale / empty project cleanup suggestions.
-- [ ] Add structured project review checklist mode.
+- [x] Add project momentum charts.
+- [x] Add duplicate / stale / empty project cleanup suggestions.
+- [x] Add structured project review checklist mode.
 
 ## Habits, Health, And Personal Data
 

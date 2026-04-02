@@ -791,6 +791,71 @@
   gap: 8px;
 }
 
+.daily-dashboard-momentum {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.daily-dashboard-momentum-row {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.daily-dashboard-momentum-label,
+.daily-dashboard-momentum-value {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.daily-dashboard-momentum-track {
+  position: relative;
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+}
+
+.daily-dashboard-momentum-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 40%, transparent);
+}
+
+.daily-dashboard-momentum-fill.is-focus {
+  background: linear-gradient(90deg, #6ac5b7, #7ecf8f);
+}
+
+.daily-dashboard-momentum-fill.is-done {
+  background: linear-gradient(90deg, #88d985, #64c6b6);
+}
+
+.daily-dashboard-momentum-fill.is-alert {
+  background: linear-gradient(90deg, #f0b66b, #df7a6c);
+}
+
+.daily-dashboard-momentum-fill.is-log {
+  background: linear-gradient(90deg, #7aa8ef, #9bc2ff);
+}
+
+.daily-dashboard-project-review-panel {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--background-primary) 80%, var(--daily-dashboard-accent) 6%);
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
+}
+
+.daily-dashboard-project-review-panel h3,
+.daily-dashboard-project-review-panel p {
+  margin: 0;
+}
+
 .daily-dashboard-habit-copy {
   display: flex;
   flex-direction: column;

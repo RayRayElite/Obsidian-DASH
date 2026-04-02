@@ -503,6 +503,20 @@ export interface QuickAddState {
 export interface ProjectReviewOption {
   projectName: string;
   notePath: string;
+  status: string;
+  projectState: "active" | "incubating" | "someday";
+  nextAction: string;
+  healthScore: number;
+  healthLabel: string;
+  healthReasons: string[];
+  completionsThisWeek: number;
+  completionsPreviousWeek: number;
+  completionsThisMonth: number;
+  overdueTasks: TodoTaskSummary[];
+  dueSoonTasks: TodoTaskSummary[];
+  blockedTasks: TodoTaskSummary[];
+  duplicateTasks: string[];
+  emptySections: string[];
 }
 
 export type DashboardTone = "focus" | "state" | "capture" | "log" | "health" | "alert" | "done" | "neutral";

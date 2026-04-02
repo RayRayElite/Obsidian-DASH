@@ -2852,10 +2852,28 @@ export default class DailyDashboardPlugin extends Plugin {
   async showCleanupSuggestions(): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
     const suggestions = snapshot?.cleanupSuggestions ?? [];
+    const projectSections = (snapshot?.projects ?? [])
+      .filter((project) => project.projectState === "active" && (project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0))
+      .map((project) => {
+        const lines = [
+          `## ${project.name}`,
+          `- Health: ${project.healthLabel} (${project.healthScore})`,
+          `- Next action: ${project.nextAction}`,
+          project.staleDays !== null ? `- Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
+          project.duplicateTasks.length > 0 ? `- Duplicates: ${project.duplicateTasks.slice(0, 5).join(", ")}` : "",
+          project.emptySections.length > 0 ? `- Empty sections: ${project.emptySections.join(", ")}` : "",
+          project.breakdownTasks.length > 0 ? `- Needs breakdown: ${project.breakdownTasks.slice(0, 5).join(" • ")}` : "",
+          project.healthReasons.length > 0 ? `- Reasons: ${project.healthReasons.join(" • ")}` : ""
+        ].filter((line) => line.length > 0);
+        return [...lines, ""].join("\n");
+      });
     const content = [
       `# Master Task Hub Cleanup Suggestions - ${formatDateKey(new Date())}`,
       "",
+      "## Portfolio Summary",
       ...(suggestions.length > 0 ? suggestions.map((item) => `- ${item}`) : ["- No cleanup issues detected."]),
+      "",
+      ...(projectSections.length > 0 ? projectSections : ["## Projects", "- No project-level cleanup issues detected.", ""]),
       ""
     ].join("\n");
     const file = await this.upsertMarkdownFile(`Dashboard Logs/Cleanup Suggestions/${formatDateKey(new Date())}.md`, content);
@@ -3299,6 +3317,24 @@ export default class DailyDashboardPlugin extends Plugin {
     this.app.workspace.revealLeaf(rightLeaf);
   }
 
+  async openStructuredProjectReview(option: ProjectReviewOption): Promise<void> {
+    const checklistFile = await this.generateProjectReviewChecklist(option);
+    const todoFile = this.getMasterTodoFile();
+    const noteFile = this.app.vault.getAbstractFileByPath(option.notePath);
+    if (!(noteFile instanceof TFile) || !(checklistFile instanceof TFile) || !todoFile) {
+      new Notice("Could not open structured project review mode for that project.");
+      return;
+    }
+
+    const leftLeaf = this.app.workspace.getLeaf(true);
+    await leftLeaf.openFile(todoFile);
+    const middleLeaf = this.app.workspace.getLeaf("split", "vertical");
+    await middleLeaf.openFile(noteFile);
+    const rightLeaf = this.app.workspace.getLeaf("split", "vertical");
+    await rightLeaf.openFile(checklistFile);
+    this.app.workspace.revealLeaf(rightLeaf);
+  }
+
   async openAiArtifact(artifact: AiArtifact): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(normalizePath(artifact.notePath));
     if (!(file instanceof TFile)) {
@@ -3318,9 +3354,67 @@ export default class DailyDashboardPlugin extends Plugin {
     return snapshot.projects
       .map((project) => ({
         projectName: project.name,
-        notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`
+        notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`,
+        status: project.status,
+        projectState: project.projectState,
+        nextAction: project.nextAction,
+        healthScore: project.healthScore,
+        healthLabel: project.healthLabel,
+        healthReasons: project.healthReasons,
+        completionsThisWeek: project.completionsThisWeek,
+        completionsPreviousWeek: project.completionsPreviousWeek,
+        completionsThisMonth: project.completionsThisMonth,
+        overdueTasks: project.overdueTasks,
+        dueSoonTasks: project.dueSoonTasks,
+        blockedTasks: project.blockedTasks,
+        duplicateTasks: project.duplicateTasks,
+        emptySections: project.emptySections
       }))
       .filter((project) => this.app.vault.getAbstractFileByPath(normalizePath(project.notePath)) instanceof TFile);
+  }
+
+  async generateProjectReviewChecklist(option: ProjectReviewOption): Promise<TFile> {
+    const safeName = sanitizeFileName(option.projectName);
+    const folder = "Dashboard Logs/Project Reviews";
+    const content = [
+      `# Project Review - ${option.projectName}`,
+      "",
+      `- Generated: ${formatDateTimeKey(new Date())}`,
+      `- Status: ${option.status}`,
+      `- State: ${option.projectState}`,
+      `- Health: ${option.healthLabel} (${option.healthScore})`,
+      `- Next action: ${option.nextAction}`,
+      "",
+      "## Review Checklist",
+      "- [ ] Confirm the current project status still matches reality.",
+      `- [ ] Validate or rewrite the next action: ${option.nextAction}`,
+      "- [ ] Prune stale or duplicate tasks.",
+      "- [ ] Move one real task into Now if the project is active.",
+      "- [ ] Decide whether anything should be blocked, parked, incubating, or someday.",
+      "- [ ] Capture one decision or note in the project note before closing review.",
+      "",
+      "## Momentum",
+      `- Previous week completions: ${option.completionsPreviousWeek}`,
+      `- This week completions: ${option.completionsThisWeek}`,
+      `- This month completions: ${option.completionsThisMonth}`,
+      "",
+      "## Risk Signals",
+      ...(option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."]),
+      "",
+      "## Task Pressure",
+      `- Overdue: ${option.overdueTasks.length}`,
+      `- Due soon: ${option.dueSoonTasks.length}`,
+      `- Blocked: ${option.blockedTasks.length}`,
+      `- Duplicate tasks: ${option.duplicateTasks.length}`,
+      `- Empty sections: ${option.emptySections.length > 0 ? option.emptySections.join(", ") : "None"}`,
+      "",
+      "## References",
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      `- Project Note: [[${stripMarkdownExtension(option.notePath)}|${option.projectName}]]`,
+      ""
+    ].join("\n");
+
+    return this.upsertMarkdownFile(`${folder}/${formatDateKey(new Date())} ${safeName}.md`, content);
   }
 
   getHabitStreak(habitId: string): number {

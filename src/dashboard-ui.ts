@@ -306,6 +306,7 @@ export class DailyDashboardView extends ItemView {
       const dueSoonTasks = todoSnapshot?.dueSoonTasks ?? [];
       const overdueTasks = todoSnapshot?.overdueTasks ?? [];
       const blockedTasks = todoSnapshot?.blockedTasks ?? [];
+      const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const workLogEntries = this.getFilteredWorkLogEntries();
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
@@ -1459,6 +1460,7 @@ export class DailyDashboardView extends ItemView {
             createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
             row.createEl("strong", { text: `${project.name} • ${project.healthScore}` });
             row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend} • ${project.status}` });
+            renderProjectMomentum(row, project);
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
             if (projectsExpanded && project.healthReasons.length > 0) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why: ${project.healthReasons.join(" • ")}` });
@@ -1503,8 +1505,39 @@ export class DailyDashboardView extends ItemView {
         ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
         ...cleanupSuggestions.slice(0, 5)
       ];
-      if (alertLines.length === 0) {
+      if (alertLines.length === 0 && cleanupProjects.length === 0) {
         alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
+      } else if (alertsExpanded && cleanupProjects.length > 0) {
+        cleanupProjects
+          .sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left))
+          .slice(0, 10)
+          .forEach((project) => {
+            const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+            const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
+            createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
+            createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
+            row.createEl("strong", { text: project.name });
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+            if (project.staleDays !== null) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
+            }
+            if (project.breakdownTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" • ")}` });
+            }
+            if (project.duplicateTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" • ")}` });
+            }
+            if (project.emptySections.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" • ")}` });
+            }
+            if (project.overdueTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" • ")}` });
+            }
+            if (project.blockedTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
+            }
+          });
       } else {
         alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
           const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
@@ -3048,11 +3081,13 @@ export class PromoteTaskModal extends Modal {
 export class ProjectReviewModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private options: ProjectReviewOption[];
+  private selectedProjectName: string;
 
   constructor(app: App, plugin: DailyDashboardPlugin, options: ProjectReviewOption[]) {
     super(app);
     this.plugin = plugin;
     this.options = options;
+    this.selectedProjectName = options[0]?.projectName ?? "";
   }
 
   onOpen(): void {
@@ -3060,14 +3095,81 @@ export class ProjectReviewModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
 
-    this.options.forEach((option) => {
+    if (this.options.length > 1) {
       new Setting(contentEl)
+        .setName("Project")
+        .setDesc("Choose which project to open in review mode.")
+        .addDropdown((dropdown) => {
+          this.options.forEach((option) => dropdown.addOption(option.projectName, option.projectName));
+          dropdown.setValue(this.selectedProjectName);
+          dropdown.onChange((value) => {
+            this.selectedProjectName = value;
+            this.onOpen();
+          });
+        });
+    }
+
+    const selectedOption = this.options.find((option) => option.projectName === this.selectedProjectName) ?? this.options[0];
+    if (!selectedOption) {
+      contentEl.createEl("p", { text: "No project notes found for review mode." });
+      return;
+    }
+
+    const hero = contentEl.createDiv({ cls: "daily-dashboard-project-review-panel" });
+    hero.createEl("h3", { text: selectedOption.projectName });
+    const chipRow = hero.createDiv({ cls: "daily-dashboard-chip-row" });
+    createSemanticChip(chipRow, selectedOption.healthLabel, selectedOption.healthScore >= 75 ? "focus" : selectedOption.healthScore >= 50 ? "state" : "alert");
+    createSemanticChip(chipRow, selectedOption.projectState === "active" ? "Active" : selectedOption.projectState === "incubating" ? "Incubating" : "Someday", selectedOption.projectState === "active" ? "neutral" : "log");
+    createSemanticChip(chipRow, selectedOption.status, "capture");
+    hero.createEl("p", { cls: "daily-dashboard-row-meta", text: selectedOption.notePath });
+    hero.createEl("p", { cls: "daily-dashboard-row-meta", text: `Next action: ${selectedOption.nextAction}` });
+    renderProjectMomentum(hero, selectedOption);
+
+    const details = contentEl.createDiv({ cls: "daily-dashboard-project-list" });
+    if (selectedOption.healthReasons.length > 0) {
+      const row = details.createDiv({ cls: "daily-dashboard-project-row" });
+      row.createEl("strong", { text: "Health signals" });
+      row.createEl("span", { cls: "daily-dashboard-row-meta", text: selectedOption.healthReasons.join(" • ") });
+    }
+    const pressureRow = details.createDiv({ cls: "daily-dashboard-project-row" });
+    pressureRow.createEl("strong", { text: "Task pressure" });
+    pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue ${selectedOption.overdueTasks.length} • Due soon ${selectedOption.dueSoonTasks.length} • Blocked ${selectedOption.blockedTasks.length}` });
+    if (selectedOption.overdueTasks.length > 0) {
+      pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue tasks: ${selectedOption.overdueTasks.slice(0, 3).map((task) => task.text).join(" • ")}` });
+    }
+    if (selectedOption.blockedTasks.length > 0) {
+      pressureRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked tasks: ${selectedOption.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
+    }
+    if (selectedOption.duplicateTasks.length > 0 || selectedOption.emptySections.length > 0) {
+      const cleanupRow = details.createDiv({ cls: "daily-dashboard-project-row" });
+      cleanupRow.createEl("strong", { text: "Cleanup signals" });
+      if (selectedOption.duplicateTasks.length > 0) {
+        cleanupRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${selectedOption.duplicateTasks.slice(0, 5).join(" • ")}` });
+      }
+      if (selectedOption.emptySections.length > 0) {
+        cleanupRow.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${selectedOption.emptySections.join(" • ")}` });
+      }
+    }
+
+    const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(actions, "Open split view", async () => {
+      await this.plugin.openProjectReviewMode(selectedOption);
+      this.close();
+    }, true, "layout-panel-left");
+    createButton(actions, "Structured review", async () => {
+      await this.plugin.openStructuredProjectReview(selectedOption);
+      this.close();
+    }, false, "clipboard-list");
+
+    const list = contentEl.createDiv({ cls: "daily-dashboard-project-list" });
+    this.options.forEach((option) => {
+      new Setting(list)
         .setName(option.projectName)
-        .setDesc(option.notePath)
+        .setDesc(`${option.healthLabel} • ${option.completionsThisWeek} this week • ${option.status}`)
         .addButton((button) => {
-          button.setButtonText("Open").setCta().onClick(async () => {
-            await this.plugin.openProjectReviewMode(option);
-            this.close();
+          button.setButtonText(option.projectName === selectedOption.projectName ? "Selected" : "Select").setCta().onClick(() => {
+            this.selectedProjectName = option.projectName;
+            this.onOpen();
           });
         });
     });
@@ -3700,6 +3802,33 @@ function createStatPill(parent: HTMLElement, text: string, iconName: string, ton
   setIcon(iconEl, iconName);
   pill.createSpan({ cls: "daily-dashboard-pill-label", text });
   return pill;
+}
+
+function renderProjectMomentum(parent: HTMLElement, project: Pick<TodoProjectSummary, "completionsPreviousWeek" | "completionsThisWeek" | "completionsThisMonth">): void {
+  const maxValue = Math.max(project.completionsPreviousWeek, project.completionsThisWeek, project.completionsThisMonth, 1);
+  const wrap = parent.createDiv({ cls: "daily-dashboard-momentum" });
+  renderMomentumBar(wrap, "Prev week", project.completionsPreviousWeek, maxValue, "log");
+  renderMomentumBar(wrap, "This week", project.completionsThisWeek, maxValue, project.completionsThisWeek >= project.completionsPreviousWeek ? "done" : "alert");
+  renderMomentumBar(wrap, "Month", project.completionsThisMonth, maxValue, "focus");
+}
+
+function renderMomentumBar(parent: HTMLElement, label: string, value: number, maxValue: number, tone: "focus" | "done" | "alert" | "log"): void {
+  const row = parent.createDiv({ cls: "daily-dashboard-momentum-row" });
+  row.createSpan({ cls: "daily-dashboard-momentum-label", text: label });
+  const track = row.createDiv({ cls: "daily-dashboard-momentum-track" });
+  const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
+  fill.addClass(`is-${tone}`);
+  fill.style.width = `${Math.max((value / maxValue) * 100, value > 0 ? 10 : 0)}%`;
+  row.createSpan({ cls: "daily-dashboard-momentum-value", text: `${value}` });
+}
+
+function getProjectIssueCount(project: Pick<TodoProjectSummary, "staleDays" | "duplicateTasks" | "emptySections" | "breakdownTasks" | "overdueTasks" | "blockedTasks">): number {
+  return (project.staleDays !== null ? 1 : 0)
+    + project.duplicateTasks.length
+    + project.emptySections.length
+    + project.breakdownTasks.length
+    + project.overdueTasks.length
+    + project.blockedTasks.length;
 }
 
 function getCollapsedCardState(): Set<string> {
