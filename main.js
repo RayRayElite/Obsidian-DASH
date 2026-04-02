@@ -45,6 +45,7 @@ var DEFAULT_SETTINGS = {
   dailyLogFolder: "Dashboard Logs/Daily",
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
+  exportFolder: "Dashboard Logs/Exports",
   aiApiKey: "",
   aiApiKeySource: "settings",
   aiApiKeyEnvVar: "OPENAI_API_KEY",
@@ -108,7 +109,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -129,27 +130,28 @@ function sanitizeSettings(settings) {
     dailyLogFolder: ((_f = settings.dailyLogFolder) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
     weeklyReportFolder: ((_g = settings.weeklyReportFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: ((_h = settings.monthlyReportFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
-    aiApiKey: ((_i = settings.aiApiKey) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.aiApiKey,
+    exportFolder: normalizeFolderPath(((_i = settings.exportFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.exportFolder),
+    aiApiKey: ((_j = settings.aiApiKey) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
-    aiApiKeyEnvVar: ((_j = settings.aiApiKeyEnvVar) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
-    aiModel: ((_k = settings.aiModel) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiModel,
-    aiBaseUrl: ((_l = settings.aiBaseUrl) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    aiOutputFolder: normalizeFolderPath(((_m = settings.aiOutputFolder) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    aiApiKeyEnvVar: ((_k = settings.aiApiKeyEnvVar) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
+    aiModel: ((_l = settings.aiModel) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiModel,
+    aiBaseUrl: ((_m = settings.aiBaseUrl) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
+    aiOutputFolder: normalizeFolderPath(((_n = settings.aiOutputFolder) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_n = settings.aiContextDays) != null ? _n : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_o = settings.aiRelatedNotesLimit) != null ? _o : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_p = settings.aiIndexEnabled) != null ? _p : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_o = settings.aiContextDays) != null ? _o : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_p = settings.aiRelatedNotesLimit) != null ? _p : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_q = settings.aiIndexEnabled) != null ? _q : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_q = settings.aiChunkCharLimit) != null ? _q : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_r = settings.aiEmbeddingsEnabled) != null ? _r : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_s = settings.aiEmbeddingModel) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_t = settings.aiEmbeddingApiUrl) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_u = settings.calendarEnabled) != null ? _u : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_v = settings.calendarDocumentPath) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_r = settings.aiChunkCharLimit) != null ? _r : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_s = settings.aiEmbeddingsEnabled) != null ? _s : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_t = settings.aiEmbeddingModel) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_u = settings.aiEmbeddingApiUrl) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_v = settings.calendarEnabled) != null ? _v : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_w = settings.calendarDocumentPath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
-    wallpaperFolder: normalizeFolderPath(((_w = settings.wallpaperFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_x = settings.selectedWallpaper) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath(((_x = settings.wallpaperFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_y = settings.selectedWallpaper) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -2067,6 +2069,10 @@ function renderCalendarEventLine(event) {
   if (leadSummary) {
     contextParts.push(leadSummary);
   }
+  const projectLabel = renderCalendarProjectLabel(event.projectName, event.projectNotePath);
+  if (projectLabel) {
+    contextParts.push(`project ${projectLabel}`);
+  }
   const noteLinks = extractWikiLinks(event.notes);
   if (noteLinks.length > 0) {
     contextParts.push(`links ${noteLinks.join(", ")}`);
@@ -2078,7 +2084,8 @@ function renderCalendarEventLine(event) {
 }
 function renderCalendarEventContextLabel(event) {
   const windowLabel = renderCalendarEventWindowLabel(event);
-  return `(${windowLabel})`;
+  const projectLabel = renderCalendarProjectLabel(event.projectName, event.projectNotePath);
+  return `(${[windowLabel, projectLabel].filter((value) => value.length > 0).join(" \u2022 ")})`;
 }
 function renderCalendarEventWindowLabel(event) {
   const sameDay = event.date === event.endDate;
@@ -2103,6 +2110,14 @@ function renderCalendarLeadSummary(prepMinutes, travelMinutes) {
 function extractWikiLinks(value) {
   const matches = value.match(/\[\[[^\]]+\]\]/g);
   return matches ? Array.from(new Set(matches)) : [];
+}
+function renderCalendarProjectLabel(projectName, projectNotePath) {
+  const safeName = projectName.trim();
+  if (!safeName) {
+    return "";
+  }
+  const safePath = projectNotePath.trim().replace(/\.md$/i, "");
+  return safePath ? `[[${safePath}|${safeName}]]` : safeName;
 }
 
 // src/dashboard-todo.ts
@@ -3543,7 +3558,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           day.events.slice(0, 3).forEach((event) => {
             copy.createEl("span", {
               cls: "daily-dashboard-row-meta",
-              text: `${event.allDay ? event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day` : event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`} \u2022 ${event.title}${event.notes ? ` \u2022 ${event.notes}` : ""}`
+              text: `${event.allDay ? event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day` : event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`} \u2022 ${event.title}${event.projectName ? ` \u2022 ${event.projectName}` : ""}${event.notes ? ` \u2022 ${event.notes}` : ""}`
             });
           });
           if (day.events.length > 3) {
@@ -5041,7 +5056,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: [event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")].filter((value) => value.length > 0).join(" \u2022 ")
+        text: [event.projectName || "", event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")].filter((value) => value.length > 0).join(" \u2022 ")
       });
       const chips = row.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(chips, event.warningLevel === "warning" ? "Soon" : "Later", event.warningLevel === "warning" ? "alert" : "neutral");
@@ -5454,10 +5469,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         sortKey: `${event.date} ${event.startTime || "00:00"}`,
         kind: "calendar",
         title: event.title,
-        summary: [event.category, event.startTime ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : "All day"].join(" \u2022 "),
+        summary: [event.category, event.projectName, event.startTime ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : "All day"].filter((value) => value.length > 0).join(" \u2022 "),
         detail: event.notes.trim(),
         tone: event.category === "work" ? "capture" : event.category === "health" ? "health" : "focus",
-        project: "",
+        project: event.projectName,
         tag: ""
       });
     });
@@ -5721,6 +5736,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.prepMinutesValue = "0";
     this.travelMinutesValue = "0";
     this.categoryValue = "personal";
+    this.projectNameValue = "";
+    this.projectNotePathValue = "";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
     this.repeatUntilValue = "";
@@ -5733,14 +5750,16 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
   onOpen() {
     this.hydrateEditingState();
     this.setTitle(`Calendar Events \u2022 ${this.date}`);
-    this.renderContent();
+    void this.renderContent();
   }
   onClose() {
     this.contentEl.empty();
   }
-  renderContent() {
+  async renderContent() {
+    var _a;
     const { contentEl } = this;
     contentEl.empty();
+    const projectChoices = await this.plugin.getCalendarProjectOptions();
     const existingEvents = this.plugin.getCalendarEventsForDate(this.date);
     if (existingEvents.length > 0) {
       contentEl.createEl("h3", { text: "Existing events" });
@@ -5751,6 +5770,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           event.prepMinutes > 0 ? `prep ${event.prepMinutes}m` : "",
           event.travelMinutes > 0 ? `travel ${event.travelMinutes}m` : "",
           `category ${event.category}`,
+          event.projectName ? `project ${event.projectName}` : "",
           event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
           event.isException ? `${event.exceptionKind === "move" ? "moved" : event.exceptionKind} once from ${event.originalDate}` : "",
           event.notes
@@ -5766,12 +5786,14 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
             this.prepMinutesValue = `${event.prepMinutes}`;
             this.travelMinutesValue = `${event.travelMinutes}`;
             this.categoryValue = event.category;
+            this.projectNameValue = event.projectName;
+            this.projectNotePathValue = event.projectNotePath;
             this.notesValue = event.notes;
             if (!event.isRecurring) {
               this.repeatCadenceValue = "none";
               this.repeatUntilValue = "";
             }
-            this.renderContent();
+            void this.renderContent();
           });
         });
         if (event.isRecurring) {
@@ -5791,10 +5813,12 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               this.prepMinutesValue = `${sourceEvent.prepMinutes}`;
               this.travelMinutesValue = `${sourceEvent.travelMinutes}`;
               this.categoryValue = sourceEvent.category;
+              this.projectNameValue = sourceEvent.projectName;
+              this.projectNotePathValue = sourceEvent.projectNotePath;
               this.notesValue = sourceEvent.notes;
               this.repeatCadenceValue = sourceEvent.repeatCadence;
               this.repeatUntilValue = sourceEvent.repeatUntil;
-              this.renderContent();
+              void this.renderContent();
             });
           }).addButton((button) => {
             button.setButtonText(event.isException ? "Restore once" : "Skip once").onClick(async () => {
@@ -5806,7 +5830,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               if (this.editingOccurrenceOriginalDate === event.originalDate) {
                 this.clearEditingState();
               }
-              this.renderContent();
+              await this.renderContent();
             });
           }).addButton((button) => {
             button.setButtonText("Cancel once").onClick(async () => {
@@ -5814,7 +5838,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               if (this.editingOccurrenceOriginalDate === event.originalDate) {
                 this.clearEditingState();
               }
-              this.renderContent();
+              await this.renderContent();
             });
           }).addButton((button) => {
             button.setButtonText("Delete series").onClick(async () => {
@@ -5822,7 +5846,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               if (this.editingEventId === event.sourceEventId) {
                 this.clearEditingState();
               }
-              this.renderContent();
+              await this.renderContent();
             });
           });
         } else {
@@ -5832,7 +5856,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
               if (this.editingEventId === event.sourceEventId) {
                 this.clearEditingState();
               }
-              this.renderContent();
+              await this.renderContent();
             });
           });
         }
@@ -5880,6 +5904,19 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         this.categoryValue = value === "work" || value === "health" || value === "errands" || value === "social" ? value : "personal";
       });
     });
+    const projectChoiceListId = `daily-dashboard-calendar-projects-${this.initialDate.replace(/[^a-z0-9]/gi, "-")}-${(_a = this.editingEventId) != null ? _a : "new"}`;
+    const projectChoiceList = contentEl.createEl("datalist", { attr: { id: projectChoiceListId } });
+    projectChoices.forEach((project) => {
+      const option = projectChoiceList.createEl("option");
+      option.value = project.name;
+      option.label = project.wikiLink;
+    });
+    new import_obsidian3.Setting(contentEl).setName("Project").setDesc(this.projectNotePathValue ? `Linked to ${this.projectNotePathValue.replace(/\.md$/i, "")}.` : "Optional. Pick a known project or type a custom project name.").addText((text) => {
+      text.setPlaceholder("Optional project link").setValue(this.projectNameValue).onChange((value) => {
+        this.setProjectSelection(value, projectChoices);
+      });
+      text.inputEl.setAttribute("list", projectChoiceListId);
+    });
     new import_obsidian3.Setting(contentEl).setName("Notes").setDesc("Optional context shown in reminders and the calendar detail list.").addTextArea((textArea) => {
       textArea.setPlaceholder("Location, prep, what to bring, who it is with").setValue(this.notesValue).onChange((value) => {
         this.notesValue = value;
@@ -5910,7 +5947,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
         dropdown.setValue(this.repeatCadenceValue);
         dropdown.onChange((value) => {
           this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
-          this.renderContent();
+          void this.renderContent();
         });
       });
       if (this.repeatCadenceValue !== "none") {
@@ -5938,6 +5975,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           prepMinutes: Number(this.prepMinutesValue || 0),
           travelMinutes: Number(this.travelMinutesValue || 0),
           category: this.categoryValue,
+          projectName: this.projectNameValue,
+          projectNotePath: this.projectNotePathValue,
           notes: this.notesValue,
           repeatCadence: this.repeatCadenceValue,
           repeatUntil: this.repeatUntilValue
@@ -5950,18 +5989,23 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
           await this.plugin.addCalendarEvent(input);
         }
         this.clearEditingState();
-        this.renderContent();
+        await this.renderContent();
       });
     }).addExtraButton((button) => {
       button.setIcon("rotate-ccw").setTooltip("Reset form").onClick(() => {
         this.clearEditingState();
-        this.renderContent();
+        void this.renderContent();
       });
     }).addExtraButton((button) => {
       button.setIcon("x").setTooltip("Close").onClick(() => {
         this.close();
       });
     });
+  }
+  setProjectSelection(value, projectChoices) {
+    this.projectNameValue = value.trim();
+    const match = projectChoices.find((project) => project.name.toLowerCase() === this.projectNameValue.toLowerCase());
+    this.projectNotePathValue = this.projectNameValue && match ? match.notePath : "";
   }
   hydrateEditingState() {
     if (!this.editingEventId) {
@@ -5981,6 +6025,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
       this.prepMinutesValue = `${occurrence.prepMinutes}`;
       this.travelMinutesValue = `${occurrence.travelMinutes}`;
       this.categoryValue = occurrence.category;
+      this.projectNameValue = occurrence.projectName;
+      this.projectNotePathValue = occurrence.projectNotePath;
       this.notesValue = occurrence.notes;
       return;
     }
@@ -5997,6 +6043,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.prepMinutesValue = `${event.prepMinutes}`;
     this.travelMinutesValue = `${event.travelMinutes}`;
     this.categoryValue = event.category;
+    this.projectNameValue = event.projectName;
+    this.projectNotePathValue = event.projectNotePath;
     this.notesValue = event.notes;
     this.repeatCadenceValue = event.repeatCadence;
     this.repeatUntilValue = event.repeatUntil;
@@ -6012,6 +6060,8 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
     this.prepMinutesValue = "0";
     this.travelMinutesValue = "0";
     this.categoryValue = "personal";
+    this.projectNameValue = "";
+    this.projectNotePathValue = "";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
     this.repeatUntilValue = "";
@@ -6599,6 +6649,14 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           monthlyReportFolder: value.trim() || DEFAULT_SETTINGS.monthlyReportFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Export folder").setDesc("Where markdown summaries and CSV metric dumps are written.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.exportFolder).setValue(settings.exportFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          exportFolder: value.trim() || DEFAULT_SETTINGS.exportFolder
         });
       });
     });
@@ -7447,6 +7505,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "export-dashboard-metrics",
+      name: "Export dashboard metrics as markdown and CSV",
+      callback: () => {
+        void this.exportDashboardMetrics();
+      }
+    });
+    this.addCommand({
       id: "open-master-todo",
       name: "Open master todo",
       callback: () => {
@@ -8042,6 +8107,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           endTime: event.endTime,
           allDay: !event.startTime,
           category: event.category,
+          projectName: event.projectName,
+          projectNotePath: event.projectNotePath,
           notes: event.notes,
           isRecurring: event.isRecurring
         }))
@@ -8190,6 +8257,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       prepMinutes: normalized.prepMinutes,
       travelMinutes: normalized.travelMinutes,
       category: normalized.category,
+      projectName: normalized.projectName,
+      projectNotePath: normalized.projectNotePath,
       notes: normalized.notes,
       repeatCadence: normalized.repeatCadence,
       repeatUntil: normalized.repeatUntil,
@@ -8223,7 +8292,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         ...event.occurrenceExceptions.filter((exception) => exception.originalDate !== originalDate),
         {
           originalDate,
-          kind: normalized.date === originalDate && normalized.title === event.title && normalized.startTime === event.startTime && normalized.endTime === event.endTime && normalized.endDate === event.endDate && normalized.prepMinutes === event.prepMinutes && normalized.travelMinutes === event.travelMinutes && normalized.notes === event.notes ? "move" : "move",
+          kind: normalized.date === originalDate && normalized.title === event.title && normalized.startTime === event.startTime && normalized.endTime === event.endTime && normalized.endDate === event.endDate && normalized.prepMinutes === event.prepMinutes && normalized.travelMinutes === event.travelMinutes && normalized.projectName === event.projectName && normalized.projectNotePath === event.projectNotePath && normalized.notes === event.notes ? "move" : "move",
           date: normalized.date,
           endDate: normalized.endDate,
           startTime: normalized.startTime,
@@ -8231,6 +8300,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           prepMinutes: normalized.prepMinutes,
           travelMinutes: normalized.travelMinutes,
           title: normalized.title,
+          projectName: normalized.projectName,
+          projectNotePath: normalized.projectNotePath,
           notes: normalized.notes,
           category: normalized.category,
           updatedAt: timestamp
@@ -8271,6 +8342,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           travelMinutes: event.travelMinutes,
           category: event.category,
           title: event.title,
+          projectName: event.projectName,
+          projectNotePath: event.projectNotePath,
           notes: event.notes,
           updatedAt: timestamp
         }
@@ -8368,7 +8441,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       calendarEnd: reminder.end,
       calendarLeadSummary: reminder.leadSummary,
       allDay: reminder.allDay,
-      calendarNotes: reminder.notes,
+      calendarNotes: [this.renderCalendarProjectLink(reminder.projectName, reminder.projectNotePath), reminder.notes].filter((value) => value.trim().length > 0).join(" \u2022 "),
       repeatCadence: reminder.repeatCadence,
       warningLevel: reminder.warningLevel
     }));
@@ -8413,6 +8486,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       reminderAt: reminderAt.toISOString(),
+      projectName: event.projectName,
+      projectNotePath: event.projectNotePath,
       notes: event.notes,
       leadMinutes,
       leadSummary: this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes),
@@ -8455,6 +8530,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
             prepMinutes: (exception == null ? void 0 : exception.kind) === "move" ? exception.prepMinutes : event.prepMinutes,
             travelMinutes: (exception == null ? void 0 : exception.kind) === "move" ? exception.travelMinutes : event.travelMinutes,
             category: (exception == null ? void 0 : exception.kind) === "move" ? exception.category : event.category,
+            projectName: (exception == null ? void 0 : exception.kind) === "move" ? exception.projectName : event.projectName,
+            projectNotePath: (exception == null ? void 0 : exception.kind) === "move" ? exception.projectNotePath : event.projectNotePath,
             notes: (exception == null ? void 0 : exception.kind) === "move" ? exception.notes : event.notes,
             repeatCadence: event.repeatCadence,
             repeatUntil: event.repeatUntil,
@@ -8489,6 +8566,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           prepMinutes: exception.prepMinutes,
           travelMinutes: exception.travelMinutes,
           category: exception.category,
+          projectName: exception.projectName,
+          projectNotePath: exception.projectNotePath,
           notes: exception.notes,
           repeatCadence: event.repeatCadence,
           repeatUntil: event.repeatUntil,
@@ -9399,6 +9478,33 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.openFile(file);
     new import_obsidian4.Notice("Gamification report generated.");
   }
+  async exportDashboardMetrics() {
+    var _a, _b, _c, _d;
+    const entries = this.getAllEntries();
+    const today = /* @__PURE__ */ new Date();
+    const earliestDate = (_b = (_a = entries[0]) == null ? void 0 : _a.date) != null ? _b : formatDateKey(today);
+    const latestDate = (_d = (_c = entries[entries.length - 1]) == null ? void 0 : _c.date) != null ? _d : formatDateKey(today);
+    const occurrences = this.getCalendarOccurrencesBetween(earliestDate, latestDate);
+    const todoSnapshot = await this.getTodoSnapshot();
+    const habits = this.getHabitDefinitions();
+    const exportStamp = `${formatDateKey(today)} ${formatFileTimestamp(today)}`;
+    const folder = normalizeFolderPath(`${this.data.settings.exportFolder}/${exportStamp}`);
+    const summaryContent = this.renderDashboardExportSummary({
+      generatedAt: today,
+      entries,
+      occurrences,
+      todoSnapshot,
+      habits,
+      folder
+    });
+    const summaryFile = await this.upsertMarkdownFile(`${folder}/summary.md`, summaryContent);
+    await this.upsertTextFile(`${folder}/daily-metrics.csv`, this.renderDailyMetricsCsv(entries, habits, occurrences));
+    await this.upsertTextFile(`${folder}/habit-metrics.csv`, this.renderHabitMetricsCsv(entries, habits));
+    await this.upsertTextFile(`${folder}/completed-tasks.csv`, this.renderCompletedTasksCsv(entries));
+    await this.upsertTextFile(`${folder}/calendar-events.csv`, this.renderCalendarOccurrencesCsv(occurrences));
+    await this.openFile(summaryFile);
+    new import_obsidian4.Notice(`Dashboard export generated in ${folder}.`);
+  }
   async getTodoSnapshot() {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -9406,6 +9512,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const content = await this.app.vault.read(todoFile);
     return parseTodoSnapshot(content);
+  }
+  async getCalendarProjectOptions() {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      return [];
+    }
+    return snapshot.projects.map((project) => {
+      const notePath = this.getProjectNotePath(project.name, project.noteLinks);
+      return {
+        name: project.name,
+        notePath,
+        wikiLink: this.renderCalendarProjectLink(project.name, notePath)
+      };
+    }).filter((project, index, array) => array.findIndex((candidate) => candidate.name.toLowerCase() === project.name.toLowerCase()) === index).sort((left, right) => left.name.localeCompare(right.name));
   }
   async getTodoCategories() {
     const todoFile = this.getMasterTodoFile();
@@ -10855,6 +10975,8 @@ No entries available.`;
     const prepMinutes = Number.isFinite(Number(event.prepMinutes)) ? clamp(Number(event.prepMinutes), 0, 720) : 0;
     const travelMinutes = Number.isFinite(Number(event.travelMinutes)) ? clamp(Number(event.travelMinutes), 0, 720) : 0;
     const category = event.category === "work" || event.category === "health" || event.category === "errands" || event.category === "social" ? event.category : "personal";
+    const projectName = typeof event.projectName === "string" ? event.projectName.trim() : "";
+    const projectNotePath = typeof event.projectNotePath === "string" && event.projectNotePath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(event.projectNotePath.trim()) : "";
     const repeatCadence = event.repeatCadence === "daily" || event.repeatCadence === "weekly" || event.repeatCadence === "monthly" || event.repeatCadence === "yearly" ? event.repeatCadence : "none";
     const repeatUntil = typeof event.repeatUntil === "string" ? event.repeatUntil.trim() : "";
     const occurrenceExceptions = Array.isArray(event.occurrenceExceptions) ? event.occurrenceExceptions.filter((item2) => Boolean(item2 && typeof item2 === "object" && typeof item2.originalDate === "string")).map((item2) => ({
@@ -10868,6 +10990,8 @@ No entries available.`;
       travelMinutes: Number.isFinite(Number(item2.travelMinutes)) ? clamp(Number(item2.travelMinutes), 0, 720) : travelMinutes,
       category: item2.category === "work" || item2.category === "health" || item2.category === "errands" || item2.category === "social" ? item2.category : category,
       title: typeof item2.title === "string" ? item2.title : title,
+      projectName: typeof item2.projectName === "string" ? item2.projectName.trim() : projectName,
+      projectNotePath: typeof item2.projectNotePath === "string" && item2.projectNotePath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(item2.projectNotePath.trim()) : projectNotePath,
       notes: typeof item2.notes === "string" ? item2.notes : "",
       updatedAt: typeof item2.updatedAt === "string" ? item2.updatedAt : ""
     })).filter((item2) => /^\d{4}-\d{2}-\d{2}$/.test(item2.originalDate) && /^\d{4}-\d{2}-\d{2}$/.test(item2.date) && /^\d{4}-\d{2}-\d{2}$/.test(item2.endDate)) : [];
@@ -10890,6 +11014,8 @@ No entries available.`;
       prepMinutes,
       travelMinutes,
       category,
+      projectName,
+      projectNotePath: projectName ? projectNotePath : "",
       notes: typeof event.notes === "string" ? event.notes : "",
       repeatCadence,
       repeatUntil,
@@ -10907,6 +11033,8 @@ No entries available.`;
     const prepMinutes = Number.isFinite(Number(input.prepMinutes)) ? clamp(Number(input.prepMinutes), 0, 720) : 0;
     const travelMinutes = Number.isFinite(Number(input.travelMinutes)) ? clamp(Number(input.travelMinutes), 0, 720) : 0;
     const category = input.category;
+    const projectName = input.projectName.trim();
+    const projectNotePath = input.projectNotePath.trim() ? (0, import_obsidian4.normalizePath)(input.projectNotePath.trim()) : "";
     const notes = input.notes.trim();
     const repeatCadence = input.repeatCadence;
     const repeatUntil = input.repeatUntil.trim();
@@ -10963,6 +11091,8 @@ No entries available.`;
       prepMinutes,
       travelMinutes,
       category,
+      projectName,
+      projectNotePath: projectName ? projectNotePath : "",
       notes,
       repeatCadence,
       repeatUntil,
@@ -11496,8 +11626,9 @@ No entries available.`;
       const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
       const recurrence = event.repeatCadence !== "none" ? ` \u2022 repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "";
       const exceptions = event.occurrenceExceptions.length > 0 ? ` \u2022 ${event.occurrenceExceptions.length} one-off change${event.occurrenceExceptions.length === 1 ? "" : "s"}` : "";
+      const project = event.projectName ? ` \u2022 ${this.renderCalendarProjectLink(event.projectName, event.projectNotePath)}` : "";
       const notes = event.notes ? ` \u2022 ${event.notes}` : "";
-      return `- ${timing}: ${event.title}${category}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exceptions}${notes}`;
+      return `- ${timing}: ${event.title}${category}${project}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exceptions}${notes}`;
     }) : ["- No calendar events yet."];
     const upcomingOccurrences = this.getCalendarOccurrencesInRange(/* @__PURE__ */ new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1e3));
     const upcomingLines = upcomingOccurrences.length > 0 ? upcomingOccurrences.slice(0, 200).map((event) => {
@@ -11506,8 +11637,9 @@ No entries available.`;
       const lead = this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes);
       const recurrence = event.isRecurring ? ` \u2022 from ${event.repeatCadence} series` : "";
       const exception = event.isException ? ` \u2022 ${event.exceptionKind === "move" ? `moved from ${event.originalDate}` : `${event.exceptionKind} once on ${event.originalDate}`}` : "";
+      const project = event.projectName ? ` \u2022 ${this.renderCalendarProjectLink(event.projectName, event.projectNotePath)}` : "";
       const notes = event.notes ? ` \u2022 ${event.notes}` : "";
-      return `- ${timing}: ${event.title}${category}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exception}${notes}`;
+      return `- ${timing}: ${event.title}${category}${project}${lead ? ` \u2022 ${lead}` : ""}${recurrence}${exception}${notes}`;
     }) : ["- No upcoming occurrences."];
     return [
       "---",
@@ -11532,6 +11664,201 @@ No entries available.`;
   }
   async upsertMarkdownFile(path, content) {
     return this.upsertTextFile(path, content);
+  }
+  getProjectNotePath(projectName, noteLinks = []) {
+    var _a, _b;
+    const safeName = projectName.trim();
+    if (!safeName) {
+      return "";
+    }
+    const firstLink = (_b = (_a = noteLinks.find((link) => link.trim().length > 0)) == null ? void 0 : _a.trim()) != null ? _b : "";
+    const basePath = firstLink ? stripMarkdownExtension(firstLink) : normalizeFolderPath(`${this.data.settings.projectNotesFolder}/${safeName}`);
+    return basePath ? `${basePath}.md` : "";
+  }
+  renderCalendarProjectLink(projectName, projectNotePath) {
+    const safeName = projectName.trim();
+    if (!safeName) {
+      return "";
+    }
+    return projectNotePath.trim() ? createWikiLink(projectNotePath.trim(), safeName) : safeName;
+  }
+  renderDashboardExportSummary(input) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+    const linkedOccurrences = input.occurrences.filter((event) => event.projectName.trim().length > 0).length;
+    const completedTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
+    const averageMood = input.entries.length > 0 ? (input.entries.reduce((sum, entry) => sum + entry.moodScore, 0) / input.entries.length).toFixed(1) : "0.0";
+    const averageEnergy = input.entries.length > 0 ? (input.entries.reduce((sum, entry) => sum + entry.energyScore, 0) / input.entries.length).toFixed(1) : "0.0";
+    const averageWorkMinutes = input.entries.length > 0 ? Math.round(input.entries.reduce((sum, entry) => sum + this.getTrackedWorkMinutes(entry), 0) / input.entries.length) : 0;
+    return [
+      `# Dashboard Export - ${formatDateKey(input.generatedAt)}`,
+      "",
+      `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+      `- Export folder: ${input.folder}`,
+      `- Entry range: ${(_b = (_a = input.entries[0]) == null ? void 0 : _a.date) != null ? _b : formatDateKey(input.generatedAt)} to ${(_d = (_c = input.entries[input.entries.length - 1]) == null ? void 0 : _c.date) != null ? _d : formatDateKey(input.generatedAt)}`,
+      `- Daily entries: ${input.entries.length}`,
+      `- Calendar occurrences: ${input.occurrences.length}`,
+      `- Calendar occurrences linked to projects: ${linkedOccurrences}`,
+      `- Completed tasks exported: ${completedTasks}`,
+      `- Average mood: ${averageMood}/5`,
+      `- Average energy: ${averageEnergy}/5`,
+      `- Average tracked work: ${averageWorkMinutes}m/day`,
+      "",
+      "## Files",
+      "- summary.md",
+      "- daily-metrics.csv",
+      "- habit-metrics.csv",
+      "- completed-tasks.csv",
+      "- calendar-events.csv",
+      "",
+      "## Portfolio Snapshot",
+      `- Open tasks: ${(_f = (_e = input.todoSnapshot) == null ? void 0 : _e.totalOpen) != null ? _f : 0}`,
+      `- Archived tasks: ${(_h = (_g = input.todoSnapshot) == null ? void 0 : _g.totalArchived) != null ? _h : 0}`,
+      `- Active projects tracked: ${(_j = (_i = input.todoSnapshot) == null ? void 0 : _i.projects.length) != null ? _j : 0}`,
+      ...input.todoSnapshot && input.todoSnapshot.staleProjects.length > 0 ? input.todoSnapshot.staleProjects.slice(0, 5).map((project) => {
+        var _a2;
+        return `- Stale: ${project.name} (${(_a2 = project.staleDays) != null ? _a2 : 0} days, ${project.openCount} open tasks)`;
+      }) : ["- No stale projects in the current snapshot."],
+      "",
+      "## Habit Definitions",
+      ...input.habits.length > 0 ? input.habits.map((habit) => `- ${habit.label}: target ${habit.target}, ${habit.completionWindow}, difficulty ${habit.difficultyWeight}/3`) : ["- No habits configured."],
+      ""
+    ].join("\n");
+  }
+  renderDailyMetricsCsv(entries, habits, occurrences) {
+    const calendarCountsByDate = /* @__PURE__ */ new Map();
+    occurrences.forEach((event) => {
+      var _a;
+      calendarCountsByDate.set(event.date, ((_a = calendarCountsByDate.get(event.date)) != null ? _a : 0) + 1);
+    });
+    const rows = entries.map((entry) => {
+      var _a;
+      const nextEntry = this.getNextEntry(entry.date);
+      const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+      return [
+        entry.date,
+        `${entry.moodScore}`,
+        `${entry.energyScore}`,
+        `${entry.anxietyScore}`,
+        `${entry.wakeQualityScore}`,
+        `${sleepMinutes}`,
+        `${this.getTrackedWorkMinutes(entry)}`,
+        `${this.getTrackedNapMinutes(entry)}`,
+        `${this.getTrackedRelaxMinutes(entry)}`,
+        `${this.getTrackedBreakMinutes(entry)}`,
+        `${this.getTrackedPoopMinutes(entry)}`,
+        `${this.getTrackedPoopCount(entry)}`,
+        `${getHabitWeightedCompletion(entry, habits)}`,
+        `${entry.todayFocus.length}`,
+        `${entry.completedTasks.length}`,
+        `${entry.foodLog.length}`,
+        `${entry.intakeLog.length}`,
+        `${entry.symptomLog.length}`,
+        `${entry.energyCheckIns.length}`,
+        `${(_a = calendarCountsByDate.get(entry.date)) != null ? _a : 0}`,
+        `${entry.calendarFollowThroughCompleted.length}`
+      ];
+    });
+    return this.renderCsv([
+      [
+        "date",
+        "moodScore",
+        "energyScore",
+        "anxietyScore",
+        "wakeQualityScore",
+        "trackedSleepMinutes",
+        "trackedWorkMinutes",
+        "trackedNapMinutes",
+        "trackedRelaxMinutes",
+        "trackedBreakMinutes",
+        "trackedPoopMinutes",
+        "trackedPoopCount",
+        "habitWeightedCompletion",
+        "todayFocusCount",
+        "completedTaskCount",
+        "foodEntryCount",
+        "intakeEntryCount",
+        "symptomEntryCount",
+        "energyCheckInCount",
+        "calendarEventCount",
+        "calendarFollowThroughCount"
+      ],
+      ...rows
+    ]);
+  }
+  renderHabitMetricsCsv(entries, habits) {
+    const rows = entries.flatMap((entry) => habits.map((habit) => {
+      var _a, _b, _c, _d;
+      return [
+        entry.date,
+        habit.id,
+        habit.label,
+        `${habit.target}`,
+        habit.completionWindow,
+        `${habit.difficultyWeight}`,
+        `${(_a = entry.habits[habit.id]) != null ? _a : 0}`,
+        `${((_b = entry.habitEvents[habit.id]) != null ? _b : []).length}`,
+        ((_c = entry.habitEvents[habit.id]) != null ? _c : []).join(" | "),
+        (_d = entry.habitMissNotes[habit.id]) != null ? _d : ""
+      ];
+    }));
+    return this.renderCsv([
+      ["date", "habitId", "habitLabel", "target", "completionWindow", "difficultyWeight", "completionCount", "eventCount", "eventTimestamps", "missNote"],
+      ...rows
+    ]);
+  }
+  renderCompletedTasksCsv(entries) {
+    const rows = entries.flatMap((entry) => entry.completedTasks.map((task) => {
+      var _a;
+      return [
+        entry.date,
+        task.project,
+        task.section,
+        task.text,
+        task.archivedAt,
+        (_a = task.note) != null ? _a : ""
+      ];
+    }));
+    return this.renderCsv([
+      ["date", "project", "section", "text", "archivedAt", "note"],
+      ...rows
+    ]);
+  }
+  renderCalendarOccurrencesCsv(occurrences) {
+    const rows = occurrences.map((event) => {
+      var _a;
+      return [
+        event.date,
+        event.endDate,
+        event.startTime,
+        event.endTime,
+        event.title,
+        event.category,
+        event.projectName,
+        event.projectNotePath,
+        event.originalDate,
+        event.repeatCadence,
+        `${event.isRecurring}`,
+        `${event.isException}`,
+        (_a = event.exceptionKind) != null ? _a : "",
+        `${event.prepMinutes}`,
+        `${event.travelMinutes}`,
+        event.notes
+      ];
+    });
+    return this.renderCsv([
+      ["date", "endDate", "startTime", "endTime", "title", "category", "projectName", "projectNotePath", "originalDate", "repeatCadence", "isRecurring", "isException", "exceptionKind", "prepMinutes", "travelMinutes", "notes"],
+      ...rows
+    ]);
+  }
+  renderCsv(rows) {
+    return rows.map((row) => row.map((value) => this.escapeCsvValue(value)).join(",")).join("\n");
+  }
+  escapeCsvValue(value) {
+    const safeValue = value.replace(/\r?\n/g, " ");
+    if (!/[",\n]/.test(safeValue)) {
+      return safeValue;
+    }
+    return `"${safeValue.replace(/"/g, '""')}"`;
   }
   async upsertTextFile(path, content) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(path);

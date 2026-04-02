@@ -45,6 +45,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     dailyLogFolder: settings.dailyLogFolder?.trim() || DEFAULT_SETTINGS.dailyLogFolder,
     weeklyReportFolder: settings.weeklyReportFolder?.trim() || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: settings.monthlyReportFolder?.trim() || DEFAULT_SETTINGS.monthlyReportFolder,
+    exportFolder: normalizeFolderPath(settings.exportFolder?.trim() || DEFAULT_SETTINGS.exportFolder),
     aiApiKey: settings.aiApiKey?.trim() || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
     aiApiKeyEnvVar: settings.aiApiKeyEnvVar?.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar,

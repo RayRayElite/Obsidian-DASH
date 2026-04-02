@@ -62,6 +62,8 @@ export interface CalendarOccurrenceException {
   travelMinutes: number;
   category: CalendarEventCategory;
   title: string;
+  projectName: string;
+  projectNotePath: string;
   notes: string;
   updatedAt: string;
 }
@@ -76,6 +78,8 @@ export interface CalendarEventEntry {
   prepMinutes: number;
   travelMinutes: number;
   category: CalendarEventCategory;
+  projectName: string;
+  projectNotePath: string;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
   repeatUntil: string;
@@ -96,6 +100,8 @@ export interface CalendarEventOccurrence {
   prepMinutes: number;
   travelMinutes: number;
   category: CalendarEventCategory;
+  projectName: string;
+  projectNotePath: string;
   notes: string;
   repeatCadence: CalendarRepeatCadence;
   repeatUntil: string;
@@ -322,6 +328,7 @@ export interface DashboardSettings {
   dailyLogFolder: string;
   weeklyReportFolder: string;
   monthlyReportFolder: string;
+  exportFolder: string;
   aiApiKey: string;
   aiApiKeySource: AiApiKeySource;
   aiApiKeyEnvVar: string;
@@ -354,6 +361,8 @@ export interface CalendarReminderItem {
   start: string;
   end: string;
   reminderAt: string;
+  projectName: string;
+  projectNotePath: string;
   notes: string;
   leadMinutes: number;
   leadSummary: string;
@@ -376,6 +385,8 @@ export interface WeeklyAgendaEvent {
   endTime: string;
   allDay: boolean;
   category: CalendarEventCategory;
+  projectName: string;
+  projectNotePath: string;
   notes: string;
   isRecurring: boolean;
 }
@@ -721,6 +732,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   dailyLogFolder: "Dashboard Logs/Daily",
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
+  exportFolder: "Dashboard Logs/Exports",
   aiApiKey: "",
   aiApiKeySource: "settings",
   aiApiKeyEnvVar: "OPENAI_API_KEY",

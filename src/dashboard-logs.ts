@@ -1418,6 +1418,10 @@ function renderCalendarEventLine(event: CalendarEventOccurrence): string {
   if (leadSummary) {
     contextParts.push(leadSummary);
   }
+  const projectLabel = renderCalendarProjectLabel(event.projectName, event.projectNotePath);
+  if (projectLabel) {
+    contextParts.push(`project ${projectLabel}`);
+  }
   const noteLinks = extractWikiLinks(event.notes);
   if (noteLinks.length > 0) {
     contextParts.push(`links ${noteLinks.join(", ")}`);
@@ -1431,7 +1435,8 @@ function renderCalendarEventLine(event: CalendarEventOccurrence): string {
 
 function renderCalendarEventContextLabel(event: CalendarEventOccurrence): string {
   const windowLabel = renderCalendarEventWindowLabel(event);
-  return `(${windowLabel})`;
+  const projectLabel = renderCalendarProjectLabel(event.projectName, event.projectNotePath);
+  return `(${[windowLabel, projectLabel].filter((value) => value.length > 0).join(" • ")})`;
 }
 
 function renderCalendarEventWindowLabel(event: Pick<CalendarEventOccurrence, "date" | "endDate" | "startTime" | "endTime">): string {
@@ -1461,4 +1466,14 @@ function renderCalendarLeadSummary(prepMinutes: number, travelMinutes: number): 
 function extractWikiLinks(value: string): string[] {
   const matches = value.match(/\[\[[^\]]+\]\]/g);
   return matches ? Array.from(new Set(matches)) : [];
+}
+
+function renderCalendarProjectLabel(projectName: string, projectNotePath: string): string {
+  const safeName = projectName.trim();
+  if (!safeName) {
+    return "";
+  }
+
+  const safePath = projectNotePath.trim().replace(/\.md$/i, "");
+  return safePath ? `[[${safePath}|${safeName}]]` : safeName;
 }

@@ -14,6 +14,7 @@ import {
   formatDateTimeKey,
   formatFileTimestamp,
   formatPreciseDateTimeKey,
+  getHabitWeightedCompletion,
   getEntryRecencyKey,
   getIndexedFolderList,
   getRelevantIndexedNotes,
@@ -104,6 +105,7 @@ import {
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
   type CalendarDocumentPayload,
+  type CalendarEventCategory,
   type CalendarEventEntry,
   type CalendarEventOccurrence,
   type CalendarOccurrenceException,
@@ -245,6 +247,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate gamification report",
       callback: () => {
         void this.generateGamificationReport();
+      }
+    });
+
+    this.addCommand({
+      id: "export-dashboard-metrics",
+      name: "Export dashboard metrics as markdown and CSV",
+      callback: () => {
+        void this.exportDashboardMetrics();
       }
     });
 
@@ -960,6 +970,8 @@ export default class DailyDashboardPlugin extends Plugin {
           endTime: event.endTime,
           allDay: !event.startTime,
           category: event.category,
+          projectName: event.projectName,
+          projectNotePath: event.projectNotePath,
           notes: event.notes,
           isRecurring: event.isRecurring
         }))
@@ -1122,6 +1134,8 @@ export default class DailyDashboardPlugin extends Plugin {
     prepMinutes: number;
     travelMinutes: number;
     category: CalendarEventCategory;
+    projectName: string;
+    projectNotePath: string;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
     repeatUntil: string;
@@ -1149,6 +1163,8 @@ export default class DailyDashboardPlugin extends Plugin {
           prepMinutes: normalized.prepMinutes,
           travelMinutes: normalized.travelMinutes,
             category: normalized.category,
+            projectName: normalized.projectName,
+            projectNotePath: normalized.projectNotePath,
             notes: normalized.notes,
             repeatCadence: normalized.repeatCadence,
             repeatUntil: normalized.repeatUntil,
@@ -1171,6 +1187,8 @@ export default class DailyDashboardPlugin extends Plugin {
     prepMinutes: number;
     travelMinutes: number;
     category: CalendarEventCategory;
+    projectName: string;
+    projectNotePath: string;
     notes: string;
   }): Promise<void> {
     const existingEvent = this.data.calendarEvents.find((event) => event.id === eventId);
@@ -1205,6 +1223,8 @@ export default class DailyDashboardPlugin extends Plugin {
             && normalized.endDate === event.endDate
             && normalized.prepMinutes === event.prepMinutes
             && normalized.travelMinutes === event.travelMinutes
+            && normalized.projectName === event.projectName
+            && normalized.projectNotePath === event.projectNotePath
             && normalized.notes === event.notes
             ? "move"
             : "move",
@@ -1215,6 +1235,8 @@ export default class DailyDashboardPlugin extends Plugin {
           prepMinutes: normalized.prepMinutes,
           travelMinutes: normalized.travelMinutes,
           title: normalized.title,
+          projectName: normalized.projectName,
+          projectNotePath: normalized.projectNotePath,
           notes: normalized.notes,
           category: normalized.category,
           updatedAt: timestamp
@@ -1260,6 +1282,8 @@ export default class DailyDashboardPlugin extends Plugin {
           travelMinutes: event.travelMinutes,
           category: event.category,
           title: event.title,
+          projectName: event.projectName,
+          projectNotePath: event.projectNotePath,
           notes: event.notes,
           updatedAt: timestamp
         }
@@ -1312,6 +1336,8 @@ export default class DailyDashboardPlugin extends Plugin {
     prepMinutes: number;
     travelMinutes: number;
     category: CalendarEventCategory;
+    projectName: string;
+    projectNotePath: string;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
     repeatUntil: string;
@@ -1382,7 +1408,9 @@ export default class DailyDashboardPlugin extends Plugin {
         calendarEnd: reminder.end,
         calendarLeadSummary: reminder.leadSummary,
         allDay: reminder.allDay,
-        calendarNotes: reminder.notes,
+        calendarNotes: [this.renderCalendarProjectLink(reminder.projectName, reminder.projectNotePath), reminder.notes]
+          .filter((value) => value.trim().length > 0)
+          .join(" • "),
         repeatCadence: reminder.repeatCadence,
         warningLevel: reminder.warningLevel
       }));
@@ -1441,6 +1469,8 @@ export default class DailyDashboardPlugin extends Plugin {
       start: startDate.toISOString(),
       end: endDate.toISOString(),
       reminderAt: reminderAt.toISOString(),
+      projectName: event.projectName,
+      projectNotePath: event.projectNotePath,
       notes: event.notes,
       leadMinutes,
       leadSummary: this.renderCalendarLeadSummary(event.prepMinutes, event.travelMinutes),
@@ -1491,6 +1521,8 @@ export default class DailyDashboardPlugin extends Plugin {
             prepMinutes: exception?.kind === "move" ? exception.prepMinutes : event.prepMinutes,
             travelMinutes: exception?.kind === "move" ? exception.travelMinutes : event.travelMinutes,
             category: exception?.kind === "move" ? exception.category : event.category,
+            projectName: exception?.kind === "move" ? exception.projectName : event.projectName,
+            projectNotePath: exception?.kind === "move" ? exception.projectNotePath : event.projectNotePath,
             notes: exception?.kind === "move" ? exception.notes : event.notes,
             repeatCadence: event.repeatCadence,
             repeatUntil: event.repeatUntil,
@@ -1531,6 +1563,8 @@ export default class DailyDashboardPlugin extends Plugin {
             prepMinutes: exception.prepMinutes,
             travelMinutes: exception.travelMinutes,
             category: exception.category,
+            projectName: exception.projectName,
+            projectNotePath: exception.projectNotePath,
             notes: exception.notes,
             repeatCadence: event.repeatCadence,
             repeatUntil: event.repeatUntil,
@@ -2603,6 +2637,33 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Gamification report generated.");
   }
 
+  async exportDashboardMetrics(): Promise<void> {
+    const entries = this.getAllEntries();
+    const today = new Date();
+    const earliestDate = entries[0]?.date ?? formatDateKey(today);
+    const latestDate = entries[entries.length - 1]?.date ?? formatDateKey(today);
+    const occurrences = this.getCalendarOccurrencesBetween(earliestDate, latestDate);
+    const todoSnapshot = await this.getTodoSnapshot();
+    const habits = this.getHabitDefinitions();
+    const exportStamp = `${formatDateKey(today)} ${formatFileTimestamp(today)}`;
+    const folder = normalizeFolderPath(`${this.data.settings.exportFolder}/${exportStamp}`);
+    const summaryContent = this.renderDashboardExportSummary({
+      generatedAt: today,
+      entries,
+      occurrences,
+      todoSnapshot,
+      habits,
+      folder
+    });
+    const summaryFile = await this.upsertMarkdownFile(`${folder}/summary.md`, summaryContent);
+    await this.upsertTextFile(`${folder}/daily-metrics.csv`, this.renderDailyMetricsCsv(entries, habits, occurrences));
+    await this.upsertTextFile(`${folder}/habit-metrics.csv`, this.renderHabitMetricsCsv(entries, habits));
+    await this.upsertTextFile(`${folder}/completed-tasks.csv`, this.renderCompletedTasksCsv(entries));
+    await this.upsertTextFile(`${folder}/calendar-events.csv`, this.renderCalendarOccurrencesCsv(occurrences));
+    await this.openFile(summaryFile);
+    new Notice(`Dashboard export generated in ${folder}.`);
+  }
+
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -2611,6 +2672,25 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const content = await this.app.vault.read(todoFile);
     return parseTodoSnapshot(content);
+  }
+
+  async getCalendarProjectOptions(): Promise<Array<{ name: string; notePath: string; wikiLink: string }>> {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      return [];
+    }
+
+    return snapshot.projects
+      .map((project) => {
+        const notePath = this.getProjectNotePath(project.name, project.noteLinks);
+        return {
+          name: project.name,
+          notePath,
+          wikiLink: this.renderCalendarProjectLink(project.name, notePath)
+        };
+      })
+      .filter((project, index, array) => array.findIndex((candidate) => candidate.name.toLowerCase() === project.name.toLowerCase()) === index)
+      .sort((left, right) => left.name.localeCompare(right.name));
   }
 
   async getTodoCategories(): Promise<string[]> {
@@ -4358,6 +4438,10 @@ export default class DailyDashboardPlugin extends Plugin {
       || event.category === "social"
       ? event.category
       : "personal";
+    const projectName = typeof event.projectName === "string" ? event.projectName.trim() : "";
+    const projectNotePath = typeof event.projectNotePath === "string" && event.projectNotePath.trim().length > 0
+      ? normalizePath(event.projectNotePath.trim())
+      : "";
     const repeatCadence = event.repeatCadence === "daily"
       || event.repeatCadence === "weekly"
       || event.repeatCadence === "monthly"
@@ -4384,6 +4468,10 @@ export default class DailyDashboardPlugin extends Plugin {
               ? item.category
               : category,
             title: typeof item.title === "string" ? item.title : title,
+            projectName: typeof item.projectName === "string" ? item.projectName.trim() : projectName,
+            projectNotePath: typeof item.projectNotePath === "string" && item.projectNotePath.trim().length > 0
+              ? normalizePath(item.projectNotePath.trim())
+              : projectNotePath,
             notes: typeof item.notes === "string" ? item.notes : "",
             updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : ""
           }))
@@ -4411,6 +4499,8 @@ export default class DailyDashboardPlugin extends Plugin {
       prepMinutes,
       travelMinutes,
       category,
+      projectName,
+      projectNotePath: projectName ? projectNotePath : "",
       notes: typeof event.notes === "string" ? event.notes : "",
       repeatCadence,
       repeatUntil,
@@ -4429,6 +4519,8 @@ export default class DailyDashboardPlugin extends Plugin {
     prepMinutes: number;
     travelMinutes: number;
     category: CalendarEventCategory;
+    projectName: string;
+    projectNotePath: string;
     notes: string;
     repeatCadence: CalendarRepeatCadence;
     repeatUntil: string;
@@ -4441,6 +4533,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const prepMinutes = Number.isFinite(Number(input.prepMinutes)) ? clamp(Number(input.prepMinutes), 0, 720) : 0;
     const travelMinutes = Number.isFinite(Number(input.travelMinutes)) ? clamp(Number(input.travelMinutes), 0, 720) : 0;
     const category = input.category;
+    const projectName = input.projectName.trim();
+    const projectNotePath = input.projectNotePath.trim() ? normalizePath(input.projectNotePath.trim()) : "";
     const notes = input.notes.trim();
     const repeatCadence = input.repeatCadence;
     const repeatUntil = input.repeatUntil.trim();
@@ -4509,6 +4603,8 @@ export default class DailyDashboardPlugin extends Plugin {
       prepMinutes,
       travelMinutes,
       category,
+      projectName,
+      projectNotePath: projectName ? projectNotePath : "",
       notes,
       repeatCadence,
       repeatUntil,
@@ -5188,8 +5284,9 @@ export default class DailyDashboardPlugin extends Plugin {
           const exceptions = event.occurrenceExceptions.length > 0
             ? ` • ${event.occurrenceExceptions.length} one-off change${event.occurrenceExceptions.length === 1 ? "" : "s"}`
             : "";
+          const project = event.projectName ? ` • ${this.renderCalendarProjectLink(event.projectName, event.projectNotePath)}` : "";
           const notes = event.notes ? ` • ${event.notes}` : "";
-          return `- ${timing}: ${event.title}${category}${lead ? ` • ${lead}` : ""}${recurrence}${exceptions}${notes}`;
+          return `- ${timing}: ${event.title}${category}${project}${lead ? ` • ${lead}` : ""}${recurrence}${exceptions}${notes}`;
         })
       : ["- No calendar events yet."];
     const upcomingOccurrences = this.getCalendarOccurrencesInRange(new Date(), new Date(Date.now() + 180 * 24 * 60 * 60 * 1000));
@@ -5205,8 +5302,9 @@ export default class DailyDashboardPlugin extends Plugin {
           const exception = event.isException
             ? ` • ${event.exceptionKind === "move" ? `moved from ${event.originalDate}` : `${event.exceptionKind} once on ${event.originalDate}`}`
             : "";
+          const project = event.projectName ? ` • ${this.renderCalendarProjectLink(event.projectName, event.projectNotePath)}` : "";
           const notes = event.notes ? ` • ${event.notes}` : "";
-          return `- ${timing}: ${event.title}${category}${lead ? ` • ${lead}` : ""}${recurrence}${exception}${notes}`;
+          return `- ${timing}: ${event.title}${category}${project}${lead ? ` • ${lead}` : ""}${recurrence}${exception}${notes}`;
         })
       : ["- No upcoming occurrences."];
 
@@ -5234,6 +5332,224 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async upsertMarkdownFile(path: string, content: string): Promise<TFile> {
     return this.upsertTextFile(path, content);
+  }
+
+  private getProjectNotePath(projectName: string, noteLinks: string[] = []): string {
+    const safeName = projectName.trim();
+    if (!safeName) {
+      return "";
+    }
+
+    const firstLink = noteLinks.find((link) => link.trim().length > 0)?.trim() ?? "";
+    const basePath = firstLink
+      ? stripMarkdownExtension(firstLink)
+      : normalizeFolderPath(`${this.data.settings.projectNotesFolder}/${safeName}`);
+    return basePath ? `${basePath}.md` : "";
+  }
+
+  private renderCalendarProjectLink(projectName: string, projectNotePath: string): string {
+    const safeName = projectName.trim();
+    if (!safeName) {
+      return "";
+    }
+
+    return projectNotePath.trim() ? createWikiLink(projectNotePath.trim(), safeName) : safeName;
+  }
+
+  private renderDashboardExportSummary(input: {
+    generatedAt: Date;
+    entries: DailyEntry[];
+    occurrences: CalendarEventOccurrence[];
+    todoSnapshot: TodoSnapshot | null;
+    habits: HabitDefinition[];
+    folder: string;
+  }): string {
+    const linkedOccurrences = input.occurrences.filter((event) => event.projectName.trim().length > 0).length;
+    const completedTasks = input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0);
+    const averageMood = input.entries.length > 0
+      ? (input.entries.reduce((sum, entry) => sum + entry.moodScore, 0) / input.entries.length).toFixed(1)
+      : "0.0";
+    const averageEnergy = input.entries.length > 0
+      ? (input.entries.reduce((sum, entry) => sum + entry.energyScore, 0) / input.entries.length).toFixed(1)
+      : "0.0";
+    const averageWorkMinutes = input.entries.length > 0
+      ? Math.round(input.entries.reduce((sum, entry) => sum + this.getTrackedWorkMinutes(entry), 0) / input.entries.length)
+      : 0;
+
+    return [
+      `# Dashboard Export - ${formatDateKey(input.generatedAt)}`,
+      "",
+      `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+      `- Export folder: ${input.folder}`,
+      `- Entry range: ${input.entries[0]?.date ?? formatDateKey(input.generatedAt)} to ${input.entries[input.entries.length - 1]?.date ?? formatDateKey(input.generatedAt)}`,
+      `- Daily entries: ${input.entries.length}`,
+      `- Calendar occurrences: ${input.occurrences.length}`,
+      `- Calendar occurrences linked to projects: ${linkedOccurrences}`,
+      `- Completed tasks exported: ${completedTasks}`,
+      `- Average mood: ${averageMood}/5`,
+      `- Average energy: ${averageEnergy}/5`,
+      `- Average tracked work: ${averageWorkMinutes}m/day`,
+      "",
+      "## Files",
+      "- summary.md",
+      "- daily-metrics.csv",
+      "- habit-metrics.csv",
+      "- completed-tasks.csv",
+      "- calendar-events.csv",
+      "",
+      "## Portfolio Snapshot",
+      `- Open tasks: ${input.todoSnapshot?.totalOpen ?? 0}`,
+      `- Archived tasks: ${input.todoSnapshot?.totalArchived ?? 0}`,
+      `- Active projects tracked: ${input.todoSnapshot?.projects.length ?? 0}`,
+      ...(input.todoSnapshot && input.todoSnapshot.staleProjects.length > 0
+        ? input.todoSnapshot.staleProjects.slice(0, 5).map((project) => `- Stale: ${project.name} (${project.staleDays ?? 0} days, ${project.openCount} open tasks)`)
+        : ["- No stale projects in the current snapshot."]),
+      "",
+      "## Habit Definitions",
+      ...(input.habits.length > 0
+        ? input.habits.map((habit) => `- ${habit.label}: target ${habit.target}, ${habit.completionWindow}, difficulty ${habit.difficultyWeight}/3`)
+        : ["- No habits configured."]),
+      ""
+    ].join("\n");
+  }
+
+  private renderDailyMetricsCsv(entries: DailyEntry[], habits: HabitDefinition[], occurrences: CalendarEventOccurrence[]): string {
+    const calendarCountsByDate = new Map<string, number>();
+    occurrences.forEach((event) => {
+      calendarCountsByDate.set(event.date, (calendarCountsByDate.get(event.date) ?? 0) + 1);
+    });
+
+    const rows = entries.map((entry) => {
+      const nextEntry = this.getNextEntry(entry.date);
+      const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+      return [
+        entry.date,
+        `${entry.moodScore}`,
+        `${entry.energyScore}`,
+        `${entry.anxietyScore}`,
+        `${entry.wakeQualityScore}`,
+        `${sleepMinutes}`,
+        `${this.getTrackedWorkMinutes(entry)}`,
+        `${this.getTrackedNapMinutes(entry)}`,
+        `${this.getTrackedRelaxMinutes(entry)}`,
+        `${this.getTrackedBreakMinutes(entry)}`,
+        `${this.getTrackedPoopMinutes(entry)}`,
+        `${this.getTrackedPoopCount(entry)}`,
+        `${getHabitWeightedCompletion(entry, habits)}`,
+        `${entry.todayFocus.length}`,
+        `${entry.completedTasks.length}`,
+        `${entry.foodLog.length}`,
+        `${entry.intakeLog.length}`,
+        `${entry.symptomLog.length}`,
+        `${entry.energyCheckIns.length}`,
+        `${calendarCountsByDate.get(entry.date) ?? 0}`,
+        `${entry.calendarFollowThroughCompleted.length}`
+      ];
+    });
+
+    return this.renderCsv([
+      [
+        "date",
+        "moodScore",
+        "energyScore",
+        "anxietyScore",
+        "wakeQualityScore",
+        "trackedSleepMinutes",
+        "trackedWorkMinutes",
+        "trackedNapMinutes",
+        "trackedRelaxMinutes",
+        "trackedBreakMinutes",
+        "trackedPoopMinutes",
+        "trackedPoopCount",
+        "habitWeightedCompletion",
+        "todayFocusCount",
+        "completedTaskCount",
+        "foodEntryCount",
+        "intakeEntryCount",
+        "symptomEntryCount",
+        "energyCheckInCount",
+        "calendarEventCount",
+        "calendarFollowThroughCount"
+      ],
+      ...rows
+    ]);
+  }
+
+  private renderHabitMetricsCsv(entries: DailyEntry[], habits: HabitDefinition[]): string {
+    const rows = entries.flatMap((entry) => habits.map((habit) => [
+      entry.date,
+      habit.id,
+      habit.label,
+      `${habit.target}`,
+      habit.completionWindow,
+      `${habit.difficultyWeight}`,
+      `${entry.habits[habit.id] ?? 0}`,
+      `${(entry.habitEvents[habit.id] ?? []).length}`,
+      (entry.habitEvents[habit.id] ?? []).join(" | "),
+      entry.habitMissNotes[habit.id] ?? ""
+    ]));
+
+    return this.renderCsv([
+      ["date", "habitId", "habitLabel", "target", "completionWindow", "difficultyWeight", "completionCount", "eventCount", "eventTimestamps", "missNote"],
+      ...rows
+    ]);
+  }
+
+  private renderCompletedTasksCsv(entries: DailyEntry[]): string {
+    const rows = entries.flatMap((entry) => entry.completedTasks.map((task) => [
+      entry.date,
+      task.project,
+      task.section,
+      task.text,
+      task.archivedAt,
+      task.note ?? ""
+    ]));
+
+    return this.renderCsv([
+      ["date", "project", "section", "text", "archivedAt", "note"],
+      ...rows
+    ]);
+  }
+
+  private renderCalendarOccurrencesCsv(occurrences: CalendarEventOccurrence[]): string {
+    const rows = occurrences.map((event) => [
+      event.date,
+      event.endDate,
+      event.startTime,
+      event.endTime,
+      event.title,
+      event.category,
+      event.projectName,
+      event.projectNotePath,
+      event.originalDate,
+      event.repeatCadence,
+      `${event.isRecurring}`,
+      `${event.isException}`,
+      event.exceptionKind ?? "",
+      `${event.prepMinutes}`,
+      `${event.travelMinutes}`,
+      event.notes
+    ]);
+
+    return this.renderCsv([
+      ["date", "endDate", "startTime", "endTime", "title", "category", "projectName", "projectNotePath", "originalDate", "repeatCadence", "isRecurring", "isException", "exceptionKind", "prepMinutes", "travelMinutes", "notes"],
+      ...rows
+    ]);
+  }
+
+  private renderCsv(rows: string[][]): string {
+    return rows
+      .map((row) => row.map((value) => this.escapeCsvValue(value)).join(","))
+      .join("\n");
+  }
+
+  private escapeCsvValue(value: string): string {
+    const safeValue = value.replace(/\r?\n/g, " ");
+    if (!/[",\n]/.test(safeValue)) {
+      return safeValue;
+    }
+
+    return `"${safeValue.replace(/"/g, '""')}"`;
   }
 
   private async upsertTextFile(path: string, content: string): Promise<TFile> {

@@ -449,7 +449,7 @@ export class DailyDashboardView extends ItemView {
           day.events.slice(0, 3).forEach((event) => {
             copy.createEl("span", {
               cls: "daily-dashboard-row-meta",
-              text: `${event.allDay ? (event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day`) : (event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`)} • ${event.title}${event.notes ? ` • ${event.notes}` : ""}`
+              text: `${event.allDay ? (event.date === event.endDate ? "All day" : `${event.date} -> ${event.endDate} all day`) : (event.date === event.endDate ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : `${event.date} ${event.startTime} -> ${event.endDate}${event.endTime ? ` ${event.endTime}` : ""}`)} • ${event.title}${event.projectName ? ` • ${event.projectName}` : ""}${event.notes ? ` • ${event.notes}` : ""}`
             });
           });
           if (day.events.length > 3) {
@@ -2031,7 +2031,7 @@ export class DailyDashboardView extends ItemView {
       copy.createEl("strong", { text: event.title });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: [event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")]
+        text: [event.projectName || "", event.leadSummary, event.notes || (event.warningLevel === "warning" ? "Within warning window" : "Scheduled")]
           .filter((value) => value.length > 0)
           .join(" • ")
       });
@@ -2488,10 +2488,10 @@ export class DailyDashboardView extends ItemView {
         sortKey: `${event.date} ${event.startTime || "00:00"}`,
         kind: "calendar",
         title: event.title,
-        summary: [event.category, event.startTime ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : "All day"].join(" • "),
+        summary: [event.category, event.projectName, event.startTime ? `${event.startTime}${event.endTime ? `-${event.endTime}` : ""}` : "All day"].filter((value) => value.length > 0).join(" • "),
         detail: event.notes.trim(),
         tone: event.category === "work" ? "capture" : event.category === "health" ? "health" : "focus",
-        project: "",
+        project: event.projectName,
         tag: ""
       });
     });
@@ -2805,6 +2805,8 @@ export class CalendarEventModal extends Modal {
   private prepMinutesValue = "0";
   private travelMinutesValue = "0";
   private categoryValue: CalendarEventCategory = "personal";
+  private projectNameValue = "";
+  private projectNotePathValue = "";
   private notesValue = "";
   private repeatCadenceValue: CalendarRepeatCadence = "none";
   private repeatUntilValue = "";
@@ -2821,16 +2823,17 @@ export class CalendarEventModal extends Modal {
   onOpen(): void {
     this.hydrateEditingState();
     this.setTitle(`Calendar Events • ${this.date}`);
-    this.renderContent();
+    void this.renderContent();
   }
 
   onClose(): void {
     this.contentEl.empty();
   }
 
-  private renderContent(): void {
+  private async renderContent(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
+    const projectChoices = await this.plugin.getCalendarProjectOptions();
 
     const existingEvents = this.plugin.getCalendarEventsForDate(this.date);
     if (existingEvents.length > 0) {
@@ -2844,6 +2847,7 @@ export class CalendarEventModal extends Modal {
             event.prepMinutes > 0 ? `prep ${event.prepMinutes}m` : "",
             event.travelMinutes > 0 ? `travel ${event.travelMinutes}m` : "",
             `category ${event.category}`,
+            event.projectName ? `project ${event.projectName}` : "",
             event.isRecurring ? `repeats ${event.repeatCadence}${event.repeatUntil ? ` until ${event.repeatUntil}` : ""}` : "",
             event.isException ? `${event.exceptionKind === "move" ? "moved" : event.exceptionKind} once from ${event.originalDate}` : "",
             event.notes
@@ -2860,12 +2864,14 @@ export class CalendarEventModal extends Modal {
               this.prepMinutesValue = `${event.prepMinutes}`;
               this.travelMinutesValue = `${event.travelMinutes}`;
               this.categoryValue = event.category;
+              this.projectNameValue = event.projectName;
+              this.projectNotePathValue = event.projectNotePath;
               this.notesValue = event.notes;
               if (!event.isRecurring) {
                 this.repeatCadenceValue = "none";
                 this.repeatUntilValue = "";
               }
-              this.renderContent();
+              void this.renderContent();
             });
           });
         if (event.isRecurring) {
@@ -2888,10 +2894,12 @@ export class CalendarEventModal extends Modal {
                 this.prepMinutesValue = `${sourceEvent.prepMinutes}`;
                 this.travelMinutesValue = `${sourceEvent.travelMinutes}`;
                 this.categoryValue = sourceEvent.category;
+                this.projectNameValue = sourceEvent.projectName;
+                this.projectNotePathValue = sourceEvent.projectNotePath;
                 this.notesValue = sourceEvent.notes;
                 this.repeatCadenceValue = sourceEvent.repeatCadence;
                 this.repeatUntilValue = sourceEvent.repeatUntil;
-                this.renderContent();
+                void this.renderContent();
               });
             })
             .addButton((button) => {
@@ -2904,7 +2912,7 @@ export class CalendarEventModal extends Modal {
                 if (this.editingOccurrenceOriginalDate === event.originalDate) {
                   this.clearEditingState();
                 }
-                this.renderContent();
+                await this.renderContent();
               });
             })
             .addButton((button) => {
@@ -2913,7 +2921,7 @@ export class CalendarEventModal extends Modal {
                 if (this.editingOccurrenceOriginalDate === event.originalDate) {
                   this.clearEditingState();
                 }
-                this.renderContent();
+                await this.renderContent();
               });
             })
             .addButton((button) => {
@@ -2922,7 +2930,7 @@ export class CalendarEventModal extends Modal {
                 if (this.editingEventId === event.sourceEventId) {
                   this.clearEditingState();
                 }
-                this.renderContent();
+                await this.renderContent();
               });
             });
         } else {
@@ -2934,7 +2942,7 @@ export class CalendarEventModal extends Modal {
                 if (this.editingEventId === event.sourceEventId) {
                   this.clearEditingState();
                 }
-                this.renderContent();
+                await this.renderContent();
               });
             });
         }
@@ -3023,6 +3031,29 @@ export class CalendarEventModal extends Modal {
         });
       });
 
+    const projectChoiceListId = `daily-dashboard-calendar-projects-${this.initialDate.replace(/[^a-z0-9]/gi, "-")}-${this.editingEventId ?? "new"}`;
+    const projectChoiceList = contentEl.createEl("datalist", { attr: { id: projectChoiceListId } });
+    projectChoices.forEach((project) => {
+      const option = projectChoiceList.createEl("option");
+      option.value = project.name;
+      option.label = project.wikiLink;
+    });
+
+    new Setting(contentEl)
+      .setName("Project")
+      .setDesc(this.projectNotePathValue
+        ? `Linked to ${this.projectNotePathValue.replace(/\.md$/i, "")}.`
+        : "Optional. Pick a known project or type a custom project name.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Optional project link")
+          .setValue(this.projectNameValue)
+          .onChange((value) => {
+            this.setProjectSelection(value, projectChoices);
+          });
+        text.inputEl.setAttribute("list", projectChoiceListId);
+      });
+
     new Setting(contentEl)
       .setName("Notes")
       .setDesc("Optional context shown in reminders and the calendar detail list.")
@@ -3077,7 +3108,7 @@ export class CalendarEventModal extends Modal {
           dropdown.setValue(this.repeatCadenceValue);
           dropdown.onChange((value) => {
             this.repeatCadenceValue = value === "daily" || value === "weekly" || value === "monthly" || value === "yearly" ? value : "none";
-            this.renderContent();
+            void this.renderContent();
           });
         });
 
@@ -3114,6 +3145,8 @@ export class CalendarEventModal extends Modal {
             prepMinutes: Number(this.prepMinutesValue || 0),
             travelMinutes: Number(this.travelMinutesValue || 0),
             category: this.categoryValue,
+            projectName: this.projectNameValue,
+            projectNotePath: this.projectNotePathValue,
             notes: this.notesValue,
             repeatCadence: this.repeatCadenceValue,
             repeatUntil: this.repeatUntilValue
@@ -3127,13 +3160,13 @@ export class CalendarEventModal extends Modal {
             await this.plugin.addCalendarEvent(input);
           }
           this.clearEditingState();
-          this.renderContent();
+          await this.renderContent();
         });
       })
       .addExtraButton((button) => {
         button.setIcon("rotate-ccw").setTooltip("Reset form").onClick(() => {
           this.clearEditingState();
-          this.renderContent();
+          void this.renderContent();
         });
       })
       .addExtraButton((button) => {
@@ -3141,6 +3174,12 @@ export class CalendarEventModal extends Modal {
           this.close();
         });
       });
+  }
+
+  private setProjectSelection(value: string, projectChoices: Array<{ name: string; notePath: string }>): void {
+    this.projectNameValue = value.trim();
+    const match = projectChoices.find((project) => project.name.toLowerCase() === this.projectNameValue.toLowerCase());
+    this.projectNotePathValue = this.projectNameValue && match ? match.notePath : "";
   }
 
   private hydrateEditingState(): void {
@@ -3164,6 +3203,8 @@ export class CalendarEventModal extends Modal {
       this.prepMinutesValue = `${occurrence.prepMinutes}`;
       this.travelMinutesValue = `${occurrence.travelMinutes}`;
       this.categoryValue = occurrence.category;
+      this.projectNameValue = occurrence.projectName;
+      this.projectNotePathValue = occurrence.projectNotePath;
       this.notesValue = occurrence.notes;
       return;
     }
@@ -3182,6 +3223,8 @@ export class CalendarEventModal extends Modal {
     this.prepMinutesValue = `${event.prepMinutes}`;
     this.travelMinutesValue = `${event.travelMinutes}`;
     this.categoryValue = event.category;
+    this.projectNameValue = event.projectName;
+    this.projectNotePathValue = event.projectNotePath;
     this.notesValue = event.notes;
     this.repeatCadenceValue = event.repeatCadence;
     this.repeatUntilValue = event.repeatUntil;
@@ -3198,6 +3241,8 @@ export class CalendarEventModal extends Modal {
     this.prepMinutesValue = "0";
     this.travelMinutesValue = "0";
     this.categoryValue = "personal";
+    this.projectNameValue = "";
+    this.projectNotePathValue = "";
     this.notesValue = "";
     this.repeatCadenceValue = "none";
     this.repeatUntilValue = "";
@@ -3997,6 +4042,21 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
               monthlyReportFolder: value.trim() || DEFAULT_SETTINGS.monthlyReportFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Export folder")
+      .setDesc("Where markdown summaries and CSV metric dumps are written.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.exportFolder)
+          .setValue(settings.exportFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              exportFolder: value.trim() || DEFAULT_SETTINGS.exportFolder
             });
           });
       });
