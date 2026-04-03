@@ -2487,6 +2487,13 @@ input.daily-dashboard-input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+.daily-dashboard-ai-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .daily-dashboard-ai-panel strong {
   font-size: 1.02rem;
   letter-spacing: -0.02em;

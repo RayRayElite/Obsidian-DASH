@@ -4609,6 +4609,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   openShortcutHelpFlow() {
     new DashboardShortcutHelpModal(this.app).open();
   }
+  openAiReferenceNotesFlow() {
+    new AiReferenceNotesModal(this.app, this.plugin).open();
+  }
   async toggleNotificationPanel() {
     this.notificationPanelOpen = !this.notificationPanelOpen;
     if (this.notificationPanelOpen) {
@@ -6369,8 +6372,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const aiOverviewSection = this.createCollapsibleSubsection(aiShell, "ai-workspace-overview", "Plan and retrieve", "Workflow shortcuts and retrieval-index status for the current vault.");
       const aiOverview = aiOverviewSection.createDiv({ cls: "daily-dashboard-ai-overview" });
       const aiActionsPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
-      aiActionsPanel.createEl("strong", { text: "Workflows" });
-      aiActionsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run focused planning, diagnostic, synthesis, and comparison workflows without leaving the dashboard." });
+      const aiActionsHeader = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-panel-header" });
+      const aiActionsCopy = aiActionsHeader.createDiv({ cls: "daily-dashboard-stack" });
+      aiActionsCopy.createEl("strong", { text: "Workflows" });
+      aiActionsCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: "Run focused planning, diagnostic, synthesis, and comparison workflows without leaving the dashboard." });
+      createIconButton(aiActionsHeader, "library", "Open AI reference notes", async () => this.openAiReferenceNotesFlow());
       const aiActions = aiActionsPanel.createDiv({ cls: "daily-dashboard-ai-action-grid" });
       createButton(aiActions, "Morning brief", async () => this.plugin.generateAiMorningStartupBrief(), false, "sunrise");
       createButton(aiActions, "Shutdown summary", async () => this.plugin.generateAiShutdownSummary(), false, "moon-star");
@@ -6381,16 +6387,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(aiActions, "Project synthesis", async () => this.plugin.generateAiProjectSynthesis(), false, "network");
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
-      const aiReferencePanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
-      aiReferencePanel.createEl("strong", { text: "Reference notes" });
-      aiReferencePanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "These notes feed persistent AI context. They are reference documents, not AI actions, so they live separately from the workflow buttons." });
-      const aiReferenceActions = aiReferencePanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
-      createButton(aiReferenceActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
-      createButton(aiReferenceActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
-      createButton(aiReferenceActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
-      createButton(aiReferenceActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
-      createButton(aiReferenceActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
-      createButton(aiReferenceActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
       aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Cached note chunks that keep answers grounded without rescanning the vault on every request." });
@@ -7895,6 +7891,41 @@ var DashboardShortcutHelpModal = class extends import_obsidian3.Modal {
     contentEl.createEl("p", {
       cls: "daily-dashboard-row-meta",
       text: "Shortcuts only fire while focus is inside the dashboard and never while you are typing in an input, textarea, or select field."
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var AiReferenceNotesModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.setTitle("AI Reference Notes");
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "These notes feed the AI context layer. They are not workflows, so they stay out of the main action grid and open only on demand."
+    });
+    const notes = [
+      { label: "Basic Information", description: "Stable facts and long-lived constraints.", open: async () => this.plugin.openBasicInformationNote() },
+      { label: "AI Guardrails", description: "Rules for tone, behavior, and decision style.", open: async () => this.plugin.openAiGuardrailsNote() },
+      { label: "Current Season", description: "Temporary priorities and present-phase constraints.", open: async () => this.plugin.openCurrentSeasonNote() },
+      { label: "Dependencies", description: "People, blockers, and external coordination context.", open: async () => this.plugin.openPeopleDependenciesNote() },
+      { label: "Decision Journal", description: "Important decisions and their reasoning.", open: async () => this.plugin.openDecisionJournalNote() },
+      { label: "System Map", description: "How the vault and support notes fit together.", open: async () => this.plugin.openSystemMapNote() }
+    ];
+    notes.forEach((note) => {
+      new import_obsidian3.Setting(contentEl).setName(note.label).setDesc(note.description).addButton((button) => {
+        button.setButtonText("Open");
+        button.onClick(() => {
+          void note.open();
+          this.close();
+        });
+      });
     });
   }
   onClose() {
