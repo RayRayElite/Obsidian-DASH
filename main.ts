@@ -3492,76 +3492,102 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    const scaffold = await this.ensureCompiledResearchWikiScaffold();
-    if (scaffold.createdCount > 0) {
-      new Notice(`Compiled research wiki scaffold created automatically (${scaffold.createdCount} starter note${scaffold.createdCount === 1 ? "" : "s"}).`);
-    }
+    try {
+      const scaffold = await this.ensureCompiledResearchWikiScaffold();
+      if (scaffold.createdCount > 0) {
+        new Notice(`Compiled research wiki scaffold created automatically (${scaffold.createdCount} starter note${scaffold.createdCount === 1 ? "" : "s"}).`);
+      }
 
-    const seedFile = await this.createKnowledgeBaseQuestionSeedNote({
-      question: trimmedQuestion,
-      additionalContext: trimmedContext,
-      generateBrief,
-      generateAnswer
-    });
-
-    const additionalSections = trimmedContext.length > 0
-      ? [
-          [
-            "## User Context And Constraints",
-            trimmedContext
-          ].join("\n\n")
-        ]
-      : [];
-    const queryBasis = [trimmedQuestion, trimmedContext].filter((value) => value.trim().length > 0).join("\n\n");
-
-    if (generateBrief) {
-      await this.runKnowledgeBaseAiWorkflow({
-        kind: "Research Question Brief",
-        templateKey: "research-question-brief",
-        activeFile: seedFile,
-        query: `Brief research answer for ${queryBasis || seedFile.path}`,
-        outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
-        defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Brief`,
-        systemPrompt: [
-          "You are writing a concise research brief from a user-authored question seed note.",
-          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-          "Do not imply live web browsing, external verification, or source access you do not actually have.",
-          "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
-          "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
-          "Return markdown that starts with a single H1 title suitable for a standalone brief.",
-          "Then use headings: Direct Takeaway, Most Likely Explanation, What To Watch Or Verify, Related Wiki Hooks, Promotion Targets.",
-          "Keep it concise, practical, and durable for later review.",
-          "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
-        ].join(" "),
-        userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly, pulls from the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+      const seedFile = await this.createKnowledgeBaseQuestionSeedNote({
         question: trimmedQuestion,
-        additionalSections
+        additionalContext: trimmedContext,
+        generateBrief,
+        generateAnswer
       });
-    }
+      await this.openFile(seedFile);
+      new Notice("Research question seed note created. Generating requested wiki notes...");
 
-    if (generateAnswer) {
-      await this.runKnowledgeBaseAiWorkflow({
-        kind: "Research Question Answer",
-        templateKey: "research-question-answer",
-        activeFile: seedFile,
-        query: `Detailed research answer for ${queryBasis || seedFile.path}`,
-        outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
-        defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Answer`,
-        systemPrompt: [
-          "You are writing a detailed teaching-oriented research answer from a user-authored question seed note.",
-          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-          "Do not imply live web browsing, external verification, or source access you do not actually have.",
-          "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
-          "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
-          "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
-          "Then use headings: Plain-English Answer, Mechanisms Or Concepts, Variations And Caveats, Source Basis And Confidence, Related Wiki Hooks, Promotion Targets.",
-          "Teach clearly, explain why, and make the note useful to revisit later.",
-          "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
-        ].join(" "),
-        userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly, uses the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
-        question: trimmedQuestion,
-        additionalSections
-      });
+      if (!this.getResolvedAiApiKey()) {
+        new Notice(`Research question seed note created. ${this.getAiConfigurationMessage()}`);
+        return;
+      }
+
+      const additionalSections = trimmedContext.length > 0
+        ? [
+            [
+              "## User Context And Constraints",
+              trimmedContext
+            ].join("\n\n")
+          ]
+        : [];
+      const queryBasis = [trimmedQuestion, trimmedContext].filter((value) => value.trim().length > 0).join("\n\n");
+      const generatedFiles: TFile[] = [];
+
+      if (generateBrief) {
+        const briefFile = await this.runKnowledgeBaseAiWorkflow({
+          kind: "Research Question Brief",
+          templateKey: "research-question-brief",
+          activeFile: seedFile,
+          query: `Brief research answer for ${queryBasis || seedFile.path}`,
+          outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+          defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Brief`,
+          systemPrompt: [
+            "You are writing a concise research brief from a user-authored question seed note.",
+            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+            "Do not imply live web browsing, external verification, or source access you do not actually have.",
+            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
+            "Return markdown that starts with a single H1 title suitable for a standalone brief.",
+            "Then use headings: Direct Takeaway, Most Likely Explanation, What To Watch Or Verify, Related Wiki Hooks, Promotion Targets.",
+            "Keep it concise, practical, and durable for later review.",
+            "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+          ].join(" "),
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly, pulls from the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          question: trimmedQuestion,
+          additionalSections
+        });
+        if (briefFile) {
+          generatedFiles.push(briefFile);
+        }
+      }
+
+      if (generateAnswer) {
+        const answerFile = await this.runKnowledgeBaseAiWorkflow({
+          kind: "Research Question Answer",
+          templateKey: "research-question-answer",
+          activeFile: seedFile,
+          query: `Detailed research answer for ${queryBasis || seedFile.path}`,
+          outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+          defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Answer`,
+          systemPrompt: [
+            "You are writing a detailed teaching-oriented research answer from a user-authored question seed note.",
+            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+            "Do not imply live web browsing, external verification, or source access you do not actually have.",
+            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
+            "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
+            "Then use headings: Plain-English Answer, Mechanisms Or Concepts, Variations And Caveats, Source Basis And Confidence, Related Wiki Hooks, Promotion Targets.",
+            "Teach clearly, explain why, and make the note useful to revisit later.",
+            "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+          ].join(" "),
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly, uses the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          question: trimmedQuestion,
+          additionalSections
+        });
+        if (answerFile) {
+          generatedFiles.push(answerFile);
+        }
+      }
+
+      if (generatedFiles.length > 0) {
+        new Notice(`Research question workflow generated ${generatedFiles.length} wiki note${generatedFiles.length === 1 ? "" : "s"}.`);
+        return;
+      }
+
+      new Notice("Research question seed note was created, but no wiki notes were generated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new Notice(`Research question workflow failed: ${message}`);
     }
   }
 
