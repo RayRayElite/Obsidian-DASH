@@ -416,6 +416,22 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "initialize-compiled-research-wiki",
+      name: "Initialize compiled research wiki",
+      callback: () => {
+        void this.initializeCompiledResearchWiki();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-compiled-research-wiki-health-check",
+      name: "Generate compiled research wiki health check",
+      callback: () => {
+        void this.generateCompiledResearchWikiHealthCheck();
+      }
+    });
+
+    this.addCommand({
       id: "open-master-todo",
       name: "Open master todo",
       callback: () => {
@@ -3288,14 +3304,176 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.ensureSystemMapNoteExists();
   }
 
+  async initializeCompiledResearchWiki(): Promise<void> {
+    for (const folder of this.getKnowledgeBaseFolders()) {
+      await this.ensureFolder(folder);
+    }
+
+    let createdCount = 0;
+    let homeFile: TFile | null = null;
+    for (const starterNote of this.getKnowledgeBaseStarterNoteDefinitions()) {
+      const result = await this.ensureSupportNoteWithStatus(starterNote.path, starterNote.render);
+      if (starterNote.key === "home") {
+        homeFile = result.file;
+      }
+      if (result.created) {
+        createdCount += 1;
+      }
+    }
+
+    if (homeFile) {
+      await this.openFile(homeFile);
+    }
+
+    new Notice(createdCount > 0
+      ? `Compiled research wiki initialized. Created ${createdCount} starter note${createdCount === 1 ? "" : "s"}.`
+      : "Compiled research wiki folders and starter notes already exist.");
+  }
+
+  async generateCompiledResearchWikiHealthCheck(): Promise<void> {
+    const file = await this.createCompiledResearchWikiHealthCheck();
+    await this.openFile(file);
+    new Notice("Compiled research wiki health check generated.");
+  }
+
+  private getKnowledgeBaseFolders(): string[] {
+    return [
+      this.data.settings.knowledgeBaseRawFolder,
+      this.data.settings.knowledgeBaseSourcesFolder,
+      this.data.settings.knowledgeBaseConceptsFolder,
+      this.data.settings.knowledgeBaseIndexesFolder,
+      this.data.settings.knowledgeBaseOutputsFolder,
+      this.data.settings.knowledgeBaseAssetsFolder
+    ]
+      .map((folder) => normalizeFolderPath(folder))
+      .filter((folder, index, folders) => folder.length > 0 && folders.indexOf(folder) === index);
+  }
+
+  private getKnowledgeBaseStarterNoteDefinitions(): Array<{ key: string; path: string; render: () => string }> {
+    const indexesFolder = normalizeFolderPath(this.data.settings.knowledgeBaseIndexesFolder);
+    const sourcesFolder = normalizeFolderPath(this.data.settings.knowledgeBaseSourcesFolder);
+    const conceptsFolder = normalizeFolderPath(this.data.settings.knowledgeBaseConceptsFolder);
+    const outputsFolder = normalizeFolderPath(this.data.settings.knowledgeBaseOutputsFolder);
+
+    return [
+      {
+        key: "home",
+        path: normalizePath(`${indexesFolder}/Research Home.md`),
+        render: () => this.renderKnowledgeBaseHomeTemplate()
+      },
+      {
+        key: "questions",
+        path: normalizePath(`${indexesFolder}/Open Questions.md`),
+        render: () => this.renderKnowledgeBaseOpenQuestionsTemplate()
+      },
+      {
+        key: "source-template",
+        path: normalizePath(`${sourcesFolder}/Source Summary Template.md`),
+        render: () => this.renderKnowledgeBaseSourceSummaryTemplate()
+      },
+      {
+        key: "concept-template",
+        path: normalizePath(`${conceptsFolder}/Concept Note Template.md`),
+        render: () => this.renderKnowledgeBaseConceptTemplate()
+      },
+      {
+        key: "output-template",
+        path: normalizePath(`${outputsFolder}/Answer Note Template.md`),
+        render: () => this.renderKnowledgeBaseOutputTemplate()
+      }
+    ].filter((note) => note.path.length > 0);
+  }
+
+  private getKnowledgeBaseRecommendedIndexedFolders(): string[] {
+    return [
+      this.data.settings.knowledgeBaseSourcesFolder,
+      this.data.settings.knowledgeBaseConceptsFolder,
+      this.data.settings.knowledgeBaseIndexesFolder
+    ]
+      .map((folder) => normalizeFolderPath(folder))
+      .filter((folder, index, folders) => folder.length > 0 && folders.indexOf(folder) === index);
+  }
+
+  private getMarkdownFilesInFolder(folderPath: string): TFile[] {
+    const normalizedFolder = normalizeFolderPath(folderPath);
+    if (!normalizedFolder) {
+      return [];
+    }
+
+    return this.app.vault.getMarkdownFiles().filter((file) => normalizePath(file.path).startsWith(`${normalizedFolder}/`));
+  }
+
+  private getFilesInFolder(folderPath: string): TFile[] {
+    const normalizedFolder = normalizeFolderPath(folderPath);
+    if (!normalizedFolder) {
+      return [];
+    }
+
+    return this.app.vault.getFiles().filter((file) => normalizePath(file.path).startsWith(`${normalizedFolder}/`));
+  }
+
+  private async createCompiledResearchWikiHealthCheck(): Promise<TFile> {
+    const generatedAt = new Date();
+    const starterNotes = this.getKnowledgeBaseStarterNoteDefinitions();
+    const starterPathSet = new Set(starterNotes.map((note) => normalizePath(note.path).toLowerCase()));
+    const rawFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseRawFolder);
+    const sourceFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseSourcesFolder)
+      .filter((file) => !starterPathSet.has(normalizePath(file.path).toLowerCase()));
+    const conceptFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseConceptsFolder)
+      .filter((file) => !starterPathSet.has(normalizePath(file.path).toLowerCase()));
+    const indexFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseIndexesFolder)
+      .filter((file) => !starterPathSet.has(normalizePath(file.path).toLowerCase()));
+    const healthCheckFolder = normalizeFolderPath(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`);
+    const healthCheckFiles = this.getMarkdownFilesInFolder(healthCheckFolder);
+    const outputFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseOutputsFolder)
+      .filter((file) => !starterPathSet.has(normalizePath(file.path).toLowerCase()))
+      .filter((file) => !normalizePath(file.path).startsWith(`${healthCheckFolder}/`));
+    const missingStarterNotes = starterNotes
+      .map((note) => note.path)
+      .filter((path) => !(this.app.vault.getAbstractFileByPath(normalizePath(path)) instanceof TFile));
+    const sourceSummaryNames = new Set(sourceFiles.map((file) => file.basename.trim().toLowerCase()));
+    const rawWithoutSummary = rawFiles.filter((file) => !sourceSummaryNames.has(file.basename.trim().toLowerCase()));
+    const conceptLinkCounts = await Promise.all(conceptFiles.map(async (file) => ({
+      file,
+      linkCount: (await this.app.vault.read(file)).match(/\[\[[^\]]+\]\]/g)?.length ?? 0
+    })));
+    const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
+    const staleIndexFiles = indexFiles.filter((file) => generatedAt.getTime() - file.stat.mtime > 30 * 24 * 60 * 60 * 1000);
+    const assetCount = this.getFilesInFolder(this.data.settings.knowledgeBaseAssetsFolder).length;
+    const filePath = this.getAvailableMarkdownPath(`${healthCheckFolder}/${formatDateKey(generatedAt)} Compiled Research Wiki Health Check.md`);
+    const content = this.renderCompiledResearchWikiHealthCheck({
+      generatedAt,
+      rawFiles,
+      sourceFiles,
+      conceptFiles,
+      indexFiles,
+      outputFiles,
+      healthCheckFiles,
+      missingStarterNotes,
+      rawWithoutSummary,
+      lowLinkConceptFiles,
+      staleIndexFiles,
+      assetCount,
+      recommendedIndexedFolders: this.getKnowledgeBaseRecommendedIndexedFolders()
+    });
+    return this.upsertMarkdownFile(filePath, content);
+  }
+
   private async ensureSupportNote(pathValue: string, renderTemplate: () => string): Promise<TFile> {
+    return (await this.ensureSupportNoteWithStatus(pathValue, renderTemplate)).file;
+  }
+
+  private async ensureSupportNoteWithStatus(pathValue: string, renderTemplate: () => string): Promise<{ file: TFile; created: boolean }> {
     const path = normalizePath(pathValue);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof TFile) {
-      return existing;
+      return { file: existing, created: false };
     }
 
-    return this.upsertMarkdownFile(path, renderTemplate());
+    return {
+      file: await this.upsertMarkdownFile(path, renderTemplate()),
+      created: true
+    };
   }
 
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {
@@ -5014,6 +5192,233 @@ export default class DailyDashboardPlugin extends Plugin {
       "- History lives in logs and reviews.",
       "- Stable context lives in evergreen notes.",
       "- AI behavior rules live in AI Guardrails."
+    ].join("\n");
+  }
+
+  private renderKnowledgeBaseHomeTemplate(): string {
+    const recommendedIndexedFolders = this.getKnowledgeBaseRecommendedIndexedFolders();
+
+    return [
+      "# Compiled Research Wiki",
+      "",
+      `- Last updated: ${formatDateTimeKey(new Date())}`,
+      "- Purpose: separate raw captures, compiled wiki notes, and derived outputs so research stays useful to both humans and AI.",
+      "",
+      "## Folder Model",
+      `- Raw captures: ${this.data.settings.knowledgeBaseRawFolder}`,
+      `- Source summaries: ${this.data.settings.knowledgeBaseSourcesFolder}`,
+      `- Concept notes: ${this.data.settings.knowledgeBaseConceptsFolder}`,
+      `- Index notes: ${this.data.settings.knowledgeBaseIndexesFolder}`,
+      `- Outputs: ${this.data.settings.knowledgeBaseOutputsFolder}`,
+      `- Assets: ${this.data.settings.knowledgeBaseAssetsFolder}`,
+      "",
+      "## Note Roles",
+      "- Raw: keep the original article, paper notes, repo captures, or clip with minimal transformation.",
+      "- Source summaries: one structured note per source with provenance, claims, and open questions.",
+      "- Concept notes: merge recurring ideas across many sources into one durable note.",
+      "- Index notes: topic maps, glossaries, question lists, and navigation pages for the wiki.",
+      "- Outputs: answers, syntheses, briefs, and health checks that may later be promoted back into the wiki.",
+      "",
+      "## Recommended Retrieval Scope",
+      ...(recommendedIndexedFolders.length > 0
+        ? recommendedIndexedFolders.map((folder) => `- Index for AI retrieval: ${folder}`)
+        : ["- No recommended wiki folders are configured yet."]),
+      `- Leave ${this.data.settings.knowledgeBaseRawFolder} out of AI retrieval unless you explicitly want direct raw-source matching.`,
+      "",
+      "## Starter Workflow",
+      "1. Capture a source into the raw folder without worrying about polish.",
+      "2. Write or generate a source summary into the source summaries folder.",
+      "3. Merge repeated ideas into concept notes and keep indexes current.",
+      "4. Write outputs into the outputs folder, then promote durable conclusions back into the wiki.",
+      "5. Run the health-check command periodically to spot missing summaries and stale navigation.",
+      ""
+    ].join("\n");
+  }
+
+  private renderKnowledgeBaseOpenQuestionsTemplate(): string {
+    return [
+      "# Open Questions",
+      "",
+      `- Last updated: ${formatDateTimeKey(new Date())}`,
+      "",
+      "## Active Questions",
+      "- Question:",
+      "  - Why it matters:",
+      "  - Where the answer should live:",
+      "  - Next source to check:",
+      "",
+      "## Candidate Outputs",
+      "- Brief or answer note to generate:",
+      "  - Audience:",
+      "  - What evidence is still missing:",
+      "",
+      "## Promotion Triggers",
+      "- Move a question into a concept note once multiple sources start saying the same thing.",
+      "- Move a question into an output note once you can answer it clearly for a real audience.",
+      ""
+    ].join("\n");
+  }
+
+  private renderKnowledgeBaseSourceSummaryTemplate(): string {
+    return [
+      "# Source Summary Template",
+      "",
+      "## Source Metadata",
+      "- Title:",
+      "- Author or source:",
+      "- Date:",
+      "- URL or locator:",
+      "- Raw capture:",
+      "- Why this source matters:",
+      "",
+      "## Core Claims",
+      "- Claim:",
+      "  - Evidence quoted or summarized:",
+      "  - Confidence:",
+      "",
+      "## Methods Or Framing",
+      "- Study design, framing, or perspective:",
+      "- What this source can and cannot support:",
+      "",
+      "## Linked Concepts",
+      "- [[Concept Note]]",
+      "",
+      "## Open Questions",
+      "- What still needs follow-up or contradiction checking:",
+      "",
+      "## Reusable Quotes Or Data",
+      "- Quote or datapoint:",
+      "  - Why it matters:",
+      ""
+    ].join("\n");
+  }
+
+  private renderKnowledgeBaseConceptTemplate(): string {
+    return [
+      "# Concept Note Template",
+      "",
+      "## Working Definition",
+      "- Define the concept in plain language:",
+      "",
+      "## Why It Matters",
+      "- Operational importance:",
+      "- Questions this concept helps answer:",
+      "",
+      "## Core Claims",
+      "- Claim:",
+      "  - Supporting source summaries:",
+      "  - Counterpoints or uncertainty:",
+      "",
+      "## Related Concepts",
+      "- [[Related Concept]]",
+      "",
+      "## Source Summaries",
+      "- [[Source Summary]]",
+      "",
+      "## Output Hooks",
+      "- Which answer notes, briefs, or slide decks should reuse this concept:",
+      ""
+    ].join("\n");
+  }
+
+  private renderKnowledgeBaseOutputTemplate(): string {
+    return [
+      "# Answer Note Template",
+      "",
+      "## Audience",
+      "- Who this output is for:",
+      "- What decision or question it should resolve:",
+      "",
+      "## Direct Answer",
+      "- State the answer first:",
+      "",
+      "## Supporting Points",
+      "- Point:",
+      "  - Evidence or linked note:",
+      "",
+      "## Caveats",
+      "- What is uncertain, contested, or still missing:",
+      "",
+      "## Promote Back Into The Wiki",
+      "- Concept notes to update:",
+      "- Index notes to refresh:",
+      "- New questions created by this output:",
+      ""
+    ].join("\n");
+  }
+
+  private renderCompiledResearchWikiHealthCheck(input: {
+    generatedAt: Date;
+    rawFiles: TFile[];
+    sourceFiles: TFile[];
+    conceptFiles: TFile[];
+    indexFiles: TFile[];
+    outputFiles: TFile[];
+    healthCheckFiles: TFile[];
+    missingStarterNotes: string[];
+    rawWithoutSummary: TFile[];
+    lowLinkConceptFiles: TFile[];
+    staleIndexFiles: TFile[];
+    assetCount: number;
+    recommendedIndexedFolders: string[];
+  }): string {
+    const renderLinkedFileList = (files: TFile[], emptyMessage: string): string[] => {
+      if (files.length === 0) {
+        return [`- ${emptyMessage}`];
+      }
+
+      const lines = files.slice(0, 12).map((file) => `- ${createWikiLink(file.path, file.basename)}`);
+      if (files.length > 12) {
+        lines.push(`- ${files.length - 12} more note${files.length - 12 === 1 ? "" : "s"} not shown.`);
+      }
+      return lines;
+    };
+    const nextActions = [
+      input.missingStarterNotes.length > 0 ? "Run Initialize compiled research wiki to restore missing starter notes." : "Starter notes are present.",
+      input.rawWithoutSummary.length > 0 ? "Compile or write summaries for the oldest raw captures so the raw folder does not become a dead inbox." : "Raw captures currently have matching summary coverage by filename.",
+      input.lowLinkConceptFiles.length > 0 ? "Add source-summary and concept-note links to weakly connected concept pages." : "Concept notes have at least minimal link density.",
+      input.staleIndexFiles.length > 0 ? "Refresh stale index notes so the wiki remains navigable as it grows." : "Index notes were updated recently enough to act as live navigation.",
+      input.recommendedIndexedFolders.length > 0 ? `For AI retrieval, prefer ${input.recommendedIndexedFolders.join(", ")}.` : "No recommended AI retrieval scope is configured yet."
+    ];
+
+    return [
+      `# Compiled Research Wiki Health Check - ${formatDateKey(input.generatedAt)}`,
+      "",
+      `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+      `- Raw captures: ${input.rawFiles.length}`,
+      `- Source summaries: ${input.sourceFiles.length}`,
+      `- Concept notes: ${input.conceptFiles.length}`,
+      `- Index notes: ${input.indexFiles.length}`,
+      `- Output notes: ${input.outputFiles.length}`,
+      `- Prior health checks: ${input.healthCheckFiles.length}`,
+      `- Asset files: ${input.assetCount}`,
+      "",
+      "## Recommended AI Retrieval Scope",
+      ...(input.recommendedIndexedFolders.length > 0
+        ? input.recommendedIndexedFolders.map((folder) => `- ${folder}`)
+        : ["- No recommended wiki retrieval folders are configured."]),
+      `- Optional only: ${this.data.settings.knowledgeBaseRawFolder}`,
+      "",
+      "## Missing Starter Notes",
+      ...(input.missingStarterNotes.length > 0
+        ? input.missingStarterNotes.map((path) => `- ${path}`)
+        : ["- None."]),
+      "",
+      "## Raw Sources Without Matching Summary Filename",
+      ...renderLinkedFileList(input.rawWithoutSummary, "None."),
+      "",
+      "## Low-Link Concept Candidates",
+      ...renderLinkedFileList(input.lowLinkConceptFiles, "None."),
+      "",
+      "## Stale Index Candidates",
+      ...renderLinkedFileList(input.staleIndexFiles, "None older than 30 days."),
+      "",
+      "## Recent Outputs",
+      ...renderLinkedFileList(input.outputFiles, "No output notes yet."),
+      "",
+      "## Next Actions",
+      ...nextActions.map((action) => `- ${action}`),
+      ""
     ].join("\n");
   }
 
@@ -7074,6 +7479,27 @@ export default class DailyDashboardPlugin extends Plugin {
     if (normalizedPath === normalizePath(this.data.settings.systemMapNotePath).toLowerCase()) {
       return "system-map";
     }
+    if (prefixMatches(this.data.settings.knowledgeBaseRawFolder)) {
+      return "knowledge-base-raw";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseSourcesFolder)) {
+      return "knowledge-base-source";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseConceptsFolder)) {
+      return "knowledge-base-concept";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
+      return "knowledge-base-index";
+    }
+    if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
+      return "knowledge-base-health-check";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseOutputsFolder)) {
+      return "knowledge-base-output";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseAssetsFolder)) {
+      return "knowledge-base-asset";
+    }
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
@@ -7137,6 +7563,20 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
     } else if (normalizedPath === normalizePath(this.data.settings.systemMapNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/system-map");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseRawFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/raw");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseSourcesFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/source");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseConceptsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/concept");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/index");
+    } else if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output", "daily-dashboard/knowledge-base/health-check");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseOutputsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseAssetsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/asset");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {

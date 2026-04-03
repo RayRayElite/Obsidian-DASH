@@ -4315,6 +4315,78 @@ export class FirstRunSetupWizardModal extends Modal {
       });
 
     new Setting(parent)
+      .setName("Knowledge base raw folder")
+      .setDesc("Where clipped source notes, paper captures, and other raw research material should live.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseRawFolder)
+          .setValue(this.settingsValue.knowledgeBaseRawFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseRawFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseRawFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Knowledge base source summaries folder")
+      .setDesc("Compiled per-source summaries written from raw material into the wiki layer.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseSourcesFolder)
+          .setValue(this.settingsValue.knowledgeBaseSourcesFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseSourcesFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Knowledge base concept folder")
+      .setDesc("Merged concept notes that synthesize claims across multiple source summaries.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseConceptsFolder)
+          .setValue(this.settingsValue.knowledgeBaseConceptsFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseConceptsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Knowledge base index folder")
+      .setDesc("Topic maps, question lists, glossaries, and other navigation notes for the compiled wiki.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseIndexesFolder)
+          .setValue(this.settingsValue.knowledgeBaseIndexesFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseIndexesFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Knowledge base outputs folder")
+      .setDesc("Answer notes, syntheses, briefs, and other derived markdown outputs should be written here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseOutputsFolder)
+          .setValue(this.settingsValue.knowledgeBaseOutputsFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseOutputsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Knowledge base assets folder")
+      .setDesc("Local images and supporting files referenced by knowledge-base notes.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseAssetsFolder)
+          .setValue(this.settingsValue.knowledgeBaseAssetsFolder)
+          .onChange((value) => {
+            this.settingsValue.knowledgeBaseAssetsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder;
+          });
+      });
+
+    new Setting(parent)
       .setName("AI key source")
       .setDesc("Environment variable is safer if you already keep the key outside plugin data.")
       .addDropdown((dropdown) => {
@@ -5484,6 +5556,96 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
               aiOutputFolder: value.trim() || DEFAULT_SETTINGS.aiOutputFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base raw folder")
+      .setDesc("Clipped articles, research captures, and other raw material are stored here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseRawFolder)
+          .setValue(settings.knowledgeBaseRawFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseRawFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseRawFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base source summaries folder")
+      .setDesc("Compiled per-source notes live here so raw captures and structured summaries stay separate.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseSourcesFolder)
+          .setValue(settings.knowledgeBaseSourcesFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseSourcesFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base concept folder")
+      .setDesc("Cross-source concept notes and durable idea pages belong here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseConceptsFolder)
+          .setValue(settings.knowledgeBaseConceptsFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseConceptsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base index folder")
+      .setDesc("Topic maps, open-question lists, and other navigation notes belong here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseIndexesFolder)
+          .setValue(settings.knowledgeBaseIndexesFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseIndexesFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base outputs folder")
+      .setDesc("Generated research answers, syntheses, and maintenance notes are written here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseOutputsFolder)
+          .setValue(settings.knowledgeBaseOutputsFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseOutputsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Knowledge base assets folder")
+      .setDesc("Non-markdown files referenced by the research wiki should be kept here.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseAssetsFolder)
+          .setValue(settings.knowledgeBaseAssetsFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              knowledgeBaseAssetsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder
             });
           });
       });

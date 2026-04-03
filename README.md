@@ -13,6 +13,7 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
 - exports dashboard history into a markdown summary plus CSV dumps for daily metrics, habits, completed tasks, and calendar events
 - can call OpenAI for AI-powered morning startup briefs, shutdown summaries, weekly planning, project risk scans, anomaly detection, period comparisons, project synthesis, "why today felt off" analysis, active-note analysis, and freeform questions grounded in dashboard context
+- can initialize a compiled research wiki scaffold with raw/source/concept/index/output folders plus a generated health-check note for maintenance review
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
@@ -77,6 +78,17 @@ Supporting repo docs created from that plan:
 - `Documentation/Reference Offload Inbox.md`
 - `Documentation/Shelf Life Guide.md`
 - `Documentation/Review By Exception Workflow.md`
+- `Documentation/Compiled Research Wiki Guide.md`
+
+## Compiled Research Wiki
+
+The plugin now also supports a separate compiled research wiki workflow for LLM-assisted knowledge work.
+
+Use `Initialize compiled research wiki` once to create the default folder scaffold under `Knowledge Base/` plus starter notes for indexes, source summaries, concept pages, and output notes. The scaffold is controlled by new folder settings, so you can relocate the raw, source-summary, concept, index, output, and asset folders without editing code.
+
+Use `Generate compiled research wiki health check` to write a maintenance note into the knowledge-base outputs folder. The health check summarizes coverage, flags raw notes without matching summary filenames, calls out weakly linked concept notes, and identifies stale index notes so the wiki does not silently decay into an unmaintained dump.
+
+Recommended retrieval scope for AI remains the compiled layers, not the raw inbox: source summaries, concept notes, and index notes. Keep the raw folder out of `AI indexed folders` unless you explicitly want direct raw-source retrieval noise.
 
 ## Logical Day Tracking
 

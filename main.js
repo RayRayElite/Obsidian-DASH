@@ -55,6 +55,12 @@ var DEFAULT_SETTINGS = {
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
+  knowledgeBaseRawFolder: "Knowledge Base/raw",
+  knowledgeBaseSourcesFolder: "Knowledge Base/wiki/sources",
+  knowledgeBaseConceptsFolder: "Knowledge Base/wiki/concepts",
+  knowledgeBaseIndexesFolder: "Knowledge Base/wiki/indexes",
+  knowledgeBaseOutputsFolder: "Knowledge Base/outputs",
+  knowledgeBaseAssetsFolder: "Knowledge Base/assets",
   basicInfoNotePath: "Dashboard Logs/Profile/Basic Information.md",
   includeBasicInfoInAi: true,
   aiGuardrailsNotePath: "Dashboard Logs/Profile/AI Guardrails.md",
@@ -133,7 +139,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -172,27 +178,33 @@ function sanitizeSettings(settings) {
     aiModel: ((_n = settings.aiModel) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: ((_o = settings.aiBaseUrl) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath2(((_p = settings.aiOutputFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
-    basicInfoNotePath: ((_q = settings.basicInfoNotePath) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
-    includeBasicInfoInAi: (_r = settings.includeBasicInfoInAi) != null ? _r : DEFAULT_SETTINGS.includeBasicInfoInAi,
-    aiGuardrailsNotePath: ((_s = settings.aiGuardrailsNotePath) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
-    includeAiGuardrailsInAi: (_t = settings.includeAiGuardrailsInAi) != null ? _t : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
-    currentSeasonNotePath: ((_u = settings.currentSeasonNotePath) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
-    includeCurrentSeasonInAi: (_v = settings.includeCurrentSeasonInAi) != null ? _v : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
-    peopleDependenciesNotePath: ((_w = settings.peopleDependenciesNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
-    includePeopleDependenciesInAi: (_x = settings.includePeopleDependenciesInAi) != null ? _x : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
-    decisionJournalNotePath: ((_y = settings.decisionJournalNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
-    systemMapNotePath: ((_z = settings.systemMapNotePath) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
+    knowledgeBaseRawFolder: normalizeFolderPath2(((_q = settings.knowledgeBaseRawFolder) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
+    knowledgeBaseSourcesFolder: normalizeFolderPath2(((_r = settings.knowledgeBaseSourcesFolder) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),
+    knowledgeBaseConceptsFolder: normalizeFolderPath2(((_s = settings.knowledgeBaseConceptsFolder) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder),
+    knowledgeBaseIndexesFolder: normalizeFolderPath2(((_t = settings.knowledgeBaseIndexesFolder) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder),
+    knowledgeBaseOutputsFolder: normalizeFolderPath2(((_u = settings.knowledgeBaseOutputsFolder) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder),
+    knowledgeBaseAssetsFolder: normalizeFolderPath2(((_v = settings.knowledgeBaseAssetsFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder),
+    basicInfoNotePath: ((_w = settings.basicInfoNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
+    includeBasicInfoInAi: (_x = settings.includeBasicInfoInAi) != null ? _x : DEFAULT_SETTINGS.includeBasicInfoInAi,
+    aiGuardrailsNotePath: ((_y = settings.aiGuardrailsNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
+    includeAiGuardrailsInAi: (_z = settings.includeAiGuardrailsInAi) != null ? _z : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
+    currentSeasonNotePath: ((_A = settings.currentSeasonNotePath) == null ? void 0 : _A.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
+    includeCurrentSeasonInAi: (_B = settings.includeCurrentSeasonInAi) != null ? _B : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    peopleDependenciesNotePath: ((_C = settings.peopleDependenciesNotePath) == null ? void 0 : _C.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
+    includePeopleDependenciesInAi: (_D = settings.includePeopleDependenciesInAi) != null ? _D : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
+    decisionJournalNotePath: ((_E = settings.decisionJournalNotePath) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: ((_F = settings.systemMapNotePath) == null ? void 0 : _F.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_A = settings.aiContextDays) != null ? _A : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_B = settings.aiRelatedNotesLimit) != null ? _B : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_C = settings.aiIndexEnabled) != null ? _C : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_G = settings.aiContextDays) != null ? _G : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_H = settings.aiRelatedNotesLimit) != null ? _H : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_I = settings.aiIndexEnabled) != null ? _I : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_D = settings.aiChunkCharLimit) != null ? _D : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_E = settings.aiEmbeddingsEnabled) != null ? _E : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_F = settings.aiEmbeddingModel) == null ? void 0 : _F.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_G = settings.aiEmbeddingApiUrl) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_H = settings.calendarEnabled) != null ? _H : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_I = settings.calendarDocumentPath) == null ? void 0 : _I.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_J = settings.aiChunkCharLimit) != null ? _J : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_K = settings.aiEmbeddingsEnabled) != null ? _K : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_L = settings.aiEmbeddingModel) == null ? void 0 : _L.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_M = settings.aiEmbeddingApiUrl) == null ? void 0 : _M.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_N = settings.calendarEnabled) != null ? _N : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_O = settings.calendarDocumentPath) == null ? void 0 : _O.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
@@ -203,8 +215,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath2(((_J = settings.wallpaperFolder) == null ? void 0 : _J.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_K = settings.selectedWallpaper) == null ? void 0 : _K.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath2(((_P = settings.wallpaperFolder) == null ? void 0 : _P.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_Q = settings.selectedWallpaper) == null ? void 0 : _Q.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -7995,6 +8007,36 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
         this.settingsValue.aiOutputFolder = value.trim() || DEFAULT_SETTINGS.aiOutputFolder;
       });
     });
+    new import_obsidian3.Setting(parent).setName("Knowledge base raw folder").setDesc("Where clipped source notes, paper captures, and other raw research material should live.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseRawFolder).setValue(this.settingsValue.knowledgeBaseRawFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseRawFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseRawFolder;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Knowledge base source summaries folder").setDesc("Compiled per-source summaries written from raw material into the wiki layer.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseSourcesFolder).setValue(this.settingsValue.knowledgeBaseSourcesFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseSourcesFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Knowledge base concept folder").setDesc("Merged concept notes that synthesize claims across multiple source summaries.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseConceptsFolder).setValue(this.settingsValue.knowledgeBaseConceptsFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseConceptsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Knowledge base index folder").setDesc("Topic maps, question lists, glossaries, and other navigation notes for the compiled wiki.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseIndexesFolder).setValue(this.settingsValue.knowledgeBaseIndexesFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseIndexesFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Knowledge base outputs folder").setDesc("Answer notes, syntheses, briefs, and other derived markdown outputs should be written here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseOutputsFolder).setValue(this.settingsValue.knowledgeBaseOutputsFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseOutputsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Knowledge base assets folder").setDesc("Local images and supporting files referenced by knowledge-base notes.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseAssetsFolder).setValue(this.settingsValue.knowledgeBaseAssetsFolder).onChange((value) => {
+        this.settingsValue.knowledgeBaseAssetsFolder = value.trim() || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder;
+      });
+    });
     new import_obsidian3.Setting(parent).setName("AI key source").setDesc("Environment variable is safer if you already keep the key outside plugin data.").addDropdown((dropdown) => {
       dropdown.addOption("settings", "Stored in plugin settings");
       dropdown.addOption("env", "Environment variable");
@@ -8808,6 +8850,54 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           aiOutputFolder: value.trim() || DEFAULT_SETTINGS.aiOutputFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base raw folder").setDesc("Clipped articles, research captures, and other raw material are stored here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseRawFolder).setValue(settings.knowledgeBaseRawFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseRawFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseRawFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base source summaries folder").setDesc("Compiled per-source notes live here so raw captures and structured summaries stay separate.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseSourcesFolder).setValue(settings.knowledgeBaseSourcesFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseSourcesFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base concept folder").setDesc("Cross-source concept notes and durable idea pages belong here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseConceptsFolder).setValue(settings.knowledgeBaseConceptsFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseConceptsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base index folder").setDesc("Topic maps, open-question lists, and other navigation notes belong here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseIndexesFolder).setValue(settings.knowledgeBaseIndexesFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseIndexesFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base outputs folder").setDesc("Generated research answers, syntheses, and maintenance notes are written here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseOutputsFolder).setValue(settings.knowledgeBaseOutputsFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseOutputsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Knowledge base assets folder").setDesc("Non-markdown files referenced by the research wiki should be kept here.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.knowledgeBaseAssetsFolder).setValue(settings.knowledgeBaseAssetsFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          knowledgeBaseAssetsFolder: value.trim() || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder
         });
       });
     });
@@ -10002,6 +10092,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Open System Map note",
       callback: () => {
         void this.openSystemMapNote();
+      }
+    });
+    this.addCommand({
+      id: "initialize-compiled-research-wiki",
+      name: "Initialize compiled research wiki",
+      callback: () => {
+        void this.initializeCompiledResearchWiki();
+      }
+    });
+    this.addCommand({
+      id: "generate-compiled-research-wiki-health-check",
+      name: "Generate compiled research wiki health check",
+      callback: () => {
+        void this.generateCompiledResearchWikiHealthCheck();
       }
     });
     this.addCommand({
@@ -12392,13 +12496,150 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.ensureDecisionJournalNoteExists();
     await this.ensureSystemMapNoteExists();
   }
+  async initializeCompiledResearchWiki() {
+    for (const folder of this.getKnowledgeBaseFolders()) {
+      await this.ensureFolder(folder);
+    }
+    let createdCount = 0;
+    let homeFile = null;
+    for (const starterNote of this.getKnowledgeBaseStarterNoteDefinitions()) {
+      const result = await this.ensureSupportNoteWithStatus(starterNote.path, starterNote.render);
+      if (starterNote.key === "home") {
+        homeFile = result.file;
+      }
+      if (result.created) {
+        createdCount += 1;
+      }
+    }
+    if (homeFile) {
+      await this.openFile(homeFile);
+    }
+    new import_obsidian4.Notice(createdCount > 0 ? `Compiled research wiki initialized. Created ${createdCount} starter note${createdCount === 1 ? "" : "s"}.` : "Compiled research wiki folders and starter notes already exist.");
+  }
+  async generateCompiledResearchWikiHealthCheck() {
+    const file = await this.createCompiledResearchWikiHealthCheck();
+    await this.openFile(file);
+    new import_obsidian4.Notice("Compiled research wiki health check generated.");
+  }
+  getKnowledgeBaseFolders() {
+    return [
+      this.data.settings.knowledgeBaseRawFolder,
+      this.data.settings.knowledgeBaseSourcesFolder,
+      this.data.settings.knowledgeBaseConceptsFolder,
+      this.data.settings.knowledgeBaseIndexesFolder,
+      this.data.settings.knowledgeBaseOutputsFolder,
+      this.data.settings.knowledgeBaseAssetsFolder
+    ].map((folder) => normalizeFolderPath2(folder)).filter((folder, index, folders) => folder.length > 0 && folders.indexOf(folder) === index);
+  }
+  getKnowledgeBaseStarterNoteDefinitions() {
+    const indexesFolder = normalizeFolderPath2(this.data.settings.knowledgeBaseIndexesFolder);
+    const sourcesFolder = normalizeFolderPath2(this.data.settings.knowledgeBaseSourcesFolder);
+    const conceptsFolder = normalizeFolderPath2(this.data.settings.knowledgeBaseConceptsFolder);
+    const outputsFolder = normalizeFolderPath2(this.data.settings.knowledgeBaseOutputsFolder);
+    return [
+      {
+        key: "home",
+        path: (0, import_obsidian4.normalizePath)(`${indexesFolder}/Research Home.md`),
+        render: () => this.renderKnowledgeBaseHomeTemplate()
+      },
+      {
+        key: "questions",
+        path: (0, import_obsidian4.normalizePath)(`${indexesFolder}/Open Questions.md`),
+        render: () => this.renderKnowledgeBaseOpenQuestionsTemplate()
+      },
+      {
+        key: "source-template",
+        path: (0, import_obsidian4.normalizePath)(`${sourcesFolder}/Source Summary Template.md`),
+        render: () => this.renderKnowledgeBaseSourceSummaryTemplate()
+      },
+      {
+        key: "concept-template",
+        path: (0, import_obsidian4.normalizePath)(`${conceptsFolder}/Concept Note Template.md`),
+        render: () => this.renderKnowledgeBaseConceptTemplate()
+      },
+      {
+        key: "output-template",
+        path: (0, import_obsidian4.normalizePath)(`${outputsFolder}/Answer Note Template.md`),
+        render: () => this.renderKnowledgeBaseOutputTemplate()
+      }
+    ].filter((note) => note.path.length > 0);
+  }
+  getKnowledgeBaseRecommendedIndexedFolders() {
+    return [
+      this.data.settings.knowledgeBaseSourcesFolder,
+      this.data.settings.knowledgeBaseConceptsFolder,
+      this.data.settings.knowledgeBaseIndexesFolder
+    ].map((folder) => normalizeFolderPath2(folder)).filter((folder, index, folders) => folder.length > 0 && folders.indexOf(folder) === index);
+  }
+  getMarkdownFilesInFolder(folderPath) {
+    const normalizedFolder = normalizeFolderPath2(folderPath);
+    if (!normalizedFolder) {
+      return [];
+    }
+    return this.app.vault.getMarkdownFiles().filter((file) => (0, import_obsidian4.normalizePath)(file.path).startsWith(`${normalizedFolder}/`));
+  }
+  getFilesInFolder(folderPath) {
+    const normalizedFolder = normalizeFolderPath2(folderPath);
+    if (!normalizedFolder) {
+      return [];
+    }
+    return this.app.vault.getFiles().filter((file) => (0, import_obsidian4.normalizePath)(file.path).startsWith(`${normalizedFolder}/`));
+  }
+  async createCompiledResearchWikiHealthCheck() {
+    const generatedAt = /* @__PURE__ */ new Date();
+    const starterNotes = this.getKnowledgeBaseStarterNoteDefinitions();
+    const starterPathSet = new Set(starterNotes.map((note) => (0, import_obsidian4.normalizePath)(note.path).toLowerCase()));
+    const rawFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseRawFolder);
+    const sourceFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseSourcesFolder).filter((file) => !starterPathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase()));
+    const conceptFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseConceptsFolder).filter((file) => !starterPathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase()));
+    const indexFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseIndexesFolder).filter((file) => !starterPathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase()));
+    const healthCheckFolder = normalizeFolderPath2(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`);
+    const healthCheckFiles = this.getMarkdownFilesInFolder(healthCheckFolder);
+    const outputFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseOutputsFolder).filter((file) => !starterPathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase())).filter((file) => !(0, import_obsidian4.normalizePath)(file.path).startsWith(`${healthCheckFolder}/`));
+    const missingStarterNotes = starterNotes.map((note) => note.path).filter((path) => !(this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(path)) instanceof import_obsidian4.TFile));
+    const sourceSummaryNames = new Set(sourceFiles.map((file) => file.basename.trim().toLowerCase()));
+    const rawWithoutSummary = rawFiles.filter((file) => !sourceSummaryNames.has(file.basename.trim().toLowerCase()));
+    const conceptLinkCounts = await Promise.all(conceptFiles.map(async (file) => {
+      var _a, _b;
+      return {
+        file,
+        linkCount: (_b = (_a = (await this.app.vault.read(file)).match(/\[\[[^\]]+\]\]/g)) == null ? void 0 : _a.length) != null ? _b : 0
+      };
+    }));
+    const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
+    const staleIndexFiles = indexFiles.filter((file) => generatedAt.getTime() - file.stat.mtime > 30 * 24 * 60 * 60 * 1e3);
+    const assetCount = this.getFilesInFolder(this.data.settings.knowledgeBaseAssetsFolder).length;
+    const filePath = this.getAvailableMarkdownPath(`${healthCheckFolder}/${formatDateKey(generatedAt)} Compiled Research Wiki Health Check.md`);
+    const content = this.renderCompiledResearchWikiHealthCheck({
+      generatedAt,
+      rawFiles,
+      sourceFiles,
+      conceptFiles,
+      indexFiles,
+      outputFiles,
+      healthCheckFiles,
+      missingStarterNotes,
+      rawWithoutSummary,
+      lowLinkConceptFiles,
+      staleIndexFiles,
+      assetCount,
+      recommendedIndexedFolders: this.getKnowledgeBaseRecommendedIndexedFolders()
+    });
+    return this.upsertMarkdownFile(filePath, content);
+  }
   async ensureSupportNote(pathValue, renderTemplate) {
+    return (await this.ensureSupportNoteWithStatus(pathValue, renderTemplate)).file;
+  }
+  async ensureSupportNoteWithStatus(pathValue, renderTemplate) {
     const path = (0, import_obsidian4.normalizePath)(pathValue);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof import_obsidian4.TFile) {
-      return existing;
+      return { file: existing, created: false };
     }
-    return this.upsertMarkdownFile(path, renderTemplate());
+    return {
+      file: await this.upsertMarkdownFile(path, renderTemplate()),
+      created: true
+    };
   }
   async getTodoSnapshot() {
     const todoFile = this.getMasterTodoFile();
@@ -13874,6 +14115,204 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- History lives in logs and reviews.",
       "- Stable context lives in evergreen notes.",
       "- AI behavior rules live in AI Guardrails."
+    ].join("\n");
+  }
+  renderKnowledgeBaseHomeTemplate() {
+    const recommendedIndexedFolders = this.getKnowledgeBaseRecommendedIndexedFolders();
+    return [
+      "# Compiled Research Wiki",
+      "",
+      `- Last updated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      "- Purpose: separate raw captures, compiled wiki notes, and derived outputs so research stays useful to both humans and AI.",
+      "",
+      "## Folder Model",
+      `- Raw captures: ${this.data.settings.knowledgeBaseRawFolder}`,
+      `- Source summaries: ${this.data.settings.knowledgeBaseSourcesFolder}`,
+      `- Concept notes: ${this.data.settings.knowledgeBaseConceptsFolder}`,
+      `- Index notes: ${this.data.settings.knowledgeBaseIndexesFolder}`,
+      `- Outputs: ${this.data.settings.knowledgeBaseOutputsFolder}`,
+      `- Assets: ${this.data.settings.knowledgeBaseAssetsFolder}`,
+      "",
+      "## Note Roles",
+      "- Raw: keep the original article, paper notes, repo captures, or clip with minimal transformation.",
+      "- Source summaries: one structured note per source with provenance, claims, and open questions.",
+      "- Concept notes: merge recurring ideas across many sources into one durable note.",
+      "- Index notes: topic maps, glossaries, question lists, and navigation pages for the wiki.",
+      "- Outputs: answers, syntheses, briefs, and health checks that may later be promoted back into the wiki.",
+      "",
+      "## Recommended Retrieval Scope",
+      ...recommendedIndexedFolders.length > 0 ? recommendedIndexedFolders.map((folder) => `- Index for AI retrieval: ${folder}`) : ["- No recommended wiki folders are configured yet."],
+      `- Leave ${this.data.settings.knowledgeBaseRawFolder} out of AI retrieval unless you explicitly want direct raw-source matching.`,
+      "",
+      "## Starter Workflow",
+      "1. Capture a source into the raw folder without worrying about polish.",
+      "2. Write or generate a source summary into the source summaries folder.",
+      "3. Merge repeated ideas into concept notes and keep indexes current.",
+      "4. Write outputs into the outputs folder, then promote durable conclusions back into the wiki.",
+      "5. Run the health-check command periodically to spot missing summaries and stale navigation.",
+      ""
+    ].join("\n");
+  }
+  renderKnowledgeBaseOpenQuestionsTemplate() {
+    return [
+      "# Open Questions",
+      "",
+      `- Last updated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      "",
+      "## Active Questions",
+      "- Question:",
+      "  - Why it matters:",
+      "  - Where the answer should live:",
+      "  - Next source to check:",
+      "",
+      "## Candidate Outputs",
+      "- Brief or answer note to generate:",
+      "  - Audience:",
+      "  - What evidence is still missing:",
+      "",
+      "## Promotion Triggers",
+      "- Move a question into a concept note once multiple sources start saying the same thing.",
+      "- Move a question into an output note once you can answer it clearly for a real audience.",
+      ""
+    ].join("\n");
+  }
+  renderKnowledgeBaseSourceSummaryTemplate() {
+    return [
+      "# Source Summary Template",
+      "",
+      "## Source Metadata",
+      "- Title:",
+      "- Author or source:",
+      "- Date:",
+      "- URL or locator:",
+      "- Raw capture:",
+      "- Why this source matters:",
+      "",
+      "## Core Claims",
+      "- Claim:",
+      "  - Evidence quoted or summarized:",
+      "  - Confidence:",
+      "",
+      "## Methods Or Framing",
+      "- Study design, framing, or perspective:",
+      "- What this source can and cannot support:",
+      "",
+      "## Linked Concepts",
+      "- [[Concept Note]]",
+      "",
+      "## Open Questions",
+      "- What still needs follow-up or contradiction checking:",
+      "",
+      "## Reusable Quotes Or Data",
+      "- Quote or datapoint:",
+      "  - Why it matters:",
+      ""
+    ].join("\n");
+  }
+  renderKnowledgeBaseConceptTemplate() {
+    return [
+      "# Concept Note Template",
+      "",
+      "## Working Definition",
+      "- Define the concept in plain language:",
+      "",
+      "## Why It Matters",
+      "- Operational importance:",
+      "- Questions this concept helps answer:",
+      "",
+      "## Core Claims",
+      "- Claim:",
+      "  - Supporting source summaries:",
+      "  - Counterpoints or uncertainty:",
+      "",
+      "## Related Concepts",
+      "- [[Related Concept]]",
+      "",
+      "## Source Summaries",
+      "- [[Source Summary]]",
+      "",
+      "## Output Hooks",
+      "- Which answer notes, briefs, or slide decks should reuse this concept:",
+      ""
+    ].join("\n");
+  }
+  renderKnowledgeBaseOutputTemplate() {
+    return [
+      "# Answer Note Template",
+      "",
+      "## Audience",
+      "- Who this output is for:",
+      "- What decision or question it should resolve:",
+      "",
+      "## Direct Answer",
+      "- State the answer first:",
+      "",
+      "## Supporting Points",
+      "- Point:",
+      "  - Evidence or linked note:",
+      "",
+      "## Caveats",
+      "- What is uncertain, contested, or still missing:",
+      "",
+      "## Promote Back Into The Wiki",
+      "- Concept notes to update:",
+      "- Index notes to refresh:",
+      "- New questions created by this output:",
+      ""
+    ].join("\n");
+  }
+  renderCompiledResearchWikiHealthCheck(input) {
+    const renderLinkedFileList = (files, emptyMessage) => {
+      if (files.length === 0) {
+        return [`- ${emptyMessage}`];
+      }
+      const lines = files.slice(0, 12).map((file) => `- ${createWikiLink(file.path, file.basename)}`);
+      if (files.length > 12) {
+        lines.push(`- ${files.length - 12} more note${files.length - 12 === 1 ? "" : "s"} not shown.`);
+      }
+      return lines;
+    };
+    const nextActions = [
+      input.missingStarterNotes.length > 0 ? "Run Initialize compiled research wiki to restore missing starter notes." : "Starter notes are present.",
+      input.rawWithoutSummary.length > 0 ? "Compile or write summaries for the oldest raw captures so the raw folder does not become a dead inbox." : "Raw captures currently have matching summary coverage by filename.",
+      input.lowLinkConceptFiles.length > 0 ? "Add source-summary and concept-note links to weakly connected concept pages." : "Concept notes have at least minimal link density.",
+      input.staleIndexFiles.length > 0 ? "Refresh stale index notes so the wiki remains navigable as it grows." : "Index notes were updated recently enough to act as live navigation.",
+      input.recommendedIndexedFolders.length > 0 ? `For AI retrieval, prefer ${input.recommendedIndexedFolders.join(", ")}.` : "No recommended AI retrieval scope is configured yet."
+    ];
+    return [
+      `# Compiled Research Wiki Health Check - ${formatDateKey(input.generatedAt)}`,
+      "",
+      `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+      `- Raw captures: ${input.rawFiles.length}`,
+      `- Source summaries: ${input.sourceFiles.length}`,
+      `- Concept notes: ${input.conceptFiles.length}`,
+      `- Index notes: ${input.indexFiles.length}`,
+      `- Output notes: ${input.outputFiles.length}`,
+      `- Prior health checks: ${input.healthCheckFiles.length}`,
+      `- Asset files: ${input.assetCount}`,
+      "",
+      "## Recommended AI Retrieval Scope",
+      ...input.recommendedIndexedFolders.length > 0 ? input.recommendedIndexedFolders.map((folder) => `- ${folder}`) : ["- No recommended wiki retrieval folders are configured."],
+      `- Optional only: ${this.data.settings.knowledgeBaseRawFolder}`,
+      "",
+      "## Missing Starter Notes",
+      ...input.missingStarterNotes.length > 0 ? input.missingStarterNotes.map((path) => `- ${path}`) : ["- None."],
+      "",
+      "## Raw Sources Without Matching Summary Filename",
+      ...renderLinkedFileList(input.rawWithoutSummary, "None."),
+      "",
+      "## Low-Link Concept Candidates",
+      ...renderLinkedFileList(input.lowLinkConceptFiles, "None."),
+      "",
+      "## Stale Index Candidates",
+      ...renderLinkedFileList(input.staleIndexFiles, "None older than 30 days."),
+      "",
+      "## Recent Outputs",
+      ...renderLinkedFileList(input.outputFiles, "No output notes yet."),
+      "",
+      "## Next Actions",
+      ...nextActions.map((action) => `- ${action}`),
+      ""
     ].join("\n");
   }
   getLatestRecordedBodyWeight() {
@@ -15520,6 +15959,27 @@ ${body}`;
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.systemMapNotePath).toLowerCase()) {
       return "system-map";
     }
+    if (prefixMatches(this.data.settings.knowledgeBaseRawFolder)) {
+      return "knowledge-base-raw";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseSourcesFolder)) {
+      return "knowledge-base-source";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseConceptsFolder)) {
+      return "knowledge-base-concept";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
+      return "knowledge-base-index";
+    }
+    if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
+      return "knowledge-base-health-check";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseOutputsFolder)) {
+      return "knowledge-base-output";
+    }
+    if (prefixMatches(this.data.settings.knowledgeBaseAssetsFolder)) {
+      return "knowledge-base-asset";
+    }
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
@@ -15577,6 +16037,20 @@ ${body}`;
       autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.systemMapNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/system-map");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseRawFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/raw");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseSourcesFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/source");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseConceptsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/concept");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/index");
+    } else if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output", "daily-dashboard/knowledge-base/health-check");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseOutputsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output");
+    } else if (prefixMatches(this.data.settings.knowledgeBaseAssetsFolder)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/asset");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {

@@ -403,6 +403,12 @@ export interface DashboardSettings {
   aiModel: string;
   aiBaseUrl: string;
   aiOutputFolder: string;
+  knowledgeBaseRawFolder: string;
+  knowledgeBaseSourcesFolder: string;
+  knowledgeBaseConceptsFolder: string;
+  knowledgeBaseIndexesFolder: string;
+  knowledgeBaseOutputsFolder: string;
+  knowledgeBaseAssetsFolder: string;
   basicInfoNotePath: string;
   includeBasicInfoInAi: boolean;
   aiGuardrailsNotePath: string;
@@ -899,6 +905,12 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
+  knowledgeBaseRawFolder: "Knowledge Base/raw",
+  knowledgeBaseSourcesFolder: "Knowledge Base/wiki/sources",
+  knowledgeBaseConceptsFolder: "Knowledge Base/wiki/concepts",
+  knowledgeBaseIndexesFolder: "Knowledge Base/wiki/indexes",
+  knowledgeBaseOutputsFolder: "Knowledge Base/outputs",
+  knowledgeBaseAssetsFolder: "Knowledge Base/assets",
   basicInfoNotePath: "Dashboard Logs/Profile/Basic Information.md",
   includeBasicInfoInAi: true,
   aiGuardrailsNotePath: "Dashboard Logs/Profile/AI Guardrails.md",
