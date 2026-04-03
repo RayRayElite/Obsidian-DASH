@@ -3476,10 +3476,135 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  async generateResearchMarpSlideDeckFromActiveNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown note with the topic before generating a research slide deck.");
+    if (!activeFile) {
+      return;
+    }
+
+    if (!this.getResolvedAiApiKey()) {
+      new Notice(this.getAiConfigurationMessage());
+      return;
+    }
+
+    if (this.isAiBusy) {
+      new Notice("An AI request is already running.");
+      return;
+    }
+
+    this.isAiBusy = true;
+    this.refreshDashboardViews();
+
+    try {
+      const context = await this.buildKnowledgeBaseAiContext({
+        activeFile,
+        query: `Marp slide deck for ${activeFile.path}`,
+        additionalSections: []
+      });
+      const rawResponse = await this.requestAiCompletion(
+        this.applyAiPromptTemplate([
+          "You are writing a Marp slide deck from compiled research wiki material.",
+          "Return markdown only, with no surrounding code fences and no JSON block.",
+          "The response should start with a title slide using an H1 heading.",
+          "Use '---' separators between slides.",
+          "Create 6 to 10 concise slides optimized for explanation, not dense paragraphs.",
+          "Prefer short bullets, clear sequencing, and one idea per slide."
+        ].join(" "), "research-slide-deck"),
+        `Use the active note ${activeFile.path} as the topic seed and generate a Marp slide deck grounded in the compiled research wiki.\n\n${context}`
+      );
+      const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
+      const fileLabel = this.getLeadingMarkdownTitle(cleanedMarkdown) || `${stripMarkdownExtension(activeFile.name)} Slide Deck`;
+      const file = await this.createKnowledgeBaseSlideDeckNote({
+        folder: `${normalizeFolderPath(this.data.settings.knowledgeBaseOutputsFolder)}/Slides`,
+        fileLabel,
+        deckMarkdown: cleanedMarkdown,
+        sourceFile: activeFile
+      });
+
+      this.latestAiArtifact = {
+        kind: "Research Marp Slide Deck",
+        title: fileLabel,
+        generatedAt: formatDateTimeKey(new Date()),
+        notePath: file.path,
+        summary: extractAiSummary(cleanedMarkdown),
+        suggestedFocus: [],
+        nextActions: []
+      };
+
+      this.refreshDashboardViews();
+      await this.openFile(file);
+      new Notice("Research Marp slide deck generated.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new Notice(`AI request failed: ${message}`);
+    } finally {
+      this.isAiBusy = false;
+      this.refreshDashboardViews();
+    }
+  }
+
+  async promoteActiveResearchOutputToConceptNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a research output note before promoting it into a concept note.");
+    if (!activeFile) {
+      return;
+    }
+
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Output Promotion",
+      templateKey: "research-output-promotion",
+      activeFile,
+      query: `Promote research output ${activeFile.path} into a concept note`,
+      outputFolder: this.data.settings.knowledgeBaseConceptsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Promoted Concept`,
+      systemPrompt: [
+        "You are promoting a research output note back into the compiled wiki as a durable concept note.",
+        "Return markdown that starts with a single H1 title containing the best concept name.",
+        "Then use headings: Working Definition, Why It Matters, Core Claims, Related Concepts, Source Summaries, Output Hooks.",
+        "Preserve durable insights, strip presentation fluff, and keep the note grounded in the output's evidence.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Promote the active research output note ${activeFile.path} into a reusable concept note for the compiled research wiki.`
+    });
+  }
+
+  async promoteFollowUpQuestionsFromActiveResearchNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a research note before promoting its follow-up questions into the index.");
+    if (!activeFile) {
+      return;
+    }
+
+    const questions = this.extractSectionBulletLines(await this.app.vault.read(activeFile), "Follow-Up Questions")
+      .map((item) => item.replace(/^\[[ xX]\]\s+/, "").trim())
+      .filter((item) => item.length > 0);
+    if (questions.length === 0) {
+      new Notice("No follow-up questions section was found in the active research note.");
+      return;
+    }
+
+    const openQuestionsPath = this.getKnowledgeBaseStarterNoteDefinitions().find((note) => note.key === "questions")?.path;
+    if (!openQuestionsPath) {
+      new Notice("Open Questions note path is not configured.");
+      return;
+    }
+
+    const openQuestionsFile = await this.ensureSupportNote(openQuestionsPath, () => this.renderKnowledgeBaseOpenQuestionsTemplate());
+    const updated = await this.appendUniqueBulletsToSection(openQuestionsFile, "Active Questions", questions);
+    new Notice(updated > 0
+      ? `Added ${updated} follow-up question${updated === 1 ? "" : "s"} to Open Questions.`
+      : "No new follow-up questions needed to be added.");
+    await this.openFile(openQuestionsFile);
+  }
+
   async regenerateCompiledResearchTopicIndex(): Promise<void> {
     const file = await this.createCompiledResearchTopicIndex();
     await this.openFile(file);
     new Notice("Compiled research topic index regenerated.");
+  }
+
+  async generateCompiledResearchRetrievalTuningNote(): Promise<void> {
+    const file = await this.createCompiledResearchRetrievalTuningNote();
+    await this.openFile(file);
+    new Notice("Compiled research retrieval tuning note generated.");
   }
 
   private getKnowledgeBaseFolders(): string[] {
@@ -3604,6 +3729,74 @@ export default class DailyDashboardPlugin extends Plugin {
       assetCount,
       recommendedIndexedFolders: this.getKnowledgeBaseRecommendedIndexedFolders()
     });
+    return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private async createCompiledResearchRetrievalTuningNote(): Promise<TFile> {
+    const generatedAt = new Date();
+    await this.ensureAiNoteIndexReady();
+    const recommendedFolders = this.getKnowledgeBaseRecommendedIndexedFolders();
+    const indexedFolders = getIndexedFolderList(this.data.settings);
+    const indexedKnowledgeBaseFolders = indexedFolders.filter((folder) => recommendedFolders.includes(folder));
+    const rawIndexed = indexedFolders.includes(normalizeFolderPath(this.data.settings.knowledgeBaseRawFolder));
+    const knowledgeBaseEntries = Object.values(this.data.noteIndex.entries)
+      .filter((entry) => recommendedFolders.some((folder) => entry.path === folder || entry.path.startsWith(`${folder}/`)));
+    const noteCount = knowledgeBaseEntries.length;
+    const chunkCount = knowledgeBaseEntries.reduce((sum, entry) => sum + entry.chunks.length, 0);
+    const embeddedChunkCount = knowledgeBaseEntries.reduce((sum, entry) => sum + entry.chunks.filter((chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0).length, 0);
+    const averageChunksPerNote = noteCount > 0 ? (chunkCount / noteCount).toFixed(1) : "0.0";
+    const missingRecommendedFolders = recommendedFolders.filter((folder) => !indexedFolders.includes(folder));
+    const guidance = [
+      noteCount < 25
+        ? "Current wiki volume is still small enough that folder-scoped keyword retrieval should stay effective without extra tuning."
+        : noteCount < 75
+          ? "Wiki volume is entering the range where chunk quality and note naming matter more than adding complex retrieval layers."
+          : "Wiki volume is large enough that embeddings or stricter retrieval scoping may now be worth the added cost.",
+      rawIndexed
+        ? `Raw sources are currently included in AI indexed folders. Consider removing ${this.data.settings.knowledgeBaseRawFolder} unless direct raw-source retrieval is worth the noise.`
+        : "Raw-source indexing is still optional, which keeps retrieval cleaner for synthesized answers.",
+      this.data.settings.aiEmbeddingsEnabled
+        ? `Embeddings are enabled with ${embeddedChunkCount} embedded knowledge-base chunk${embeddedChunkCount === 1 ? "" : "s"}. Reassess only if semantic matches still feel noisy or shallow.`
+        : noteCount >= 75
+          ? "Embeddings are currently off. At this note volume, enabling them may improve concept-level retrieval across differently worded notes."
+          : "Embeddings are currently off, which is still a reasonable default at the current wiki size.",
+      missingRecommendedFolders.length === 0
+        ? "All recommended compiled wiki folders are in AI indexed folders."
+        : `Recommended compiled folders missing from AI indexed folders: ${missingRecommendedFolders.join(", ")}.`
+    ];
+    const filePath = this.getAvailableMarkdownPath(`${normalizeFolderPath(this.data.settings.knowledgeBaseOutputsFolder)}/Health Checks/${formatDateKey(generatedAt)} Retrieval Tuning.md`);
+    const content = [
+      `# Compiled Research Retrieval Tuning - ${formatDateKey(generatedAt)}`,
+      "",
+      `- Generated: ${formatDateTimeKey(generatedAt)}`,
+      `- Knowledge-base indexed notes: ${noteCount}`,
+      `- Knowledge-base indexed chunks: ${chunkCount}`,
+      `- Average chunks per note: ${averageChunksPerNote}`,
+      `- Knowledge-base embedded chunks: ${embeddedChunkCount}`,
+      `- Embeddings enabled: ${this.data.settings.aiEmbeddingsEnabled ? "yes" : "no"}`,
+      `- AI related note limit: ${this.data.settings.aiRelatedNotesLimit}`,
+      `- AI chunk character limit: ${this.data.settings.aiChunkCharLimit}`,
+      "",
+      "## Recommended Compiled Wiki Scope",
+      ...recommendedFolders.map((folder) => `- ${folder}`),
+      `- Optional only: ${this.data.settings.knowledgeBaseRawFolder}`,
+      "",
+      "## Current Indexed Folders",
+      ...(indexedFolders.length > 0 ? indexedFolders.map((folder) => `- ${folder}`) : ["- No AI indexed folders are configured."]),
+      "",
+      "## Knowledge Base Indexed Folders In Use",
+      ...(indexedKnowledgeBaseFolders.length > 0 ? indexedKnowledgeBaseFolders.map((folder) => `- ${folder}`) : ["- None of the compiled wiki folders are currently indexed."]),
+      "",
+      "## Guidance",
+      ...guidance.map((item) => `- ${item}`),
+      "",
+      "## Reassess Triggers",
+      "- Revisit chunk size if source summaries become much denser or more heavily quoted.",
+      "- Revisit embeddings when note volume rises enough that filename and heading matching stop being reliable.",
+      "- Revisit indexed folders when raw captures start crowding out concept and source-summary matches.",
+      ""
+    ].join("\n");
+
     return this.upsertMarkdownFile(filePath, content);
   }
 
@@ -3834,6 +4027,83 @@ export default class DailyDashboardPlugin extends Plugin {
     ].filter((line) => line !== "").join("\n");
 
     return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private async createKnowledgeBaseSlideDeckNote(input: {
+    folder: string;
+    fileLabel: string;
+    deckMarkdown: string;
+    sourceFile?: TFile;
+  }): Promise<TFile> {
+    const timestamp = formatFileTimestamp(new Date());
+    const folder = normalizeFolderPath(input.folder);
+    const filePath = this.getAvailableMarkdownPath(`${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`);
+    const content = [
+      "---",
+      "marp: true",
+      "paginate: true",
+      "theme: default",
+      `title: ${input.fileLabel.replace(/:/g, " -")}`,
+      input.sourceFile ? `description: Generated from ${input.sourceFile.path.replace(/:/g, " -")}` : "",
+      "---",
+      "",
+      input.deckMarkdown.trim(),
+      ""
+    ].filter((line) => line !== "").join("\n");
+
+    return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private async appendUniqueBulletsToSection(file: TFile, heading: string, bullets: string[]): Promise<number> {
+    const content = await this.app.vault.read(file);
+    const lines = content.split(/\r?\n/);
+    const targetHeading = heading.trim().toLowerCase();
+    const normalizedBullets = bullets
+      .map((bullet) => bullet.trim())
+      .filter((bullet, index, items) => bullet.length > 0 && items.indexOf(bullet) === index);
+    if (normalizedBullets.length === 0) {
+      return 0;
+    }
+
+    let headingIndex = -1;
+    let sectionLevel = 0;
+    let sectionEndIndex = lines.length;
+    for (let index = 0; index < lines.length; index += 1) {
+      const headingMatch = lines[index].match(/^(#{1,6})\s+(.+)$/);
+      if (!headingMatch) {
+        continue;
+      }
+
+      const currentHeading = headingMatch[2].trim().toLowerCase();
+      const currentLevel = headingMatch[1].length;
+      if (headingIndex === -1 && currentHeading === targetHeading) {
+        headingIndex = index;
+        sectionLevel = currentLevel;
+        continue;
+      }
+
+      if (headingIndex !== -1 && currentLevel <= sectionLevel) {
+        sectionEndIndex = index;
+        break;
+      }
+    }
+
+    if (headingIndex === -1) {
+      return 0;
+    }
+
+    const existingBullets = new Set(lines.slice(headingIndex + 1, sectionEndIndex)
+      .map((line) => line.match(/^\s*-\s+(.*)$/)?.[1]?.trim() ?? "")
+      .filter((line) => line.length > 0)
+      .map((line) => line.toLowerCase()));
+    const additions = normalizedBullets.filter((bullet) => !existingBullets.has(bullet.toLowerCase()));
+    if (additions.length === 0) {
+      return 0;
+    }
+
+    lines.splice(sectionEndIndex, 0, ...additions.map((bullet) => `- ${bullet}`));
+    await this.app.vault.modify(file, lines.join("\n"));
+    return additions.length;
   }
 
   private extractSectionBulletLines(content: string, heading: string): string[] {
@@ -8033,6 +8303,9 @@ export default class DailyDashboardPlugin extends Plugin {
     if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
       return "knowledge-base-index";
     }
+    if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Slides`)) {
+      return "knowledge-base-slide-deck";
+    }
     if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
       return "knowledge-base-health-check";
     }
@@ -8113,6 +8386,8 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/concept");
     } else if (prefixMatches(this.data.settings.knowledgeBaseIndexesFolder)) {
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/index");
+    } else if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Slides`)) {
+      autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output", "daily-dashboard/knowledge-base/slide-deck");
     } else if (prefixMatches(`${this.data.settings.knowledgeBaseOutputsFolder}/Health Checks`)) {
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/output", "daily-dashboard/knowledge-base/health-check");
     } else if (prefixMatches(this.data.settings.knowledgeBaseOutputsFolder)) {

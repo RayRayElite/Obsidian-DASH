@@ -88,9 +88,13 @@ Use `Initialize compiled research wiki` once to create the default folder scaffo
 
 Use `Compile active note into research source summary` to turn the active markdown note into a structured source-summary note in the compiled wiki. Use `Generate concept note from active research note` to turn the active note into a reusable concept page, and use `Generate research answer note from active note` or `Generate research brief from active note` to write reusable outputs into the knowledge-base outputs folder.
 
+Use `Generate research Marp slide deck from active note` to create a presentation-ready markdown deck under the knowledge-base outputs slide-deck folder, and use `Promote active research output to concept note` or `Promote follow-up questions from active research note` to push useful outputs back into the wiki and its question index.
+
 Use `Regenerate compiled research topic index` to rebuild a navigable topic index note from the current source summaries, concept notes, outputs, coverage gaps, open questions, and candidate article ideas.
 
 Use `Generate compiled research wiki health check` to write a maintenance note into the knowledge-base outputs folder. The health check summarizes coverage, flags raw notes without matching summary filenames, calls out weakly linked or duplicate concept candidates, and identifies stale index notes so the wiki does not silently decay into an unmaintained dump.
+
+Use `Generate compiled research retrieval tuning note` when you want the plugin to inspect current knowledge-base note volume, AI index coverage, raw-folder indexing, chunk density, and embeddings usage before deciding whether retrieval tuning is actually warranted yet.
 
 Recommended retrieval scope for AI remains the compiled layers, not the raw inbox: source summaries, concept notes, and index notes. Keep the raw folder out of `AI indexed folders` unless you explicitly want direct raw-source retrieval noise.
 

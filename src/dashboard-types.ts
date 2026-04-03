@@ -962,7 +962,13 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
     "Answer directly first, then justify with compiled wiki evidence and promotion targets.",
     "",
     "[research-brief]",
-    "Keep the brief concise, decision-relevant, and easy to promote back into concept and index notes."
+    "Keep the brief concise, decision-relevant, and easy to promote back into concept and index notes.",
+    "",
+    "[research-slide-deck]",
+    "Prefer one idea per slide, concise bullets, and clear sequencing instead of dense paragraphs.",
+    "",
+    "[research-output-promotion]",
+    "Strip presentation fluff, preserve durable claims, and promote outputs back into reusable concept notes."
   ].join("\n"),
   aiContextDays: 14,
   aiRelatedNotesLimit: 6,
