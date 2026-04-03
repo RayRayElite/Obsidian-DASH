@@ -10,6 +10,7 @@ import {
   createEmptyNoteIndexCache,
   extractAiStructuredPayload,
   extractAiSummary,
+  formatActivitySessionLabel,
   foodEntryToIntakeEntry,
   formatDateKey,
   formatDateTimeKey,
@@ -22,8 +23,11 @@ import {
   isHabitDueOnDate,
   normalizeFoodEntry,
   normalizeFolderPath,
+  normalizeActivitySession,
+  normalizeExerciseEntry,
   normalizeIntakeEntry,
   normalizeNextUpFocusItems,
+  normalizeWeightGoalMode,
   normalizeSymptomEntry,
   normalizeTodayFocusItems,
   normalizeNoteIndexCache,
@@ -43,12 +47,14 @@ import {
   buildPersonalTrendSummary,
   buildGamificationSummary,
   buildSleepInsights,
+  closeOpenActivitySessions,
   closeOpenBreakSessions,
   closeOpenNapSessions,
   closeOpenPoopSessions,
   closeOpenRelaxSessions,
   closeOpenWorkSessions,
   getTrackedBreakMinutes,
+  getTrackedActivityMinutes,
   getTrackedMinutes,
   getTrackedNapMinutes,
   getTrackedPoopCount,
@@ -104,6 +110,8 @@ import {
   type AiRelevantNote,
   type AiStatus,
   type AiStructuredPayload,
+  type ActivitySession,
+  type ActivitySessionKind,
   type ArchivedTaskSnapshot,
   type ArchiveMaintenanceResult,
   type CalendarDocumentPayload,
@@ -125,6 +133,7 @@ import {
   type DashboardUiState,
   type AnxietyCheckIn,
   type EnergyCheckIn,
+  type ExerciseEntry,
   type FoodEntry,
   type GamificationSummary,
   type HabitDefinition,
@@ -147,6 +156,7 @@ import {
   type TodayFocusItem,
   type WeeklyAgendaDay,
   type WallpaperOption,
+  type WeightGoalMode,
   type MoodCheckIn,
   type WorkSession
 } from "./src/dashboard-types";
@@ -715,6 +725,12 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getTodayEntry().breakSessions.some((session) => session.end === null);
   }
 
+  getActiveActivitySession(kind?: ActivitySessionKind, entry: DailyEntry = this.getTodayEntry()): ActivitySession | null {
+    return [...entry.activitySessions]
+      .reverse()
+      .find((session) => session.end === null && (!kind || session.kind === kind)) ?? null;
+  }
+
   getTrackedWorkMinutes(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedWorkMinutes(this.getEffectiveTrackedEntry(entry));
   }
@@ -737,6 +753,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getTrackedPoopCount(entry: DailyEntry = this.getTodayEntry()): number {
     return getTrackedPoopCount(entry);
+  }
+
+  getTrackedActivityMinutes(entry: DailyEntry = this.getTodayEntry(), kind?: ActivitySessionKind): number {
+    return getTrackedActivityMinutes(this.getEffectiveTrackedEntry(entry), kind);
   }
 
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
@@ -802,7 +822,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const relaxMinutes = this.getTrackedRelaxMinutes(entry);
     const breakMinutes = this.getTrackedBreakMinutes(entry);
     const poopMinutes = this.getTrackedPoopMinutes(entry);
-    const trackedAwakeMinutes = workMinutes + napMinutes + relaxMinutes + breakMinutes + poopMinutes;
+    const activityMinutes = this.getTrackedActivityMinutes(entry);
+    const trackedAwakeMinutes = workMinutes + napMinutes + relaxMinutes + breakMinutes + poopMinutes + activityMinutes;
     const activeDate = this.data.dayState.status === "in-progress" ? this.data.dayState.activeDate : "";
     const wakeWindowEnd = entry.dayEndedAt
       || entry.sleepTime
@@ -859,6 +880,7 @@ export default class DailyDashboardPlugin extends Plugin {
       relaxMinutes,
       breakMinutes,
       poopMinutes,
+      activityMinutes,
       trackedAwakeMinutes,
       awakeWindowMinutes,
       awakeUnknownMinutes,
@@ -2676,6 +2698,81 @@ export default class DailyDashboardPlugin extends Plugin {
     activeSession.end = formatDateTimeKey(new Date());
     await this.persistEntry(entry);
     new Notice("Bowel movement tracking stopped.");
+  }
+
+  async startActivitySession(kind: ActivitySessionKind, tag = ""): Promise<void> {
+    if (this.data.dayState.status !== "in-progress") {
+      new Notice("Begin your logical day before starting another activity timer.");
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    const label = formatActivitySessionLabel(kind);
+    if (entry.activitySessions.some((session) => session.end === null && session.kind === kind)) {
+      new Notice(`A ${label.toLowerCase()} session is already active.`);
+      return;
+    }
+
+    const timestamp = formatDateTimeKey(new Date());
+    this.closeCompetingSessions(entry, timestamp, "activity");
+    closeOpenActivitySessions(entry, timestamp);
+    this.closeOpenTodayFocusSessions(entry, timestamp);
+    this.ensureWakeAndDayStartFromActivity(entry, timestamp);
+    entry.activitySessions = [...entry.activitySessions, {
+      kind,
+      label,
+      start: timestamp,
+      end: null,
+      tag: tag.trim(),
+      projectName: ""
+    }];
+    await this.persistEntry(entry);
+    new Notice(`${label} started.`);
+  }
+
+  async stopActivitySession(kind?: ActivitySessionKind): Promise<void> {
+    const entry = this.getTodayEntry();
+    const activeSession = [...entry.activitySessions]
+      .reverse()
+      .find((session) => session.end === null && (!kind || session.kind === kind));
+    if (!activeSession) {
+      new Notice("No matching activity session is currently active.");
+      return;
+    }
+
+    activeSession.end = formatDateTimeKey(new Date());
+    await this.persistEntry(entry);
+    new Notice(`${activeSession.label} stopped.`);
+  }
+
+  async addExerciseEntry(label: string, durationMinutes: number, intensity: ExerciseEntry["intensity"], note = "", linkedSessionStart = ""): Promise<void> {
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    entry.exerciseLog = [{
+      label: trimmedLabel,
+      durationMinutes: clamp(Math.round(durationMinutes), 1, 600),
+      intensity,
+      note: note.trim(),
+      loggedAt: formatDateTimeKey(new Date()),
+      linkedSessionStart
+    }, ...entry.exerciseLog].slice(0, 30);
+    await this.persistEntry(entry);
+  }
+
+  async removeExerciseEntry(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.exerciseLog = entry.exerciseLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async updateBodyWeight(value: number | null): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.bodyWeight = typeof value === "number" && Number.isFinite(value) && value > 0 ? clamp(value, 1, 9999) : null;
+    await this.persistEntry(entry);
   }
 
   async updateDailyNotes(value: string): Promise<void> {
@@ -4615,6 +4712,12 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => normalizeSymptomEntry(item))
             .filter((item): item is SymptomEntry => item !== null)
         : [],
+      bodyWeight: Number.isFinite(Number(entry.bodyWeight)) && Number(entry.bodyWeight) > 0 ? clamp(Number(entry.bodyWeight), 1, 9999) : null,
+      exerciseLog: Array.isArray(entry.exerciseLog)
+        ? entry.exerciseLog
+            .map((item) => normalizeExerciseEntry(item))
+            .filter((item): item is ExerciseEntry => item !== null)
+        : [],
       moodCheckIns: normalizedMoodCheckIns,
       energyCheckIns: normalizedEnergyCheckIns,
       anxietyCheckIns: normalizedAnxietyCheckIns,
@@ -4677,6 +4780,11 @@ export default class DailyDashboardPlugin extends Plugin {
               tag: typeof item.tag === "string" ? item.tag.trim() : "",
               projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
+        : [],
+      activitySessions: Array.isArray(entry.activitySessions)
+        ? entry.activitySessions
+            .map((item) => normalizeActivitySession(item))
+            .filter((item): item is ActivitySession => item !== null)
         : [],
       poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object"
         ? Object.fromEntries(Object.entries(entry.poopQualityByStart).filter((item): item is [string, string] => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()]))
@@ -4786,8 +4894,10 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry.relaxSessions.map((session) => session.start),
       ...entry.breakSessions.map((session) => session.start),
       ...entry.poopSessions.map((session) => session.start),
+      ...entry.activitySessions.map((session) => session.start),
       ...entry.todayFocus.flatMap((item) => item.workSessions.map((session) => session.start)),
       ...entry.foodLog.map((item) => item.loggedAt ?? ""),
+      ...entry.exerciseLog.map((item) => item.loggedAt ?? ""),
       ...entry.moodCheckIns.map((item) => item.loggedAt ?? ""),
       ...entry.energyCheckIns.map((item) => item.loggedAt ?? ""),
       ...entry.anxietyCheckIns.map((item) => item.loggedAt ?? ""),
@@ -5151,7 +5261,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return changed;
   }
 
-  private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break" | "poop"): void {
+  private closeCompetingSessions(entry: DailyEntry, timestamp: string, keepOpen: "work" | "nap" | "relax" | "break" | "poop" | "activity"): void {
     if (keepOpen !== "work") {
       closeOpenWorkSessions(entry, timestamp);
     }
@@ -5166,6 +5276,9 @@ export default class DailyDashboardPlugin extends Plugin {
     }
     if (keepOpen !== "poop") {
       closeOpenPoopSessions(entry, timestamp);
+    }
+    if (keepOpen !== "activity") {
+      closeOpenActivitySessions(entry, timestamp);
     }
   }
 
@@ -5566,6 +5679,7 @@ export default class DailyDashboardPlugin extends Plugin {
       || entry.relaxSessions.some((session) => session.end === null)
       || entry.breakSessions.some((session) => session.end === null)
       || entry.poopSessions.some((session) => session.end === null)
+      || entry.activitySessions.some((session) => session.end === null)
       || entry.todayFocus.some((item) => item.workSessions.some((session) => session.end === null));
   }
 
@@ -5575,6 +5689,8 @@ export default class DailyDashboardPlugin extends Plugin {
       || entry.relaxSessions.length > 0
       || entry.breakSessions.length > 0
       || entry.poopSessions.length > 0
+      || entry.activitySessions.length > 0
+      || entry.exerciseLog.length > 0
       || entry.foodLog.length > 0
       || entry.completedTasks.length > 0
       || entry.todayFocus.some((item) => item.workSessions.length > 0 || item.status === "done")

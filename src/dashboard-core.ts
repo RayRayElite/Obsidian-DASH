@@ -1,12 +1,18 @@
 import { TFile, normalizePath } from "obsidian";
 
 import {
+  ACTIVITY_SESSION_KIND_OPTIONS,
   DEFAULT_SETTINGS,
+  EXERCISE_INTENSITY_OPTIONS,
   type AiRelevantNote,
   type AiStructuredPayload,
+  type ActivitySession,
+  type ActivitySessionKind,
   type DailyEntry,
   type DashboardSettings,
   type DayLifecycleState,
+  type ExerciseEntry,
+  type ExerciseIntensity,
   type FoodEntry,
   type HabitAutomation,
   type HabitCadence,
@@ -22,7 +28,8 @@ import {
   type TodayFocusItem,
   type TodayFocusStatus,
   type RoutineTemplateDefinition,
-  type TodoSnapshot
+  type TodoSnapshot,
+  type WeightGoalMode
 } from "./dashboard-types";
 
 export function sanitizeSettings(settings: DashboardSettings): DashboardSettings {
@@ -43,6 +50,9 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
   const calendarLookaheadHours = clamp(Number(settings.calendarLookaheadHours ?? DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number(settings.calendarWarningHours ?? DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
+  const weightGoalTarget = Number.isFinite(Number(settings.weightGoalTarget)) ? clamp(Number(settings.weightGoalTarget), 0, 9999) : DEFAULT_SETTINGS.weightGoalTarget;
+  const weightGoalMode = normalizeWeightGoalMode(settings.weightGoalMode);
+  const weightGoalWeeklyRate = clamp(Number(settings.weightGoalWeeklyRate ?? DEFAULT_SETTINGS.weightGoalWeeklyRate), 0, 5);
   const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets)
     ? settings.intakeQuickPresets
         .map((preset, index) => normalizeIntakeQuickPreset(preset, index))
@@ -83,6 +93,9 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
+    weightGoalTarget,
+    weightGoalMode,
+    weightGoalWeeklyRate,
     intakeQuickPresets,
     habitAutomations,
     showUndoNotifications,
@@ -380,6 +393,8 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     foodLog: [],
     intakeLog: [],
     symptomLog: [],
+    bodyWeight: null,
+    exerciseLog: [],
     moodCheckIns: [],
     energyCheckIns: [],
     anxietyCheckIns: [],
@@ -398,8 +413,83 @@ export function createEmptyEntry(date: string, habits: HabitDefinition[]): Daily
     breakSessions: [],
     breakMinutesOverride: null,
     poopSessions: [],
+    activitySessions: [],
     poopQualityByStart: {},
     completedTasks: []
+  };
+}
+
+export function formatActivitySessionLabel(kind: ActivitySessionKind): string {
+  switch (kind) {
+    case "exercise":
+      return "Exercise";
+    case "study":
+      return "Study";
+    case "admin":
+      return "Admin";
+    case "errand":
+      return "Errand";
+    case "commute":
+      return "Commute";
+    case "social":
+      return "Social";
+    case "chores":
+      return "Chores";
+    default:
+      return "Activity";
+  }
+}
+
+export function normalizeWeightGoalMode(value: unknown): WeightGoalMode {
+  return value === "lose" || value === "gain" ? value : "maintain";
+}
+
+export function normalizeExerciseIntensity(value: unknown): ExerciseIntensity {
+  return value === "easy" || value === "hard" ? value : "moderate";
+}
+
+export function normalizeActivitySession(input: unknown): ActivitySession | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<ActivitySession>;
+  if (typeof candidate.start !== "string" || candidate.start.trim().length === 0) {
+    return null;
+  }
+
+  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind as ActivitySessionKind)
+    ? candidate.kind as ActivitySessionKind
+    : "admin";
+
+  return {
+    kind,
+    label: typeof candidate.label === "string" && candidate.label.trim().length > 0 ? candidate.label.trim() : formatActivitySessionLabel(kind),
+    start: candidate.start,
+    end: typeof candidate.end === "string" ? candidate.end : null,
+    tag: typeof candidate.tag === "string" ? candidate.tag.trim() : "",
+    projectName: typeof candidate.projectName === "string" ? candidate.projectName.trim() : ""
+  };
+}
+
+export function normalizeExerciseEntry(input: unknown): ExerciseEntry | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<ExerciseEntry>;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  if (!label) {
+    return null;
+  }
+
+  return {
+    label,
+    durationMinutes: clamp(Math.round(Number(candidate.durationMinutes ?? 0)), 1, 600),
+    intensity: normalizeExerciseIntensity(candidate.intensity),
+    note: typeof candidate.note === "string" ? candidate.note.trim() : "",
+    loggedAt: typeof candidate.loggedAt === "string" && candidate.loggedAt.trim().length > 0 ? candidate.loggedAt : formatDateTimeKey(new Date()),
+    linkedSessionStart: typeof candidate.linkedSessionStart === "string" ? candidate.linkedSessionStart : ""
   };
 }
 

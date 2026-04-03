@@ -2,6 +2,7 @@ import {
   clamp,
   countHabitEventsInWindow,
   createEmptyEntry,
+  formatActivitySessionLabel,
   formatHabitCadenceLabel,
   formatHabitWindowLabel,
   formatDateKey,
@@ -13,7 +14,7 @@ import {
   renderScore
 } from "./dashboard-core";
 import { CHECKLIST_REGEX } from "./dashboard-types";
-import type { CalendarEventOccurrence, DailyEntry, GamificationCategoryScore, GamificationSnapshot, GamificationSummary, HabitDefinition, NextUpFocusItem, PersonalTrendSummary, SleepInsights, SleepNightSnapshot, TodayFocusItem, TodoSnapshot, WeeklyReviewInput, WorkSession } from "./dashboard-types";
+import type { ActivitySessionKind, CalendarEventOccurrence, DailyEntry, GamificationCategoryScore, GamificationSnapshot, GamificationSummary, HabitDefinition, NextUpFocusItem, PersonalTrendSummary, SleepInsights, SleepNightSnapshot, TodayFocusItem, TodoSnapshot, WeeklyReviewInput, WorkSession } from "./dashboard-types";
 
 const DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 const CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
@@ -36,6 +37,12 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     : ["- None logged"];
   const symptomLines = entry.symptomLog.length > 0
     ? entry.symptomLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.symptom} • ${item.severity}/5${item.note ? ` - ${item.note}` : ""}`)
+    : ["- None logged"];
+  const exerciseLines = entry.exerciseLog.length > 0
+    ? entry.exerciseLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.label} • ${formatMinutesAsHours(item.durationMinutes)} • ${item.intensity}${item.note ? ` - ${item.note}` : ""}`)
+    : ["- None logged"];
+  const activityLines = entry.activitySessions.length > 0
+    ? entry.activitySessions.map((session) => `- ${session.start.slice(11, 16)}-${(session.end ?? formatDateTimeKey(new Date())).slice(11, 16)} • ${session.label}${session.tag ? ` • ${session.tag}` : ""}`)
     : ["- None logged"];
   const energyCheckInLines = entry.energyCheckIns.length > 0
     ? entry.energyCheckIns.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.score}/5${item.note ? ` - ${item.note}` : ""}`)
@@ -107,6 +114,9 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `foodEntryCount: ${foodEntries.length}`,
     `intakeEntryCount: ${drinkEntries.length}`,
     `symptomEntryCount: ${entry.symptomLog.length}`,
+    `exerciseEntryCount: ${entry.exerciseLog.length}`,
+    `activitySessionCount: ${entry.activitySessions.length}`,
+    `bodyWeight: ${entry.bodyWeight ?? ""}`,
     `energyCheckInCount: ${entry.energyCheckIns.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
     `moodScore: ${entry.moodScore}`,
@@ -164,6 +174,13 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     "## Consumables",
     ...intakeLines,
+    "",
+    "## Exercise",
+    `- Body weight: ${typeof entry.bodyWeight === "number" ? `${entry.bodyWeight}` : "Not logged"}`,
+    ...exerciseLines,
+    "",
+    "## Other Activity Sessions",
+    ...activityLines,
     "",
     "## Diet Insight",
     entry.dietInsight || "No AI nutrition summary yet.",
@@ -548,6 +565,10 @@ export function closeOpenPoopSessions(entry: DailyEntry, timestamp: string): voi
   entry.poopSessions = entry.poopSessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
 }
 
+export function closeOpenActivitySessions(entry: DailyEntry, timestamp: string): void {
+  entry.activitySessions = entry.activitySessions.map((session) => session.end === null ? { ...session, end: timestamp } : session);
+}
+
 export function getTrackedWorkMinutes(entry: DailyEntry): number {
   return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
 }
@@ -566,6 +587,10 @@ export function getTrackedBreakMinutes(entry: DailyEntry): number {
 
 export function getTrackedPoopMinutes(entry: DailyEntry): number {
   return getTrackedMinutes(entry.poopSessions);
+}
+
+export function getTrackedActivityMinutes(entry: DailyEntry, kind?: ActivitySessionKind): number {
+  return getTrackedMinutes(kind ? entry.activitySessions.filter((session) => session.kind === kind) : entry.activitySessions);
 }
 
 export function getTrackedPoopCount(entry: DailyEntry): number {

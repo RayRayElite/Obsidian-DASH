@@ -10,11 +10,16 @@ export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands",
 export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
 export const HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"] as const;
 export const INTAKE_KIND_OPTIONS = ["drink", "food", "medication", "supplement"] as const;
+export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "admin", "errand", "commute", "social", "chores"] as const;
+export const EXERCISE_INTENSITY_OPTIONS = ["easy", "moderate", "hard"] as const;
 
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
 export type HabitCadence = (typeof HABIT_CADENCE_OPTIONS)[number];
 export type IntakeKind = (typeof INTAKE_KIND_OPTIONS)[number];
+export type ActivitySessionKind = (typeof ACTIVITY_SESSION_KIND_OPTIONS)[number];
+export type ExerciseIntensity = (typeof EXERCISE_INTENSITY_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
+export type WeightGoalMode = "lose" | "maintain" | "gain";
 
 export interface HabitDefinition {
   id: string;
@@ -46,6 +51,20 @@ export interface WorkSession {
   end: string | null;
   tag: string;
   projectName: string;
+}
+
+export interface ActivitySession extends WorkSession {
+  kind: ActivitySessionKind;
+  label: string;
+}
+
+export interface ExerciseEntry {
+  label: string;
+  durationMinutes: number;
+  intensity: ExerciseIntensity;
+  note: string;
+  loggedAt: string;
+  linkedSessionStart: string;
 }
 
 export type AiApiKeySource = "settings" | "env";
@@ -241,6 +260,8 @@ export interface DailyEntry {
   foodLog: FoodEntry[];
   intakeLog: IntakeEntry[];
   symptomLog: SymptomEntry[];
+  bodyWeight: number | null;
+  exerciseLog: ExerciseEntry[];
   moodCheckIns: MoodCheckIn[];
   energyCheckIns: EnergyCheckIn[];
   anxietyCheckIns: AnxietyCheckIn[];
@@ -259,6 +280,7 @@ export interface DailyEntry {
   breakSessions: WorkSession[];
   breakMinutesOverride: number | null;
   poopSessions: WorkSession[];
+  activitySessions: ActivitySession[];
   poopQualityByStart: Record<string, string>;
   completedTasks: ArchivedTaskSnapshot[];
 }
@@ -352,6 +374,7 @@ export interface TimeAllocationInsights {
   relaxMinutes: number;
   breakMinutes: number;
   poopMinutes: number;
+  activityMinutes: number;
   trackedAwakeMinutes: number;
   awakeWindowMinutes: number | null;
   awakeUnknownMinutes: number | null;
@@ -388,6 +411,9 @@ export interface DashboardSettings {
   calendarLookaheadHours: number;
   calendarWarningHours: number;
   measurementSystem: MeasurementSystem;
+  weightGoalTarget: number;
+  weightGoalMode: WeightGoalMode;
+  weightGoalWeeklyRate: number;
   intakeQuickPresets: IntakeQuickPreset[];
   habitAutomations: HabitAutomation[];
   showUndoNotifications: boolean;
@@ -884,6 +910,9 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   measurementSystem: "imperial",
+  weightGoalTarget: 0,
+  weightGoalMode: "maintain",
+  weightGoalWeeklyRate: 0.5,
   intakeQuickPresets: [
     { id: "water-8-oz", kind: "drink", label: "Water", amount: 8, unit: "oz" },
     { id: "coffee-1-cup", kind: "drink", label: "Coffee", amount: 1, unit: "cup" }

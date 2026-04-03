@@ -3,6 +3,7 @@ import { App, ItemView, Modal, Notice, PluginSettingTab, Setting, WorkspaceLeaf,
 import type DailyDashboardPlugin from "../main";
 import {
   countHabitEventsInWindow,
+  formatActivitySessionLabel,
   formatHabitCadenceLabel,
   formatHabitWindowLabel,
   formatDateKey,
@@ -17,6 +18,7 @@ import {
 import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes } from "./dashboard-logs";
 import { splitMultilineInput } from "./dashboard-todo";
 import {
+  ACTIVITY_SESSION_KIND_OPTIONS,
   DEFAULT_SETTINGS,
   HABIT_CADENCE_OPTIONS,
   HABIT_WINDOW_OPTIONS,
@@ -29,11 +31,13 @@ import {
   type CardVisualOptions,
   type CreateProjectInput,
   type DayRepairInput,
+  type ActivitySessionKind,
   type DashboardFocusDisplayItem,
   type DashboardNotificationItem,
   type DashboardSettings,
   type DashboardTone,
   type DashboardViewMode,
+  type ExerciseIntensity,
   type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
@@ -55,6 +59,16 @@ import {
   type WeeklyAgendaDay,
   type WorkSession
 } from "./dashboard-types";
+
+const DASHBOARD_ACTIVITY_TRACKERS = [
+  { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
+  { kind: "study", label: "Study", icon: "book-open", tone: "focus" },
+  { kind: "admin", label: "Admin", icon: "briefcase-business", tone: "log" },
+  { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
+  { kind: "commute", label: "Commute", icon: "car-front", tone: "neutral" },
+  { kind: "social", label: "Social", icon: "users", tone: "focus" },
+  { kind: "chores", label: "Chores", icon: "house", tone: "log" }
+] satisfies Array<{ kind: ActivitySessionKind; label: string; icon: string; tone: DashboardTone }>;
 
 export class DailyDashboardView extends ItemView {
   private static readonly AUTO_REFRESH_MS = 30 * 60 * 1000;
@@ -467,9 +481,7 @@ export class DailyDashboardView extends ItemView {
       header.addEventListener("dragend", () => {
         this.draggedLayoutCardKey = null;
         card.removeClass("is-layout-dragging");
-        this.contentEl.querySelectorAll(".daily-dashboard-card.is-layout-drop-target").forEach((element) => {
-          element.removeClass("is-layout-drop-target");
-        });
+        this.clearDashboardCardDropTargets();
       });
       card.addEventListener("dragover", (event) => {
         if (!this.draggedLayoutCardKey || this.draggedLayoutCardKey === key) {
@@ -477,11 +489,15 @@ export class DailyDashboardView extends ItemView {
         }
 
         event.preventDefault();
-        card.addClass("is-layout-drop-target");
+        const rect = card.getBoundingClientRect();
+        const position: DashboardCardDropPosition = event.clientY < rect.top + (rect.height / 2) ? "before" : "after";
+        card.toggleClass("is-layout-drop-before", position === "before");
+        card.toggleClass("is-layout-drop-after", position === "after");
       });
       card.addEventListener("dragleave", (event) => {
         if (!(event.relatedTarget instanceof Node) || !card.contains(event.relatedTarget)) {
-          card.removeClass("is-layout-drop-target");
+          card.removeClass("is-layout-drop-before");
+          card.removeClass("is-layout-drop-after");
         }
       });
       card.addEventListener("drop", (event) => {
@@ -491,9 +507,11 @@ export class DailyDashboardView extends ItemView {
         }
 
         event.preventDefault();
-        card.removeClass("is-layout-drop-target");
+        const rect = card.getBoundingClientRect();
+        const position: DashboardCardDropPosition = event.clientY < rect.top + (rect.height / 2) ? "before" : "after";
+        this.clearDashboardCardDropTargets();
         this.suppressNextCardToggle = true;
-        void this.reorderDashboardCards(sourceKey, key);
+        void this.reorderDashboardCards(sourceKey, key, position);
       });
     }
 
@@ -501,7 +519,14 @@ export class DailyDashboardView extends ItemView {
     return card;
   }
 
-  private async reorderDashboardCards(sourceKey: string, targetKey: string): Promise<void> {
+  private clearDashboardCardDropTargets(): void {
+    this.contentEl.querySelectorAll(".daily-dashboard-card.is-layout-drop-before, .daily-dashboard-card.is-layout-drop-after").forEach((element) => {
+      element.removeClass("is-layout-drop-before");
+      element.removeClass("is-layout-drop-after");
+    });
+  }
+
+  private async reorderDashboardCards(sourceKey: string, targetKey: string, position: DashboardCardDropPosition): Promise<void> {
     const cards = sortDashboardLayoutCardsByOrder(getDashboardCardLayoutState());
     const sourceIndex = cards.findIndex((card) => card.key === sourceKey);
     const targetIndex = cards.findIndex((card) => card.key === targetKey);
@@ -511,8 +536,9 @@ export class DailyDashboardView extends ItemView {
 
     const nextCards = [...cards];
     const [movedCard] = nextCards.splice(sourceIndex, 1);
-    const insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
-    nextCards.splice(insertionIndex, 0, movedCard);
+    const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    const insertionIndex = position === "before" ? adjustedTargetIndex : adjustedTargetIndex + 1;
+    nextCards.splice(Math.max(0, Math.min(insertionIndex, nextCards.length)), 0, movedCard);
     setDashboardCardLayoutState(nextCards.map((card, index) => ({ ...card, order: index })));
     await this.render();
   }
@@ -898,6 +924,68 @@ export class DailyDashboardView extends ItemView {
         createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
       }
 
+      const sessionDeckCard = createCard(page, "Session Deck", "Keep timers visible and one click away so session tracking stays practical during the day.", {
+        icon: "timer-reset",
+        eyebrow: "Live",
+        tone: "capture",
+        tag: activeModeLabel
+      });
+      const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
+      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)?.tone ?? "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(sessionDeckSummary, `Tracked ${formatMinutesAsHours(trackedWorkMinutes + trackedNapMinutes + trackedRelaxMinutes + trackedBreakMinutes + trackedPoopMinutes + trackedActivityMinutes)}`, "capture");
+      if (activeSessionTag) {
+        createSemanticChip(sessionDeckSummary, activeSessionTag, this.getSessionTagTone(activeSessionTag));
+      }
+      const sessionDeckToolbar = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-toolbar" });
+      const sessionProjectSelect = sessionDeckToolbar.createEl("select", { cls: "daily-dashboard-input" });
+      const emptyProjectOption = sessionProjectSelect.createEl("option", { text: "Work project" });
+      emptyProjectOption.value = "";
+      projects.forEach((project) => {
+        const option = sessionProjectSelect.createEl("option", { text: project.name });
+        option.value = project.name;
+      });
+      if (!projects.some((project) => project.name === this.selectedSessionProjectName)) {
+        this.selectedSessionProjectName = "";
+      }
+      sessionProjectSelect.value = this.selectedSessionProjectName;
+      sessionProjectSelect.addEventListener("change", () => {
+        this.selectedSessionProjectName = sessionProjectSelect.value;
+      });
+      const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
+      createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
+      const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
+      const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>): void => {
+        const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
+        button.type = "button";
+        button.toggleClass("is-active", isActive);
+        button.addClass(`is-${tone}`);
+        const iconEl = button.createSpan({ cls: "daily-dashboard-session-button-icon" });
+        setIcon(iconEl, icon);
+        const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
+        copy.createEl("strong", { text: label });
+        copy.createEl("span", { cls: "daily-dashboard-row-meta", text: detail });
+        button.addEventListener("click", () => {
+          void onClick();
+        });
+      };
+      createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : "play", "capture", Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName));
+      createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "alarm-clock-off" : "bed-single", "alert", Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""));
+      createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
+      createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
+      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount} tracked • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
+      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
+        const activeTrackerSession = activeActivitySession?.kind === tracker.kind ? activeActivitySession : null;
+        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
+      });
+      if (tagSummary.length > 0) {
+        const sessionTagSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
+        tagSummary.forEach((item) => {
+          createSemanticChip(sessionTagSummary, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
+        });
+      }
+
       const weekBoardCard = createCard(page, "Week At A Glance", "", {
         icon: "layout-dashboard",
         eyebrow: "Week",
@@ -994,19 +1082,22 @@ export class DailyDashboardView extends ItemView {
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
+      const trackedActivityMinutes = this.plugin.getTrackedActivityMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
       const activeNapSession = todayEntry.napSessions.find((session) => session.end === null) ?? null;
       const activeRelaxSession = todayEntry.relaxSessions.find((session) => session.end === null) ?? null;
       const activeBreakSession = todayEntry.breakSessions.find((session) => session.end === null) ?? null;
       const activePoopSession = todayEntry.poopSessions.find((session) => session.end === null) ?? null;
-      const activeSessionTag = activeWorkSession?.tag || activeNapSession?.tag || activeRelaxSession?.tag || activeBreakSession?.tag || activePoopSession?.tag || "";
+      const activeActivitySession = this.plugin.getActiveActivitySession(undefined, todayEntry);
+      const activeSessionTag = activeWorkSession?.tag || activeNapSession?.tag || activeRelaxSession?.tag || activeBreakSession?.tag || activePoopSession?.tag || activeActivitySession?.tag || "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
         ...todayEntry.napSessions,
         ...todayEntry.relaxSessions,
         ...todayEntry.breakSessions,
-        ...todayEntry.poopSessions
+        ...todayEntry.poopSessions,
+        ...todayEntry.activitySessions
       ]);
       const activeModeLabel = activePoopSession
         ? "Pooping"
@@ -1018,6 +1109,8 @@ export class DailyDashboardView extends ItemView {
             ? "Working"
             : activeRelaxSession
               ? "Relaxing"
+              : activeActivitySession
+                ? activeActivitySession.label
               : dayState.status === "in-progress"
                 ? "Idle"
                 : "Offline";
@@ -1141,36 +1234,6 @@ export class DailyDashboardView extends ItemView {
           row.createEl("span", { text: diagnosis });
         });
       }
-
-      const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
-      const sessionDefaults = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
-      const workProjectSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
-      const noProjectOption = workProjectSelect.createEl("option", { text: "No project" });
-      noProjectOption.value = "";
-      projects.forEach((project) => {
-        const option = workProjectSelect.createEl("option", { text: project.name });
-        option.value = project.name;
-      });
-      if (!projects.some((project) => project.name === this.selectedSessionProjectName)) {
-        this.selectedSessionProjectName = "";
-      }
-      workProjectSelect.value = this.selectedSessionProjectName;
-      workProjectSelect.addEventListener("change", () => {
-        this.selectedSessionProjectName = workProjectSelect.value;
-      });
-      if (tagSummary.length > 0) {
-        const tagSummaryList = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item) => {
-          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
-        });
-      }
-      const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
-      createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
-      createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), false, activeNapSession ? "alarm-clock-off" : "bed-single");
-      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), false, activeRelaxSession ? "square" : "coffee");
-      createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), false, activeBreakSession ? "square" : "pause");
-      createButton(dayFlowActions, activePoopSession ? "Finish poop" : "Start poop", async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), false, activePoopSession ? "square" : "bath");
 
       const timelineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-live-strip", "Live timeline", "See the current logical day as a strip of tracked sessions so gaps and overlaps are obvious immediately.");
       this.renderTimelineStrip(
@@ -1591,7 +1654,7 @@ export class DailyDashboardView extends ItemView {
       }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
-      const stateCard = createGridCard("State, Symptoms And Friction", "Log mood, energy, symptoms, and friction while the day is still readable.", {
+      const stateCard = createGridCard("Vitals", "Log mood, energy, symptoms, and friction while the day is still readable.", {
         icon: "activity",
         eyebrow: "State",
         tone: "state",
@@ -2009,6 +2072,128 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
+      const weightUnitLabel = settings.measurementSystem === "metric" ? "kg" : "lb";
+      const weightHistory = this.plugin.getAllEntries().filter((entry) => typeof entry.bodyWeight === "number");
+      const latestLoggedWeight = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].bodyWeight : null;
+      const earliestWeightForTrend = weightHistory.length > 1 ? weightHistory[Math.max(0, weightHistory.length - 7)].bodyWeight : null;
+      const currentWeight = todayEntry.bodyWeight ?? latestLoggedWeight;
+      const targetWeight = settings.weightGoalTarget > 0 ? settings.weightGoalTarget : null;
+      const weightDelta = currentWeight !== null && targetWeight !== null ? Number((targetWeight - currentWeight).toFixed(1)) : null;
+      const weightTrendDelta = currentWeight !== null && earliestWeightForTrend !== null ? Number((currentWeight - earliestWeightForTrend).toFixed(1)) : null;
+      const todayExerciseMinutes = todayEntry.exerciseLog.reduce((sum, item) => sum + item.durationMinutes, 0) + this.plugin.getTrackedActivityMinutes(todayEntry, "exercise");
+      const latestExerciseSession = this.plugin.getActiveActivitySession("exercise", todayEntry);
+      const exerciseSuggestions: string[] = [];
+      if (todayExerciseMinutes > 0 && todayEntry.intakeLog.filter((item) => item.kind === "drink").length === 0) {
+        exerciseSuggestions.push("Hydration is missing relative to today's training load.");
+      }
+      if (todayExerciseMinutes >= 45 && todayEntry.intakeLog.filter((item) => item.kind === "food").length === 0) {
+        exerciseSuggestions.push("No recovery meal is logged after a meaningful training block.");
+      }
+      if (todayExerciseMinutes >= 30 && sleepInsights.debtMinutes >= 180) {
+        exerciseSuggestions.push("Sleep debt is high, so recovery work matters more than adding intensity.");
+      }
+      if (todayExerciseMinutes >= 30 && getHabitWeightedCompletion(todayEntry, this.plugin.getHabitDefinitions()).percentage < 55) {
+        exerciseSuggestions.push("Training happened, but the rest of the habit stack is lagging behind recovery-wise.");
+      }
+      if (weightDelta !== null) {
+        if (settings.weightGoalMode === "lose" && weightDelta < 0) {
+          exerciseSuggestions.push(`You are ${Math.abs(weightDelta)} ${weightUnitLabel} above the target. Favor consistent training plus logged intake over bigger swings.`);
+        } else if (settings.weightGoalMode === "gain" && weightDelta > 0) {
+          exerciseSuggestions.push(`You are ${weightDelta} ${weightUnitLabel} below the target. Recovery meals and consistent lifting matter more than random volume.`);
+        } else if (settings.weightGoalMode === "maintain" && Math.abs(weightDelta) >= 3) {
+          exerciseSuggestions.push(`Weight is drifting ${Math.abs(weightDelta)} ${weightUnitLabel} away from the maintenance target.`);
+        }
+      }
+      const exerciseCard = createGridCard("Exercise & Weight", "Keep training organized and line it up with body-weight goals, recovery, and intake signals.", {
+        icon: "dumbbell",
+        eyebrow: "Training",
+        tone: "health",
+        tag: latestExerciseSession ? "Live" : "Recovery"
+      });
+      const exerciseSummary = exerciseCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(exerciseSummary, `${formatMinutesAsHours(todayExerciseMinutes)} today`, todayExerciseMinutes >= 30 ? "done" : todayExerciseMinutes > 0 ? "health" : "neutral");
+      createSemanticChip(exerciseSummary, currentWeight !== null ? `${currentWeight} ${weightUnitLabel}` : "No weight logged", currentWeight !== null ? "focus" : "neutral");
+      createSemanticChip(exerciseSummary, targetWeight !== null ? `${settings.weightGoalMode} to ${targetWeight} ${weightUnitLabel}` : "No target", targetWeight !== null ? "capture" : "neutral");
+      createSemanticChip(exerciseSummary, weightTrendDelta !== null ? `${weightTrendDelta > 0 ? "+" : ""}${weightTrendDelta} ${weightUnitLabel} / 7 entries` : "No trend yet", weightTrendDelta !== null ? "log" : "neutral");
+      const exerciseGoalForm = exerciseCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const exerciseGoalRow = exerciseGoalForm.createDiv({ cls: "daily-dashboard-session-toolbar" });
+      const bodyWeightInput = exerciseGoalRow.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", step: "0.1", placeholder: `Today's ${weightUnitLabel}` } });
+      bodyWeightInput.value = todayEntry.bodyWeight !== null ? `${todayEntry.bodyWeight}` : "";
+      const targetWeightInput = exerciseGoalRow.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0", step: "0.1", placeholder: `Target ${weightUnitLabel}` } });
+      targetWeightInput.value = targetWeight !== null ? `${targetWeight}` : "";
+      const goalModeSelect = exerciseGoalRow.createEl("select", { cls: "daily-dashboard-input" });
+      [["lose", "Lose"], ["maintain", "Maintain"], ["gain", "Gain"]].forEach(([value, label]) => {
+        const option = goalModeSelect.createEl("option", { text: label });
+        option.value = value;
+      });
+      goalModeSelect.value = settings.weightGoalMode;
+      const weeklyRateInput = exerciseGoalRow.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0", step: "0.1", placeholder: `Weekly ${weightUnitLabel}` } });
+      weeklyRateInput.value = `${settings.weightGoalWeeklyRate}`;
+      const goalActions = exerciseCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(goalActions, "Save weight goal", async () => {
+        await this.plugin.updateBodyWeight(bodyWeightInput.value.trim().length > 0 ? Number(bodyWeightInput.value) : null);
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          weightGoalTarget: Number(targetWeightInput.value || 0),
+          weightGoalMode: goalModeSelect.value === "lose" || goalModeSelect.value === "gain" ? goalModeSelect.value : "maintain",
+          weightGoalWeeklyRate: Number(weeklyRateInput.value || DEFAULT_SETTINGS.weightGoalWeeklyRate)
+        });
+        await this.render();
+      }, false, "scale");
+      createButton(goalActions, latestExerciseSession ? "Stop live exercise" : "Start live exercise", async () => latestExerciseSession ? this.plugin.stopActivitySession("exercise") : this.plugin.startActivitySession("exercise"), latestExerciseSession !== null, latestExerciseSession ? "square" : "play");
+      const exerciseForm = exerciseCard.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const exerciseLabelInput = exerciseForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Lift, run, walk, mobility, intervals..." } });
+      const exerciseMeta = exerciseForm.createDiv({ cls: "daily-dashboard-session-toolbar" });
+      const exerciseDurationInput = exerciseMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", step: "5", value: latestExerciseSession ? `${Math.max(5, getMinutesBetween(latestExerciseSession.start, formatDateTimeKey(new Date())))}` : "30" } });
+      const exerciseIntensitySelect = exerciseMeta.createEl("select", { cls: "daily-dashboard-input" });
+      [["easy", "Easy"], ["moderate", "Moderate"], ["hard", "Hard"]].forEach(([value, label]) => {
+        const option = exerciseIntensitySelect.createEl("option", { text: label });
+        option.value = value;
+      });
+      const exerciseNoteInput = exerciseForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note about focus, volume, pain, or effort" } });
+      const exerciseActions = exerciseCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(exerciseActions, "Log exercise", async () => {
+        await this.plugin.addExerciseEntry(
+          exerciseLabelInput.value,
+          Number(exerciseDurationInput.value || 0),
+          (exerciseIntensitySelect.value === "easy" || exerciseIntensitySelect.value === "hard" ? exerciseIntensitySelect.value : "moderate") as ExerciseIntensity,
+          exerciseNoteInput.value,
+          latestExerciseSession?.start ?? ""
+        );
+        exerciseLabelInput.value = "";
+        exerciseDurationInput.value = latestExerciseSession ? `${Math.max(5, getMinutesBetween(latestExerciseSession.start, formatDateTimeKey(new Date())))}` : "30";
+        exerciseIntensitySelect.value = "moderate";
+        exerciseNoteInput.value = "";
+      }, false, "plus-circle");
+      const exerciseGuidance = exerciseCard.createDiv({ cls: "daily-dashboard-project-list" });
+      if (exerciseSuggestions.length === 0) {
+        exerciseGuidance.createDiv({ cls: "daily-dashboard-empty-state", text: "No immediate recovery warnings. Keep training and intake consistent enough to make the trend readable." });
+      } else {
+        exerciseSuggestions.forEach((item) => {
+          const row = exerciseGuidance.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("span", { text: item });
+        });
+      }
+      const exerciseList = exerciseCard.createDiv({ cls: "daily-dashboard-food-list" });
+      if (todayEntry.exerciseLog.length === 0) {
+        exerciseList.createDiv({ cls: "daily-dashboard-empty-state", text: "No exercise logged today." });
+      } else {
+        todayEntry.exerciseLog.slice(0, 10).forEach((item, index) => {
+          const row = exerciseList.createDiv({ cls: "daily-dashboard-food-row daily-dashboard-food-row--compact" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: item.label });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${formatMinutesAsHours(item.durationMinutes)} • ${item.intensity} • ${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
+          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
+          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: item.linkedSessionStart ? "Timed" : "Manual" });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
+          removeButton.type = "button";
+          setIcon(removeButton, "x");
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeExerciseEntry(index);
+          });
+        });
+      }
+
       const notesCard = createGridCard("Sleep And Notes", "Sleep, dreams, and daily notes in one recovery block.", {
         icon: "moon-star",
         eyebrow: "Recovery",
@@ -2228,7 +2413,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const heatmapCard = createGridCard("Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
+      const heatmapCard = createGridCard("Patterns", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
         icon: "grid-2x2",
         eyebrow: "Patterns",
         tone: "capture",
@@ -2854,7 +3039,8 @@ export class DailyDashboardView extends ItemView {
       ...entry.napSessions.map((session, index) => ({ id: `nap-${index}-${session.start}`, kind: "nap" as const, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag })),
       ...entry.relaxSessions.map((session, index) => ({ id: `relax-${index}-${session.start}`, kind: "relax" as const, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag })),
       ...entry.breakSessions.map((session, index) => ({ id: `break-${index}-${session.start}`, kind: "break" as const, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag })),
-      ...entry.poopSessions.map((session, index) => ({ id: `poop-${index}-${session.start}`, kind: "poop" as const, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag }))
+      ...entry.poopSessions.map((session, index) => ({ id: `poop-${index}-${session.start}`, kind: "poop" as const, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag })),
+      ...entry.activitySessions.map((session, index) => ({ id: `${session.kind}-${index}-${session.start}`, kind: session.kind, start: session.start, end: session.end ?? formatDateTimeKey(new Date()), tag: session.tag }))
     ].sort((left, right) => left.start.localeCompare(right.start));
   }
 
@@ -2886,7 +3072,8 @@ export class DailyDashboardView extends ItemView {
       { kind: "nap", label: "Nap", tone: "health" },
       { kind: "relax", label: "Relax", tone: "health" },
       { kind: "break", label: "Break", tone: "alert" },
-      { kind: "poop", label: "Poop", tone: "log" }
+      { kind: "poop", label: "Poop", tone: "log" },
+      ...DASHBOARD_ACTIVITY_TRACKERS
     ].forEach((item) => {
       if (parsedSessions.some((session) => session.kind === item.kind)) {
         createSemanticChip(legend, item.label, item.tone as DashboardTone);
@@ -2946,6 +3133,9 @@ export class DailyDashboardView extends ItemView {
         this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
         this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
         this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
+        DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
+          this.pushTimelineSessionResults(results, entry.date, tracker.kind, entry.activitySessions.filter((session) => session.kind === tracker.kind));
+        });
 
         entry.moodCheckIns.forEach((item, index) => {
           results.push({
@@ -3071,21 +3261,23 @@ export class DailyDashboardView extends ItemView {
       .sort((left, right) => right.sortKey.localeCompare(left.sortKey));
   }
 
-  private pushTimelineSessionResults(results: TimelineSearchResult[], date: string, kind: "work" | "nap" | "relax" | "break" | "poop", sessions: WorkSession[]): void {
+  private pushTimelineSessionResults(results: TimelineSearchResult[], date: string, kind: "work" | "nap" | "relax" | "break" | "poop" | ActivitySessionKind, sessions: WorkSession[]): void {
     sessions.forEach((session, index) => {
       const start = session.start.slice(11, 16);
       const endRaw = session.end ?? formatDateTimeKey(new Date());
       const end = endRaw.slice(11, 16);
       const minutes = Math.max(0, getMinutesBetween(session.start, endRaw));
+      const trackerMeta = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === kind);
+      const label = trackerMeta?.label ?? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
       results.push({
         id: `${kind}-${date}-${index}-${session.start}`,
         date,
         sortKey: session.start,
         kind: "session",
-        title: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} session`,
+        title: `${label} session`,
         summary: `${start}-${end} • ${formatMinutesAsHours(minutes)}`,
         detail: session.tag.trim() ? `Tag ${session.tag.trim()}` : "",
-        tone: kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health",
+        tone: trackerMeta?.tone ?? (kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health"),
         project: "",
         tag: session.tag.trim()
       });
@@ -4719,7 +4911,7 @@ export class LogicalDayRepairModal extends Modal {
 
 interface TimelineStripSession {
   id: string;
-  kind: RepairTimelineSessionKind;
+  kind: RepairTimelineSessionKind | ActivitySessionKind;
   start: string;
   end: string;
   tag: string;
@@ -5167,6 +5359,59 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             measurementSystem: value === "metric" ? "metric" : "imperial"
           });
         });
+      });
+
+    new Setting(containerEl)
+      .setName("Weight goal target")
+      .setDesc("Used by the exercise card to compare logged body weight against the current goal.")
+      .addText((text) => {
+        text
+          .setPlaceholder("0")
+          .setValue(`${settings.weightGoalTarget}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              weightGoalTarget: Math.max(Number(value.trim() || 0), 0)
+            });
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.step = "0.1";
+      });
+
+    new Setting(containerEl)
+      .setName("Weight goal mode")
+      .setDesc("Choose whether current training should bias toward losing, maintaining, or gaining weight.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("lose", "Lose");
+        dropdown.addOption("maintain", "Maintain");
+        dropdown.addOption("gain", "Gain");
+        dropdown.setValue(settings.weightGoalMode);
+        dropdown.onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            weightGoalMode: value === "lose" || value === "gain" ? value : "maintain"
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Weekly weight pace")
+      .setDesc("Target rate of change per week for the current goal, using the active measurement system.")
+      .addText((text) => {
+        text
+          .setPlaceholder(`${DEFAULT_SETTINGS.weightGoalWeeklyRate}`)
+          .setValue(`${settings.weightGoalWeeklyRate}`)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              weightGoalWeeklyRate: Math.max(Number(value.trim() || DEFAULT_SETTINGS.weightGoalWeeklyRate), 0)
+            });
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.step = "0.1";
+      });
 
     new Setting(containerEl)
       .setName("Show undo notifications")
@@ -5178,7 +5423,6 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             showUndoNotifications: value
           });
         });
-      });
       });
 
     containerEl.createEl("h3", { text: "AI" });
@@ -5529,6 +5773,8 @@ type DashboardLayoutCardBinding = {
   card: HTMLElement;
 };
 
+type DashboardCardDropPosition = "before" | "after";
+
 type DashboardLayoutModalOptions = {
   cards: DashboardLayoutCardState[];
   onApply: (cards: DashboardLayoutCardState[]) => Promise<void>;
@@ -5567,16 +5813,17 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
   { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
-  { key: "state-and-friction", title: "State, Symptoms And Friction", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
   { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 7, hidden: false, pinned: false, width: "default" },
-  { key: "timeline-search", title: "Timeline Search", order: 8, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 10, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 11, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 12, hidden: false, pinned: false, width: "default" }
+  { key: "exercise-weight", title: "Exercise & Weight", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Patterns", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -6483,8 +6730,11 @@ function getDashboardCardLayoutKey(title: string): string {
   if (normalized === "consumables") {
     return "food-log";
   }
-  if (normalized === "state-symptoms-and-friction") {
+  if (normalized === "state-symptoms-and-friction" || normalized === "vitals") {
     return "state-and-friction";
+  }
+  if (normalized === "patterns") {
+    return "heatmaps";
   }
   return normalized;
 }
