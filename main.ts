@@ -1673,6 +1673,10 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private getClockMinutes(value: string): number {
+    if (value instanceof Date) {
+      return (value.getHours() * 60) + value.getMinutes();
+    }
+
     const [hours, minutes] = value.split(":").map((part) => Number.parseInt(part, 10));
     return ((Number.isFinite(hours) ? hours : 0) * 60) + (Number.isFinite(minutes) ? minutes : 0);
   }
@@ -1795,7 +1799,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private getActiveRoutineNotifications(referenceDate: Date = new Date()): DashboardNotificationItem[] {
     const todayKey = formatDateKey(referenceDate);
-    const currentMinutes = this.getClockMinutes(this.formatTime(referenceDate));
+    const currentMinutes = this.getClockMinutes(referenceDate);
 
     return this.getRoutineTemplates()
       .filter((template) => {

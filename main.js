@@ -10470,6 +10470,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   getClockMinutes(value) {
+    if (value instanceof Date) {
+      return value.getHours() * 60 + value.getMinutes();
+    }
     const [hours, minutes] = value.split(":").map((part) => Number.parseInt(part, 10));
     return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
   }
@@ -10571,7 +10574,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getActiveRoutineNotifications(referenceDate = /* @__PURE__ */ new Date()) {
     const todayKey = formatDateKey(referenceDate);
-    const currentMinutes = this.getClockMinutes(this.formatTime(referenceDate));
+    const currentMinutes = this.getClockMinutes(referenceDate);
     return this.getRoutineTemplates().filter((template) => {
       const startMinutes = this.getClockMinutes(template.startTime);
       const endMinutes = this.getClockMinutes(template.endTime);
