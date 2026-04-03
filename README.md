@@ -1,6 +1,6 @@
-# Daily Dashboard
+# Obsidian DASH - Daily Action & System Hub
 
-Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instead of injecting a panel into the workspace chrome.
+Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as its own dashboard tab instead of injecting a panel into the workspace chrome.
 
 ## What It Does
 
@@ -138,7 +138,7 @@ Use that when you want better semantic note retrieval at relatively low cost.
 
 ## Storage Model
 
-Daily Dashboard is currently designed as a desktop-first plugin.
+Obsidian DASH - Daily Action & System Hub is currently designed as a desktop-first plugin.
 
 - Plugin state is stored in Obsidian plugin data.
 - The plugin also writes a readable markdown daily log for each tracked day under `Dashboard Logs/Daily` by default.

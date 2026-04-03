@@ -1042,7 +1042,8 @@ export function foodEntryToIntakeEntry(entry: FoodEntry): IntakeEntry {
     amount: entry.amount,
     unit: entry.amount === 1 ? "serving" : "servings",
     note: "",
-    loggedAt: entry.loggedAt
+    loggedAt: entry.loggedAt,
+    loggedAtHistory: entry.loggedAt ? [entry.loggedAt] : []
   };
 }
 
@@ -1057,6 +1058,10 @@ export function normalizeIntakeEntry(input: unknown): IntakeEntry | null {
     return null;
   }
 
+  const loggedAtHistory = Array.isArray(candidate.loggedAtHistory)
+    ? candidate.loggedAtHistory.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : (typeof candidate.loggedAt === "string" && candidate.loggedAt.trim().length > 0 ? [candidate.loggedAt] : []);
+
   return {
     kind: candidate.kind === "food" || candidate.kind === "medication" || candidate.kind === "supplement" || candidate.kind === "drink"
       ? candidate.kind
@@ -1067,7 +1072,8 @@ export function normalizeIntakeEntry(input: unknown): IntakeEntry | null {
     amount: clamp(Number(candidate.amount ?? 1), 0.1, 9999),
     unit: typeof candidate.unit === "string" && candidate.unit.trim().length > 0 ? candidate.unit.trim() : "serving",
     note: typeof candidate.note === "string" ? candidate.note.trim() : "",
-    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+    loggedAt: loggedAtHistory[loggedAtHistory.length - 1] ?? (typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""),
+    loggedAtHistory
   };
 }
 

@@ -33,7 +33,11 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
   const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
   const drinkEntries = entry.intakeLog.filter((item) => item.kind === "drink");
   const intakeLines = entry.intakeLog.length > 0
-    ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} • ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`)
+    ? entry.intakeLog.map((item) => {
+      const history = item.loggedAtHistory.length > 0 ? item.loggedAtHistory : (item.loggedAt ? [item.loggedAt] : []);
+      const historySummary = history.length > 1 ? ` • taps ${history.length} at ${history.map((value) => value.slice(11, 16)).join(", ")}` : "";
+      return `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} • ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}${historySummary}`;
+    })
     : ["- None logged"];
   const symptomLines = entry.symptomLog.length > 0
     ? entry.symptomLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.symptom} • ${item.severity}/5${item.note ? ` - ${item.note}` : ""}`)
@@ -124,7 +128,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `anxietyScore: ${entry.anxietyScore}`,
     "---",
     "",
-    `# Daily Dashboard Log - ${entry.date}`,
+    `# Obsidian DASH Log - ${entry.date}`,
     "",
     "## Day Flow",
     `- Day started: ${entry.dayStartedAt || "Not started"}`,
@@ -311,7 +315,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
     try {
       parsedEntry = JSON.parse(payloadLines.join("\n")) as Partial<DailyEntry>;
     } catch (error) {
-      console.warn("Daily Dashboard could not parse daily log payload", error);
+      console.warn("Obsidian DASH - Daily Action & System Hub could not parse daily log payload", error);
     }
   }
 

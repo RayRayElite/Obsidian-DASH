@@ -1,8 +1,8 @@
 {
-  "name": "obsidian-daily-dashboard",
+  "name": "obsidian-dash-daily-action-system-hub",
   "version": "0.3.0",
   "private": true,
-  "description": "Obsidian plugin with a dedicated dashboard tab for daily tracking, wallpaper styling, and automatic reports.",
+  "description": "Obsidian plugin for a daily action and system hub with execution tracking, AI context, wallpaper styling, and automatic reports.",
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "deploy": "node scripts/deploy-plugin.mjs",

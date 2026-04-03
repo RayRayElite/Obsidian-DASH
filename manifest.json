@@ -1,9 +1,9 @@
 {
   "id": "daily-dashboard",
-  "name": "Daily Dashboard",
+  "name": "Obsidian DASH - Daily Action & System Hub",
   "version": "0.3.0",
   "minAppVersion": "1.5.0",
-  "description": "Dashboard tab for daily habits, mood, reports, wallpaper styling, and automatic master todo archiving.",
+  "description": "Action and system hub for daily execution, tracking, reports, AI context, and automatic master todo archiving.",
   "author": "GitHub Copilot",
   "authorUrl": "https://github.com/features/copilot",
   "isDesktopOnly": false

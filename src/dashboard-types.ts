@@ -195,6 +195,7 @@ export interface IntakeEntry {
   unit: string;
   note: string;
   loggedAt: string;
+  loggedAtHistory: string[];
 }
 
 export interface IntakeQuickPreset {
@@ -861,7 +862,7 @@ export interface AiRelevantNote {
 }
 
 export const DEFAULT_SETTINGS: DashboardSettings = {
-  dashboardTitle: "Daily Dashboard",
+  dashboardTitle: "Obsidian DASH - Daily Action & System Hub",
   masterTodoPath: "Master Task Hub.md",
   projectNotesFolder: "Project Notes",
   dailyLogFolder: "Dashboard Logs/Daily",

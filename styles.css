@@ -1482,9 +1482,13 @@
   background: color-mix(in srgb, #79d7cb 68%, #6fb06a);
 }
 
-.daily-dashboard-timeline-segment.is-study,
+.daily-dashboard-timeline-segment.is-reading,
 .daily-dashboard-timeline-segment.is-social {
   background: color-mix(in srgb, #d9be6a 62%, var(--daily-dashboard-accent));
+}
+
+.daily-dashboard-timeline-segment.is-hobbies {
+  background: color-mix(in srgb, #464f54 70%, #161a1d);
 }
 
 .daily-dashboard-timeline-segment.is-gaming {
@@ -2224,8 +2228,12 @@ input.daily-dashboard-input {
   background: linear-gradient(180deg, rgba(232, 95, 108, 0.94), rgba(179, 48, 62, 0.9));
 }
 
-.daily-dashboard-week-segment.is-study {
+.daily-dashboard-week-segment.is-reading {
   background: linear-gradient(180deg, rgba(255, 118, 170, 0.94), rgba(198, 54, 113, 0.9));
+}
+
+.daily-dashboard-week-segment.is-hobbies {
+  background: linear-gradient(180deg, rgba(83, 92, 99, 0.95), rgba(27, 31, 35, 0.92));
 }
 
 .daily-dashboard-week-segment.is-gaming {
@@ -2332,8 +2340,12 @@ input.daily-dashboard-input {
   background: #d84f60;
 }
 
-.daily-dashboard-week-legend-dot.is-study {
+.daily-dashboard-week-legend-dot.is-reading {
   background: #e55d93;
+}
+
+.daily-dashboard-week-legend-dot.is-hobbies {
+  background: #353c41;
 }
 
 .daily-dashboard-week-legend-dot.is-gaming {

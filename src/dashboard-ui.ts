@@ -64,7 +64,7 @@ const DASHBOARD_ACTIVITY_TRACKERS = [
   { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
   { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
   { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
-  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "hobby" },
+  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "neutral" },
   { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
   { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
   { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
@@ -180,7 +180,7 @@ export class DailyDashboardView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Daily Dashboard";
+    return "Obsidian DASH - Daily Action & System Hub";
   }
 
   getIcon(): string {
@@ -5112,7 +5112,7 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     containerEl.empty();
     containerEl.addClass("daily-dashboard-settings-tab");
-    containerEl.createEl("h2", { text: "Daily Dashboard" });
+    containerEl.createEl("h2", { text: "Obsidian DASH - Daily Action & System Hub" });
 
     new Setting(containerEl)
       .setName("Setup wizard")

@@ -41,7 +41,7 @@ var HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "befor
 var HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"];
 var ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "reading", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores", "hobbies"];
 var DEFAULT_SETTINGS = {
-  dashboardTitle: "Daily Dashboard",
+  dashboardTitle: "Obsidian DASH - Daily Action & System Hub",
   masterTodoPath: "Master Task Hub.md",
   projectNotesFolder: "Project Notes",
   dailyLogFolder: "Dashboard Logs/Daily",
@@ -917,11 +917,12 @@ function foodEntryToIntakeEntry(entry) {
     amount: entry.amount,
     unit: entry.amount === 1 ? "serving" : "servings",
     note: "",
-    loggedAt: entry.loggedAt
+    loggedAt: entry.loggedAt,
+    loggedAtHistory: entry.loggedAt ? [entry.loggedAt] : []
   };
 }
 function normalizeIntakeEntry(input) {
-  var _a;
+  var _a, _b;
   if (!input || typeof input !== "object") {
     return null;
   }
@@ -930,13 +931,15 @@ function normalizeIntakeEntry(input) {
   if (!label) {
     return null;
   }
+  const loggedAtHistory = Array.isArray(candidate.loggedAtHistory) ? candidate.loggedAtHistory.filter((item) => typeof item === "string" && item.trim().length > 0) : typeof candidate.loggedAt === "string" && candidate.loggedAt.trim().length > 0 ? [candidate.loggedAt] : [];
   return {
     kind: candidate.kind === "food" || candidate.kind === "medication" || candidate.kind === "supplement" || candidate.kind === "drink" ? candidate.kind : candidate.kind === "caffeine" || candidate.kind === "water" ? "drink" : "drink",
     label,
     amount: clamp(Number((_a = candidate.amount) != null ? _a : 1), 0.1, 9999),
     unit: typeof candidate.unit === "string" && candidate.unit.trim().length > 0 ? candidate.unit.trim() : "serving",
     note: typeof candidate.note === "string" ? candidate.note.trim() : "",
-    loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+    loggedAt: (_b = loggedAtHistory[loggedAtHistory.length - 1]) != null ? _b : typeof candidate.loggedAt === "string" ? candidate.loggedAt : "",
+    loggedAtHistory
   };
 }
 function normalizeSymptomEntry(input) {
@@ -1167,7 +1170,11 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   }).map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
   const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
   const drinkEntries = entry.intakeLog.filter((item) => item.kind === "drink");
-  const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} \u2022 ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
+  const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item) => {
+    const history = item.loggedAtHistory.length > 0 ? item.loggedAtHistory : item.loggedAt ? [item.loggedAt] : [];
+    const historySummary = history.length > 1 ? ` \u2022 taps ${history.length} at ${history.map((value) => value.slice(11, 16)).join(", ")}` : "";
+    return `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} \u2022 ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}${historySummary}`;
+  }) : ["- None logged"];
   const symptomLines = entry.symptomLog.length > 0 ? entry.symptomLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.symptom} \u2022 ${item.severity}/5${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
   const exerciseLines = entry.exerciseLog.length > 0 ? entry.exerciseLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.label} \u2022 ${formatMinutesAsHours(item.durationMinutes)} \u2022 ${item.intensity}${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
   const activityLines = entry.activitySessions.length > 0 ? entry.activitySessions.map((session) => {
@@ -1231,7 +1238,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `anxietyScore: ${entry.anxietyScore}`,
     "---",
     "",
-    `# Daily Dashboard Log - ${entry.date}`,
+    `# Obsidian DASH Log - ${entry.date}`,
     "",
     "## Day Flow",
     `- Day started: ${entry.dayStartedAt || "Not started"}`,
@@ -1404,7 +1411,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
     try {
       parsedEntry = JSON.parse(payloadLines.join("\n"));
     } catch (error) {
-      console.warn("Daily Dashboard could not parse daily log payload", error);
+      console.warn("Obsidian DASH - Daily Action & System Hub could not parse daily log payload", error);
     }
   }
   const baseEntry = createEmptyEntry(date, habits);
@@ -3745,7 +3752,7 @@ var DASHBOARD_ACTIVITY_TRACKERS = [
   { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
   { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
   { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
-  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "hobby" },
+  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "neutral" },
   { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
   { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
   { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
@@ -3845,7 +3852,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     return VIEW_TYPE_DAILY_DASHBOARD;
   }
   getDisplayText() {
-    return "Daily Dashboard";
+    return "Obsidian DASH - Daily Action & System Hub";
   }
   getIcon() {
     return "check-square";
@@ -8087,7 +8094,7 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
     const settings = this.plugin.getSettings();
     containerEl.empty();
     containerEl.addClass("daily-dashboard-settings-tab");
-    containerEl.createEl("h2", { text: "Daily Dashboard" });
+    containerEl.createEl("h2", { text: "Obsidian DASH - Daily Action & System Hub" });
     new import_obsidian3.Setting(containerEl).setName("Setup wizard").setDesc("Launch the guided setup flow again if you want to re-walk the initial dashboard configuration.").addButton((button) => {
       button.setButtonText("Open wizard").setCta().onClick(() => {
         void this.plugin.openFirstRunSetupWizard();
@@ -9363,11 +9370,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     try {
       await this.initializeWorkspaceArtifacts();
     } catch (error) {
-      console.error("Daily Dashboard startup initialization failed", error);
-      new import_obsidian4.Notice(`Daily Dashboard could not prepare its startup files. ${this.getErrorMessage(error)}`);
+      console.error("Obsidian DASH - Daily Action & System Hub startup initialization failed", error);
+      new import_obsidian4.Notice(`Obsidian DASH - Daily Action & System Hub could not prepare its startup files. ${this.getErrorMessage(error)}`);
     }
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
-    this.addRibbonIcon("check-square", "Open Daily Dashboard", () => {
+    this.addRibbonIcon("check-square", "Open Obsidian DASH - Daily Action & System Hub", () => {
       void this.activateDashboardView();
     });
     this.addCommand({
@@ -9986,7 +9993,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       const envVar = this.data.settings.aiApiKeyEnvVar.trim() || "OPENAI_API_KEY";
       return `Set the ${envVar} environment variable before using AI features.`;
     }
-    return "Add your OpenAI API key in Daily Dashboard settings before using AI features.";
+    return "Add your OpenAI API key in Obsidian DASH - Daily Action & System Hub settings before using AI features.";
   }
   async getUpcomingCalendarSnapshot(now = /* @__PURE__ */ new Date()) {
     if (!this.data.settings.calendarEnabled) {
@@ -10852,15 +10859,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         return automationKey === habitId.toLowerCase() || automationKey === definitionLabelKey || automationSlug === habitId.toLowerCase() || automationSlug === definitionSlug;
       });
       if (automations.length > 0) {
-        const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
-          kind: automation.intakeKind,
-          label: automation.label,
-          amount: automation.amount,
-          unit: automation.unit,
-          note: automation.note,
-          loggedAt: timestamp
-        })));
-        entry.intakeLog = [...automatedEntries.reverse(), ...entry.intakeLog].slice(0, 40);
+        addedTimestamps.forEach((timestamp) => {
+          automations.forEach((automation) => {
+            this.upsertIntakeLogEntry(entry, {
+              kind: automation.intakeKind,
+              label: automation.label,
+              amount: automation.amount,
+              unit: automation.unit,
+              note: automation.note,
+              loggedAt: timestamp,
+              loggedAtHistory: [timestamp]
+            });
+          });
+        });
       }
     }
     await this.persistEntry(entry);
@@ -10930,6 +10941,25 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async addFoodEntry(value, amount = 1) {
     await this.addIntakeEntry("food", value, amount, amount === 1 ? "serving" : "servings");
   }
+  upsertIntakeLogEntry(entry, input) {
+    var _a;
+    const history = (input.loggedAtHistory && input.loggedAtHistory.length > 0 ? input.loggedAtHistory : [input.loggedAt]).filter((item) => item.trim().length > 0);
+    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === input.kind && item.label.trim().toLowerCase() === input.label.trim().toLowerCase() && item.unit.trim().toLowerCase() === input.unit.trim().toLowerCase() && item.note.trim() === input.note.trim());
+    if (existingIndex >= 0) {
+      const existingItem = entry.intakeLog[existingIndex];
+      existingItem.amount = clamp(existingItem.amount + input.amount, 0.1, 9999);
+      existingItem.loggedAtHistory = [...existingItem.loggedAtHistory, ...history].filter((value) => value.trim().length > 0);
+      existingItem.loggedAt = (_a = existingItem.loggedAtHistory[existingItem.loggedAtHistory.length - 1]) != null ? _a : input.loggedAt;
+      entry.intakeLog.splice(existingIndex, 1);
+      entry.intakeLog.unshift(existingItem);
+      entry.intakeLog = entry.intakeLog.slice(0, 40);
+      return;
+    }
+    entry.intakeLog = [{
+      ...input,
+      loggedAtHistory: history
+    }, ...entry.intakeLog].slice(0, 40);
+  }
   async addIntakeEntry(kind, label, amount = 1, unit = "serving", note = "") {
     const trimmedLabel = label.trim();
     if (!trimmedLabel) {
@@ -10941,25 +10971,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const normalizedUnit = unit.trim() || "serving";
     const normalizedNote = note.trim();
     const loggedAt = formatDateTimeKey(/* @__PURE__ */ new Date());
-    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === normalizedKind && item.label.trim().toLowerCase() === trimmedLabel.toLowerCase() && item.unit.trim().toLowerCase() === normalizedUnit.toLowerCase() && item.note.trim() === normalizedNote);
-    if (existingIndex >= 0) {
-      const existingItem = entry.intakeLog[existingIndex];
-      existingItem.amount = clamp(existingItem.amount + normalizedAmount, 0.1, 9999);
-      existingItem.loggedAt = loggedAt;
-      entry.intakeLog.splice(existingIndex, 1);
-      entry.intakeLog.unshift(existingItem);
-      entry.intakeLog = entry.intakeLog.slice(0, 40);
-      await this.persistEntry(entry);
-      return;
-    }
-    entry.intakeLog = [{
+    this.upsertIntakeLogEntry(entry, {
       kind: normalizedKind,
       label: trimmedLabel,
       amount: normalizedAmount,
       unit: normalizedUnit,
       note: normalizedNote,
-      loggedAt
-    }, ...entry.intakeLog].slice(0, 40);
+      loggedAt,
+      loggedAtHistory: [loggedAt]
+    });
     await this.persistEntry(entry);
   }
   async removeIntakeEntry(index) {
@@ -14167,7 +14187,7 @@ No entries available.`;
         events
       };
     } catch (error) {
-      console.error("Daily Dashboard could not parse calendar document payload", error);
+      console.error("Obsidian DASH - Daily Action & System Hub could not parse calendar document payload", error);
       return null;
     }
   }
@@ -14545,7 +14565,7 @@ ${body}`;
       try {
         listed = await adapter.list(folderPath);
       } catch (error) {
-        console.warn(`Daily Dashboard skipped wallpaper path ${folderPath}`, error);
+        console.warn(`Obsidian DASH - Daily Action & System Hub skipped wallpaper path ${folderPath}`, error);
         continue;
       }
       listed.files.forEach((filePath) => {

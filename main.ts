@@ -296,13 +296,13 @@ export default class DailyDashboardPlugin extends Plugin {
     try {
       await this.initializeWorkspaceArtifacts();
     } catch (error) {
-      console.error("Daily Dashboard startup initialization failed", error);
-      new Notice(`Daily Dashboard could not prepare its startup files. ${this.getErrorMessage(error)}`);
+      console.error("Obsidian DASH - Daily Action & System Hub startup initialization failed", error);
+      new Notice(`Obsidian DASH - Daily Action & System Hub could not prepare its startup files. ${this.getErrorMessage(error)}`);
     }
 
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
 
-    this.addRibbonIcon("check-square", "Open Daily Dashboard", () => {
+    this.addRibbonIcon("check-square", "Open Obsidian DASH - Daily Action & System Hub", () => {
       void this.activateDashboardView();
     });
 
@@ -1041,7 +1041,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return `Set the ${envVar} environment variable before using AI features.`;
     }
 
-    return "Add your OpenAI API key in Daily Dashboard settings before using AI features.";
+    return "Add your OpenAI API key in Obsidian DASH - Daily Action & System Hub settings before using AI features.";
   }
 
   async getUpcomingCalendarSnapshot(now: Date = new Date()): Promise<CalendarSnapshot> {
@@ -2131,15 +2131,19 @@ export default class DailyDashboardPlugin extends Plugin {
           || automationSlug === definitionSlug;
       });
       if (automations.length > 0) {
-        const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
-          kind: automation.intakeKind,
-          label: automation.label,
-          amount: automation.amount,
-          unit: automation.unit,
-          note: automation.note,
-          loggedAt: timestamp
-        })));
-        entry.intakeLog = [...automatedEntries.reverse(), ...entry.intakeLog].slice(0, 40);
+        addedTimestamps.forEach((timestamp) => {
+          automations.forEach((automation) => {
+            this.upsertIntakeLogEntry(entry, {
+              kind: automation.intakeKind,
+              label: automation.label,
+              amount: automation.amount,
+              unit: automation.unit,
+              note: automation.note,
+              loggedAt: timestamp,
+              loggedAtHistory: [timestamp]
+            });
+          });
+        });
       }
     }
     await this.persistEntry(entry);
@@ -2222,6 +2226,31 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.addIntakeEntry("food", value, amount, amount === 1 ? "serving" : "servings");
   }
 
+  private upsertIntakeLogEntry(entry: DailyEntry, input: Omit<IntakeEntry, "loggedAtHistory"> & { loggedAtHistory?: string[] }): void {
+    const history = (input.loggedAtHistory && input.loggedAtHistory.length > 0 ? input.loggedAtHistory : [input.loggedAt])
+      .filter((item) => item.trim().length > 0);
+    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === input.kind
+      && item.label.trim().toLowerCase() === input.label.trim().toLowerCase()
+      && item.unit.trim().toLowerCase() === input.unit.trim().toLowerCase()
+      && item.note.trim() === input.note.trim());
+
+    if (existingIndex >= 0) {
+      const existingItem = entry.intakeLog[existingIndex];
+      existingItem.amount = clamp(existingItem.amount + input.amount, 0.1, 9999);
+      existingItem.loggedAtHistory = [...existingItem.loggedAtHistory, ...history].filter((value) => value.trim().length > 0);
+      existingItem.loggedAt = existingItem.loggedAtHistory[existingItem.loggedAtHistory.length - 1] ?? input.loggedAt;
+      entry.intakeLog.splice(existingIndex, 1);
+      entry.intakeLog.unshift(existingItem);
+      entry.intakeLog = entry.intakeLog.slice(0, 40);
+      return;
+    }
+
+    entry.intakeLog = [{
+      ...input,
+      loggedAtHistory: history
+    }, ...entry.intakeLog].slice(0, 40);
+  }
+
   async addIntakeEntry(kind: string, label: string, amount = 1, unit = "serving", note = ""): Promise<void> {
     const trimmedLabel = label.trim();
     if (!trimmedLabel) {
@@ -2238,30 +2267,15 @@ export default class DailyDashboardPlugin extends Plugin {
     const normalizedUnit = unit.trim() || "serving";
     const normalizedNote = note.trim();
     const loggedAt = formatDateTimeKey(new Date());
-    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === normalizedKind
-      && item.label.trim().toLowerCase() === trimmedLabel.toLowerCase()
-      && item.unit.trim().toLowerCase() === normalizedUnit.toLowerCase()
-      && item.note.trim() === normalizedNote);
-
-    if (existingIndex >= 0) {
-      const existingItem = entry.intakeLog[existingIndex];
-      existingItem.amount = clamp(existingItem.amount + normalizedAmount, 0.1, 9999);
-      existingItem.loggedAt = loggedAt;
-      entry.intakeLog.splice(existingIndex, 1);
-      entry.intakeLog.unshift(existingItem);
-      entry.intakeLog = entry.intakeLog.slice(0, 40);
-      await this.persistEntry(entry);
-      return;
-    }
-
-    entry.intakeLog = [{
+    this.upsertIntakeLogEntry(entry, {
       kind: normalizedKind,
       label: trimmedLabel,
       amount: normalizedAmount,
       unit: normalizedUnit,
       note: normalizedNote,
-      loggedAt
-    }, ...entry.intakeLog].slice(0, 40);
+      loggedAt,
+      loggedAtHistory: [loggedAt]
+    });
     await this.persistEntry(entry);
   }
 
@@ -6124,7 +6138,7 @@ export default class DailyDashboardPlugin extends Plugin {
         events
       };
     } catch (error) {
-      console.error("Daily Dashboard could not parse calendar document payload", error);
+      console.error("Obsidian DASH - Daily Action & System Hub could not parse calendar document payload", error);
       return null;
     }
   }
@@ -6566,7 +6580,7 @@ export default class DailyDashboardPlugin extends Plugin {
       try {
         listed = await adapter.list(folderPath);
       } catch (error) {
-        console.warn(`Daily Dashboard skipped wallpaper path ${folderPath}`, error);
+        console.warn(`Obsidian DASH - Daily Action & System Hub skipped wallpaper path ${folderPath}`, error);
         continue;
       }
 
