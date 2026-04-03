@@ -119,6 +119,7 @@ export class DailyDashboardView extends ItemView {
   private notificationPanelOpen = false;
   private quickAddPanelOpen = false;
   private aiQuestionDraft = "";
+  private expandedHabitMissNotes = new Set<string>();
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
     if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
       return;
@@ -1336,13 +1337,11 @@ export class DailyDashboardView extends ItemView {
           createButton(controls, "Edit", async () => {
             new FocusCaptureModal(this.app, {
               mode: "capture",
-              todayHasTop3Capacity: true,
               availableProjectNames: projects.map((project) => project.name),
               initialText: item.text,
               initialProjectName: item.projectName,
               initialNotes: item.notes,
               initialEstimateMinutes: item.estimateMinutes,
-              initialDestination: "next-up",
               submitLabel: "Save queued item",
               onSubmit: async (payload) => {
                 await this.plugin.removeNextUpFocusItem(index);
@@ -1365,9 +1364,7 @@ export class DailyDashboardView extends ItemView {
       createButton(nextUpActions, "Add next up", async () => {
         new FocusCaptureModal(this.app, {
           mode: "capture",
-          todayHasTop3Capacity: true,
           availableProjectNames: projects.map((project) => project.name),
-          initialDestination: "next-up",
           submitLabel: "Queue item",
           onSubmit: async (payload) => {
             await this.plugin.addNextUpFocusItem(payload);
@@ -1682,6 +1679,8 @@ export class DailyDashboardView extends ItemView {
           row.removeClass("is-drop-target");
         });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+        const habitMissNoteValue = todayEntry.habitMissNotes[habit.id] ?? "";
+        const habitMissExpanded = this.expandedHabitMissNotes.has(habit.id);
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
@@ -1699,8 +1698,9 @@ export class DailyDashboardView extends ItemView {
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+        const countButtons = controls.createDiv({ cls: "daily-dashboard-habit-step-group" });
         for (let index = 1; index <= habit.target; index += 1) {
-          const stepButton = controls.createEl("button", {
+          const stepButton = countButtons.createEl("button", {
             cls: index <= currentValue ? "daily-dashboard-step is-active" : "daily-dashboard-step",
             text: `${index}`
           });
@@ -1710,7 +1710,23 @@ export class DailyDashboardView extends ItemView {
             void this.plugin.updateHabitValue(habit.id, nextValue);
           });
         }
-        const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
+        const utilityButtons = controls.createDiv({ cls: "daily-dashboard-habit-utility-group" });
+        if (currentValue < habit.target || habitMissNoteValue.length > 0 || habitMissExpanded) {
+          const missToggleButton = utilityButtons.createEl("button", {
+            cls: habitMissExpanded || habitMissNoteValue.length > 0 ? "daily-dashboard-ghost-button is-active" : "daily-dashboard-ghost-button",
+            text: habitMissNoteValue.length > 0 ? "Edit miss note" : "Why missed"
+          });
+          missToggleButton.type = "button";
+          missToggleButton.addEventListener("click", () => {
+            if (this.expandedHabitMissNotes.has(habit.id)) {
+              this.expandedHabitMissNotes.delete(habit.id);
+            } else {
+              this.expandedHabitMissNotes.add(habit.id);
+            }
+            void this.render();
+          });
+        }
+        const removeButton = utilityButtons.createEl("button", { cls: "daily-dashboard-remove-button" });
         removeButton.type = "button";
         removeButton.ariaLabel = `Remove habit ${habit.label}`;
         removeButton.title = `Remove ${habit.label}`;
@@ -1728,12 +1744,14 @@ export class DailyDashboardView extends ItemView {
             async () => this.plugin.restoreHabitDefinition(removedHabit, habitIndex)
           );
         });
-        if (currentValue < habit.target || (todayEntry.habitMissNotes[habit.id] ?? "").length > 0) {
-          const missNote = row.createEl("input", {
+        if (habitMissExpanded) {
+          const missNoteWrap = copy.createDiv({ cls: "daily-dashboard-habit-miss-note" });
+          missNoteWrap.createEl("span", { cls: "daily-dashboard-row-meta", text: "Why was this missed? Keep it short so repeated patterns stay easy to scan later." });
+          const missNote = missNoteWrap.createEl("input", {
             cls: "daily-dashboard-input",
             attr: { type: "text", placeholder: `Miss note for ${habit.label}` }
           });
-          missNote.value = todayEntry.habitMissNotes[habit.id] ?? "";
+          missNote.value = habitMissNoteValue;
           missNote.addEventListener("change", () => {
             void this.plugin.updateHabitMissNote(habit.id, missNote.value);
           });
@@ -2293,11 +2311,11 @@ export class DailyDashboardView extends ItemView {
       });
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
-      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
-      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
-      createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
-      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
+      createButton(aiQuestionActions, "Ask", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
+      createButton(aiQuestionActions, "Write notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Research", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
+      createButton(aiQuestionActions, "Ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+      createButton(aiQuestionActions, "Reindex", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
 
       const latestPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--latest" });
       latestPanel.createEl("strong", { text: "Latest output" });
@@ -2326,10 +2344,10 @@ export class DailyDashboardView extends ItemView {
           latestArtifact.suggestedFocus.forEach((item) => {
             const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
             row.createEl("span", { text: item });
-            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
+            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Queue next up" });
             addButton.type = "button";
             addButton.addEventListener("click", () => {
-              void this.plugin.addTodayFocusItem(item);
+              void this.plugin.addNextUpFocusItem({ text: item });
             });
           });
         }
@@ -6881,25 +6899,20 @@ function toClassSlug(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-type FocusCaptureDestination = "top3" | "next-up";
-
 type FocusCapturePayload = {
   text: string;
   projectName?: string;
   notes?: string;
   estimateMinutes?: number | null;
-  destination: FocusCaptureDestination;
 };
 
 type FocusCaptureModalOptions = {
   mode: "capture" | "edit";
-  todayHasTop3Capacity: boolean;
   availableProjectNames?: string[];
   initialText?: string;
   initialProjectName?: string;
   initialNotes?: string;
   initialEstimateMinutes?: number | null;
-  initialDestination?: FocusCaptureDestination;
   submitLabel?: string;
   onSubmit: (payload: FocusCapturePayload) => Promise<void>;
 };
@@ -6910,7 +6923,6 @@ export class FocusCaptureModal extends Modal {
   private projectNameValue: string;
   private notesValue: string;
   private estimateValue: string;
-  private destinationValue: FocusCaptureDestination;
 
   constructor(app: App, options: FocusCaptureModalOptions) {
     super(app);
@@ -6921,7 +6933,6 @@ export class FocusCaptureModal extends Modal {
     this.estimateValue = options.initialEstimateMinutes && options.initialEstimateMinutes > 0
       ? `${options.initialEstimateMinutes}`
       : "";
-    this.destinationValue = options.initialDestination ?? (options.todayHasTop3Capacity ? "top3" : "next-up");
   }
 
   onOpen(): void {
@@ -6980,24 +6991,6 @@ export class FocusCaptureModal extends Modal {
         });
       });
 
-    new Setting(contentEl)
-      .setName("Destination")
-      .setDesc(this.options.todayHasTop3Capacity
-        ? "Choose whether this belongs in the active Top 3 or the Next Up queue."
-        : "Top 3 is full, so new captures will usually go to Next Up.")
-      .addDropdown((dropdown) => {
-        dropdown.addOption("top3", "Top 3");
-        dropdown.addOption("next-up", "Next Up");
-        dropdown.setValue(this.destinationValue);
-        if (!this.options.todayHasTop3Capacity && this.destinationValue === "top3") {
-          dropdown.setValue("next-up");
-          this.destinationValue = "next-up";
-        }
-        dropdown.onChange((value) => {
-          this.destinationValue = value === "top3" ? "top3" : "next-up";
-        });
-      });
-
     contentEl.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes" });
     const notesArea = contentEl.createEl("textarea", { cls: "daily-dashboard-textarea" });
     notesArea.rows = 5;
@@ -7036,17 +7029,11 @@ export class FocusCaptureModal extends Modal {
       return;
     }
 
-    if (this.destinationValue === "top3" && !this.options.todayHasTop3Capacity && this.options.mode !== "edit") {
-      new Notice("Top 3 is full. Capture this into Next Up instead.");
-      return;
-    }
-
     await this.options.onSubmit({
       text,
       projectName: this.projectNameValue.trim(),
       notes: this.notesValue.trim(),
-      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes),
-      destination: this.destinationValue
+      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes)
     });
     this.close();
   }

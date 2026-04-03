@@ -1776,19 +1776,16 @@ export default class DailyDashboardPlugin extends Plugin {
   async carryForwardUnfinishedFocusItems(): Promise<number> {
     const entry = this.getTodayEntry();
     const candidates = this.getCarryForwardFocusCandidates(entry.date);
-    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item) => item.status !== "done").length);
-    const accepted = candidates.slice(0, availableSlots);
+    const accepted = candidates;
 
     if (accepted.length === 0) {
-      new Notice(candidates.length > 0
-        ? "No Top 3 slots are available for carry-forward items."
-        : "No unfinished Top 3 items were found on the previous logical day.");
+      new Notice("No unfinished active focus items were found on the previous logical day.");
       return 0;
     }
 
     entry.todayFocus = [...entry.todayFocus, ...accepted.map((text) => this.createTodayFocusItem(text))];
     await this.persistEntry(entry);
-    new Notice(`Carried forward ${accepted.length} unfinished Top 3 item${accepted.length === 1 ? "" : "s"}.`);
+    new Notice(`Carried forward ${accepted.length} unfinished focus item${accepted.length === 1 ? "" : "s"}.`);
     return accepted.length;
   }
 
@@ -5000,13 +4997,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const entry = this.getTodayEntry();
     if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new Notice("That Top 3 item is already listed.");
-      return;
-    }
-
-    const activeFocusCount = entry.todayFocus.filter((item) => item.status !== "done").length;
-    if (activeFocusCount >= 3) {
-      new Notice("Top 3 already has three active items. Finish or remove one before adding another.");
+      new Notice("That focus item is already listed.");
       return;
     }
 
@@ -5028,7 +5019,7 @@ export default class DailyDashboardPlugin extends Plugin {
   async updateTodayFocusItem(index: number, value: string): Promise<boolean> {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
-      new Notice("Top 3 item text is required.");
+      new Notice("Focus item text is required.");
       return false;
     }
 
@@ -5039,7 +5030,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new Notice("That Top 3 item is already listed.");
+      new Notice("That focus item is already listed.");
       return false;
     }
 
@@ -5056,7 +5047,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }): Promise<boolean> {
     const trimmedValue = updates.text.trim();
     if (!trimmedValue) {
-      new Notice("Top 3 item text is required.");
+      new Notice("Focus item text is required.");
       return false;
     }
 
@@ -5067,7 +5058,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new Notice("That Top 3 item is already listed.");
+      new Notice("That focus item is already listed.");
       return false;
     }
 
@@ -5102,7 +5093,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async startTodayFocusItem(index: number, tag = "", projectName = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
-      new Notice("Begin your logical day before tracking a Top 3 item.");
+      new Notice("Begin your logical day before tracking a focus item.");
       return;
     }
 
@@ -5204,7 +5195,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const alreadyExists = [...entry.todayFocus.map((item) => item.text), ...entry.nextUpFocus.map((item) => item.text)]
       .some((candidate) => candidate.toLowerCase() === text.toLowerCase());
     if (alreadyExists) {
-      new Notice("That item is already listed in Top 3 or Next Up.");
+      new Notice("That item is already listed in active focus or Next Up.");
       return false;
     }
 
@@ -5227,12 +5218,6 @@ export default class DailyDashboardPlugin extends Plugin {
     const entry = this.getTodayEntry();
     const item = entry.nextUpFocus[index];
     if (!item) {
-      return false;
-    }
-
-    const activeFocusCount = entry.todayFocus.filter((candidate) => candidate.status !== "done").length;
-    if (activeFocusCount >= 3) {
-      new Notice("Top 3 already has three active items. Finish or remove one before promoting Next Up.");
       return false;
     }
 
@@ -5681,8 +5666,8 @@ export default class DailyDashboardPlugin extends Plugin {
       systemPrompt: [
         "You are an operational planning assistant for a personal Obsidian dashboard.",
         "Prioritize practical decision support over motivational writing.",
-        "Respond in markdown with these headings: Situation Snapshot, Suggested Top 3, Recommended Sequencing, Risks And Drift, Energy And Recovery, Concrete Actions.",
-        "Under Suggested Top 3, provide exactly three concise bullet points that can stand alone as focus items.",
+        "Respond in markdown with these headings: Situation Snapshot, Suggested Focus, Recommended Sequencing, Risks And Drift, Energy And Recovery, Concrete Actions.",
+        "Under Suggested Focus, provide the few concise bullet points that best deserve active attention right now.",
         "End the markdown response with a final heading called Concrete Actions containing immediately executable bullet points.",
         "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
       ].join(" "),
@@ -7774,14 +7759,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const todoSnapshot = await this.getTodoSnapshot();
     new FocusCaptureModal(this.app, {
       mode: "capture",
-      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
       availableProjectNames: (todoSnapshot?.projects ?? []).map((project) => project.name),
       onSubmit: async (payload) => {
-        if (payload.destination === "top3") {
-          await this.addTodayFocusItemWithDetails(payload);
-          return;
-        }
-
         await this.addNextUpFocusItem(payload);
       }
     }).open();

@@ -5,7 +5,7 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 ## What It Does
 
 - tracks repeat daily habits with per-day counts, preferred completion windows, difficulty weights, and per-habit miss notes
-- stores mood, energy, wake quality, a richer execution stack with Top 3 focus items, notes, effort estimates, drag reordering, a Next Up queue, routine cues, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
+- stores mood, energy, wake quality, a richer execution stack with active focus items, notes, effort estimates, drag reordering, a Next Up queue, routine cues, calendar blocking actions, suggested focus candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery, and keeps bowel tracking inside Vitals instead of a separate day-flow block
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, link them to a tracked project, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
@@ -121,7 +121,7 @@ The logical day repair flow still includes a manual timeline editor for work, na
 
 Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live inside the `Action Queue` card and as real notifications instead of taking over a separate Day Flow section.
 
-The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3 candidates that blend near-term calendar items, overdue or due-soon tasks, repeating work, and stale projects. Top 3 rows, Next Up rows, and suggestion rows can all create a quick work block directly in the calendar using the estimate on the item when one exists.
+The planning layer now also includes a `Weekly Agenda` card plus suggested focus candidates that blend near-term calendar items, overdue or due-soon tasks, repeating work, and stale projects. Active focus rows, Next Up rows, and suggestion rows can all create a quick work block directly in the calendar using the estimate on the item when one exists.
 
 Calendar events can now span multiple days and carry event-specific prep and travel lead times, so reminders can surface before the actual start instead of only at the start itself. Daily log notes also render richer calendar context with linked project references pulled from event notes plus persistent follow-through checkboxes for each day’s events.
 
@@ -141,7 +141,7 @@ Dashboard layout is now user-tunable instead of fixed. The lower-right hero cont
 
 The same hero control cluster now exposes a shortcut help button, and the dashboard responds to fixed `Alt+Shift` shortcuts for the most common actions while focus is inside the view: cycling view mode, opening the layout editor, creating a project, refreshing the dashboard, opening quick focus capture, launching Ask AI, syncing repeating tasks, and opening the shortcut sheet itself.
 
-Destructive dashboard actions now also get a visible in-view undo rail. When you remove a Top 3 item, Next Up item, habit definition, food entry, intake entry, or symptom entry from the dashboard, a temporary undo banner appears near the top of the view so the last removal can be restored without digging into plugin data or rebuilding the row by hand.
+Destructive dashboard actions now also get a visible in-view undo rail. When you remove an active focus item, Next Up item, habit definition, food entry, intake entry, or symptom entry from the dashboard, a temporary undo banner appears near the top of the view so the last removal can be restored without digging into plugin data or rebuilding the row by hand.
 
 The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard, and the notice popups can optionally play a configurable sound.
 

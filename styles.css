@@ -1240,6 +1240,28 @@
   gap: 8px;
 }
 
+.daily-dashboard-habit-controls {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.daily-dashboard-habit-step-group,
+.daily-dashboard-habit-utility-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.daily-dashboard-habit-step-group {
+  flex-wrap: nowrap;
+}
+
+.daily-dashboard-habit-miss-note {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .daily-dashboard-dayflow-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -2528,15 +2550,24 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-ai-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .daily-dashboard-ai-actions .daily-dashboard-secondary-button,
 .daily-dashboard-ai-actions .daily-dashboard-primary-button {
-  min-height: 36px;
+  min-height: 40px;
   padding: 7px 10px;
   font-size: 0.8rem;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  border-radius: 16px;
+}
+
+.daily-dashboard-ai-actions .daily-dashboard-button-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .daily-dashboard-ai-metric-grid {
@@ -2796,6 +2827,15 @@ input.daily-dashboard-input {
   .daily-dashboard-food-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .daily-dashboard-habit-controls {
+    justify-content: space-between;
+  }
+
+  .daily-dashboard-habit-step-group,
+  .daily-dashboard-habit-utility-group {
+    flex-wrap: wrap;
   }
 
   .daily-dashboard-focus-controls {

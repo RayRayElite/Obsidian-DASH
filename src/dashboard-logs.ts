@@ -264,7 +264,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "## Habit Miss Notes",
     ...(habitMissNoteLines.length > 0 ? habitMissNoteLines : ["- No miss notes yet."]),
     "",
-    "## Top 3 For Today",
+    "## Active Focus",
     ...focusLines,
     "",
     "## Next Up",
@@ -386,7 +386,7 @@ export function parseDailyLogEntry(content: string, fallbackDate: string, habits
       continue;
     }
 
-    if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
+    if ((currentSection === "top 3 for today" || currentSection === "active focus") && trimmed.startsWith("- ")) {
       focusLines.push(trimmed.slice(2).trim());
       continue;
     }

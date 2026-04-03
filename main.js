@@ -1410,7 +1410,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "## Habit Miss Notes",
     ...habitMissNoteLines.length > 0 ? habitMissNoteLines : ["- No miss notes yet."],
     "",
-    "## Top 3 For Today",
+    "## Active Focus",
     ...focusLines,
     "",
     "## Next Up",
@@ -1525,7 +1525,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
       currentSection = trimmed.slice(3).trim().toLowerCase();
       continue;
     }
-    if (currentSection === "top 3 for today" && trimmed.startsWith("- ")) {
+    if ((currentSection === "top 3 for today" || currentSection === "active focus") && trimmed.startsWith("- ")) {
       focusLines.push(trimmed.slice(2).trim());
       continue;
     }
@@ -4418,6 +4418,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.notificationPanelOpen = false;
     this.quickAddPanelOpen = false;
     this.aiQuestionDraft = "";
+    this.expandedHabitMissNotes = /* @__PURE__ */ new Set();
     this.handleDocumentPointerDown = (event) => {
       if (!this.notificationPanelOpen && !this.quickAddPanelOpen || !this.contentEl.isConnected) {
         return;
@@ -5485,13 +5486,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           createButton(controls, "Edit", async () => {
             new FocusCaptureModal(this.app, {
               mode: "capture",
-              todayHasTop3Capacity: true,
               availableProjectNames: projects.map((project) => project.name),
               initialText: item.text,
               initialProjectName: item.projectName,
               initialNotes: item.notes,
               initialEstimateMinutes: item.estimateMinutes,
-              initialDestination: "next-up",
               submitLabel: "Save queued item",
               onSubmit: async (payload) => {
                 await this.plugin.removeNextUpFocusItem(index);
@@ -5514,9 +5513,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(nextUpActions, "Add next up", async () => {
         new FocusCaptureModal(this.app, {
           mode: "capture",
-          todayHasTop3Capacity: true,
           availableProjectNames: projects.map((project) => project.name),
-          initialDestination: "next-up",
           submitLabel: "Queue item",
           onSubmit: async (payload) => {
             await this.plugin.addNextUpFocusItem(payload);
@@ -5777,7 +5774,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       habitsCard.createEl("span", { cls: "daily-dashboard-row-meta", text: "Drag habit rows to reorder the stack." });
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit, habitIndex) => {
-        var _a2, _b2, _c2, _d2;
+        var _a2, _b2, _c2;
         const currentValue = (_a2 = todayEntry.habits[habit.id]) != null ? _a2 : 0;
         const habitEvents = (_b2 = todayEntry.habitEvents[habit.id]) != null ? _b2 : [];
         const inWindowCount = countHabitEventsInWindow(habitEvents, habit.completionWindow);
@@ -5822,6 +5819,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           row.removeClass("is-drop-target");
         });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+        const habitMissNoteValue = (_c2 = todayEntry.habitMissNotes[habit.id]) != null ? _c2 : "";
+        const habitMissExpanded = this.expandedHabitMissNotes.has(habit.id);
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
@@ -5839,8 +5838,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+        const countButtons = controls.createDiv({ cls: "daily-dashboard-habit-step-group" });
         for (let index = 1; index <= habit.target; index += 1) {
-          const stepButton = controls.createEl("button", {
+          const stepButton = countButtons.createEl("button", {
             cls: index <= currentValue ? "daily-dashboard-step is-active" : "daily-dashboard-step",
             text: `${index}`
           });
@@ -5850,7 +5850,23 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             void this.plugin.updateHabitValue(habit.id, nextValue);
           });
         }
-        const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
+        const utilityButtons = controls.createDiv({ cls: "daily-dashboard-habit-utility-group" });
+        if (currentValue < habit.target || habitMissNoteValue.length > 0 || habitMissExpanded) {
+          const missToggleButton = utilityButtons.createEl("button", {
+            cls: habitMissExpanded || habitMissNoteValue.length > 0 ? "daily-dashboard-ghost-button is-active" : "daily-dashboard-ghost-button",
+            text: habitMissNoteValue.length > 0 ? "Edit miss note" : "Why missed"
+          });
+          missToggleButton.type = "button";
+          missToggleButton.addEventListener("click", () => {
+            if (this.expandedHabitMissNotes.has(habit.id)) {
+              this.expandedHabitMissNotes.delete(habit.id);
+            } else {
+              this.expandedHabitMissNotes.add(habit.id);
+            }
+            void this.render();
+          });
+        }
+        const removeButton = utilityButtons.createEl("button", { cls: "daily-dashboard-remove-button" });
         removeButton.type = "button";
         removeButton.ariaLabel = `Remove habit ${habit.label}`;
         removeButton.title = `Remove ${habit.label}`;
@@ -5867,12 +5883,14 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             async () => this.plugin.restoreHabitDefinition(removedHabit, habitIndex)
           );
         });
-        if (currentValue < habit.target || ((_c2 = todayEntry.habitMissNotes[habit.id]) != null ? _c2 : "").length > 0) {
-          const missNote = row.createEl("input", {
+        if (habitMissExpanded) {
+          const missNoteWrap = copy.createDiv({ cls: "daily-dashboard-habit-miss-note" });
+          missNoteWrap.createEl("span", { cls: "daily-dashboard-row-meta", text: "Why was this missed? Keep it short so repeated patterns stay easy to scan later." });
+          const missNote = missNoteWrap.createEl("input", {
             cls: "daily-dashboard-input",
             attr: { type: "text", placeholder: `Miss note for ${habit.label}` }
           });
-          missNote.value = (_d2 = todayEntry.habitMissNotes[habit.id]) != null ? _d2 : "";
+          missNote.value = habitMissNoteValue;
           missNote.addEventListener("change", () => {
             void this.plugin.updateHabitMissNote(habit.id, missNote.value);
           });
@@ -6422,11 +6440,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       });
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
-      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
-      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
-      createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
-      createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
+      createButton(aiQuestionActions, "Ask", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
+      createButton(aiQuestionActions, "Write notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Research", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
+      createButton(aiQuestionActions, "Ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
+      createButton(aiQuestionActions, "Reindex", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
       const latestPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--latest" });
       latestPanel.createEl("strong", { text: "Latest output" });
       if (aiStatus.latestArtifact) {
@@ -6451,10 +6469,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           latestArtifact.suggestedFocus.forEach((item) => {
             const row = suggestionList.createDiv({ cls: "daily-dashboard-project-row" });
             row.createEl("span", { text: item });
-            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add to Top 3" });
+            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Queue next up" });
             addButton.type = "button";
             addButton.addEventListener("click", () => {
-              void this.plugin.addTodayFocusItem(item);
+              void this.plugin.addNextUpFocusItem({ text: item });
             });
           });
         }
@@ -9804,14 +9822,13 @@ function toClassSlug(value) {
 }
 var FocusCaptureModal = class extends import_obsidian3.Modal {
   constructor(app, options) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     super(app);
     this.options = options;
     this.textValue = (_a = options.initialText) != null ? _a : "";
     this.projectNameValue = (_b = options.initialProjectName) != null ? _b : "";
     this.notesValue = (_c = options.initialNotes) != null ? _c : "";
     this.estimateValue = options.initialEstimateMinutes && options.initialEstimateMinutes > 0 ? `${options.initialEstimateMinutes}` : "";
-    this.destinationValue = (_d = options.initialDestination) != null ? _d : options.todayHasTop3Capacity ? "top3" : "next-up";
   }
   onOpen() {
     this.setTitle(this.options.mode === "edit" ? "Edit Focus Item" : "Quick Capture Focus Item");
@@ -9848,18 +9865,6 @@ var FocusCaptureModal = class extends import_obsidian3.Modal {
         this.projectNameValue = value;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("Destination").setDesc(this.options.todayHasTop3Capacity ? "Choose whether this belongs in the active Top 3 or the Next Up queue." : "Top 3 is full, so new captures will usually go to Next Up.").addDropdown((dropdown) => {
-      dropdown.addOption("top3", "Top 3");
-      dropdown.addOption("next-up", "Next Up");
-      dropdown.setValue(this.destinationValue);
-      if (!this.options.todayHasTop3Capacity && this.destinationValue === "top3") {
-        dropdown.setValue("next-up");
-        this.destinationValue = "next-up";
-      }
-      dropdown.onChange((value) => {
-        this.destinationValue = value === "top3" ? "top3" : "next-up";
-      });
-    });
     contentEl.createEl("label", { cls: "daily-dashboard-field-label", text: "Notes" });
     const notesArea = contentEl.createEl("textarea", { cls: "daily-dashboard-textarea" });
     notesArea.rows = 5;
@@ -9892,16 +9897,11 @@ var FocusCaptureModal = class extends import_obsidian3.Modal {
       new import_obsidian3.Notice("Estimate minutes must be a valid non-negative number.");
       return;
     }
-    if (this.destinationValue === "top3" && !this.options.todayHasTop3Capacity && this.options.mode !== "edit") {
-      new import_obsidian3.Notice("Top 3 is full. Capture this into Next Up instead.");
-      return;
-    }
     await this.options.onSubmit({
       text,
       projectName: this.projectNameValue.trim(),
       notes: this.notesValue.trim(),
-      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes),
-      destination: this.destinationValue
+      estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes)
     });
     this.close();
   }
@@ -11409,15 +11409,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async carryForwardUnfinishedFocusItems() {
     const entry = this.getTodayEntry();
     const candidates = this.getCarryForwardFocusCandidates(entry.date);
-    const availableSlots = Math.max(0, 3 - entry.todayFocus.filter((item) => item.status !== "done").length);
-    const accepted = candidates.slice(0, availableSlots);
+    const accepted = candidates;
     if (accepted.length === 0) {
-      new import_obsidian4.Notice(candidates.length > 0 ? "No Top 3 slots are available for carry-forward items." : "No unfinished Top 3 items were found on the previous logical day.");
+      new import_obsidian4.Notice("No unfinished active focus items were found on the previous logical day.");
       return 0;
     }
     entry.todayFocus = [...entry.todayFocus, ...accepted.map((text) => this.createTodayFocusItem(text))];
     await this.persistEntry(entry);
-    new import_obsidian4.Notice(`Carried forward ${accepted.length} unfinished Top 3 item${accepted.length === 1 ? "" : "s"}.`);
+    new import_obsidian4.Notice(`Carried forward ${accepted.length} unfinished focus item${accepted.length === 1 ? "" : "s"}.`);
     return accepted.length;
   }
   toCalendarReminderItem(event) {
@@ -14093,12 +14092,7 @@ ${context}`, resolvedModel);
     }
     const entry = this.getTodayEntry();
     if (entry.todayFocus.some((item) => item.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new import_obsidian4.Notice("That Top 3 item is already listed.");
-      return;
-    }
-    const activeFocusCount = entry.todayFocus.filter((item) => item.status !== "done").length;
-    if (activeFocusCount >= 3) {
-      new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before adding another.");
+      new import_obsidian4.Notice("That focus item is already listed.");
       return;
     }
     const normalizedEstimate = Number.isFinite(Number(input.estimateMinutes)) ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440) : null;
@@ -14116,7 +14110,7 @@ ${context}`, resolvedModel);
   async updateTodayFocusItem(index, value) {
     const trimmedValue = value.trim();
     if (!trimmedValue) {
-      new import_obsidian4.Notice("Top 3 item text is required.");
+      new import_obsidian4.Notice("Focus item text is required.");
       return false;
     }
     const entry = this.getTodayEntry();
@@ -14125,7 +14119,7 @@ ${context}`, resolvedModel);
       return false;
     }
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new import_obsidian4.Notice("That Top 3 item is already listed.");
+      new import_obsidian4.Notice("That focus item is already listed.");
       return false;
     }
     item.text = trimmedValue;
@@ -14135,7 +14129,7 @@ ${context}`, resolvedModel);
   async updateTodayFocusDetails(index, updates) {
     const trimmedValue = updates.text.trim();
     if (!trimmedValue) {
-      new import_obsidian4.Notice("Top 3 item text is required.");
+      new import_obsidian4.Notice("Focus item text is required.");
       return false;
     }
     const entry = this.getTodayEntry();
@@ -14144,7 +14138,7 @@ ${context}`, resolvedModel);
       return false;
     }
     if (entry.todayFocus.some((candidate, candidateIndex) => candidateIndex !== index && candidate.text.toLowerCase() === trimmedValue.toLowerCase())) {
-      new import_obsidian4.Notice("That Top 3 item is already listed.");
+      new import_obsidian4.Notice("That focus item is already listed.");
       return false;
     }
     item.text = trimmedValue;
@@ -14172,7 +14166,7 @@ ${context}`, resolvedModel);
   }
   async startTodayFocusItem(index, tag = "", projectName = "") {
     if (this.data.dayState.status !== "in-progress") {
-      new import_obsidian4.Notice("Begin your logical day before tracking a Top 3 item.");
+      new import_obsidian4.Notice("Begin your logical day before tracking a focus item.");
       return;
     }
     const entry = this.getTodayEntry();
@@ -14255,7 +14249,7 @@ ${context}`, resolvedModel);
     const entry = this.getTodayEntry();
     const alreadyExists = [...entry.todayFocus.map((item) => item.text), ...entry.nextUpFocus.map((item) => item.text)].some((candidate) => candidate.toLowerCase() === text.toLowerCase());
     if (alreadyExists) {
-      new import_obsidian4.Notice("That item is already listed in Top 3 or Next Up.");
+      new import_obsidian4.Notice("That item is already listed in active focus or Next Up.");
       return false;
     }
     entry.nextUpFocus = [
@@ -14274,11 +14268,6 @@ ${context}`, resolvedModel);
     const entry = this.getTodayEntry();
     const item = entry.nextUpFocus[index];
     if (!item) {
-      return false;
-    }
-    const activeFocusCount = entry.todayFocus.filter((candidate) => candidate.status !== "done").length;
-    if (activeFocusCount >= 3) {
-      new import_obsidian4.Notice("Top 3 already has three active items. Finish or remove one before promoting Next Up.");
       return false;
     }
     if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
@@ -14659,8 +14648,8 @@ ${context}`, resolvedModel);
       systemPrompt: [
         "You are an operational planning assistant for a personal Obsidian dashboard.",
         "Prioritize practical decision support over motivational writing.",
-        "Respond in markdown with these headings: Situation Snapshot, Suggested Top 3, Recommended Sequencing, Risks And Drift, Energy And Recovery, Concrete Actions.",
-        "Under Suggested Top 3, provide exactly three concise bullet points that can stand alone as focus items.",
+        "Respond in markdown with these headings: Situation Snapshot, Suggested Focus, Recommended Sequencing, Risks And Drift, Energy And Recovery, Concrete Actions.",
+        "Under Suggested Focus, provide the few concise bullet points that best deserve active attention right now.",
         "End the markdown response with a final heading called Concrete Actions containing immediately executable bullet points.",
         "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
       ].join(" "),
@@ -16421,13 +16410,8 @@ No entries available.`;
     const todoSnapshot = await this.getTodoSnapshot();
     new FocusCaptureModal(this.app, {
       mode: "capture",
-      todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
       availableProjectNames: ((_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : []).map((project) => project.name),
       onSubmit: async (payload) => {
-        if (payload.destination === "top3") {
-          await this.addTodayFocusItemWithDetails(payload);
-          return;
-        }
         await this.addNextUpFocusItem(payload);
       }
     }).open();
