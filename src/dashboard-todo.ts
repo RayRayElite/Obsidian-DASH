@@ -726,6 +726,9 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     "### Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "### Assets",
+    "- Add durable links, files, commands, or supporting assets here.",
+    "",
     "### Reference",
     "- Add durable support material here.",
     "",
@@ -784,8 +787,17 @@ export function renderProjectNoteTemplate(input: CreateProjectInput, masterTodoP
     "## Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "## Change Log",
+    `- ${today}: Project note created from the DASH project template.`,
+    "",
+    "## Known Terms / Definitions",
+    "- Capture domain-specific language, abbreviations, or naming rules here.",
+    "",
     "## References",
     "- Add links, assets, commands, or supporting notes here.",
+    "",
+    "## Useful Links / Assets",
+    "- Add durable repo links, docs, screenshots, files, or commands here.",
     ""
   ].join("\n");
 }
@@ -841,11 +853,20 @@ export function renderExistingProjectNoteTemplate(project: ExistingProjectDefini
     "## Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "## Change Log",
+    `- ${today}: Existing project note template generated from the Master Task Hub.`,
+    "",
+    "## Known Terms / Definitions",
+    "- Capture domain-specific language, abbreviations, or naming rules here.",
+    "",
     "## Review History",
     `- ${today}: Existing project note template generated from the Master Task Hub.`,
     "",
     "## References",
     "- Move or summarize project-specific references here over time.",
+    "",
+    "## Useful Links / Assets",
+    "- Add durable repo links, docs, screenshots, files, or commands here.",
     ""
   ].join("\n");
 }
@@ -1567,7 +1588,9 @@ function selectProjectNextAction(input: {
   ].find((task) => !task.isBlocked && task.text.trim().length > 0);
 
   if (actionableTask) {
-    return actionableTask.text;
+    return actionableTask.minimumStep.trim().length > 0
+      ? `${actionableTask.minimumStep} (minimum step for ${actionableTask.text})`
+      : actionableTask.text;
   }
 
   if (input.waitingOn.trim().length > 0) {
@@ -1671,6 +1694,11 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
   const dueDate = extractTaskAnnotation(rawText, "due");
   const blockedReason = extractTaskAnnotation(rawText, "blocked");
   const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
+  const effort = extractTaskAnnotation(rawText, "effort");
+  const energy = extractTaskAnnotation(rawText, "energy");
+  const executionContext = extractTaskAnnotation(rawText, "context") || extractTaskAnnotation(rawText, "mode");
+  const trigger = extractTaskAnnotation(rawText, "trigger");
+  const minimumStep = extractTaskAnnotation(rawText, "minimum-step") || extractTaskAnnotation(rawText, "minimum step") || extractTaskAnnotation(rawText, "min-step") || extractTaskAnnotation(rawText, "min step");
   const text = stripTaskAnnotations(rawText).trim();
   const todayKey = formatDateKey(now);
   const isOverdue = Boolean(dueDate && dueDate < todayKey);
@@ -1683,6 +1711,11 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
     dueDate: dueDate ?? "",
     blockedReason: blockedReason ?? "",
     unblockDate: unblockDate ?? "",
+    effort: effort ?? "",
+    energy: energy ?? "",
+    executionContext: executionContext ?? "",
+    trigger: trigger ?? "",
+    minimumStep: minimumStep ?? "",
     isBlocked: Boolean(blockedReason),
     isDueSoon,
     isOverdue
@@ -1697,7 +1730,7 @@ function extractTaskAnnotation(value: string, key: string): string | null {
 
 function stripTaskAnnotations(value: string): string {
   return value
-    .replace(/\s*\[(?:due|blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[(?:due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

@@ -19,7 +19,7 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 - includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a hero-bar notification popover for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
-Task lines in the master hub can now include lightweight annotations such as `[due: 2026-04-05]`, `[blocked: waiting on API key]`, and `[unblock: 2026-04-08]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, and blocked work in project health, cleanup alerts, promotion flows, and AI context.
+Task lines in the master hub can now include lightweight annotations such as `[due: 2026-04-05]`, `[blocked: waiting on API key]`, `[unblock: 2026-04-08]`, `[effort: 30m]`, `[energy: low]`, `[context: admin]`, `[trigger: after call with vendor]`, and `[minimum-step: draft the first outline]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, and blocked work in project health, cleanup alerts, promotion flows, AI context, and suggested next actions.
 
 ## Master Todo Workflow
 
@@ -33,7 +33,7 @@ The stronger recommended document structure now lives in `Documentation/Document
 
 This gives you a work-history trail without deleting finished tasks.
 
-The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Parking Lot`, `### Repeating`, `### Risks`, `### Constraints`, `### Decisions`, `### Reference`, and `### Completed Archive` sections. New projects created by the plugin now include the core operational structure automatically, and the extra sections are recommended once a project has enough context to justify them.
+The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Parking Lot`, `### Repeating`, `### Risks`, `### Constraints`, `### Decisions`, `### Assets`, `### Reference`, and `### Completed Archive` sections. New projects created by the plugin now include the core operational structure automatically, and project-note templates also include `Change Log`, `Known Terms / Definitions`, and `Useful Links / Assets` sections so durable context has a stable home.
 
 The `### Repeating` section now supports richer repeat rules instead of only simple weekly-style tags. Plain bullets and checklist bullets both work. Supported forms include `- Pay rent [repeat: monthly day 1]`, `- Water plants [repeat: every 10 days]`, `- Review backlog [repeat: every 2 weeks]`, `- Gym session [repeat: weekdays mon wed fri]`, plus the legacy short forms like `[daily]`, `[weekly]`, `[monthly]`, and `[yearly]`. When synced into the master hub, due repeating tasks are inserted into `### Next` with their normalized repeat tag preserved.
 

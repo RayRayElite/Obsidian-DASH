@@ -638,6 +638,11 @@ export interface TodoTaskSummary {
   dueDate: string;
   blockedReason: string;
   unblockDate: string;
+  effort: string;
+  energy: string;
+  executionContext: string;
+  trigger: string;
+  minimumStep: string;
   isBlocked: boolean;
   isDueSoon: boolean;
   isOverdue: boolean;

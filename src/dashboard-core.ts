@@ -28,6 +28,7 @@ import {
   type TodayFocusItem,
   type TodayFocusStatus,
   type RoutineTemplateDefinition,
+  type TodoTaskSummary,
   type TodoSnapshot,
   type WeightGoalMode
 } from "./dashboard-types";
@@ -868,6 +869,17 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
     return "Master task hub snapshot unavailable.";
   }
 
+  const formatTaskSummary = (task: TodoTaskSummary): string => [
+    task.text,
+    task.dueDate ? `due ${task.dueDate}` : "",
+    task.blockedReason ? `blocked ${task.blockedReason}` : "",
+    task.executionContext ? `context ${task.executionContext}` : "",
+    task.effort ? `effort ${task.effort}` : "",
+    task.energy ? `energy ${task.energy}` : "",
+    task.trigger ? `trigger ${task.trigger}` : "",
+    task.minimumStep ? `minimum step ${task.minimumStep}` : ""
+  ].filter((value) => value.length > 0).join(" • ");
+
   const topProjects = [...snapshot.projects]
     .sort((left, right) => right.healthScore - left.healthScore)
     .slice(0, 8)
@@ -875,8 +887,8 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
       `- ${project.name}: health ${project.healthScore}, ${project.openCount} open, ${project.archivedCount} archived, trend ${project.trend}`,
       project.focus ? `  focus: ${project.focus}` : "",
       project.staleDays !== null ? `  stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
-      project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => `${task.text}${task.dueDate ? ` (${task.dueDate})` : ""}`).join(" | ")}` : "",
-      project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "",
+      project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => formatTaskSummary(task)).join(" | ")}` : "",
+      project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => formatTaskSummary(task)).join(" | ")}` : "",
       project.nowTasks.length > 0 ? `  now: ${project.nowTasks.slice(0, 3).join(" | ")}` : "",
       project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
     ].filter((line) => line.length > 0).join("\n"));
@@ -886,9 +898,9 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
 
   const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item.summary}`);
   const dueLines = snapshot.overdueTasks.slice(0, 6)
-    .map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
+    .map((item) => `- ${item.project}: ${formatTaskSummary(item.task)}`);
   const blockedLines = snapshot.blockedTasks.slice(0, 6)
-    .map((item) => `- ${item.project}: ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`);
+    .map((item) => `- ${item.project}: ${formatTaskSummary(item.task)}`);
 
   return [
     `Open tasks: ${snapshot.totalOpen}`,

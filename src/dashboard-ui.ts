@@ -610,7 +610,12 @@ export class DailyDashboardView extends ItemView {
       task.dueDate ? `Due ${task.dueDate}` : "",
       task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
       task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
-      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
     ].filter((value) => value.length > 0).join(" • ");
   }
 
@@ -4821,7 +4826,12 @@ export class PromoteTaskModal extends Modal {
       task.dueDate ? `Due ${task.dueDate}` : "",
       task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
       task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
-      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
     ].filter((value) => value.length > 0).join(" • ");
   }
 
@@ -4851,6 +4861,11 @@ export class PromoteTaskModal extends Modal {
         dueDate: "",
         blockedReason: "",
         unblockDate: "",
+        effort: "",
+        energy: "",
+        executionContext: "",
+        trigger: "",
+        minimumStep: "",
         isBlocked: false,
         isDueSoon: false,
         isOverdue: false

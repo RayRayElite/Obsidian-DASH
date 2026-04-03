@@ -789,19 +789,29 @@ function renderTodoSnapshotForAi(snapshot) {
   if (!snapshot) {
     return "Master task hub snapshot unavailable.";
   }
+  const formatTaskSummary = (task) => [
+    task.text,
+    task.dueDate ? `due ${task.dueDate}` : "",
+    task.blockedReason ? `blocked ${task.blockedReason}` : "",
+    task.executionContext ? `context ${task.executionContext}` : "",
+    task.effort ? `effort ${task.effort}` : "",
+    task.energy ? `energy ${task.energy}` : "",
+    task.trigger ? `trigger ${task.trigger}` : "",
+    task.minimumStep ? `minimum step ${task.minimumStep}` : ""
+  ].filter((value) => value.length > 0).join(" \u2022 ");
   const topProjects = [...snapshot.projects].sort((left, right) => right.healthScore - left.healthScore).slice(0, 8).map((project) => [
     `- ${project.name}: health ${project.healthScore}, ${project.openCount} open, ${project.archivedCount} archived, trend ${project.trend}`,
     project.focus ? `  focus: ${project.focus}` : "",
     project.staleDays !== null ? `  stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
-    project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => `${task.text}${task.dueDate ? ` (${task.dueDate})` : ""}`).join(" | ")}` : "",
-    project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "",
+    project.overdueTasks.length > 0 ? `  overdue: ${project.overdueTasks.slice(0, 2).map((task) => formatTaskSummary(task)).join(" | ")}` : "",
+    project.blockedTasks.length > 0 ? `  blocked: ${project.blockedTasks.slice(0, 2).map((task) => formatTaskSummary(task)).join(" | ")}` : "",
     project.nowTasks.length > 0 ? `  now: ${project.nowTasks.slice(0, 3).join(" | ")}` : "",
     project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
   ].filter((line) => line.length > 0).join("\n"));
   const staleLines = snapshot.staleProjects.slice(0, 6).map((project) => `- ${project.name}: ${project.staleDays} stale days`);
   const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item.summary}`);
-  const dueLines = snapshot.overdueTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
-  const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`);
+  const dueLines = snapshot.overdueTasks.slice(0, 6).map((item) => `- ${item.project}: ${formatTaskSummary(item.task)}`);
+  const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item) => `- ${item.project}: ${formatTaskSummary(item.task)}`);
   return [
     `Open tasks: ${snapshot.totalOpen}`,
     `Archived tasks: ${snapshot.totalArchived}`,
@@ -3198,6 +3208,9 @@ function renderTodoProjectBlock(input) {
     "### Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "### Assets",
+    "- Add durable links, files, commands, or supporting assets here.",
+    "",
     "### Reference",
     "- Add durable support material here.",
     "",
@@ -3255,8 +3268,17 @@ function renderProjectNoteTemplate(input, masterTodoPath) {
     "## Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "## Change Log",
+    `- ${today}: Project note created from the DASH project template.`,
+    "",
+    "## Known Terms / Definitions",
+    "- Capture domain-specific language, abbreviations, or naming rules here.",
+    "",
     "## References",
     "- Add links, assets, commands, or supporting notes here.",
+    "",
+    "## Useful Links / Assets",
+    "- Add durable repo links, docs, screenshots, files, or commands here.",
     ""
   ].join("\n");
 }
@@ -3310,11 +3332,20 @@ function renderExistingProjectNoteTemplate(project, masterTodoPath) {
     "## Decisions",
     "- Capture important decisions and tradeoffs here.",
     "",
+    "## Change Log",
+    `- ${today}: Existing project note template generated from the Master Task Hub.`,
+    "",
+    "## Known Terms / Definitions",
+    "- Capture domain-specific language, abbreviations, or naming rules here.",
+    "",
     "## Review History",
     `- ${today}: Existing project note template generated from the Master Task Hub.`,
     "",
     "## References",
     "- Move or summarize project-specific references here over time.",
+    "",
+    "## Useful Links / Assets",
+    "- Add durable repo links, docs, screenshots, files, or commands here.",
     ""
   ].join("\n");
 }
@@ -3929,7 +3960,7 @@ function selectProjectNextAction(input) {
     ...input.laterTaskDetails
   ].find((task) => !task.isBlocked && task.text.trim().length > 0);
   if (actionableTask) {
-    return actionableTask.text;
+    return actionableTask.minimumStep.trim().length > 0 ? `${actionableTask.minimumStep} (minimum step for ${actionableTask.text})` : actionableTask.text;
   }
   if (input.waitingOn.trim().length > 0) {
     return `Follow up on waiting on: ${input.waitingOn.trim()}`;
@@ -4007,6 +4038,11 @@ function parseTodoTaskSummary(rawText, section, now) {
   const dueDate = extractTaskAnnotation(rawText, "due");
   const blockedReason = extractTaskAnnotation(rawText, "blocked");
   const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
+  const effort = extractTaskAnnotation(rawText, "effort");
+  const energy = extractTaskAnnotation(rawText, "energy");
+  const executionContext = extractTaskAnnotation(rawText, "context") || extractTaskAnnotation(rawText, "mode");
+  const trigger = extractTaskAnnotation(rawText, "trigger");
+  const minimumStep = extractTaskAnnotation(rawText, "minimum-step") || extractTaskAnnotation(rawText, "minimum step") || extractTaskAnnotation(rawText, "min-step") || extractTaskAnnotation(rawText, "min step");
   const text = stripTaskAnnotations(rawText).trim();
   const todayKey = formatDateKey(now);
   const isOverdue = Boolean(dueDate && dueDate < todayKey);
@@ -4018,6 +4054,11 @@ function parseTodoTaskSummary(rawText, section, now) {
     dueDate: dueDate != null ? dueDate : "",
     blockedReason: blockedReason != null ? blockedReason : "",
     unblockDate: unblockDate != null ? unblockDate : "",
+    effort: effort != null ? effort : "",
+    energy: energy != null ? energy : "",
+    executionContext: executionContext != null ? executionContext : "",
+    trigger: trigger != null ? trigger : "",
+    minimumStep: minimumStep != null ? minimumStep : "",
     isBlocked: Boolean(blockedReason),
     isDueSoon,
     isOverdue
@@ -4030,7 +4071,7 @@ function extractTaskAnnotation(value, key) {
   return ((_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) || null;
 }
 function stripTaskAnnotations(value) {
-  return value.replace(/\s*\[(?:due|blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
+  return value.replace(/\s*\[(?:due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 function appendLinesToSection(content, sectionName, linesToAppend) {
   const lines = content.split(/\r?\n/);
@@ -4535,7 +4576,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       task.dueDate ? `Due ${task.dueDate}` : "",
       task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
       task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
-      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
     ].filter((value) => value.length > 0).join(" \u2022 ");
   }
   getSessionTagSummary(sessions) {
@@ -8128,7 +8174,12 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
       task.dueDate ? `Due ${task.dueDate}` : "",
       task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
       task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
-      task.unblockDate ? `Unblock ${task.unblockDate}` : ""
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
     ].filter((value) => value.length > 0).join(" \u2022 ");
   }
   onOpen() {
@@ -8156,6 +8207,11 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
         dueDate: "",
         blockedReason: "",
         unblockDate: "",
+        effort: "",
+        energy: "",
+        executionContext: "",
+        trigger: "",
+        minimumStep: "",
         isBlocked: false,
         isDueSoon: false,
         isOverdue: false
@@ -10378,10 +10434,17 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     ((_b = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _b : []).slice(0, 3).forEach(({ project, task }) => {
       pushCandidate({
         id: `overdue-${project}-${task.text}`,
-        text: task.text,
-        notes: `Project ${project}${task.blockedReason ? ` \u2022 blocked ${task.blockedReason}` : ""}`,
+        text: task.minimumStep.trim().length > 0 ? task.minimumStep : task.text,
+        notes: [
+          `Project ${project}`,
+          task.text !== task.minimumStep && task.minimumStep.trim().length > 0 ? `from ${task.text}` : "",
+          task.executionContext ? `context ${task.executionContext}` : "",
+          task.effort ? `effort ${task.effort}` : "",
+          task.energy ? `energy ${task.energy}` : "",
+          task.blockedReason ? `blocked ${task.blockedReason}` : ""
+        ].filter((value) => value.length > 0).join(" \u2022 "),
         estimateMinutes: null,
-        reason: `Overdue in ${project}${task.dueDate ? ` \u2022 due ${task.dueDate}` : ""}`,
+        reason: `Overdue in ${project}${task.dueDate ? ` \u2022 due ${task.dueDate}` : ""}${task.trigger ? ` \u2022 trigger ${task.trigger}` : ""}`,
         source: "overdue"
       });
     });
@@ -10391,10 +10454,16 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }).slice(0, 3).forEach(({ project, task }) => {
       pushCandidate({
         id: `repeating-${project.name}-${task.text}`,
-        text: task.text,
-        notes: `Project ${project.name} \u2022 repeating task`,
+        text: task.minimumStep.trim().length > 0 ? task.minimumStep : task.text,
+        notes: [
+          `Project ${project.name}`,
+          "repeating task",
+          task.executionContext ? `context ${task.executionContext}` : "",
+          task.effort ? `effort ${task.effort}` : "",
+          task.energy ? `energy ${task.energy}` : ""
+        ].filter((value) => value.length > 0).join(" \u2022 "),
         estimateMinutes: null,
-        reason: `Due repeating task${project.staleDays !== null ? ` \u2022 ${project.staleDays}d stale` : ""}`,
+        reason: `Due repeating task${project.staleDays !== null ? ` \u2022 ${project.staleDays}d stale` : ""}${task.trigger ? ` \u2022 trigger ${task.trigger}` : ""}`,
         source: "repeating"
       });
     });
@@ -10406,20 +10475,31 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
       pushCandidate({
         id: `stale-${project.name}-${task.text}`,
-        text: task.text,
-        notes: `Project ${project.name} \u2022 ${project.focus || "stale project"}`,
+        text: task.minimumStep.trim().length > 0 ? task.minimumStep : task.text,
+        notes: [
+          `Project ${project.name}`,
+          project.focus || "stale project",
+          task.executionContext ? `context ${task.executionContext}` : "",
+          task.effort ? `effort ${task.effort}` : "",
+          task.energy ? `energy ${task.energy}` : ""
+        ].filter((value) => value.length > 0).join(" \u2022 "),
         estimateMinutes: null,
-        reason: `${project.name} has been stale for ${(_d2 = project.staleDays) != null ? _d2 : 0}d`,
+        reason: `${project.name} has been stale for ${(_d2 = project.staleDays) != null ? _d2 : 0}d${task.trigger ? ` \u2022 trigger ${task.trigger}` : ""}`,
         source: "stale"
       });
     });
     ((_e = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _e : []).slice(0, 2).forEach(({ project, task }) => {
       pushCandidate({
         id: `due-soon-${project}-${task.text}`,
-        text: task.text,
-        notes: `Project ${project}`,
+        text: task.minimumStep.trim().length > 0 ? task.minimumStep : task.text,
+        notes: [
+          `Project ${project}`,
+          task.executionContext ? `context ${task.executionContext}` : "",
+          task.effort ? `effort ${task.effort}` : "",
+          task.energy ? `energy ${task.energy}` : ""
+        ].filter((value) => value.length > 0).join(" \u2022 "),
         estimateMinutes: null,
-        reason: `Due soon${task.dueDate ? ` \u2022 ${task.dueDate}` : ""}`,
+        reason: `Due soon${task.dueDate ? ` \u2022 ${task.dueDate}` : ""}${task.trigger ? ` \u2022 trigger ${task.trigger}` : ""}`,
         source: "due-soon"
       });
     });
@@ -13572,8 +13652,8 @@ No entries available.`;
       "",
       "## Review By Exception",
       ...option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."],
-      option.overdueTasks.length > 0 ? `- Overdue work needs attention: ${option.overdueTasks.slice(0, 3).map((task) => task.text).join(" | ")}` : "- No overdue tasks are currently attached to this project.",
-      option.blockedTasks.length > 0 ? `- Blocked work: ${option.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "- No blocked tasks are currently attached to this project.",
+      option.overdueTasks.length > 0 ? `- Overdue work needs attention: ${option.overdueTasks.slice(0, 3).map((task) => [task.text, task.minimumStep ? `minimum step ${task.minimumStep}` : "", task.executionContext ? `context ${task.executionContext}` : ""].filter((value) => value.length > 0).join(" \u2022 ")).join(" | ")}` : "- No overdue tasks are currently attached to this project.",
+      option.blockedTasks.length > 0 ? `- Blocked work: ${option.blockedTasks.slice(0, 3).map((task) => [task.text, task.blockedReason ? `blocked ${task.blockedReason}` : "", task.minimumStep ? `minimum step ${task.minimumStep}` : ""].filter((value) => value.length > 0).join(" \u2022 ")).join(" | ")}` : "- No blocked tasks are currently attached to this project.",
       option.duplicateTasks.length > 0 ? `- Duplicate pressure: ${option.duplicateTasks.slice(0, 3).join(" | ")}` : "- No duplicate-task pressure recorded.",
       option.emptySections.length > 0 ? `- Empty sections: ${option.emptySections.join(", ")}` : "- No empty sections stood out.",
       "",
@@ -13599,8 +13679,8 @@ No entries available.`;
       `- Blocked: ${option.blockedTasks.length}`,
       `- Duplicate tasks: ${option.duplicateTasks.length}`,
       `- Empty sections: ${option.emptySections.length > 0 ? option.emptySections.join(", ") : "None"}`,
-      ...option.overdueTasks.length > 0 ? option.overdueTasks.slice(0, 5).map((task) => `- Overdue task: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : [],
-      ...option.dueSoonTasks.length > 0 ? option.dueSoonTasks.slice(0, 5).map((task) => `- Due soon: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : [],
+      ...option.overdueTasks.length > 0 ? option.overdueTasks.slice(0, 5).map((task) => `- Overdue task: ${[task.text, task.dueDate ? `due ${task.dueDate}` : "", task.executionContext ? `context ${task.executionContext}` : "", task.minimumStep ? `minimum step ${task.minimumStep}` : ""].filter((value) => value.length > 0).join(" \u2022 ")}`) : [],
+      ...option.dueSoonTasks.length > 0 ? option.dueSoonTasks.slice(0, 5).map((task) => `- Due soon: ${[task.text, task.dueDate ? `due ${task.dueDate}` : "", task.executionContext ? `context ${task.executionContext}` : "", task.minimumStep ? `minimum step ${task.minimumStep}` : ""].filter((value) => value.length > 0).join(" \u2022 ")}`) : [],
       "",
       "## References",
       `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,

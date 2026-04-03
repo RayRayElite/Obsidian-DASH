@@ -60,6 +60,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add project momentum charts.
 - [x] Add duplicate / stale / empty project cleanup suggestions.
 - [x] Add structured project review checklist mode.
+- [x] Add lightweight task annotations for effort, energy, context, trigger, and minimum-step support.
 
 ## Habits, Health, And Personal Data
 
@@ -121,6 +122,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add a document-freshness review checklist for evergreen notes.
 - [x] Add a recurring friction-patterns note generated from dashboard logs and review signals.
 - [x] Add a weekly project-review archive folder with one note per review cycle for active projects.
+- [x] Expand project-note templates with change log, known terms, and useful-links sections.
 
 ## View Modes, Layout, And UX
 
