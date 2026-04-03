@@ -108,6 +108,18 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add searchable wins archive.
 - [x] Add adaptive reflection prompts based on day type.
 
+## Documentation And Knowledge Design
+
+- [x] Create a document-system improvement plan with a full idea list and filled starter templates.
+- [x] Expand README guidance for stronger Master Task Hub metadata and supporting-note roles.
+- [ ] Add a canonical `How This System Works` note.
+- [ ] Add a `What Goes Where` reference.
+- [ ] Standardize stronger project-note templates.
+- [ ] Add generated-note summary blocks and stronger frontmatter conventions.
+- [ ] Add examples of good and bad task wording.
+- [ ] Add an archive policy reference.
+- [ ] Add a document-freshness review checklist for evergreen notes.
+
 ## View Modes, Layout, And UX
 
 - [x] Add impactful compact mode with denser cards, reduced chrome, and preserved readability.

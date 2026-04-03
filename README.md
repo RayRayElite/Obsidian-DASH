@@ -23,7 +23,9 @@ Task lines in the master hub can now include lightweight annotations such as `[d
 
 ## Master Todo Workflow
 
-Point the plugin at your `Master Task Hub.md` note in settings. The note works best when each project uses a `##` heading and includes optional metadata such as `Project Note:: [[Note Name]]`, `Status::`, `Focus::`, and `Relationships::`.
+Point the plugin at your `Master Task Hub.md` note in settings. The note works best when each project uses a `##` heading and includes optional metadata such as `Project Note:: [[Note Name]]`, `Status::`, `Focus::`, `Project Summary::`, `Why It Matters::`, `Definition Of Done::`, `Last Review::`, `Waiting On::`, and `Relationships::`.
+
+The stronger recommended document structure now lives in `Document System Improvement Plan.md` in this repo, including a filled master-hub example, project-note template, AI support-note structure, and generated-note standards.
 
 1. keep active work as unchecked checklist items in non-reference sections
 2. mark a task complete with `- [x]`
@@ -31,13 +33,27 @@ Point the plugin at your `Master Task Hub.md` note in settings. The note works b
 
 This gives you a work-history trail without deleting finished tasks.
 
-The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Repeating`, `### Completed Archive`, and `### Reference` sections. New projects created by the plugin now include that structure automatically.
+The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Parking Lot`, `### Repeating`, `### Risks`, `### Constraints`, `### Decisions`, `### Reference`, and `### Completed Archive` sections. New projects created by the plugin now include the core operational structure automatically, and the extra sections are recommended once a project has enough context to justify them.
 
 The `### Repeating` section now supports richer repeat rules instead of only simple weekly-style tags. Plain bullets and checklist bullets both work. Supported forms include `- Pay rent [repeat: monthly day 1]`, `- Water plants [repeat: every 10 days]`, `- Review backlog [repeat: every 2 weeks]`, `- Gym session [repeat: weekdays mon wed fri]`, plus the legacy short forms like `[daily]`, `[weekly]`, `[monthly]`, and `[yearly]`. When synced into the master hub, due repeating tasks are inserted into `### Next` with their normalized repeat tag preserved.
 
 Project health now surfaces a visible next action for every project, explains the reasons behind each health score, renders compact momentum bars from recent completion history, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
 
 The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup.
+
+## Document Design
+
+Obsidian DASH works best when note roles stay explicit instead of collapsing action lists, reference material, life context, and AI instructions into one note.
+
+Recommended supporting notes:
+
+- `Basic Information`: stable personal facts, constraints, and enduring context.
+- `AI Guardrails`: how AI should behave, what tone to use, and what to avoid.
+- `Current Season`: temporary priorities, obligations, and constraints for the current month or phase.
+- `Decision Journal`: preserved reasoning behind meaningful choices.
+- `System Map`: one-page explanation of what each major note and folder is for.
+
+The filled starter versions of those notes, plus a stronger Master Task Hub and project-note template, are documented in `Document System Improvement Plan.md`.
 
 ## Logical Day Tracking
 
