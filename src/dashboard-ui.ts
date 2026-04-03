@@ -1954,7 +1954,7 @@ export class DailyDashboardView extends ItemView {
           }
         });
         copy.createEl("strong", { text: habit.label });
-        const metaChips = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+        const metaChips = copy.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-habit-chip-row" });
         createSemanticChip(metaChips, `${currentValue}/${habit.target}`, currentValue >= habit.target ? "done" : "neutral");
         createSemanticChip(metaChips, formatHabitCadenceLabel(habit.cadence), "neutral");
         createSemanticChip(metaChips, formatHabitWindowLabel(habit.completionWindow), "neutral");

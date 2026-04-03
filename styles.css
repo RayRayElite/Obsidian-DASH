@@ -1097,6 +1097,16 @@
   gap: 8px;
 }
 
+.daily-dashboard-habit-chip-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.daily-dashboard-habit-chip-row .daily-dashboard-semantic-chip {
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .daily-dashboard-momentum {
   display: grid;
   gap: 6px;
@@ -3081,6 +3091,10 @@ input.daily-dashboard-input {
   .daily-dashboard-habit-top-controls,
   .daily-dashboard-habit-bottom-controls {
     justify-content: space-between;
+  }
+
+  .daily-dashboard-habit-chip-row {
+    flex-wrap: wrap;
   }
 
   .daily-dashboard-focus-controls {
