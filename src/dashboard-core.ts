@@ -143,11 +143,16 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
 
 function mergeSessionTrackerDefinitions(trackers: SessionTrackerDefinition[], defaults: SessionTrackerDefinition[]): SessionTrackerDefinition[] {
   const normalizedDefaults = defaults.map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index)).filter((tracker): tracker is SessionTrackerDefinition => tracker !== null);
-  const byId = new Map(trackers.map((tracker) => [tracker.id, tracker]));
-  const merged = normalizedDefaults.map((tracker) => byId.get(tracker.id) ?? tracker);
-  trackers.forEach((tracker) => {
-    if (!normalizedDefaults.some((defaultTracker) => defaultTracker.id === tracker.id)) {
+  const normalizedTrackerIds = new Set(normalizedDefaults.map((tracker) => tracker.id));
+  const merged = trackers.map((tracker) => ({ ...tracker }));
+  normalizedDefaults.forEach((tracker) => {
+    if (!merged.some((savedTracker) => savedTracker.id === tracker.id)) {
       merged.push(tracker);
+    }
+  });
+  merged.forEach((tracker, index) => {
+    if (!normalizedTrackerIds.has(tracker.id)) {
+      merged[index] = { ...tracker };
     }
   });
   return merged;
