@@ -114,6 +114,12 @@ var DEFAULT_SETTINGS = {
     "[research-brief]",
     "Keep the brief concise, decision-relevant, and easy to promote back into concept and index notes.",
     "",
+    "[research-question-brief]",
+    "Use compiled wiki notes when available, but clearly label well-established model prior knowledge when the wiki does not already cover the question.",
+    "",
+    "[research-question-answer]",
+    "Teach clearly, distinguish note-grounded material from model prior knowledge, and never imply live browsing or verification you do not actually have.",
+    "",
     "[research-slide-deck]",
     "Prefer one idea per slide, concise bullets, and clear sequencing instead of dense paragraphs.",
     "",
@@ -6366,12 +6372,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const aiLowerSection = this.createCollapsibleSubsection(aiShell, "ai-workspace-ask", "Ask and latest output", "Direct questions plus the newest AI artifact and suggested focus items.");
       const aiLower = aiLowerSection.createDiv({ cls: "daily-dashboard-ai-lower" });
       const aiAskPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
-      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
+      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI or capture a research question" });
+      aiAskPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Ask AI stays in dashboard/vault mode. Write wiki notes creates durable knowledge-base notes from the question." });
       const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
       aiQuestion.placeholder = "What needs attention first? Which project is dragging hardest? What am I underestimating right now?";
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: aiQuestion.value, generateBrief: true, generateAnswer: true }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Research modal", async () => this.plugin.openAskResearchQuestionFlow(aiQuestion.value), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
       const latestPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--latest" });
@@ -8622,6 +8631,75 @@ var AskAiModal = class extends import_obsidian3.Modal {
     this.contentEl.empty();
   }
 };
+var AskResearchQuestionModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, initialQuestion = "") {
+    super(app);
+    this.question = "";
+    this.additionalContext = "";
+    this.generateBrief = true;
+    this.generateAnswer = true;
+    this.plugin = plugin;
+    this.question = initialQuestion;
+  }
+  onOpen() {
+    this.setTitle("Ask Research Question And Write Wiki Notes");
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian3.Setting(contentEl).setName("Question").setDesc("Ask something you want to preserve as a reusable knowledge-base brief, teaching note, or both.").addTextArea((textArea) => {
+      textArea.setPlaceholder("What does full body tightness and mild panic after a deep yawn usually mean?").setValue(this.question).onChange((value) => {
+        this.question = value;
+      });
+      textArea.inputEl.rows = 5;
+      window.setTimeout(() => textArea.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Context and constraints").setDesc("Optional: audience, experience level, app/framework, examples to cover, or any boundary for the answer.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Explain it plainly, include likely mechanisms, call out uncertainty, and note when real medical advice is needed.").setValue(this.additionalContext).onChange((value) => {
+        this.additionalContext = value;
+      });
+      textArea.inputEl.rows = 5;
+    });
+    new import_obsidian3.Setting(contentEl).setName("Generate research brief").setDesc("Short summary note for quick review later.").addToggle((toggle) => {
+      toggle.setValue(this.generateBrief).onChange((value) => {
+        this.generateBrief = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Generate detailed answer note").setDesc("Longer teaching-oriented note with mechanisms, caveats, and wiki hooks.").addToggle((toggle) => {
+      toggle.setValue(this.generateAnswer).onChange((value) => {
+        this.generateAnswer = value;
+      });
+    });
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "This workflow uses your compiled wiki when relevant and falls back to general model knowledge when coverage is thin. Live web search is not wired into this command yet."
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Write wiki notes").setCta().onClick(async () => {
+        if (!this.question.trim()) {
+          new import_obsidian3.Notice("Enter a research question first.");
+          return;
+        }
+        if (!this.generateBrief && !this.generateAnswer) {
+          new import_obsidian3.Notice("Enable at least one output before running the workflow.");
+          return;
+        }
+        await this.plugin.askResearchQuestionAndWriteWikiNotes({
+          question: this.question,
+          additionalContext: this.additionalContext,
+          generateBrief: this.generateBrief,
+          generateAnswer: this.generateAnswer
+        });
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -10411,6 +10489,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Ask AI about dashboard and vault",
       callback: () => {
         void this.openAskAiFlow();
+      }
+    });
+    this.addCommand({
+      id: "ask-research-question-and-write-wiki-notes",
+      name: "Ask research question and write wiki notes",
+      callback: () => {
+        void this.openAskResearchQuestionFlow();
       }
     });
     this.addCommand({
@@ -12550,20 +12635,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.ensureSystemMapNoteExists();
   }
   async initializeCompiledResearchWiki() {
-    for (const folder of this.getKnowledgeBaseFolders()) {
-      await this.ensureFolder(folder);
-    }
-    let createdCount = 0;
-    let homeFile = null;
-    for (const starterNote of this.getKnowledgeBaseStarterNoteDefinitions()) {
-      const result = await this.ensureSupportNoteWithStatus(starterNote.path, starterNote.render);
-      if (starterNote.key === "home") {
-        homeFile = result.file;
-      }
-      if (result.created) {
-        createdCount += 1;
-      }
-    }
+    const { createdCount, homeFile } = await this.ensureCompiledResearchWikiScaffold();
     if (homeFile) {
       await this.openFile(homeFile);
     }
@@ -12665,6 +12737,86 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       userPrompt: `Use the active note ${activeFile.path} as the brief topic and generate a concise research brief grounded in the compiled research wiki.`,
       question: `Research brief for ${activeFile.path}`
     });
+  }
+  async askResearchQuestionAndWriteWikiNotes(input) {
+    var _a, _b, _c, _d;
+    const trimmedQuestion = input.question.trim();
+    const trimmedContext = (_b = (_a = input.additionalContext) == null ? void 0 : _a.trim()) != null ? _b : "";
+    const generateBrief = (_c = input.generateBrief) != null ? _c : true;
+    const generateAnswer = (_d = input.generateAnswer) != null ? _d : true;
+    if (!trimmedQuestion) {
+      new import_obsidian4.Notice("Enter a research question first.");
+      return;
+    }
+    if (!generateBrief && !generateAnswer) {
+      new import_obsidian4.Notice("Choose at least one research output to generate.");
+      return;
+    }
+    const scaffold = await this.ensureCompiledResearchWikiScaffold();
+    if (scaffold.createdCount > 0) {
+      new import_obsidian4.Notice(`Compiled research wiki scaffold created automatically (${scaffold.createdCount} starter note${scaffold.createdCount === 1 ? "" : "s"}).`);
+    }
+    const seedFile = await this.createKnowledgeBaseQuestionSeedNote({
+      question: trimmedQuestion,
+      additionalContext: trimmedContext,
+      generateBrief,
+      generateAnswer
+    });
+    const additionalSections = trimmedContext.length > 0 ? [
+      [
+        "## User Context And Constraints",
+        trimmedContext
+      ].join("\n\n")
+    ] : [];
+    const queryBasis = [trimmedQuestion, trimmedContext].filter((value) => value.trim().length > 0).join("\n\n");
+    if (generateBrief) {
+      await this.runKnowledgeBaseAiWorkflow({
+        kind: "Research Question Brief",
+        templateKey: "research-question-brief",
+        activeFile: seedFile,
+        query: `Brief research answer for ${queryBasis || seedFile.path}`,
+        outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+        defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Brief`,
+        systemPrompt: [
+          "You are writing a concise research brief from a user-authored question seed note.",
+          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+          "Do not imply live web browsing, external verification, or source access you do not actually have.",
+          "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+          "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
+          "Return markdown that starts with a single H1 title suitable for a standalone brief.",
+          "Then use headings: Direct Takeaway, Most Likely Explanation, What To Watch Or Verify, Related Wiki Hooks, Promotion Targets.",
+          "Keep it concise, practical, and durable for later review.",
+          "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+        ].join(" "),
+        userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly, pulls from the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+        question: trimmedQuestion,
+        additionalSections
+      });
+    }
+    if (generateAnswer) {
+      await this.runKnowledgeBaseAiWorkflow({
+        kind: "Research Question Answer",
+        templateKey: "research-question-answer",
+        activeFile: seedFile,
+        query: `Detailed research answer for ${queryBasis || seedFile.path}`,
+        outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+        defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Answer`,
+        systemPrompt: [
+          "You are writing a detailed teaching-oriented research answer from a user-authored question seed note.",
+          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+          "Do not imply live web browsing, external verification, or source access you do not actually have.",
+          "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+          "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
+          "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
+          "Then use headings: Plain-English Answer, Mechanisms Or Concepts, Variations And Caveats, Source Basis And Confidence, Related Wiki Hooks, Promotion Targets.",
+          "Teach clearly, explain why, and make the note useful to revisit later.",
+          "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+        ].join(" "),
+        userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly, uses the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+        question: trimmedQuestion,
+        additionalSections
+      });
+    }
   }
   async generateResearchMarpSlideDeckFromActiveNote() {
     const activeFile = this.getActiveMarkdownFile("Open a markdown note with the topic before generating a research slide deck.");
@@ -13005,6 +13157,57 @@ ${context}`);
       this.isAiBusy = false;
       this.refreshDashboardViews();
     }
+  }
+  async ensureCompiledResearchWikiScaffold() {
+    for (const folder of this.getKnowledgeBaseFolders()) {
+      await this.ensureFolder(folder);
+    }
+    let createdCount = 0;
+    let homeFile = null;
+    for (const starterNote of this.getKnowledgeBaseStarterNoteDefinitions()) {
+      const result = await this.ensureSupportNoteWithStatus(starterNote.path, starterNote.render);
+      if (starterNote.key === "home") {
+        homeFile = result.file;
+      }
+      if (result.created) {
+        createdCount += 1;
+      }
+    }
+    return { createdCount, homeFile };
+  }
+  async createKnowledgeBaseQuestionSeedNote(input) {
+    const timestamp = formatFileTimestamp(/* @__PURE__ */ new Date());
+    const folder = normalizeFolderPath2(`${this.data.settings.knowledgeBaseRawFolder}/Questions`);
+    const requestedOutputs = [
+      input.generateBrief ? "Research brief" : "",
+      input.generateAnswer ? "Detailed answer note" : ""
+    ].filter((value) => value.length > 0);
+    const baseQuestion = input.question.replace(/[?!.]+$/g, "").trim() || "Research Question";
+    const fileLabel = baseQuestion.length > 90 ? `${baseQuestion.slice(0, 87).trim()}...` : baseQuestion;
+    const filePath = this.getAvailableMarkdownPath(`${folder}/${timestamp} ${sanitizeFileName(fileLabel)}.md`);
+    const content = [
+      `# ${input.question}`,
+      "",
+      `- Captured: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      "- Workflow: Research Question Seed",
+      `- Requested outputs: ${requestedOutputs.length > 0 ? requestedOutputs.join(", ") : "None specified"}`,
+      "- Grounding rule: Prefer compiled wiki notes first. If coverage is thin, clearly label general model knowledge instead of pretending it came from notes or live web results.",
+      "",
+      "## Question",
+      input.question,
+      "",
+      "## Context And Constraints",
+      input.additionalContext || "- No extra context provided.",
+      "",
+      "## Existing Knowledge Base Hooks",
+      "- Add likely source summaries, concept notes, or index notes here if you already know what the question should connect to.",
+      "",
+      "## Follow-Up Directions",
+      "- Promote durable explanations into concept notes if the answer becomes evergreen.",
+      "- Promote any unresolved threads into Open Questions if the answer exposes real gaps.",
+      ""
+    ].join("\n");
+    return this.upsertMarkdownFile(filePath, content);
   }
   async buildKnowledgeBaseAiContext(input) {
     var _a, _b, _c, _d;
@@ -14442,6 +14645,9 @@ ${context}`);
   }
   async openAskAiFlow() {
     new AskAiModal(this.app, this).open();
+  }
+  async openAskResearchQuestionFlow(initialQuestion = "") {
+    new AskResearchQuestionModal(this.app, this, initialQuestion).open();
   }
   async runAiWorkflow(input) {
     var _a, _b, _c;

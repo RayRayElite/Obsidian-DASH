@@ -2261,12 +2261,15 @@ export class DailyDashboardView extends ItemView {
       const aiLowerSection = this.createCollapsibleSubsection(aiShell, "ai-workspace-ask", "Ask and latest output", "Direct questions plus the newest AI artifact and suggested focus items.");
       const aiLower = aiLowerSection.createDiv({ cls: "daily-dashboard-ai-lower" });
       const aiAskPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--ask" });
-      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI about your vault" });
+      aiAskPanel.createEl("label", { cls: "daily-dashboard-field-label", text: "Ask AI or capture a research question" });
+      aiAskPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Ask AI stays in dashboard/vault mode. Write wiki notes creates durable knowledge-base notes from the question." });
       const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
       aiQuestion.placeholder = "What needs attention first? Which project is dragging hardest? What am I underestimating right now?";
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: aiQuestion.value, generateBrief: true, generateAnswer: true }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Research modal", async () => this.plugin.openAskResearchQuestionFlow(aiQuestion.value), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
 
@@ -5127,6 +5130,112 @@ export class AskAiModal extends Modal {
           }
 
           await this.plugin.askAiQuestion(this.question);
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+export class AskResearchQuestionModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private question = "";
+  private additionalContext = "";
+  private generateBrief = true;
+  private generateAnswer = true;
+
+  constructor(app: App, plugin: DailyDashboardPlugin, initialQuestion = "") {
+    super(app);
+    this.plugin = plugin;
+    this.question = initialQuestion;
+  }
+
+  onOpen(): void {
+    this.setTitle("Ask Research Question And Write Wiki Notes");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Question")
+      .setDesc("Ask something you want to preserve as a reusable knowledge-base brief, teaching note, or both.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("What does full body tightness and mild panic after a deep yawn usually mean?")
+          .setValue(this.question)
+          .onChange((value) => {
+            this.question = value;
+          });
+        textArea.inputEl.rows = 5;
+        window.setTimeout(() => textArea.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Context and constraints")
+      .setDesc("Optional: audience, experience level, app/framework, examples to cover, or any boundary for the answer.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Explain it plainly, include likely mechanisms, call out uncertainty, and note when real medical advice is needed.")
+          .setValue(this.additionalContext)
+          .onChange((value) => {
+            this.additionalContext = value;
+          });
+        textArea.inputEl.rows = 5;
+      });
+
+    new Setting(contentEl)
+      .setName("Generate research brief")
+      .setDesc("Short summary note for quick review later.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.generateBrief)
+          .onChange((value) => {
+            this.generateBrief = value;
+          });
+      });
+
+    new Setting(contentEl)
+      .setName("Generate detailed answer note")
+      .setDesc("Longer teaching-oriented note with mechanisms, caveats, and wiki hooks.")
+      .addToggle((toggle) => {
+        toggle
+          .setValue(this.generateAnswer)
+          .onChange((value) => {
+            this.generateAnswer = value;
+          });
+      });
+
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "This workflow uses your compiled wiki when relevant and falls back to general model knowledge when coverage is thin. Live web search is not wired into this command yet."
+    });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Write wiki notes").setCta().onClick(async () => {
+          if (!this.question.trim()) {
+            new Notice("Enter a research question first.");
+            return;
+          }
+
+          if (!this.generateBrief && !this.generateAnswer) {
+            new Notice("Enable at least one output before running the workflow.");
+            return;
+          }
+
+          await this.plugin.askResearchQuestionAndWriteWikiNotes({
+            question: this.question,
+            additionalContext: this.additionalContext,
+            generateBrief: this.generateBrief,
+            generateAnswer: this.generateAnswer
+          });
           this.close();
         });
       })
