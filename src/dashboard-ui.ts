@@ -127,6 +127,7 @@ export class DailyDashboardView extends ItemView {
   private aiQuestionDraft = "";
   private expandedHabitMissNotes = new Set<string>();
   private selectedGamificationWindow: "today" | "week" | "month" = "today";
+  private draggedSessionDeckTrackerId: string | null = null;
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
     if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
       return;
@@ -690,6 +691,22 @@ export class DailyDashboardView extends ItemView {
     return `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 68%, black))`;
   }
 
+  private async reorderSessionDeckTrackers(draggedTrackerId: string, targetTrackerId: string, position: "before" | "after"): Promise<void> {
+    const trackers = this.getSessionTrackers().map((tracker) => ({ ...tracker }));
+    const draggedIndex = trackers.findIndex((tracker) => tracker.id === draggedTrackerId);
+    const targetIndex = trackers.findIndex((tracker) => tracker.id === targetTrackerId);
+    if (draggedIndex < 0 || targetIndex < 0 || draggedIndex === targetIndex) {
+      return;
+    }
+
+    const [draggedTracker] = trackers.splice(draggedIndex, 1);
+    const adjustedTargetIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    const insertionIndex = position === "before" ? adjustedTargetIndex : adjustedTargetIndex + 1;
+    trackers.splice(Math.max(0, Math.min(insertionIndex, trackers.length)), 0, draggedTracker);
+    await this.plugin.updateSessionTrackers(trackers);
+    await this.render();
+  }
+
   private getGamificationState(score: number, tone: DashboardTone): { label: string; tone: DashboardTone } {
     if (tone === "done" || score >= 80) {
       return { label: "Winning", tone: "done" };
@@ -1207,9 +1224,18 @@ export class DailyDashboardView extends ItemView {
         new SessionDeckCustomizationModal(this.app, this.plugin).open();
       });
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
-      const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>, accentColor?: string): void => {
+      const sessionDeckDropPreview = sessionDeckGrid.createDiv({ cls: "daily-dashboard-session-drop-preview" });
+      sessionDeckDropPreview.detach();
+      let sessionDeckDropTarget: { trackerId: string; position: "before" | "after" } | null = null;
+      let suppressNextSessionDeckClick = false;
+      const clearSessionDeckPreview = (): void => {
+        sessionDeckDropTarget = null;
+        sessionDeckDropPreview.detach();
+      };
+      const createSessionDeckButton = (trackerId: string, label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>, accentColor?: string): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
         button.type = "button";
+        button.draggable = true;
         button.toggleClass("is-active", isActive);
         button.addClass(`is-${tone}`);
         if (accentColor) {
@@ -1221,34 +1247,107 @@ export class DailyDashboardView extends ItemView {
         const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
         copy.createEl("strong", { text: label });
         copy.createEl("span", { cls: "daily-dashboard-row-meta", text: detail });
+        button.addEventListener("dragstart", (event) => {
+          this.draggedSessionDeckTrackerId = trackerId;
+          suppressNextSessionDeckClick = true;
+          button.addClass("is-dragging");
+          event.dataTransfer?.setData("text/plain", trackerId);
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+          }
+        });
+        button.addEventListener("dragover", (event) => {
+          if (!this.draggedSessionDeckTrackerId || this.draggedSessionDeckTrackerId === trackerId) {
+            return;
+          }
+
+          event.preventDefault();
+          const rect = button.getBoundingClientRect();
+          const horizontal = sessionDeckGrid.clientWidth > 420;
+          const position = horizontal
+            ? event.clientX < rect.left + rect.width / 2 ? "before" : "after"
+            : event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+          sessionDeckDropTarget = { trackerId, position };
+          if (position === "before") {
+            sessionDeckGrid.insertBefore(sessionDeckDropPreview, button);
+          } else {
+            sessionDeckGrid.insertBefore(sessionDeckDropPreview, button.nextSibling);
+          }
+        });
+        button.addEventListener("drop", (event) => {
+          event.preventDefault();
+          const dropTarget = sessionDeckDropTarget;
+          clearSessionDeckPreview();
+          const draggedTrackerId = this.draggedSessionDeckTrackerId;
+          this.draggedSessionDeckTrackerId = null;
+          button.removeClass("is-dragging");
+          if (!draggedTrackerId || !dropTarget || draggedTrackerId === dropTarget.trackerId) {
+            return;
+          }
+
+          void this.reorderSessionDeckTrackers(draggedTrackerId, dropTarget.trackerId, dropTarget.position);
+        });
+        button.addEventListener("dragend", () => {
+          this.draggedSessionDeckTrackerId = null;
+          button.removeClass("is-dragging");
+          clearSessionDeckPreview();
+          window.setTimeout(() => {
+            suppressNextSessionDeckClick = false;
+          }, 0);
+        });
         button.addEventListener("click", () => {
+          if (suppressNextSessionDeckClick) {
+            return;
+          }
           void onClick();
         });
       };
+      sessionDeckGrid.addEventListener("dragover", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+
+        if (event.target === sessionDeckGrid) {
+          event.preventDefault();
+          const visibleTrackers = this.getVisibleSessionTrackers();
+          const lastTracker = visibleTrackers[visibleTrackers.length - 1];
+          if (!lastTracker) {
+            return;
+          }
+
+          sessionDeckDropTarget = { trackerId: lastTracker.id, position: "after" };
+          sessionDeckGrid.appendChild(sessionDeckDropPreview);
+        }
+      });
+      sessionDeckGrid.addEventListener("dragleave", (event) => {
+        if (event.target === sessionDeckGrid && !sessionDeckGrid.contains(event.relatedTarget as Node | null)) {
+          clearSessionDeckPreview();
+        }
+      });
       visibleSessionTrackers.forEach((tracker) => {
         if (tracker.id === "work") {
-          createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), tracker.color);
+          createSessionDeckButton(tracker.id, activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), tracker.color);
           return;
         }
         if (tracker.id === "nap") {
-          createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), tracker.color);
+          createSessionDeckButton(tracker.id, activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), tracker.color);
           return;
         }
         if (tracker.id === "relax") {
-          createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), tracker.color);
+          createSessionDeckButton(tracker.id, activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), tracker.color);
           return;
         }
         if (tracker.id === "break") {
-          createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), tracker.color);
+          createSessionDeckButton(tracker.id, activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), tracker.color);
           return;
         }
         if (tracker.id === "poop") {
-          createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount}x • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), tracker.color);
+          createSessionDeckButton(tracker.id, activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount}x • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), tracker.color);
           return;
         }
 
         const activeTrackerSession = activeActivitySession?.kind === tracker.id ? activeActivitySession : null;
-        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.id))} today`, activeTrackerSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.id) : this.plugin.startActivitySession(tracker.id), tracker.color);
+        createSessionDeckButton(tracker.id, activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.id))} today`, activeTrackerSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.id) : this.plugin.startActivitySession(tracker.id), tracker.color);
       });
 
       const focusCard = createGridCard("Action Queue", "Triage queued work, reminders, routines, and calendar context from one place.", {
