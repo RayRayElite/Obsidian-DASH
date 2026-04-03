@@ -95,6 +95,7 @@ var DEFAULT_SETTINGS = {
   calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
+  measurementSystem: "imperial",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -123,6 +124,7 @@ function sanitizeSettings(settings) {
   const aiApiKeySource = settings.aiApiKeySource === "env" ? "env" : "settings";
   const calendarLookaheadHours = clamp(Number((_a = settings.calendarLookaheadHours) != null ? _a : DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
+  const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
   return {
     dashboardTitle: ((_c = settings.dashboardTitle) == null ? void 0 : _c.trim()) || DEFAULT_SETTINGS.dashboardTitle,
     masterTodoPath: ((_d = settings.masterTodoPath) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.masterTodoPath,
@@ -150,6 +152,7 @@ function sanitizeSettings(settings) {
     calendarDocumentPath: ((_w = settings.calendarDocumentPath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
+    measurementSystem,
     wallpaperFolder: normalizeFolderPath(((_x = settings.wallpaperFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_y = settings.selectedWallpaper) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
@@ -4142,7 +4145,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           createButton(actions2, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
         });
       }
-      const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and bowel tracking for the active logical day.");
+      const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and session totals for the active logical day.");
       const dayFlowGrid = dayFlowMetrics.createDiv({ cls: "daily-dashboard-dayflow-grid" });
       this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
@@ -4153,23 +4156,30 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));
       this.renderDayMetric(dayFlowGrid, "Tracked breaks", formatMinutesAsHours(trackedBreakMinutes));
-      this.renderDayMetric(dayFlowGrid, "Tracked poop", formatMinutesAsHours(trackedPoopMinutes));
-      this.renderDayMetric(dayFlowGrid, "Bowel count", `${trackedPoopCount}`);
       this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Live break", activeBreakSession ? formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
-      this.renderDayMetric(dayFlowGrid, "Live poop", activePoopSession ? formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Last activity", logicalDayInsights.lastActivityAt ? formatSyncTimestamp(logicalDayInsights.lastActivityAt) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
       this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
-      if (todayEntry.poopSessions.length > 0) {
-        const bowelQualityList = dayFlowMetrics.createDiv({ cls: "daily-dashboard-project-list" });
-        todayEntry.poopSessions.slice().reverse().slice(0, 3).forEach((session) => {
+      const bowelSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-bowel", "Bowel tracking", "Keep bowel sessions, duration, and quality tags together instead of mixing them into the generic metrics summary.");
+      const bowelSummary = bowelSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(bowelSummary, `${trackedPoopCount} session${trackedPoopCount === 1 ? "" : "s"}`, trackedPoopCount > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, `Tracked ${formatMinutesAsHours(trackedPoopMinutes)}`, trackedPoopMinutes > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : "No live session", activePoopSession ? "alert" : "neutral");
+      if (todayEntry.poopSessions.length === 0) {
+        bowelSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No bowel sessions tracked for this logical day yet." });
+      } else {
+        const bowelQualityList = bowelSection.createDiv({ cls: "daily-dashboard-project-list" });
+        todayEntry.poopSessions.slice().reverse().slice(0, 5).forEach((session) => {
           const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
           row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}` });
+          row.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} \u2022 Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
+          });
           const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
           ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
             const button = controls.createEl("button", {
@@ -4988,6 +4998,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const foodInsightActions = foodInsight.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
+      const measurementSystem = settings.measurementSystem;
+      const waterQuickPreset = getQuickIntakePreset("water", measurementSystem);
+      const coffeeQuickPreset = getQuickIntakePreset("caffeine", measurementSystem);
       if (todayEntry.foodLog.length === 0) {
         const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
@@ -5037,17 +5050,22 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const intakeMeta = intakeForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
       const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "64", value: "1" } });
       const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "oz, cup, pill, serving" } });
+      intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+      intakeUnit.placeholder = measurementSystem === "metric" ? "mL, tablet, serving" : "oz, cup, pill, serving";
+      intakeKind.addEventListener("change", () => {
+        intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+      });
       const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
       const intakeButtons = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(intakeButtons, "Add intake", async () => {
         await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
         intakeLabel.value = "";
         intakeAmount.value = "1";
-        intakeUnit.value = "";
+        intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
         intakeNote.value = "";
       }, false, "droplets");
-      createButton(intakeButtons, "Water 8 oz", async () => this.plugin.addIntakeEntry("water", "Water", 8, "oz"), false, "glass-water");
-      createButton(intakeButtons, "Coffee", async () => this.plugin.addIntakeEntry("caffeine", "Coffee", 1, "cup"), false, "coffee");
+      createButton(intakeButtons, waterQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("water", waterQuickPreset.label, waterQuickPreset.amount, waterQuickPreset.unit), false, "glass-water");
+      createButton(intakeButtons, coffeeQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("caffeine", coffeeQuickPreset.label, coffeeQuickPreset.amount, coffeeQuickPreset.unit), false, "coffee");
       const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
       if (todayEntry.intakeLog.length === 0) {
         intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
@@ -5140,6 +5158,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const sleepInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       sleepInput.value = todayEntry.sleepLog;
       sleepInput.placeholder = "Bedtime, wake time, sleep quality, naps, anything worth tracking.";
+      this.initializePersistentTextarea(sleepInput, "sleep-log");
       sleepInput.addEventListener("change", () => {
         void this.plugin.updateSleepLog(sleepInput.value);
       });
@@ -5147,6 +5166,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const dreamInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       dreamInput.value = todayEntry.dreamLog;
       dreamInput.placeholder = "Dream fragments, themes, symbols, emotions, or recurring patterns you want the AI to analyze later.";
+      this.initializePersistentTextarea(dreamInput, "dream-log");
       dreamInput.addEventListener("change", () => {
         void this.plugin.updateDreamLog(dreamInput.value);
       });
@@ -5154,6 +5174,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const notesInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       notesInput.value = todayEntry.notes;
       notesInput.placeholder = "Wins, blockers, symptoms, context, or anything worth remembering later.";
+      this.initializePersistentTextarea(notesInput, "daily-notes");
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
       });
@@ -5170,6 +5191,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const helpedInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       helpedInput.value = todayEntry.helpedToday;
       helpedInput.placeholder = "Small things that improved the day, energy, focus, or recovery.";
+      this.initializePersistentTextarea(helpedInput, "helped-today");
       helpedInput.addEventListener("change", () => {
         void this.plugin.updateReflection("helped", helpedInput.value);
       });
@@ -5177,6 +5199,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const hurtInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       hurtInput.value = todayEntry.hurtToday;
       hurtInput.placeholder = "Stressors, pain, missed habits, interruptions, or anything that dragged the day down.";
+      this.initializePersistentTextarea(hurtInput, "hurt-today");
       hurtInput.addEventListener("change", () => {
         void this.plugin.updateReflection("hurt", hurtInput.value);
       });
@@ -6326,6 +6349,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         void onSelect(currentValue === score ? 0 : score);
       });
     }
+  }
+  initializePersistentTextarea(textarea, storageKey) {
+    const storedHeight = getDashboardTextareaHeight(storageKey);
+    if (storedHeight) {
+      textarea.style.height = storedHeight;
+    }
+    const persistHeight = () => {
+      setDashboardTextareaHeight(storageKey, `${textarea.offsetHeight}px`);
+    };
+    textarea.addEventListener("mouseup", persistHeight);
+    textarea.addEventListener("touchend", persistHeight);
   }
   getCurrentWeekTimeBoard() {
     const today = /* @__PURE__ */ new Date();
@@ -7550,6 +7584,7 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
     const { containerEl } = this;
     const settings = this.plugin.getSettings();
     containerEl.empty();
+    containerEl.addClass("daily-dashboard-settings-tab");
     containerEl.createEl("h2", { text: "Daily Dashboard" });
     new import_obsidian3.Setting(containerEl).setName("Setup wizard").setDesc("Launch the guided setup flow again if you want to re-walk the initial dashboard configuration.").addButton((button) => {
       button.setButtonText("Open wizard").setCta().onClick(() => {
@@ -7647,6 +7682,18 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
             Math.max(Number(value.trim() || DEFAULT_SETTINGS.calendarWarningHours), 1),
             this.plugin.getSettings().calendarLookaheadHours
           )
+        });
+      });
+    });
+    containerEl.createEl("h3", { text: "Tracking" });
+    new import_obsidian3.Setting(containerEl).setName("Measurement system").setDesc("Controls default liquid units and quick-add presets for hydration or similar tracked amounts.").addDropdown((dropdown) => {
+      dropdown.addOption("imperial", "Imperial (oz, cup)");
+      dropdown.addOption("metric", "Metric (mL)");
+      dropdown.setValue(settings.measurementSystem);
+      dropdown.onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          measurementSystem: value === "metric" ? "metric" : "imperial"
         });
       });
     });
@@ -7846,6 +7893,7 @@ var DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routin
 var DASHBOARD_SAVED_FILTERS_STORAGE_KEY = "daily-dashboard-saved-filters";
 var DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
 var DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
+var DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights";
 var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
   { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
@@ -8209,6 +8257,48 @@ function normalizeDashboardCardLayoutState(cards) {
       pinned: typeof (stored == null ? void 0 : stored.pinned) === "boolean" ? stored.pinned : card.pinned
     };
   }).sort((left, right) => left.order - right.order).map((card, index) => ({ ...card, order: index }));
+}
+function getDashboardTextareaHeights() {
+  try {
+    const stored = window.localStorage.getItem(DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY);
+    if (!stored) {
+      return {};
+    }
+    const parsed = JSON.parse(stored);
+    return Object.fromEntries(
+      Object.entries(parsed).filter((item) => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0)
+    );
+  } catch (e) {
+    return {};
+  }
+}
+function getDashboardTextareaHeight(key) {
+  var _a;
+  return (_a = getDashboardTextareaHeights()[key]) != null ? _a : "";
+}
+function setDashboardTextareaHeight(key, height) {
+  try {
+    const current = getDashboardTextareaHeights();
+    if (height.trim().length === 0) {
+      delete current[key];
+    } else {
+      current[key] = height.trim();
+    }
+    window.localStorage.setItem(DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+  }
+}
+function getDefaultIntakeUnit(kind, measurementSystem) {
+  if (kind === "water" || kind === "caffeine") {
+    return measurementSystem === "metric" ? "mL" : kind === "caffeine" ? "cup" : "oz";
+  }
+  return kind === "medication" ? "pill" : "serving";
+}
+function getQuickIntakePreset(kind, measurementSystem) {
+  if (kind === "water") {
+    return measurementSystem === "metric" ? { amount: 250, unit: "mL", label: "Water", buttonLabel: "Water 250 mL" } : { amount: 8, unit: "oz", label: "Water", buttonLabel: "Water 8 oz" };
+  }
+  return measurementSystem === "metric" ? { amount: 250, unit: "mL", label: "Coffee", buttonLabel: "Coffee 250 mL" } : { amount: 1, unit: "cup", label: "Coffee", buttonLabel: "Coffee" };
 }
 function sortDashboardLayoutCards(cards) {
   return [...cards].sort((left, right) => {

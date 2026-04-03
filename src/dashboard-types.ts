@@ -12,6 +12,7 @@ export const INTAKE_KIND_OPTIONS = ["water", "caffeine", "supplement", "medicati
 
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
 export type IntakeKind = (typeof INTAKE_KIND_OPTIONS)[number];
+export type MeasurementSystem = "imperial" | "metric";
 
 export interface HabitDefinition {
   id: string;
@@ -363,6 +364,7 @@ export interface DashboardSettings {
   calendarDocumentPath: string;
   calendarLookaheadHours: number;
   calendarWarningHours: number;
+  measurementSystem: MeasurementSystem;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -834,6 +836,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
+  measurementSystem: "imperial",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [

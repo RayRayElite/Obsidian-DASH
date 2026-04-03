@@ -25,7 +25,7 @@
 .daily-dashboard-hero {
   position: relative;
   isolation: isolate;
-  overflow: hidden;
+  overflow: visible;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 22px;
@@ -47,6 +47,7 @@
   content: "";
   position: absolute;
   inset: 0;
+  border-radius: inherit;
   background:
     linear-gradient(115deg, rgba(8, 11, 17, 0.82), rgba(8, 11, 17, 0.58)),
     var(--daily-dashboard-wallpaper) center/cover no-repeat;
@@ -1477,9 +1478,12 @@ select.daily-dashboard-input {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  padding-top: 11px;
+  min-height: 46px;
+  height: 46px;
+  line-height: 1.1;
+  padding-top: 0;
   padding-right: 42px;
-  padding-bottom: 11px;
+  padding-bottom: 0;
   padding-left: 14px;
   background-image:
     linear-gradient(45deg, transparent 50%, color-mix(in srgb, var(--text-muted) 92%, white) 50%),
@@ -1489,6 +1493,11 @@ select.daily-dashboard-input {
     calc(100% - 13px) calc(50% - 2px);
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
+}
+
+.daily-dashboard-settings-tab select {
+  min-height: 32px;
+  line-height: 1.2;
 }
 
 input.daily-dashboard-input {
