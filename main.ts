@@ -191,6 +191,9 @@ export default class DailyDashboardPlugin extends Plugin {
   private noteIndexDebounceId: number | null = null;
   private calendarWarningDay = "";
   private warnedCalendarEventKeys = new Set<string>();
+  private routineWarningDay = "";
+  private warnedRoutineWindowKeys = new Set<string>();
+  private activeRoutineNotificationSignature = "";
 
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) {
@@ -1790,6 +1793,51 @@ export default class DailyDashboardPlugin extends Plugin {
       });
   }
 
+  private getActiveRoutineNotifications(referenceDate: Date = new Date()): DashboardNotificationItem[] {
+    const todayKey = formatDateKey(referenceDate);
+    const currentMinutes = this.getClockMinutes(this.formatTime(referenceDate));
+
+    return this.getRoutineTemplates()
+      .filter((template) => {
+        const startMinutes = this.getClockMinutes(template.startTime);
+        const endMinutes = this.getClockMinutes(template.endTime);
+        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+      })
+      .map((template) => ({
+        id: `routine:${todayKey}:${template.id}`,
+        source: "routine" as const,
+        title: `${template.label} is due now`,
+        description: `${template.startTime}-${template.endTime} • Inside the active routine window right now.`,
+        tone: "alert" as const,
+        dismissible: true
+      }));
+  }
+
+  private maybeWarnRoutineWindows(referenceDate: Date = new Date()): void {
+    const currentDay = formatDateKey(referenceDate);
+    if (this.routineWarningDay !== currentDay) {
+      this.routineWarningDay = currentDay;
+      this.warnedRoutineWindowKeys.clear();
+    }
+
+    const activeNotifications = this.getActiveRoutineNotifications(referenceDate);
+    activeNotifications.forEach((notification) => {
+      const warningKey = `${currentDay}|${notification.id}`;
+      if (this.warnedRoutineWindowKeys.has(warningKey)) {
+        return;
+      }
+
+      this.warnedRoutineWindowKeys.add(warningKey);
+      new Notice(`Routine window due now: ${notification.title.replace(/ is due now$/, "")} • ${notification.description.split(" • ")[0]}`, 10000);
+    });
+
+    const nextSignature = activeNotifications.map((item) => item.id).sort().join("|");
+    if (nextSignature !== this.activeRoutineNotificationSignature) {
+      this.activeRoutineNotificationSignature = nextSignature;
+      this.refreshDashboardViews();
+    }
+  }
+
   private getCalendarReminderWarningLevel(reminder: CalendarSnapshot["reminders"][number], now: Date): "warning" | "upcoming" {
     const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1000;
     const start = new Date(reminder.reminderAt);
@@ -3101,6 +3149,8 @@ export default class DailyDashboardPlugin extends Plugin {
         dismissible: true
       });
     });
+
+    items.push(...this.getActiveRoutineNotifications(referenceDate));
 
     this.getLogicalDayInsights(referenceDate).prompts.forEach((prompt) => {
       items.push({
@@ -5598,6 +5648,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     await this.ensureTodayEntry();
     await this.maybeNotifyLogicalDayPrompts();
+    this.maybeWarnRoutineWindows();
 
     if (this.data.dayState.status === "in-progress") {
       const calendarKey = formatDateKey(new Date());

@@ -5527,7 +5527,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           removeButton.type = "button";
           removeButton.ariaLabel = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
           removeButton.title = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
-          (0, import_obsidian3.setIcon)(removeButton, "x");
+          removeButton.setText("\xD7");
           removeButton.addEventListener("click", () => {
             void this.plugin.updateSettings({
               ...this.plugin.getSettings(),
@@ -5562,7 +5562,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
-          (0, import_obsidian3.setIcon)(removeButton, "x");
+          removeButton.setText("\xD7");
           removeButton.addEventListener("click", () => {
             const removedItem = { ...item };
             void this.runDestructiveAction(
@@ -5689,7 +5689,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: item.linkedSessionStart ? "Timed" : "Manual" });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
-          (0, import_obsidian3.setIcon)(removeButton, "x");
+          removeButton.setText("\xD7");
           removeButton.addEventListener("click", () => {
             void this.plugin.removeExerciseEntry(index);
           });
@@ -9271,6 +9271,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.noteIndexDebounceId = null;
     this.calendarWarningDay = "";
     this.warnedCalendarEventKeys = /* @__PURE__ */ new Set();
+    this.routineWarningDay = "";
+    this.warnedRoutineWindowKeys = /* @__PURE__ */ new Set();
+    this.activeRoutineNotificationSignature = "";
   }
   getErrorMessage(error) {
     if (error instanceof Error && error.message.trim()) {
@@ -10566,6 +10569,43 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       new import_obsidian4.Notice(`Upcoming activity: ${event.title} \u2022 ${timeLabel}${event.leadSummary ? ` \u2022 ${event.leadSummary}` : ""}`, 1e4);
     });
   }
+  getActiveRoutineNotifications(referenceDate = /* @__PURE__ */ new Date()) {
+    const todayKey = formatDateKey(referenceDate);
+    const currentMinutes = this.getClockMinutes(this.formatTime(referenceDate));
+    return this.getRoutineTemplates().filter((template) => {
+      const startMinutes = this.getClockMinutes(template.startTime);
+      const endMinutes = this.getClockMinutes(template.endTime);
+      return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    }).map((template) => ({
+      id: `routine:${todayKey}:${template.id}`,
+      source: "routine",
+      title: `${template.label} is due now`,
+      description: `${template.startTime}-${template.endTime} \u2022 Inside the active routine window right now.`,
+      tone: "alert",
+      dismissible: true
+    }));
+  }
+  maybeWarnRoutineWindows(referenceDate = /* @__PURE__ */ new Date()) {
+    const currentDay = formatDateKey(referenceDate);
+    if (this.routineWarningDay !== currentDay) {
+      this.routineWarningDay = currentDay;
+      this.warnedRoutineWindowKeys.clear();
+    }
+    const activeNotifications = this.getActiveRoutineNotifications(referenceDate);
+    activeNotifications.forEach((notification) => {
+      const warningKey = `${currentDay}|${notification.id}`;
+      if (this.warnedRoutineWindowKeys.has(warningKey)) {
+        return;
+      }
+      this.warnedRoutineWindowKeys.add(warningKey);
+      new import_obsidian4.Notice(`Routine window due now: ${notification.title.replace(/ is due now$/, "")} \u2022 ${notification.description.split(" \u2022 ")[0]}`, 1e4);
+    });
+    const nextSignature = activeNotifications.map((item) => item.id).sort().join("|");
+    if (nextSignature !== this.activeRoutineNotificationSignature) {
+      this.activeRoutineNotificationSignature = nextSignature;
+      this.refreshDashboardViews();
+    }
+  }
   getCalendarReminderWarningLevel(reminder, now) {
     const warningWindowMs = this.data.settings.calendarWarningHours * 60 * 60 * 1e3;
     const start = new Date(reminder.reminderAt);
@@ -11687,6 +11727,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         dismissible: true
       });
     });
+    items.push(...this.getActiveRoutineNotifications(referenceDate));
     this.getLogicalDayInsights(referenceDate).prompts.forEach((prompt) => {
       items.push({
         id: `logical-day:${prompt.id}`,
@@ -13752,6 +13793,7 @@ No entries available.`;
     }
     await this.ensureTodayEntry();
     await this.maybeNotifyLogicalDayPrompts();
+    this.maybeWarnRoutineWindows();
     if (this.data.dayState.status === "in-progress") {
       const calendarKey = formatDateKey(/* @__PURE__ */ new Date());
       if (calendarKey !== this.data.dayState.activeDate) {

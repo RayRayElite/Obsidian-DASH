@@ -949,19 +949,29 @@
 }
 
 .daily-dashboard-consumable-remove-button {
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  border-color: color-mix(in srgb, #f08d84 42%, var(--background-modifier-border));
-  background: color-mix(in srgb, #f08d84 16%, var(--background-primary));
-  color: color-mix(in srgb, #ffd1cd 86%, white);
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 0 2px;
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, #cf6d63 70%, var(--background-modifier-border));
+  background: color-mix(in srgb, #8d342b 22%, var(--background-primary));
+  color: #ffe0db;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.28);
 }
 
 .daily-dashboard-consumable-remove-button .svg-icon,
 .daily-dashboard-consumable-remove-button svg {
-  width: 23px;
-  height: 23px;
-  stroke-width: 3.2;
+  display: none;
+}
+
+.daily-dashboard-consumable-remove-button:hover {
+  border-color: color-mix(in srgb, #d67267 84%, white);
+  background: color-mix(in srgb, #9f3c31 34%, var(--background-primary));
+  color: #fff1ee;
 }
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-dayflow-grid {
   grid-template-columns: repeat(8, minmax(0, 1fr));
@@ -2200,7 +2210,7 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-segment.is-gaming {
-  background: linear-gradient(180deg, rgba(124, 108, 255, 0.94), rgba(77, 59, 205, 0.9));
+  background: linear-gradient(180deg, rgba(244, 238, 228, 0.97), rgba(196, 188, 174, 0.94));
 }
 
 .daily-dashboard-week-segment.is-hygiene {
@@ -2220,7 +2230,7 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-segment.is-social {
-  background: linear-gradient(180deg, rgba(82, 145, 255, 0.94), rgba(42, 96, 200, 0.9));
+  background: linear-gradient(180deg, rgba(111, 32, 28, 0.96), rgba(63, 14, 12, 0.92));
 }
 
 .daily-dashboard-week-segment.is-chores {
@@ -2308,7 +2318,7 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-legend-dot.is-gaming {
-  background: #7462ef;
+  background: #e7e0d6;
 }
 
 .daily-dashboard-week-legend-dot.is-hygiene {
@@ -2328,7 +2338,7 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-legend-dot.is-social {
-  background: #4e8fe7;
+  background: #5f1814;
 }
 
 .daily-dashboard-week-legend-dot.is-chores {

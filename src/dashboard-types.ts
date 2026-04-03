@@ -680,7 +680,7 @@ export interface DashboardNotificationAction {
 
 export interface DashboardNotificationItem {
   id: string;
-  source: "calendar" | "logical-day" | "tasks" | "system";
+  source: "calendar" | "logical-day" | "routine" | "tasks" | "system";
   title: string;
   description: string;
   tone: DashboardTone;

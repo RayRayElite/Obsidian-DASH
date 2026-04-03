@@ -2021,7 +2021,7 @@ export class DailyDashboardView extends ItemView {
           removeButton.type = "button";
           removeButton.ariaLabel = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
           removeButton.title = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
-          setIcon(removeButton, "x");
+          removeButton.setText("×");
           removeButton.addEventListener("click", () => {
             void this.plugin.updateSettings({
               ...this.plugin.getSettings(),
@@ -2056,7 +2056,7 @@ export class DailyDashboardView extends ItemView {
           });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
-          setIcon(removeButton, "x");
+          removeButton.setText("×");
           removeButton.addEventListener("click", () => {
             const removedItem = { ...item } satisfies IntakeEntry;
             void this.runDestructiveAction(
@@ -2183,7 +2183,7 @@ export class DailyDashboardView extends ItemView {
           amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: item.linkedSessionStart ? "Timed" : "Manual" });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
-          setIcon(removeButton, "x");
+          removeButton.setText("×");
           removeButton.addEventListener("click", () => {
             void this.plugin.removeExerciseEntry(index);
           });
