@@ -41,6 +41,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add live session timeline strip for the current day.
 - [x] Add "What did I spend today on?" grouped summaries.
 - [x] Add recurring routine templates tied to time windows.
+- [x] Fold the old Day Flow card back into Session Deck and Vitals, leaving prompts as notifications instead of a dedicated card.
 
 ## Calendar And Planning
 
@@ -93,6 +94,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add "Ask why today felt off" analysis.
 - [x] Force AI coaching outputs to end with concrete actions.
 - [x] Add local prompt templates for different AI modes.
+- [x] Add a reusable Basic Information note that AI can include automatically for long-lived user context.
 
 ## Search, Review, And Reporting
 
@@ -118,7 +120,9 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add keyboard shortcuts for major dashboard actions.
 - [x] Add undo for destructive actions.
 - [x] Add notification center for reminders and system notices.
+- [x] Add configurable notification sounds for reminder and logical-day notices.
 - [x] Add first-run setup wizard.
+- [x] Add frontmatter tags to plugin-generated markdown documents for better differentiation and graph visibility.
 
 ## Suggested Implementation Order
 

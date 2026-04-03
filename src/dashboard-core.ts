@@ -64,6 +64,11 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .filter((automation): automation is HabitAutomation => automation !== null)
     : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
+  const notificationSound = settings.notificationSound === "off"
+    || settings.notificationSound === "ping"
+    || settings.notificationSound === "alert"
+    ? settings.notificationSound
+    : DEFAULT_SETTINGS.notificationSound;
 
   return {
     dashboardTitle: settings.dashboardTitle?.trim() || DEFAULT_SETTINGS.dashboardTitle,
@@ -73,12 +78,15 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     weeklyReportFolder: settings.weeklyReportFolder?.trim() || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: settings.monthlyReportFolder?.trim() || DEFAULT_SETTINGS.monthlyReportFolder,
     exportFolder: normalizeFolderPath(settings.exportFolder?.trim() || DEFAULT_SETTINGS.exportFolder),
+    generatedDocumentTags: typeof settings.generatedDocumentTags === "string" ? settings.generatedDocumentTags : DEFAULT_SETTINGS.generatedDocumentTags,
     aiApiKey: settings.aiApiKey?.trim() || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
     aiApiKeyEnvVar: settings.aiApiKeyEnvVar?.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar,
     aiModel: settings.aiModel?.trim() || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
+    basicInfoNotePath: settings.basicInfoNotePath?.trim() || DEFAULT_SETTINGS.basicInfoNotePath,
+    includeBasicInfoInAi: settings.includeBasicInfoInAi ?? DEFAULT_SETTINGS.includeBasicInfoInAi,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
     aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
     aiRelatedNotesLimit: clamp(Number(settings.aiRelatedNotesLimit ?? DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
@@ -99,6 +107,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     intakeQuickPresets,
     habitAutomations,
     showUndoNotifications,
+    notificationSound,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,

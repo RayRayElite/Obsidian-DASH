@@ -20,6 +20,7 @@ export type ActivitySessionKind = (typeof ACTIVITY_SESSION_KIND_OPTIONS)[number]
 export type ExerciseIntensity = (typeof EXERCISE_INTENSITY_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
 export type WeightGoalMode = "lose" | "maintain" | "gain";
+export type DashboardNotificationSound = "off" | "chime" | "ping" | "alert";
 
 export interface HabitDefinition {
   id: string;
@@ -394,12 +395,15 @@ export interface DashboardSettings {
   weeklyReportFolder: string;
   monthlyReportFolder: string;
   exportFolder: string;
+  generatedDocumentTags: string;
   aiApiKey: string;
   aiApiKeySource: AiApiKeySource;
   aiApiKeyEnvVar: string;
   aiModel: string;
   aiBaseUrl: string;
   aiOutputFolder: string;
+  basicInfoNotePath: string;
+  includeBasicInfoInAi: boolean;
   aiPromptTemplates: string;
   aiContextDays: number;
   aiRelatedNotesLimit: number;
@@ -420,6 +424,7 @@ export interface DashboardSettings {
   intakeQuickPresets: IntakeQuickPreset[];
   habitAutomations: HabitAutomation[];
   showUndoNotifications: boolean;
+  notificationSound: DashboardNotificationSound;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -863,12 +868,15 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   weeklyReportFolder: "Dashboard Logs/Weekly",
   monthlyReportFolder: "Dashboard Logs/Monthly",
   exportFolder: "Dashboard Logs/Exports",
+  generatedDocumentTags: "daily-dashboard",
   aiApiKey: "",
   aiApiKeySource: "settings",
   aiApiKeyEnvVar: "OPENAI_API_KEY",
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
   aiOutputFolder: "Dashboard Logs/AI",
+  basicInfoNotePath: "Dashboard Logs/Profile/Basic Information.md",
+  includeBasicInfoInAi: true,
   aiPromptTemplates: [
     "[morning-startup-brief]",
     "Favor direct prioritization, realistic pacing, and explicit first actions.",
@@ -922,6 +930,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   ],
   habitAutomations: [],
   showUndoNotifications: true,
+  notificationSound: "chime",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [

@@ -1018,9 +1018,7 @@ export class DailyDashboardView extends ItemView {
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
-      const timeAllocationInsights = this.plugin.getTimeAllocationInsights(todayEntry.date);
       const aiStatus = this.plugin.getAiStatus();
-      const trackedSleepMinutes = this.plugin.getTrackedSleepMinutes(todayEntry);
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
@@ -1064,6 +1062,17 @@ export class DailyDashboardView extends ItemView {
       const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)?.tone ?? "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(sessionDeckSummary, `Logical date ${todayEntry.date}`, "neutral");
+      createSemanticChip(sessionDeckSummary, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
+      createSemanticChip(
+        sessionDeckSummary,
+        logicalDayInsights.hasActiveSession
+          ? "Session active"
+          : logicalDayInsights.inactiveMinutes !== null
+            ? `Inactive ${formatMinutesAsHours(logicalDayInsights.inactiveMinutes)}`
+            : "No activity yet",
+        logicalDayInsights.hasActiveSession ? "capture" : logicalDayInsights.inactiveMinutes !== null && logicalDayInsights.inactiveMinutes >= 120 ? "alert" : "neutral"
+      );
       createSemanticChip(sessionDeckSummary, `Tracked ${formatMinutesAsHours(trackedWorkMinutes + trackedNapMinutes + trackedRelaxMinutes + trackedBreakMinutes + trackedPoopMinutes + trackedActivityMinutes)}`, "capture");
       const sessionDeckToolbar = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-toolbar" });
       const sessionProjectSelect = sessionDeckToolbar.createEl("select", { cls: "daily-dashboard-input" });
@@ -1083,6 +1092,7 @@ export class DailyDashboardView extends ItemView {
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
+      createButton(sessionDeckActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -1107,133 +1117,24 @@ export class DailyDashboardView extends ItemView {
         const activeTrackerSession = activeActivitySession?.kind === tracker.kind ? activeActivitySession : null;
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
-
-      const dayFlowCard = createGridCard("Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
-        icon: "sun-moon",
-        eyebrow: "Cycle",
-        tone: "focus",
-        tag: dayState.status === "in-progress" ? "In Progress" : dayState.status === "ended" ? "Ended" : "Idle"
-      });
-      const dayFlowStatus = dayFlowCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
-      createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
-      createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
-      createSemanticChip(dayFlowStatus, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
-      createSemanticChip(
-        dayFlowStatus,
-        logicalDayInsights.hasActiveSession
-          ? "Session active"
-          : logicalDayInsights.inactiveMinutes !== null
-            ? `Inactive ${formatMinutesAsHours(logicalDayInsights.inactiveMinutes)}`
-            : "No activity yet",
-        logicalDayInsights.hasActiveSession ? "capture" : logicalDayInsights.inactiveMinutes !== null && logicalDayInsights.inactiveMinutes >= 120 ? "alert" : "neutral"
-      );
-
-      const dayPromptSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-prompts", "Auto prompts", "Automatic nudges help you end an inactive day cleanly and warn when you are still logging to yesterday after midnight.");
-      if (logicalDayInsights.prompts.length === 0) {
-        dayPromptSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No automatic day-end or rollover prompts right now." });
-      } else {
-        logicalDayInsights.prompts.forEach((prompt) => {
-          const row = dayPromptSection.createDiv({ cls: "daily-dashboard-project-row" });
-          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
-          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, prompt.kind === "late-night-warning" ? "Rollover" : "Inactivity", prompt.tone);
-          copy.createEl("strong", { text: prompt.title });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: prompt.description });
-
-          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-          createButton(actions, "End day", async () => this.plugin.endLogicalDay(), false, "moon-star");
-          createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
-        });
-      }
-
-      const dayFlowMetrics = this.createCollapsibleSubsection(dayFlowCard, "day-flow-metrics", "Tracked metrics", "Wake, sleep, live sessions, and session totals for the active logical day.");
-      const dayFlowGrid = dayFlowMetrics.createDiv({ cls: "daily-dashboard-dayflow-grid" });
-      this.renderDayMetric(dayFlowGrid, "Wake", todayEntry.wakeTime || "Not started yet");
-      this.renderDayMetric(dayFlowGrid, "Sleep", todayEntry.sleepTime || "Not ended yet");
-      this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
-      this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
-      this.renderDayMetric(dayFlowGrid, "Tracked sleep", formatMinutesAsHours(trackedSleepMinutes));
-      this.renderDayMetric(dayFlowGrid, "Last activity", logicalDayInsights.lastActivityAt ? formatSyncTimestamp(logicalDayInsights.lastActivityAt) : "No activity yet");
-      this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
-      this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
-      this.renderDayMetric(dayFlowGrid, "Archived tasks", `${todayEntry.completedTasks.length}`);
-
-      const bowelSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-bowel", "Bowel tracking", "Keep bowel sessions, duration, and quality tags together instead of mixing them into the generic metrics summary.");
-      const bowelSummary = bowelSection.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(bowelSummary, `${trackedPoopCount} session${trackedPoopCount === 1 ? "" : "s"}`, trackedPoopCount > 0 ? "alert" : "neutral");
-      createSemanticChip(bowelSummary, `Tracked ${formatMinutesAsHours(trackedPoopMinutes)}`, trackedPoopMinutes > 0 ? "alert" : "neutral");
-      createSemanticChip(bowelSummary, activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : "No live session", activePoopSession ? "alert" : "neutral");
-      if (todayEntry.poopSessions.length === 0) {
-        bowelSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No bowel sessions tracked for this logical day yet." });
-      } else {
-        const bowelQualityList = bowelSection.createDiv({ cls: "daily-dashboard-project-list" });
-        todayEntry.poopSessions.slice().reverse().slice(0, 5).forEach((session) => {
-          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
-          row.createEl("span", {
-            cls: "daily-dashboard-row-meta",
-            text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} • Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
-          });
-          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
-          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
-            const button = controls.createEl("button", {
-              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
-              text: quality
-            });
-            button.type = "button";
-            button.addEventListener("click", () => {
-              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
-            });
-          });
-        });
-      }
-
-      const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
-      const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
-      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", (timeAllocationInsights.awakeUnknownMinutes ?? 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
-      createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
-      const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
-      this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
-      this.renderDayMetric(allocationGrid, "Tracked awake", formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes));
-      this.renderDayMetric(allocationGrid, "Full-day unknown", formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes));
-      this.renderDayMetric(allocationGrid, "Sleep total", formatMinutesAsHours(timeAllocationInsights.sleepMinutes));
-      const allocationBuckets = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
-      timeAllocationInsights.buckets
-        .sort((left, right) => right.minutes - left.minutes)
-        .forEach((bucket) => {
-          createSemanticChip(allocationBuckets, `${bucket.label} ${formatMinutesAsHours(bucket.minutes)}`, bucket.tone);
-        });
-      if (timeAllocationInsights.diagnostics.length > 0) {
-        const diagnosisList = timeAllocationSection.createDiv({ cls: "daily-dashboard-project-list" });
-        timeAllocationInsights.diagnostics.forEach((diagnosis) => {
-          const row = diagnosisList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("span", { text: diagnosis });
-        });
-      }
-
-      const timelineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-live-strip", "Live timeline", "See the current logical day as a strip of tracked sessions so gaps and overlaps are obvious immediately.");
-      this.renderTimelineStrip(
-        timelineSection,
-        this.buildTimelineSessions(todayEntry),
-        todayEntry.date,
-        dayState.status === "in-progress" && dayState.activeDate === todayEntry.date ? formatDateTimeKey(new Date()) : (todayEntry.dayEndedAt || todayEntry.sleepTime || formatDateTimeKey(new Date())),
-        "No tracked sessions yet for this logical day."
-      );
-
-      const routineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-routines", "Routine windows", "Recurring prompts tied to time windows so the dashboard can nudge the right routine at the right part of the day.");
+      const routineSection = this.createCollapsibleSubsection(sessionDeckCard, "session-deck-routines", "Routine cues", "Keep active or upcoming routine windows near the session timers instead of in a separate card.");
       const routineTemplates = this.plugin.getRoutineTemplates();
       const dismissedRoutineIds = getDismissedRoutineState(todayEntry.date);
       const currentMinutes = getClockMinutes(new Date());
       const visibleRoutines = routineTemplates.filter((template) => !dismissedRoutineIds.has(template.id));
-      if (visibleRoutines.length === 0) {
-        routineSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No routine templates left for this day. Add definitions in settings or clear daily dismissals tomorrow." });
+      const pendingRoutines = visibleRoutines
+        .map((template) => ({
+          template,
+          startMinutes: getClockMinutes(template.startTime),
+          endMinutes: getClockMinutes(template.endTime)
+        }))
+        .filter(({ endMinutes }) => currentMinutes <= endMinutes)
+        .sort((left, right) => left.startMinutes - right.startMinutes);
+      if (pendingRoutines.length === 0) {
+        routineSection.createDiv({ cls: "daily-dashboard-row-meta", text: visibleRoutines.length === 0 ? "No routine templates left for this day. Add definitions in settings or clear daily dismissals tomorrow." : "No active or upcoming routine windows left for today." });
       } else {
         const routineList = routineSection.createDiv({ cls: "daily-dashboard-project-list" });
-        visibleRoutines.forEach((template) => {
-          const startMinutes = getClockMinutes(template.startTime);
-          const endMinutes = getClockMinutes(template.endTime);
+        pendingRoutines.forEach(({ template, startMinutes, endMinutes }) => {
           const isActiveWindow = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
           const isUpcoming = currentMinutes < startMinutes;
           const row = routineList.createDiv({ cls: "daily-dashboard-project-row" });
@@ -1821,6 +1722,36 @@ export class DailyDashboardView extends ItemView {
               async () => this.plugin.removeSymptomEntry(index),
               async () => this.plugin.restoreSymptomEntry(removedItem, index)
             );
+          });
+        });
+      }
+
+      const bowelSection = this.createCollapsibleSubsection(stateCard, "state-bowel", "Bowel tracking", "Keep bowel sessions, duration, and quality tags with the rest of the body-state logging.");
+      const bowelSummary = bowelSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(bowelSummary, `${trackedPoopCount} session${trackedPoopCount === 1 ? "" : "s"}`, trackedPoopCount > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, `Tracked ${formatMinutesAsHours(trackedPoopMinutes)}`, trackedPoopMinutes > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : "No live session", activePoopSession ? "alert" : "neutral");
+      if (todayEntry.poopSessions.length === 0) {
+        bowelSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No bowel sessions tracked for this logical day yet." });
+      } else {
+        const bowelQualityList = bowelSection.createDiv({ cls: "daily-dashboard-project-list" });
+        todayEntry.poopSessions.slice().reverse().slice(0, 5).forEach((session) => {
+          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
+          row.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} • Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
+          });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
+            const button = controls.createEl("button", {
+              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+              text: quality
+            });
+            button.type = "button";
+            button.addEventListener("click", () => {
+              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
+            });
           });
         });
       }
@@ -2448,6 +2379,7 @@ export class DailyDashboardView extends ItemView {
       createButton(aiActions, "Project synthesis", async () => this.plugin.generateAiProjectSynthesis(), false, "network");
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
+      createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
 
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
@@ -5274,6 +5206,24 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
           });
       });
 
+    new Setting(containerEl)
+      .setName("Generated document tags")
+      .setDesc("Comma or line-separated tags added to plugin-created markdown files so logs, reports, AI notes, and exports are easier to filter and graph.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("daily-dashboard\ndaily-dashboard/generated")
+          .setValue(settings.generatedDocumentTags)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              generatedDocumentTags: value
+            });
+          });
+
+        textArea.inputEl.rows = 3;
+        textArea.inputEl.cols = 36;
+      });
+
     containerEl.createEl("h3", { text: "Calendar" });
 
     new Setting(containerEl)
@@ -5422,6 +5372,23 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
         });
       });
 
+    new Setting(containerEl)
+      .setName("Notification sound")
+      .setDesc("Play a short sound when the dashboard raises a new reminder or logical-day notice. Turn it off here if you only want visual notices.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("off", "Off");
+        dropdown.addOption("chime", "Chime");
+        dropdown.addOption("ping", "Ping");
+        dropdown.addOption("alert", "Alert");
+        dropdown.setValue(settings.notificationSound);
+        dropdown.onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            notificationSound: value === "off" || value === "ping" || value === "alert" ? value : "chime"
+          });
+        });
+      });
+
     containerEl.createEl("h3", { text: "AI" });
 
     new Setting(containerEl)
@@ -5525,6 +5492,33 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
               aiOutputFolder: value.trim() || DEFAULT_SETTINGS.aiOutputFolder
             });
           });
+      });
+
+    new Setting(containerEl)
+      .setName("Basic information note path")
+      .setDesc("Reusable personal context note for AI. The command palette can create or open this template, and AI requests can include it automatically.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.basicInfoNotePath)
+          .setValue(settings.basicInfoNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              basicInfoNotePath: value.trim() || DEFAULT_SETTINGS.basicInfoNotePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Include basic information in AI")
+      .setDesc("Inject the Basic Information note into AI context when it exists, so long-term facts do not need to be repeated in each prompt.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.includeBasicInfoInAi).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            includeBasicInfoInAi: value
+          });
+        });
       });
 
     new Setting(containerEl)
@@ -5738,7 +5732,7 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Routine templates")
-      .setDesc("One routine per line using Label|HH:MM|HH:MM. These appear in Day Flow when their time window is due or coming up.")
+      .setDesc("One routine per line using Label|HH:MM|HH:MM. These drive notifications and compact routine cues in Session Deck when their time window is due or coming up.")
       .addTextArea((textArea) => {
         textArea
           .setPlaceholder("Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30")
@@ -5809,19 +5803,18 @@ const DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights
 const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "week-at-a-glance", title: "Week At A Glance", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "weekly-agenda", title: "Weekly Agenda", order: 1, hidden: false, pinned: false, width: "full" },
-  { key: "day-flow", title: "Day Flow", order: 2, hidden: false, pinned: true, width: "full" },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 3, hidden: false, pinned: false, width: "default" },
-  { key: "state-and-friction", title: "Vitals", order: 4, hidden: false, pinned: false, width: "default" },
-  { key: "gamification-center", title: "Gamification Center", order: 5, hidden: false, pinned: false, width: "default" },
-  { key: "habits", title: "Habits", order: 6, hidden: false, pinned: false, width: "default" },
-  { key: "food-log", title: "Consumables", order: 7, hidden: false, pinned: false, width: "default" },
-  { key: "exercise-weight", title: "Exercise & Weight", order: 8, hidden: false, pinned: false, width: "default" },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false, width: "default" }
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
+  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
+  { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
+  { key: "exercise-weight", title: "Exercise & Weight", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -6773,7 +6766,7 @@ function getDashboardCardGridColumn(key: string, config: DashboardLayoutCardStat
   }
 
   if (viewMode === "widescreen") {
-    if (key === "weekly-agenda" || key === "ai-workspace" || key === "day-flow") {
+    if (key === "weekly-agenda" || key === "ai-workspace") {
       return "span 18";
     }
     if (key === "weekly-agenda" || key === "gamification-center" || key === "timeline-search" || key === "heatmaps") {
@@ -6782,7 +6775,7 @@ function getDashboardCardGridColumn(key: string, config: DashboardLayoutCardStat
     return "span 6";
   }
 
-  if (key === "weekly-agenda" || key === "day-flow" || key === "ai-workspace") {
+  if (key === "weekly-agenda" || key === "ai-workspace") {
     return "1 / -1";
   }
 

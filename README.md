@@ -7,7 +7,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - tracks repeat daily habits with per-day counts, preferred completion windows, difficulty weights, and per-habit miss notes
 - stores mood, energy, wake quality, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
-- tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery
+- tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery, and keeps bowel tracking inside Vitals instead of a separate day-flow block
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, link them to a tracked project, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
@@ -48,17 +48,15 @@ The dashboard now separates your real day from the calendar date.
 3. Use `Start work session` and `Stop work session` to track actual focused work time inside that logical day.
 4. Use `Start nap session` and `Stop nap session` whenever you sleep during the day so naps are logged separately from your final sleep time.
 
-The `Day Flow` card now also watches for long stretches of inactivity and shows an automatic prompt when the logical day looks finished. If the clock rolls past midnight while the logical day is still active, the card and notice system warn that new sessions and edits are still landing on yesterday until you explicitly end the day.
+Session Deck now carries the live logical-day status instead of a dedicated `Day Flow` card. If the clock rolls past midnight while the logical day is still active, the notice system still warns that new sessions and edits are landing on yesterday until you explicitly end the day, and the same past-midnight state is visible in Session Deck.
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 
 The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card now uses timestamped mood, energy, and anxiety check-ins during the day, and mood entries can capture a named feeling alongside the score.
 
-The Day Flow card now also includes a grouped time-allocation summary for the current logical day, plus unknown-time diagnostics that call out missing timestamps, active days, and likely timer gaps. That makes the old generic "unknown" bucket actionable instead of just vague leftover time.
+The logical day repair flow still includes a manual timeline editor for work, nap, relax, break, and bowel sessions, but the always-on live timeline strip was removed from the dashboard because it was adding more chrome than operational value.
 
-The logical day repair flow now includes a manual timeline editor for work, nap, relax, break, and bowel sessions, plus the Day Flow card shows a live session strip for the current logical day. That makes it possible to repair bad timer history directly instead of only patching totals.
-
-Day Flow now also supports recurring routine templates tied to time windows. Define them in settings using `Label|HH:MM|HH:MM`, and the dashboard will surface them when they are due, let you queue them into `Next Up`, and dismiss them for the rest of the day once handled.
+Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live as compact cues in Session Deck and as real notifications instead of taking over a full Day Flow section.
 
 The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3 candidates that blend near-term calendar items, overdue or due-soon tasks, repeating work, and stale projects. Top 3 rows, Next Up rows, and suggestion rows can all create a quick work block directly in the calendar using the estimate on the item when one exists.
 
@@ -82,7 +80,9 @@ The same hero control cluster now exposes a shortcut help button, and the dashbo
 
 Destructive dashboard actions now also get a visible in-view undo rail. When you remove a Top 3 item, Next Up item, habit definition, food entry, intake entry, or symptom entry from the dashboard, a temporary undo banner appears near the top of the view so the last removal can be restored without digging into plugin data or rebuilding the row by hand.
 
-The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, and actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard.
+The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard, and the notice popups can optionally play a configurable sound.
+
+The plugin now also supports a reusable `Basic Information` note for long-lived personal context such as age, height, weight, interests, preferences, and AI guidance. You can open it from the command palette or AI workspace, and AI requests can include it automatically. Plugin-generated markdown artifacts can also receive frontmatter tags so daily logs, reports, AI notes, and exports are easier to distinguish in search and graph views.
 
 New installs now open a guided first-run setup wizard automatically until the core configuration is confirmed. The wizard walks through dashboard identity, project-hub paths, reporting and calendar folders, and AI defaults, and it can be reopened later from the command palette or the plugin settings tab.
 

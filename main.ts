@@ -128,6 +128,7 @@ import {
   type DashboardPluginData,
   type DashboardFocusDisplayItem,
   type DashboardNotificationItem,
+  type DashboardNotificationSound,
   type DashboardSettings,
   type DayLifecycleState,
   type DashboardUiState,
@@ -194,6 +195,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private routineWarningDay = "";
   private warnedRoutineWindowKeys = new Set<string>();
   private activeRoutineNotificationSignature = "";
+  private notificationAudioContext: AudioContext | null = null;
 
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) {
@@ -201,6 +203,82 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     return String(error);
+  }
+
+  private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
+    new Notice(message, timeout);
+    if (playSound) {
+      this.playNotificationSound();
+    }
+  }
+
+  private playNotificationSound(): void {
+    const preset = this.data.settings.notificationSound;
+    if (preset === "off") {
+      return;
+    }
+
+    const audioWindow = window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextCtor = audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    if (!this.notificationAudioContext || this.notificationAudioContext.state === "closed") {
+      this.notificationAudioContext = new AudioContextCtor();
+    }
+
+    const context = this.notificationAudioContext;
+    const scheduleTone = (): void => {
+      const startAt = context.currentTime + 0.02;
+      this.getNotificationSoundPattern(preset).forEach((step, index) => {
+        const oscillator = context.createOscillator();
+        const gainNode = context.createGain();
+        const offset = this.getNotificationSoundPattern(preset)
+          .slice(0, index)
+          .reduce((sum, item) => sum + item.duration + item.gap, 0);
+        oscillator.type = step.waveform;
+        oscillator.frequency.setValueAtTime(step.frequency, startAt + offset);
+        gainNode.gain.setValueAtTime(0.0001, startAt + offset);
+        gainNode.gain.exponentialRampToValueAtTime(step.gain, startAt + offset + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + step.duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(context.destination);
+        oscillator.start(startAt + offset);
+        oscillator.stop(startAt + offset + step.duration + 0.02);
+      });
+    };
+
+    if (context.state === "suspended") {
+      void context.resume().then(() => {
+        scheduleTone();
+      }).catch(() => {
+        // Ignore audio startup failures and keep notifications functional.
+      });
+      return;
+    }
+
+    scheduleTone();
+  }
+
+  private getNotificationSoundPattern(preset: DashboardNotificationSound): Array<{ frequency: number; duration: number; gap: number; gain: number; waveform: OscillatorType }> {
+    switch (preset) {
+      case "ping":
+        return [
+          { frequency: 1046.5, duration: 0.11, gap: 0, gain: 0.05, waveform: "sine" }
+        ];
+      case "alert":
+        return [
+          { frequency: 740, duration: 0.09, gap: 0.04, gain: 0.06, waveform: "square" },
+          { frequency: 620, duration: 0.12, gap: 0, gain: 0.05, waveform: "square" }
+        ];
+      case "chime":
+      default:
+        return [
+          { frequency: 880, duration: 0.1, gap: 0.03, gain: 0.045, waveform: "triangle" },
+          { frequency: 1318.5, duration: 0.16, gap: 0, gain: 0.04, waveform: "sine" }
+        ];
+    }
   }
 
   private async initializeWorkspaceArtifacts(): Promise<void> {
@@ -280,6 +358,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Export dashboard metrics as markdown and CSV",
       callback: () => {
         void this.exportDashboardMetrics();
+      }
+    });
+
+    this.addCommand({
+      id: "open-basic-information-note",
+      name: "Open basic information note",
+      callback: () => {
+        void this.openBasicInformationNote();
       }
     });
 
@@ -1793,7 +1879,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
         this.warnedCalendarEventKeys.add(eventKey);
         const timeLabel = this.formatCalendarEventWindow(new Date(event.start), new Date(event.end), event.allDay);
-        new Notice(`Upcoming activity: ${event.title} • ${timeLabel}${event.leadSummary ? ` • ${event.leadSummary}` : ""}`, 10000);
+        this.showDashboardNotice(`Upcoming activity: ${event.title} • ${timeLabel}${event.leadSummary ? ` • ${event.leadSummary}` : ""}`, 10000, true);
       });
   }
 
@@ -1832,7 +1918,7 @@ export default class DailyDashboardPlugin extends Plugin {
       }
 
       this.warnedRoutineWindowKeys.add(warningKey);
-      new Notice(`Routine window due now: ${notification.title.replace(/ is due now$/, "")} • ${notification.description.split(" • ")[0]}`, 10000);
+      this.showDashboardNotice(`Routine window due now: ${notification.title.replace(/ is due now$/, "")} • ${notification.description.split(" • ")[0]}`, 10000, true);
     });
 
     const nextSignature = activeNotifications.map((item) => item.id).sort().join("|");
@@ -2987,6 +3073,15 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice(`Dashboard export generated in ${folder}.`);
   }
 
+  async openBasicInformationNote(): Promise<void> {
+    const path = normalizePath(this.data.settings.basicInfoNotePath);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    const file = existing instanceof TFile
+      ? existing
+      : await this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
+    await this.openFile(file);
+  }
+
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -4086,6 +4181,7 @@ export default class DailyDashboardPlugin extends Plugin {
       ? truncateText(await this.app.vault.read(masterTodoFile), 12000)
       : "Master task hub raw content not included for this request.";
     const activeFile = includeActiveNote ? this.app.workspace.getActiveFile() : null;
+    const basicInfoSection = await this.buildBasicInformationAiContext();
     const activeNoteSection = activeFile instanceof TFile
       ? `## Active Note\nPath: ${activeFile.path}\n\n${truncateText(await this.app.vault.read(activeFile), 8000)}`
       : "";
@@ -4111,12 +4207,85 @@ export default class DailyDashboardPlugin extends Plugin {
       "## Relevant Vault Notes",
       renderAiRelevantNotes(relevantNotes),
       "",
+      basicInfoSection,
+      "",
       ...extraContextSections.flatMap((section) => section.trim().length > 0 ? [section, ""] : []),
       activeNoteSection,
       "",
       "## Master Task Hub Raw Excerpt",
       masterTodoRaw
     ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+
+  private async buildBasicInformationAiContext(): Promise<string> {
+    if (!this.data.settings.includeBasicInfoInAi) {
+      return "";
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(normalizePath(this.data.settings.basicInfoNotePath));
+    if (!(file instanceof TFile)) {
+      return "";
+    }
+
+    const content = truncateText(await this.app.vault.read(file), 6000);
+    return [
+      "## Basic Information",
+      `Path: ${file.path}`,
+      content
+    ].join("\n\n");
+  }
+
+  private renderBasicInformationTemplate(): string {
+    const weightUnit = this.data.settings.measurementSystem === "metric" ? "kg" : "lb";
+    const latestWeight = this.getLatestRecordedBodyWeight();
+
+    return [
+      "# Basic Information",
+      "",
+      `- Last updated: ${formatDateTimeKey(new Date())}`,
+      `- Measurement system: ${this.data.settings.measurementSystem}`,
+      `- Latest dashboard weight: ${latestWeight !== null ? `${latestWeight} ${weightUnit}` : "Not pulled from dashboard yet"}`,
+      "",
+      "## Identity",
+      "- Preferred name:",
+      "- Age:",
+      "- Height:",
+      "- Time zone:",
+      "- Location context:",
+      "",
+      "## Body Metrics",
+      `- Current weight (${weightUnit}): ${latestWeight !== null ? `${latestWeight}` : ""}`,
+      "- Goal weight or range:",
+      "- Important health context:",
+      "- Medications or supplements worth remembering:",
+      "",
+      "## Lifestyle And Interests",
+      "- Work or study situation:",
+      "- Main interests:",
+      "- Hobbies or recurring activities:",
+      "- Typical daily schedule:",
+      "",
+      "## Preferences And Constraints",
+      "- Food preferences or restrictions:",
+      "- Exercise limitations or priorities:",
+      "- Sensory or environment preferences:",
+      "- Planning style that usually works best:",
+      "",
+      "## AI Guidance",
+      "- Helpful context for planning and coaching:",
+      "- Suggestions to avoid:",
+      "- Long-term goals the AI should keep in mind:",
+      "",
+      "## Notes",
+      "- Update stable personal facts here when they change.",
+      "- Use recent dashboard logs for short-term changes like weight drift, symptoms, or sleep changes.",
+      ""
+    ].join("\n");
+  }
+
+  private getLatestRecordedBodyWeight(): number | null {
+    const weightedEntries = this.getAllEntries().filter((entry) => typeof entry.bodyWeight === "number");
+    return weightedEntries.length > 0 ? weightedEntries[weightedEntries.length - 1].bodyWeight : null;
   }
 
   private applyAiPromptTemplate(systemPrompt: string, templateKey: string): string {
@@ -4365,8 +4534,7 @@ export default class DailyDashboardPlugin extends Plugin {
       ""
     ].filter((line) => line !== "").join("\n");
 
-    await this.ensureFolder(folder);
-    return await this.app.vault.create(filePath, content);
+    return this.upsertMarkdownFile(filePath, content);
   }
 
   async openPromoteTaskFlow(): Promise<void> {
@@ -5804,7 +5972,7 @@ export default class DailyDashboardPlugin extends Plugin {
       if (insights.lastActivityAt && this.data.dayState.lastInactivityPromptActivityAt !== insights.lastActivityAt) {
         this.data.dayState.lastInactivityPromptActivityAt = insights.lastActivityAt;
         changed = true;
-        new Notice(`Day-end suggestion: ${entry.date} has been inactive for ${this.formatDurationMinutes(insights.inactiveMinutes ?? 0)}. End it when you're done.`, 9000);
+        this.showDashboardNotice(`Day-end suggestion: ${entry.date} has been inactive for ${this.formatDurationMinutes(insights.inactiveMinutes ?? 0)}. End it when you're done.`, 9000, true);
       }
     } else if (this.data.dayState.lastInactivityPromptActivityAt) {
       this.data.dayState.lastInactivityPromptActivityAt = "";
@@ -5817,7 +5985,7 @@ export default class DailyDashboardPlugin extends Plugin {
       if (this.data.dayState.lastLateNightWarningKey !== lateNightWarningKey) {
         this.data.dayState.lastLateNightWarningKey = lateNightWarningKey;
         changed = true;
-        new Notice(`Late-night rollover: you are still logging to ${entry.date}. End the logical day when you want new activity on ${calendarDate}.`, 10000);
+        this.showDashboardNotice(`Late-night rollover: you are still logging to ${entry.date}. End the logical day when you want new activity on ${calendarDate}.`, 10000, true);
       }
     } else if (this.data.dayState.lastLateNightWarningKey) {
       this.data.dayState.lastLateNightWarningKey = "";
@@ -6003,7 +6171,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async upsertMarkdownFile(path: string, content: string): Promise<TFile> {
-    return this.upsertTextFile(path, content);
+    return this.upsertTextFile(path, this.buildGeneratedMarkdownContent(path, content));
   }
 
   private getProjectNotePath(projectName: string, noteLinks: string[] = []): string {
@@ -6083,6 +6251,67 @@ export default class DailyDashboardPlugin extends Plugin {
         : ["- No habits configured."]),
       ""
     ].join("\n");
+  }
+
+  private buildGeneratedMarkdownContent(path: string, content: string): string {
+    const normalizedPath = normalizePath(path);
+    const tags = this.getGeneratedDocumentTagsForPath(normalizedPath);
+    if (tags.length === 0) {
+      return content;
+    }
+
+    const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+    const tagBlock = ["tags:", ...tags.map((tag) => `  - ${tag}`)].join("\n");
+    if (!frontmatterMatch) {
+      return `---\n${tagBlock}\n---\n\n${content.replace(/^\s+/, "")}`;
+    }
+
+    const existingFrontmatter = frontmatterMatch[1]
+      .replace(/^tags:\s*\[[^\]]*\]\s*$/m, "")
+      .replace(/^tags:\s*\r?\n(?:  - .*\r?\n?)*/m, "")
+      .trimEnd();
+    const body = content.slice(frontmatterMatch[0].length).replace(/^\s+/, "");
+    const nextFrontmatter = [existingFrontmatter, tagBlock].filter((section) => section.trim().length > 0).join("\n");
+    return `---\n${nextFrontmatter}\n---\n\n${body}`;
+  }
+
+  private getGeneratedDocumentTagsForPath(path: string): string[] {
+    const normalizedPath = normalizePath(path).toLowerCase();
+    const configuredTags = this.data.settings.generatedDocumentTags
+      .split(/[\r\n,]+/)
+      .map((tag) => tag.trim().replace(/^#/, "").replace(/\s+/g, "-").toLowerCase())
+      .filter((tag, index, tags) => tag.length > 0 && tags.indexOf(tag) === index);
+    const autoTags = ["daily-dashboard"];
+    const prefixMatches = (folderPath: string): boolean => {
+      const normalizedFolder = normalizePath(folderPath).toLowerCase();
+      return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+    };
+
+    if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile");
+    } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
+      autoTags.push("daily-dashboard/daily-log");
+    } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {
+      autoTags.push("daily-dashboard/weekly-report");
+    } else if (prefixMatches(this.data.settings.monthlyReportFolder)) {
+      autoTags.push("daily-dashboard/monthly-report");
+    } else if (prefixMatches(this.data.settings.aiOutputFolder)) {
+      autoTags.push("daily-dashboard/ai");
+    } else if (prefixMatches(this.data.settings.exportFolder)) {
+      autoTags.push("daily-dashboard/export");
+    } else if (normalizedPath === normalizePath(this.data.settings.calendarDocumentPath).toLowerCase()) {
+      autoTags.push("daily-dashboard/calendar");
+    } else if (normalizedPath.startsWith("dashboard logs/gamification/")) {
+      autoTags.push("daily-dashboard/gamification");
+    } else if (normalizedPath.startsWith("dashboard logs/weekly reviews/")) {
+      autoTags.push("daily-dashboard/weekly-review");
+    } else if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
+      autoTags.push("daily-dashboard/project-review");
+    } else if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
+      autoTags.push("daily-dashboard/cleanup");
+    }
+
+    return [...new Set([...configuredTags, ...autoTags])];
   }
 
   private renderDailyMetricsCsv(entries: DailyEntry[], habits: HabitDefinition[], occurrences: CalendarEventOccurrence[]): string {
