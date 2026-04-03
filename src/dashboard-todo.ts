@@ -2,6 +2,7 @@ import { TFile, Vault, normalizePath } from "obsidian";
 
 import { clamp, computeMissedHabits, formatDateKey, renderScore } from "./dashboard-core";
 import {
+  type CleanupSuggestion,
   type ArchiveMaintenanceResult,
   CHECKLIST_REGEX,
   NOTE_LINK_REGEX,
@@ -1354,27 +1355,80 @@ export function describeHealthScore(score: number): string {
   return "Critical";
 }
 
-export function buildCleanupSuggestions(project: TodoProjectSummary): string[] {
-  const suggestions: string[] = [];
+export function buildCleanupSuggestions(project: TodoProjectSummary): CleanupSuggestion[] {
+  const suggestions: CleanupSuggestion[] = [];
   if (project.projectState === "active" && project.staleDays !== null && project.staleDays >= 14) {
-    suggestions.push(`${project.name}: review stale backlog or re-scope the project.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "stale-project"),
+      projectName: project.name,
+      kind: "stale-project",
+      summary: `${project.name}: review stale backlog or re-scope the project.`,
+      detail: `${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since the last archived completion.`,
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.duplicateTasks.length > 0) {
-    suggestions.push(`${project.name}: merge duplicate tasks (${project.duplicateTasks.slice(0, 3).join(", ")}).`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "duplicate-tasks"),
+      projectName: project.name,
+      kind: "duplicate-tasks",
+      summary: `${project.name}: merge duplicate tasks (${project.duplicateTasks.slice(0, 3).join(", ")}).`,
+      detail: `${project.duplicateTasks.length} duplicate task${project.duplicateTasks.length === 1 ? "" : "s"} detected in the project hub.`,
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.breakdownTasks.length > 0) {
-    suggestions.push(`${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "breakdown-tasks"),
+      projectName: project.name,
+      kind: "breakdown-tasks",
+      summary: `${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`,
+      detail: project.breakdownTasks.slice(0, 3).join(" • "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.overdueTasks.length > 0) {
-    suggestions.push(`${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "overdue-tasks"),
+      projectName: project.name,
+      kind: "overdue-tasks",
+      summary: `${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`,
+      detail: project.overdueTasks.slice(0, 3).map((task) => task.dueDate ? `${task.text} (${task.dueDate})` : task.text).join(" • "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.blockedTasks.length > 0) {
-    suggestions.push(`${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "blocked-tasks"),
+      projectName: project.name,
+      kind: "blocked-tasks",
+      summary: `${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`,
+      detail: project.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.emptySections.length > 0) {
-    suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "empty-sections"),
+      projectName: project.name,
+      kind: "empty-sections",
+      summary: `${project.name}: prune empty sections (${project.emptySections.join(", ")}).`,
+      detail: `Empty sections: ${project.emptySections.join(", ")}`,
+      action: "open-cleanup-note",
+      actionLabel: "Cleanup note"
+    });
   }
   return suggestions;
+}
+
+function buildCleanupSuggestionId(projectName: string, kind: CleanupSuggestion["kind"]): string {
+  const normalizedProject = projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `cleanup:${kind}:${normalizedProject}`;
 }
 
 function inferProjectState(status: string): TodoProjectSummary["projectState"] {

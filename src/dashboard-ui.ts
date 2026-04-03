@@ -18,7 +18,6 @@ import {
   HABIT_WINDOW_OPTIONS,
   SESSION_TAG_OPTIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
-  type ArchivedTaskSnapshot,
   type CalendarEventOccurrence,
   type CalendarEventCategory,
   type CalendarRepeatCadence,
@@ -50,8 +49,7 @@ import {
   type TimelineSearchResult,
   type TodayFocusItem,
   type WeeklyAgendaDay,
-  type WorkSession,
-  type WorkLogFilters
+  type WorkSession
 } from "./dashboard-types";
 
 export class DailyDashboardView extends ItemView {
@@ -61,12 +59,6 @@ export class DailyDashboardView extends ItemView {
   private hasDeferredRefreshListeners = false;
   private hasKeyboardShortcutListener = false;
   private pendingRefresh = false;
-  private workLogFilters: WorkLogFilters = {
-    project: "",
-    keyword: "",
-    fromDate: "",
-    toDate: ""
-  };
   private timelineFilters: TimelineSearchFilters = {
     keyword: "",
     project: "",
@@ -268,6 +260,8 @@ export class DailyDashboardView extends ItemView {
         return async () => this.plugin.openAskAiFlow();
       case "s":
         return async () => this.plugin.syncRepeatingProjectTasks(true);
+      case "z":
+        return async () => this.undoPendingAction();
       case "/":
       case "?":
         return async () => this.openShortcutHelpFlow();
@@ -384,6 +378,15 @@ export class DailyDashboardView extends ItemView {
   private async dismissPendingUndo(): Promise<void> {
     this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await this.render();
+  }
+
+  private async handleCleanupSuggestionAction(action: "open-master-todo" | "open-cleanup-note"): Promise<void> {
+    if (action === "open-cleanup-note") {
+      await this.plugin.showCleanupSuggestions();
+      return;
+    }
+
+    await this.plugin.openMasterTodo();
   }
 
   private registerGridCard(
@@ -563,13 +566,12 @@ export class DailyDashboardView extends ItemView {
       const projects = todoSnapshot?.projects ?? [];
       const staleProjects = todoSnapshot?.staleProjects ?? [];
       const breakdownCandidates = todoSnapshot?.breakdownCandidates ?? [];
-      const cleanupSuggestions = todoSnapshot?.cleanupSuggestions ?? [];
+      const cleanupSuggestions = this.plugin.getVisibleCleanupSuggestions(todoSnapshot);
       const dueSoonTasks = todoSnapshot?.dueSoonTasks ?? [];
       const overdueTasks = todoSnapshot?.overdueTasks ?? [];
       const blockedTasks = todoSnapshot?.blockedTasks ?? [];
       const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const gamificationSummary = this.plugin.getGamificationSummary(todoSnapshot);
-      const workLogEntries = this.getFilteredWorkLogEntries();
       const timelineResults = this.getTimelineSearchResults();
       const savedDashboardFilters = getSavedDashboardFilters();
       const layoutCards = getDashboardCardLayoutState();
@@ -711,7 +713,7 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
       const latestUndoAction = this.pendingUndoActions[this.pendingUndoActions.length - 1] ?? null;
-      if (latestUndoAction) {
+      if (latestUndoAction && settings.showUndoNotifications) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
         const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
         undoCopy.createEl("strong", { text: "Undo last dashboard action" });
@@ -1570,12 +1572,6 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
-      missedCard.createEl("strong", { text: "Habit misses so far" });
-      missedCard.createEl("span", {
-        cls: "daily-dashboard-habit-meta",
-        text: todayEntry.missedHabits.length > 0 ? todayEntry.missedHabits.join(", ") : "No misses recorded yet."
-      });
       stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
       const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       frictionInput.value = todayEntry.frictionLog;
@@ -2094,6 +2090,10 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "session").length} sessions`, timelineResults.some((item) => item.kind === "session") ? "capture" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
+      const timelineActions = timelineCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(timelineActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
+      createButton(timelineActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+      createButton(timelineActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
       const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (timelineResults.length === 0) {
         timelineList.createDiv({ cls: "daily-dashboard-empty-state", text: "No timeline entries match the current filters." });
@@ -2128,57 +2128,6 @@ export class DailyDashboardView extends ItemView {
       this.renderHeatmapMetric(heatmapShell, "Work", "Tracked work minutes per day", this.buildHeatmapSeries("work"));
       this.renderHeatmapMetric(heatmapShell, "Sleep", "Tracked sleep minutes per day", this.buildHeatmapSeries("sleep"));
       this.renderHeatmapMetric(heatmapShell, "Habits", "Weighted habit completion percentage per day", this.buildHeatmapSeries("habits"));
-
-      const workLogCard = createGridCard("Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
-        icon: "search",
-        eyebrow: "History",
-        tone: "log",
-        tag: "Query"
-      });
-      const filterGrid = workLogCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const projectFilter = filterGrid.createEl("select", { cls: "daily-dashboard-input" });
-      const allProjectsOption = projectFilter.createEl("option", { text: "All projects" });
-      allProjectsOption.value = "";
-      projects.forEach((project) => {
-        const option = projectFilter.createEl("option", { text: project.name });
-        option.value = project.name;
-        option.selected = project.name === this.workLogFilters.project;
-      });
-      projectFilter.addEventListener("change", () => {
-        this.workLogFilters.project = projectFilter.value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "Keyword", this.workLogFilters.keyword, (value) => {
-        this.workLogFilters.keyword = value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "From date (YYYY-MM-DD)", this.workLogFilters.fromDate, (value) => {
-        this.workLogFilters.fromDate = value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "To date (YYYY-MM-DD)", this.workLogFilters.toDate, (value) => {
-        this.workLogFilters.toDate = value;
-        void this.render();
-      });
-      const workLogActions = workLogCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(workLogActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
-      createButton(workLogActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
-      createButton(workLogActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
-      const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
-      if (workLogEntries.length === 0) {
-        workLogList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived work matches the current filters." });
-      } else {
-        workLogEntries.slice(0, 20).forEach((task) => {
-          const row = workLogList.createDiv({ cls: "daily-dashboard-completed-row" });
-          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, task.section, "neutral");
-          const dateKey = task.archivedAt.slice(0, 10);
-          createSemanticChip(chipRow, dateKey, "log");
-          row.createEl("strong", { text: task.project });
-          row.createEl("span", { text: task.text });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-        });
-      }
 
       const aiCard = createGridCard("AI Workspace", "Plan, review, and ask grounded questions against your dashboard and vault without leaving the page.", {
         icon: "sparkles",
@@ -2294,7 +2243,14 @@ export class DailyDashboardView extends ItemView {
         projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured master task hub." });
       } else {
         [...todoSnapshot.projects]
-          .sort((left, right) => right.healthScore - left.healthScore)
+          .sort((left, right) => {
+            const recencyDelta = getProjectLastWorkedSortKey(right).localeCompare(getProjectLastWorkedSortKey(left));
+            if (recencyDelta !== 0) {
+              return recencyDelta;
+            }
+
+            return right.healthScore - left.healthScore;
+          })
           .slice(0, projectsExpanded ? 10 : 6)
           .forEach((project) => {
             const row = projectList.createDiv({ cls: projectsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
@@ -2304,6 +2260,7 @@ export class DailyDashboardView extends ItemView {
             createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
             row.createEl("strong", { text: `${project.name} • ${project.healthScore}` });
             row.createEl("span", { text: `${project.healthLabel} • ${project.openCount} open • ${project.completionsThisWeek} this week • ${project.completionsThisMonth} this month • ${project.trend} • ${project.status}` });
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last worked: ${project.lastCompletedAt ?? "No archived activity yet"}` });
             renderProjectMomentum(row, project);
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
             if (projectsExpanded && project.healthReasons.length > 0) {
@@ -2346,12 +2303,27 @@ export class DailyDashboardView extends ItemView {
         ...dueSoonTasks.slice(0, 5).map((item) => `Due soon: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
         ...blockedTasks.slice(0, 5).map((item) => `Blocked: ${item.project} -> ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`),
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
-        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
-        ...cleanupSuggestions.slice(0, 5)
+        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`)
       ];
-      if (alertLines.length === 0 && cleanupProjects.length === 0) {
+      if (alertLines.length === 0 && cleanupProjects.length === 0 && cleanupSuggestions.length === 0) {
         alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
-      } else if (alertsExpanded && cleanupProjects.length > 0) {
+      } else {
+        cleanupSuggestions.slice(0, alertsExpanded ? cleanupSuggestions.length : 3).forEach((item) => {
+          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, item.projectName, "neutral");
+          createSemanticChip(chipRow, item.kind.replace(/-/g, " "), item.kind === "stale-project" || item.kind === "overdue-tasks" ? "alert" : "state");
+          copy.createEl("strong", { text: item.summary });
+          if (item.detail) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.detail });
+          }
+          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions, item.actionLabel, async () => this.handleCleanupSuggestionAction(item.action), false, item.action === "open-cleanup-note" ? "sparkles" : "file-text");
+          createButton(actions, "Dismiss", async () => this.plugin.dismissCleanupSuggestion(item.id), false, "x");
+        });
+
+        if (alertsExpanded && cleanupProjects.length > 0) {
         cleanupProjects
           .sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left))
           .slice(0, 10)
@@ -2382,14 +2354,15 @@ export class DailyDashboardView extends ItemView {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
             }
           });
-      } else {
+        } else {
         alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
           const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
           row.createEl("span", { text: line });
         });
+        }
       }
       const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
-      if (alertLines.length > 6) {
+      if (alertLines.length > 6 || cleanupSuggestions.length > 3 || cleanupProjects.length > 0) {
         createButton(alertActions, alertsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("cleanup-details"), false, alertsExpanded ? "chevrons-up" : "chevrons-down");
       }
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
@@ -2849,21 +2822,6 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private getFilteredWorkLogEntries(): ArchivedTaskSnapshot[] {
-    const entries = this.plugin.getAllEntries()
-      .flatMap((entry) => entry.completedTasks)
-      .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt));
-
-    return entries.filter((entry) => {
-      const matchesProject = !this.workLogFilters.project || entry.project === this.workLogFilters.project;
-      const matchesKeyword = !this.workLogFilters.keyword || `${entry.project} ${entry.section} ${entry.text}`.toLowerCase().includes(this.workLogFilters.keyword.toLowerCase());
-      const datePart = entry.archivedAt.slice(0, 10);
-      const matchesFrom = !this.workLogFilters.fromDate || datePart >= this.workLogFilters.fromDate;
-      const matchesTo = !this.workLogFilters.toDate || datePart <= this.workLogFilters.toDate;
-      return matchesProject && matchesKeyword && matchesFrom && matchesTo;
-    });
-  }
-
   private getTimelineSearchResults(): TimelineSearchResult[] {
     const entries = this.plugin.getAllEntries();
     const todayKey = formatDateKey(new Date());
@@ -3154,12 +3112,6 @@ export class DailyDashboardView extends ItemView {
   }
 
   private resetDashboardFilters(): void {
-    this.workLogFilters = {
-      project: "",
-      keyword: "",
-      fromDate: "",
-      toDate: ""
-    };
     this.timelineFilters = {
       keyword: "",
       project: "",
@@ -3183,7 +3135,12 @@ export class DailyDashboardView extends ItemView {
     const filters = getSavedDashboardFilters().filter((item) => item.name !== name);
     filters.push({
       name,
-      workLogFilters: { ...this.workLogFilters },
+      workLogFilters: {
+        project: this.timelineFilters.project,
+        keyword: this.timelineFilters.keyword,
+        fromDate: this.timelineFilters.fromDate,
+        toDate: this.timelineFilters.toDate
+      },
       timelineFilters: {
         ...this.timelineFilters,
         kinds: [...this.timelineFilters.kinds]
@@ -3200,9 +3157,12 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    this.workLogFilters = { ...filter.workLogFilters };
     this.timelineFilters = {
       ...filter.timelineFilters,
+      keyword: filter.timelineFilters.keyword || filter.workLogFilters.keyword,
+      project: filter.timelineFilters.project || filter.workLogFilters.project,
+      fromDate: filter.timelineFilters.fromDate || filter.workLogFilters.fromDate,
+      toDate: filter.timelineFilters.toDate || filter.workLogFilters.toDate,
       kinds: filter.timelineFilters.kinds.length > 0 ? [...filter.timelineFilters.kinds] : ["task", "session", "calendar", "log"]
     };
     this.selectedSavedFilterName = filter.name;
@@ -5108,6 +5068,18 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             measurementSystem: value === "metric" ? "metric" : "imperial"
           });
         });
+
+    new Setting(containerEl)
+      .setName("Show undo notifications")
+      .setDesc("Keep the undo stack active while choosing whether the dashboard shows the undo banner after destructive actions.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.showUndoNotifications).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            showUndoNotifications: value
+          });
+        });
+      });
       });
 
     containerEl.createEl("h3", { text: "AI" });
@@ -5485,11 +5457,10 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
   { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
   { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
-  { key: "searchable-work-log", title: "Searchable Work Log", order: 12, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 13, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false },
+  { key: "completed-today", title: "Completed Today", order: 15, hidden: false, pinned: false }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -5501,6 +5472,7 @@ const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
   { keys: "Alt+Shift+F", label: "Quick capture focus", description: "Open the fast focus-capture flow." },
   { keys: "Alt+Shift+A", label: "Ask AI", description: "Open the dashboard ask-AI modal." },
   { keys: "Alt+Shift+S", label: "Sync repeating tasks", description: "Run repeating-task sync against the project hub." },
+  { keys: "Alt+Shift+Z", label: "Undo last action", description: "Undo the most recent dashboard destructive action even if the banner is hidden." },
   { keys: "Alt+Shift+?", label: "Show shortcut help", description: "Open this shortcut list." }
 ];
 
@@ -5674,6 +5646,10 @@ function getProjectIssueCount(project: Pick<TodoProjectSummary, "staleDays" | "d
     + project.breakdownTasks.length
     + project.overdueTasks.length
     + project.blockedTasks.length;
+}
+
+function getProjectLastWorkedSortKey(project: Pick<TodoProjectSummary, "lastCompletedAt">): string {
+  return project.lastCompletedAt ?? "";
 }
 
 function getCollapsedCardState(): Set<string> {

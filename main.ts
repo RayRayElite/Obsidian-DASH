@@ -167,7 +167,8 @@ export default class DailyDashboardPlugin extends Plugin {
     uiState: {
       onboardingCompleted: false,
       onboardingDeferredUntil: "",
-      dismissedNotificationIds: []
+      dismissedNotificationIds: [],
+      dismissedCleanupSuggestionIds: []
     }
   };
   private wallpaperOptions: WallpaperOption[] = [];
@@ -2830,6 +2831,16 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
   }
 
+  async dismissCleanupSuggestion(id: string): Promise<void> {
+    if (!id.trim() || this.data.uiState.dismissedCleanupSuggestionIds.includes(id)) {
+      return;
+    }
+
+    this.data.uiState.dismissedCleanupSuggestionIds = [...this.data.uiState.dismissedCleanupSuggestionIds, id].slice(-200);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
   private reconcileDismissedNotificationIds(activeDismissibleIds: string[]): void {
     const allowed = new Set(activeDismissibleIds);
     const nextDismissed = this.data.uiState.dismissedNotificationIds.filter((id) => allowed.has(id));
@@ -2839,6 +2850,29 @@ export default class DailyDashboardPlugin extends Plugin {
 
     this.data.uiState.dismissedNotificationIds = nextDismissed;
     void this.savePluginData();
+  }
+
+  private reconcileDismissedCleanupSuggestionIds(activeSuggestionIds: string[]): void {
+    const allowed = new Set(activeSuggestionIds);
+    const nextDismissed = this.data.uiState.dismissedCleanupSuggestionIds.filter((id) => allowed.has(id));
+    if (nextDismissed.length === this.data.uiState.dismissedCleanupSuggestionIds.length) {
+      return;
+    }
+
+    this.data.uiState.dismissedCleanupSuggestionIds = nextDismissed;
+    void this.savePluginData();
+  }
+
+  getVisibleCleanupSuggestions(todoSnapshot: TodoSnapshot | null): TodoSnapshot["cleanupSuggestions"] {
+    if (!todoSnapshot) {
+      this.reconcileDismissedCleanupSuggestionIds([]);
+      return [];
+    }
+
+    const activeIds = todoSnapshot.cleanupSuggestions.map((item) => item.id);
+    this.reconcileDismissedCleanupSuggestionIds(activeIds);
+    const dismissed = new Set(this.data.uiState.dismissedCleanupSuggestionIds);
+    return todoSnapshot.cleanupSuggestions.filter((item) => !dismissed.has(item.id));
   }
 
   private buildDashboardNotificationId(prefix: string, values: string[], todayKey: string): string {
@@ -2854,6 +2888,7 @@ export default class DailyDashboardPlugin extends Plugin {
   getDashboardNotifications(todoSnapshot: TodoSnapshot | null, calendarSnapshot: CalendarSnapshot, referenceDate: Date = new Date()): DashboardNotificationItem[] {
     const items: DashboardNotificationItem[] = [];
     const todayKey = formatDateKey(referenceDate);
+    const visibleCleanupSuggestions = this.getVisibleCleanupSuggestions(todoSnapshot);
 
     if (this.isFirstRunSetupPending()) {
       items.push({
@@ -2946,13 +2981,13 @@ export default class DailyDashboardPlugin extends Plugin {
       });
     }
 
-    if (todoSnapshot && (todoSnapshot.cleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
+    if (todoSnapshot && (visibleCleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
       items.push({
         id: this.buildDashboardNotificationId(
           "tasks:cleanup",
           [
             ...todoSnapshot.staleProjects.slice(0, 5).map((project) => project.name),
-            ...todoSnapshot.cleanupSuggestions.slice(0, 5)
+            ...visibleCleanupSuggestions.slice(0, 5).map((item) => item.summary)
           ],
           todayKey
         ),
@@ -2960,7 +2995,7 @@ export default class DailyDashboardPlugin extends Plugin {
         title: "Cleanup and stale work need review",
         description: [
           todoSnapshot.staleProjects.length > 0 ? `${todoSnapshot.staleProjects.length} stale project${todoSnapshot.staleProjects.length === 1 ? "" : "s"}` : "",
-          todoSnapshot.cleanupSuggestions[0] ?? ""
+          visibleCleanupSuggestions[0]?.summary ?? ""
         ].filter((value) => value.length > 0).join(" • "),
         tone: "alert",
         action: { kind: "open-cleanup-note", label: "Open cleanup note" },
@@ -3480,7 +3515,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async showCleanupSuggestions(): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
-    const suggestions = snapshot?.cleanupSuggestions ?? [];
+    const suggestions = this.getVisibleCleanupSuggestions(snapshot);
     const projectSections = (snapshot?.projects ?? [])
       .filter((project) => project.projectState === "active" && (project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0))
       .map((project) => {
@@ -3500,7 +3535,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `# Master Task Hub Cleanup Suggestions - ${formatDateKey(new Date())}`,
       "",
       "## Portfolio Summary",
-      ...(suggestions.length > 0 ? suggestions.map((item) => `- ${item}`) : ["- No cleanup issues detected."]),
+      ...(suggestions.length > 0 ? suggestions.map((item) => `- ${item.summary}`) : ["- No cleanup issues detected."]),
       "",
       ...(projectSections.length > 0 ? projectSections : ["## Projects", "- No project-level cleanup issues detected.", ""]),
       ""
@@ -4392,6 +4427,9 @@ export default class DailyDashboardPlugin extends Plugin {
       onboardingDeferredUntil: typeof state?.onboardingDeferredUntil === "string" ? state.onboardingDeferredUntil : "",
       dismissedNotificationIds: Array.isArray(state?.dismissedNotificationIds)
         ? state.dismissedNotificationIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 200)
+        : [],
+      dismissedCleanupSuggestionIds: Array.isArray(state?.dismissedCleanupSuggestionIds)
+        ? state.dismissedCleanupSuggestionIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 200)
         : []
     };
   }

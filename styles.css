@@ -20,11 +20,14 @@
   gap: 22px;
   max-width: 1280px;
   margin: 0 auto;
+  position: relative;
+  isolation: isolate;
 }
 
 .daily-dashboard-hero {
   position: relative;
   isolation: isolate;
+  z-index: 4;
   overflow: visible;
   display: grid;
   grid-template-rows: auto 1fr auto;
@@ -60,6 +63,8 @@
 }
 
 .daily-dashboard-hero-header {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -93,6 +98,8 @@
 }
 
 .daily-dashboard-hero-footer {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -175,6 +182,7 @@
 
 .daily-dashboard-notification-shell {
   position: relative;
+  z-index: 5;
   flex: 0 0 auto;
 }
 
@@ -437,10 +445,14 @@
 }
 
 .daily-dashboard-page > .daily-dashboard-card--week-at-a-glance {
+  position: relative;
+  z-index: 1;
   order: 0;
 }
 
 .daily-dashboard-page > .daily-dashboard-grid {
+  position: relative;
+  z-index: 1;
   order: 1;
 }
 

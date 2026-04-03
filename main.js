@@ -96,6 +96,7 @@ var DEFAULT_SETTINGS = {
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   measurementSystem: "imperial",
+  showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
@@ -110,7 +111,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -125,36 +126,38 @@ function sanitizeSettings(settings) {
   const calendarLookaheadHours = clamp(Number((_a = settings.calendarLookaheadHours) != null ? _a : DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
+  const showUndoNotifications = (_c = settings.showUndoNotifications) != null ? _c : DEFAULT_SETTINGS.showUndoNotifications;
   return {
-    dashboardTitle: ((_c = settings.dashboardTitle) == null ? void 0 : _c.trim()) || DEFAULT_SETTINGS.dashboardTitle,
-    masterTodoPath: ((_d = settings.masterTodoPath) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.masterTodoPath,
-    projectNotesFolder: normalizeFolderPath(((_e = settings.projectNotesFolder) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
-    dailyLogFolder: ((_f = settings.dailyLogFolder) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
-    weeklyReportFolder: ((_g = settings.weeklyReportFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
-    monthlyReportFolder: ((_h = settings.monthlyReportFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
-    exportFolder: normalizeFolderPath(((_i = settings.exportFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.exportFolder),
-    aiApiKey: ((_j = settings.aiApiKey) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.aiApiKey,
+    dashboardTitle: ((_d = settings.dashboardTitle) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.dashboardTitle,
+    masterTodoPath: ((_e = settings.masterTodoPath) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.masterTodoPath,
+    projectNotesFolder: normalizeFolderPath(((_f = settings.projectNotesFolder) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
+    dailyLogFolder: ((_g = settings.dailyLogFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
+    weeklyReportFolder: ((_h = settings.weeklyReportFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
+    monthlyReportFolder: ((_i = settings.monthlyReportFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
+    exportFolder: normalizeFolderPath(((_j = settings.exportFolder) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.exportFolder),
+    aiApiKey: ((_k = settings.aiApiKey) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
-    aiApiKeyEnvVar: ((_k = settings.aiApiKeyEnvVar) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
-    aiModel: ((_l = settings.aiModel) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiModel,
-    aiBaseUrl: ((_m = settings.aiBaseUrl) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    aiOutputFolder: normalizeFolderPath(((_n = settings.aiOutputFolder) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    aiApiKeyEnvVar: ((_l = settings.aiApiKeyEnvVar) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
+    aiModel: ((_m = settings.aiModel) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiModel,
+    aiBaseUrl: ((_n = settings.aiBaseUrl) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
+    aiOutputFolder: normalizeFolderPath(((_o = settings.aiOutputFolder) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_o = settings.aiContextDays) != null ? _o : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_p = settings.aiRelatedNotesLimit) != null ? _p : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_q = settings.aiIndexEnabled) != null ? _q : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_p = settings.aiContextDays) != null ? _p : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_q = settings.aiRelatedNotesLimit) != null ? _q : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_r = settings.aiIndexEnabled) != null ? _r : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_r = settings.aiChunkCharLimit) != null ? _r : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_s = settings.aiEmbeddingsEnabled) != null ? _s : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_t = settings.aiEmbeddingModel) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_u = settings.aiEmbeddingApiUrl) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_v = settings.calendarEnabled) != null ? _v : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_w = settings.calendarDocumentPath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_s = settings.aiChunkCharLimit) != null ? _s : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_t = settings.aiEmbeddingsEnabled) != null ? _t : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_u = settings.aiEmbeddingModel) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_v = settings.aiEmbeddingApiUrl) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_w = settings.calendarEnabled) != null ? _w : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_x = settings.calendarDocumentPath) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
-    wallpaperFolder: normalizeFolderPath(((_x = settings.wallpaperFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_y = settings.selectedWallpaper) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    showUndoNotifications,
+    wallpaperFolder: normalizeFolderPath(((_y = settings.wallpaperFolder) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_z = settings.selectedWallpaper) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -636,7 +639,7 @@ function renderTodoSnapshotForAi(snapshot) {
     project.nextTasks.length > 0 ? `  next: ${project.nextTasks.slice(0, 3).join(" | ")}` : ""
   ].filter((line) => line.length > 0).join("\n"));
   const staleLines = snapshot.staleProjects.slice(0, 6).map((project) => `- ${project.name}: ${project.staleDays} stale days`);
-  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item}`);
+  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item.summary}`);
   const dueLines = snapshot.overdueTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
   const blockedLines = snapshot.blockedTasks.slice(0, 6).map((item) => `- ${item.project}: ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`);
   return [
@@ -3286,24 +3289,76 @@ function describeHealthScore(score) {
 function buildCleanupSuggestions(project) {
   const suggestions = [];
   if (project.projectState === "active" && project.staleDays !== null && project.staleDays >= 14) {
-    suggestions.push(`${project.name}: review stale backlog or re-scope the project.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "stale-project"),
+      projectName: project.name,
+      kind: "stale-project",
+      summary: `${project.name}: review stale backlog or re-scope the project.`,
+      detail: `${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since the last archived completion.`,
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.duplicateTasks.length > 0) {
-    suggestions.push(`${project.name}: merge duplicate tasks (${project.duplicateTasks.slice(0, 3).join(", ")}).`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "duplicate-tasks"),
+      projectName: project.name,
+      kind: "duplicate-tasks",
+      summary: `${project.name}: merge duplicate tasks (${project.duplicateTasks.slice(0, 3).join(", ")}).`,
+      detail: `${project.duplicateTasks.length} duplicate task${project.duplicateTasks.length === 1 ? "" : "s"} detected in the project hub.`,
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.breakdownTasks.length > 0) {
-    suggestions.push(`${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "breakdown-tasks"),
+      projectName: project.name,
+      kind: "breakdown-tasks",
+      summary: `${project.name}: break down ${project.breakdownTasks.length} oversized task${project.breakdownTasks.length === 1 ? "" : "s"}.`,
+      detail: project.breakdownTasks.slice(0, 3).join(" \u2022 "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.overdueTasks.length > 0) {
-    suggestions.push(`${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "overdue-tasks"),
+      projectName: project.name,
+      kind: "overdue-tasks",
+      summary: `${project.name}: clear ${project.overdueTasks.length} overdue task${project.overdueTasks.length === 1 ? "" : "s"}.`,
+      detail: project.overdueTasks.slice(0, 3).map((task) => task.dueDate ? `${task.text} (${task.dueDate})` : task.text).join(" \u2022 "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.blockedTasks.length > 0) {
-    suggestions.push(`${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "blocked-tasks"),
+      projectName: project.name,
+      kind: "blocked-tasks",
+      summary: `${project.name}: review ${project.blockedTasks.length} blocked task${project.blockedTasks.length === 1 ? "" : "s"}.`,
+      detail: project.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 "),
+      action: "open-master-todo",
+      actionLabel: "Open hub"
+    });
   }
   if (project.emptySections.length > 0) {
-    suggestions.push(`${project.name}: prune empty sections (${project.emptySections.join(", ")}).`);
+    suggestions.push({
+      id: buildCleanupSuggestionId(project.name, "empty-sections"),
+      projectName: project.name,
+      kind: "empty-sections",
+      summary: `${project.name}: prune empty sections (${project.emptySections.join(", ")}).`,
+      detail: `Empty sections: ${project.emptySections.join(", ")}`,
+      action: "open-cleanup-note",
+      actionLabel: "Cleanup note"
+    });
   }
   return suggestions;
+}
+function buildCleanupSuggestionId(projectName, kind) {
+  const normalizedProject = projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `cleanup:${kind}:${normalizedProject}`;
 }
 function inferProjectState(status) {
   const normalized = status.trim().toLowerCase();
@@ -3439,12 +3494,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.hasDeferredRefreshListeners = false;
     this.hasKeyboardShortcutListener = false;
     this.pendingRefresh = false;
-    this.workLogFilters = {
-      project: "",
-      keyword: "",
-      fromDate: "",
-      toDate: ""
-    };
     this.timelineFilters = {
       keyword: "",
       project: "",
@@ -3612,6 +3661,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         return async () => this.plugin.openAskAiFlow();
       case "s":
         return async () => this.plugin.syncRepeatingProjectTasks(true);
+      case "z":
+        return async () => this.undoPendingAction();
       case "/":
       case "?":
         return async () => this.openShortcutHelpFlow();
@@ -3707,6 +3758,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   async dismissPendingUndo() {
     this.pendingUndoActions = this.pendingUndoActions.slice(0, -1);
     await this.render();
+  }
+  async handleCleanupSuggestionAction(action) {
+    if (action === "open-cleanup-note") {
+      await this.plugin.showCleanupSuggestions();
+      return;
+    }
+    await this.plugin.openMasterTodo();
   }
   registerGridCard(card, title, bindings, layoutByKey) {
     const key = toClassSlug(title);
@@ -3843,7 +3901,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusText = "";
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -3857,13 +3915,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const projects = (_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : [];
       const staleProjects = (_b = todoSnapshot == null ? void 0 : todoSnapshot.staleProjects) != null ? _b : [];
       const breakdownCandidates = (_c = todoSnapshot == null ? void 0 : todoSnapshot.breakdownCandidates) != null ? _c : [];
-      const cleanupSuggestions = (_d = todoSnapshot == null ? void 0 : todoSnapshot.cleanupSuggestions) != null ? _d : [];
-      const dueSoonTasks = (_e = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _e : [];
-      const overdueTasks = (_f = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _f : [];
-      const blockedTasks = (_g = todoSnapshot == null ? void 0 : todoSnapshot.blockedTasks) != null ? _g : [];
+      const cleanupSuggestions = this.plugin.getVisibleCleanupSuggestions(todoSnapshot);
+      const dueSoonTasks = (_d = todoSnapshot == null ? void 0 : todoSnapshot.dueSoonTasks) != null ? _d : [];
+      const overdueTasks = (_e = todoSnapshot == null ? void 0 : todoSnapshot.overdueTasks) != null ? _e : [];
+      const blockedTasks = (_f = todoSnapshot == null ? void 0 : todoSnapshot.blockedTasks) != null ? _f : [];
       const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const gamificationSummary = this.plugin.getGamificationSummary(todoSnapshot);
-      const workLogEntries = this.getFilteredWorkLogEntries();
       const timelineResults = this.getTimelineSearchResults();
       const savedDashboardFilters = getSavedDashboardFilters();
       const layoutCards = getDashboardCardLayoutState();
@@ -3873,9 +3930,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
       const viewModeMeta = this.getViewModeMeta(viewMode);
-      const latestMoodCheckIn = (_h = todayEntry.moodCheckIns[0]) != null ? _h : null;
-      const latestEnergyCheckIn = (_i = todayEntry.energyCheckIns[0]) != null ? _i : null;
-      const latestAnxietyCheckIn = (_j = todayEntry.anxietyCheckIns[0]) != null ? _j : null;
+      const latestMoodCheckIn = (_g = todayEntry.moodCheckIns[0]) != null ? _g : null;
+      const latestEnergyCheckIn = (_h = todayEntry.energyCheckIns[0]) != null ? _h : null;
+      const latestAnxietyCheckIn = (_i = todayEntry.anxietyCheckIns[0]) != null ? _i : null;
       const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
       const moodCheckInAverage = todayEntry.moodCheckIns.length > 0 ? (todayEntry.moodCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.moodCheckIns.length).toFixed(1) : "";
       const anxietyCheckInAverage = todayEntry.anxietyCheckIns.length > 0 ? (todayEntry.anxietyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.anxietyCheckIns.length).toFixed(1) : "";
@@ -3986,8 +4043,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      const latestUndoAction = (_k = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _k : null;
-      if (latestUndoAction) {
+      const latestUndoAction = (_j = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _j : null;
+      if (latestUndoAction && settings.showUndoNotifications) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
         const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
         undoCopy.createEl("strong", { text: "Undo last dashboard action" });
@@ -4092,11 +4149,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
-      const activeWorkSession = (_l = todayEntry.workSessions.find((session) => session.end === null)) != null ? _l : null;
-      const activeNapSession = (_m = todayEntry.napSessions.find((session) => session.end === null)) != null ? _m : null;
-      const activeRelaxSession = (_n = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _n : null;
-      const activeBreakSession = (_o = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _o : null;
-      const activePoopSession = (_p = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _p : null;
+      const activeWorkSession = (_k = todayEntry.workSessions.find((session) => session.end === null)) != null ? _k : null;
+      const activeNapSession = (_l = todayEntry.napSessions.find((session) => session.end === null)) != null ? _l : null;
+      const activeRelaxSession = (_m = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _m : null;
+      const activeBreakSession = (_n = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _n : null;
+      const activePoopSession = (_o = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _o : null;
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
@@ -4196,7 +4253,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
       const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
-      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_q = timeAllocationInsights.awakeUnknownMinutes) != null ? _q : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
+      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_p = timeAllocationInsights.awakeUnknownMinutes) != null ? _p : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
       createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
       const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
       this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
@@ -4798,12 +4855,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         });
       }
-      const missedCard = stateCard.createDiv({ cls: "daily-dashboard-score-block" });
-      missedCard.createEl("strong", { text: "Habit misses so far" });
-      missedCard.createEl("span", {
-        cls: "daily-dashboard-habit-meta",
-        text: todayEntry.missedHabits.length > 0 ? todayEntry.missedHabits.join(", ") : "No misses recorded yet."
-      });
       stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
       const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       frictionInput.value = todayEntry.frictionLog;
@@ -5313,6 +5364,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "session").length} sessions`, timelineResults.some((item) => item.kind === "session") ? "capture" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
+      const timelineActions = timelineCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(timelineActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
+      createButton(timelineActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+      createButton(timelineActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
       const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
       if (timelineResults.length === 0) {
         timelineList.createDiv({ cls: "daily-dashboard-empty-state", text: "No timeline entries match the current filters." });
@@ -5346,56 +5401,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderHeatmapMetric(heatmapShell, "Work", "Tracked work minutes per day", this.buildHeatmapSeries("work"));
       this.renderHeatmapMetric(heatmapShell, "Sleep", "Tracked sleep minutes per day", this.buildHeatmapSeries("sleep"));
       this.renderHeatmapMetric(heatmapShell, "Habits", "Weighted habit completion percentage per day", this.buildHeatmapSeries("habits"));
-      const workLogCard = createGridCard("Searchable Work Log", "Filter archived completions by project, date, or keyword.", {
-        icon: "search",
-        eyebrow: "History",
-        tone: "log",
-        tag: "Query"
-      });
-      const filterGrid = workLogCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const projectFilter = filterGrid.createEl("select", { cls: "daily-dashboard-input" });
-      const allProjectsOption = projectFilter.createEl("option", { text: "All projects" });
-      allProjectsOption.value = "";
-      projects.forEach((project) => {
-        const option = projectFilter.createEl("option", { text: project.name });
-        option.value = project.name;
-        option.selected = project.name === this.workLogFilters.project;
-      });
-      projectFilter.addEventListener("change", () => {
-        this.workLogFilters.project = projectFilter.value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "Keyword", this.workLogFilters.keyword, (value) => {
-        this.workLogFilters.keyword = value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "From date (YYYY-MM-DD)", this.workLogFilters.fromDate, (value) => {
-        this.workLogFilters.fromDate = value;
-        void this.render();
-      });
-      this.createFilterInput(filterGrid, "To date (YYYY-MM-DD)", this.workLogFilters.toDate, (value) => {
-        this.workLogFilters.toDate = value;
-        void this.render();
-      });
-      const workLogActions = workLogCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(workLogActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
-      createButton(workLogActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
-      createButton(workLogActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
-      const workLogList = workLogCard.createDiv({ cls: "daily-dashboard-completed-list" });
-      if (workLogEntries.length === 0) {
-        workLogList.createDiv({ cls: "daily-dashboard-empty-state", text: "No archived work matches the current filters." });
-      } else {
-        workLogEntries.slice(0, 20).forEach((task) => {
-          const row = workLogList.createDiv({ cls: "daily-dashboard-completed-row" });
-          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, task.section, "neutral");
-          const dateKey = task.archivedAt.slice(0, 10);
-          createSemanticChip(chipRow, dateKey, "log");
-          row.createEl("strong", { text: task.project });
-          row.createEl("span", { text: task.text });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-        });
-      }
       const aiCard = createGridCard("AI Workspace", "Plan, review, and ask grounded questions against your dashboard and vault without leaving the page.", {
         icon: "sparkles",
         eyebrow: "AI",
@@ -5501,7 +5506,14 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       if (!todoSnapshot || todoSnapshot.projects.length === 0) {
         projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured master task hub." });
       } else {
-        [...todoSnapshot.projects].sort((left, right) => right.healthScore - left.healthScore).slice(0, projectsExpanded ? 10 : 6).forEach((project) => {
+        [...todoSnapshot.projects].sort((left, right) => {
+          const recencyDelta = getProjectLastWorkedSortKey(right).localeCompare(getProjectLastWorkedSortKey(left));
+          if (recencyDelta !== 0) {
+            return recencyDelta;
+          }
+          return right.healthScore - left.healthScore;
+        }).slice(0, projectsExpanded ? 10 : 6).forEach((project) => {
+          var _a2;
           const row = projectList.createDiv({ cls: projectsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
           const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
           createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 75 ? "focus" : project.healthScore >= 50 ? "state" : "alert");
@@ -5509,6 +5521,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
           row.createEl("strong", { text: `${project.name} \u2022 ${project.healthScore}` });
           row.createEl("span", { text: `${project.healthLabel} \u2022 ${project.openCount} open \u2022 ${project.completionsThisWeek} this week \u2022 ${project.completionsThisMonth} this month \u2022 ${project.trend} \u2022 ${project.status}` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last worked: ${(_a2 = project.lastCompletedAt) != null ? _a2 : "No archived activity yet"}` });
           renderProjectMomentum(row, project);
           row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
           if (projectsExpanded && project.healthReasons.length > 0) {
@@ -5550,47 +5563,62 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         ...dueSoonTasks.slice(0, 5).map((item) => `Due soon: ${item.project} -> ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`),
         ...blockedTasks.slice(0, 5).map((item) => `Blocked: ${item.project} -> ${item.task.text}${item.task.blockedReason ? ` (${item.task.blockedReason})` : ""}`),
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
-        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`),
-        ...cleanupSuggestions.slice(0, 5)
+        ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`)
       ];
-      if (alertLines.length === 0 && cleanupProjects.length === 0) {
+      if (alertLines.length === 0 && cleanupProjects.length === 0 && cleanupSuggestions.length === 0) {
         alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
-      } else if (alertsExpanded && cleanupProjects.length > 0) {
-        cleanupProjects.sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left)).slice(0, 10).forEach((project) => {
-          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
-          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
-          createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
-          createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
-          row.createEl("strong", { text: project.name });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
-          if (project.staleDays !== null) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
-          }
-          if (project.breakdownTasks.length > 0) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" \u2022 ")}` });
-          }
-          if (project.duplicateTasks.length > 0) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" \u2022 ")}` });
-          }
-          if (project.emptySections.length > 0) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" \u2022 ")}` });
-          }
-          if (project.overdueTasks.length > 0) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" \u2022 ")}` });
-          }
-          if (project.blockedTasks.length > 0) {
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 ")}` });
-          }
-        });
       } else {
-        alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
-          const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("span", { text: line });
+        cleanupSuggestions.slice(0, alertsExpanded ? cleanupSuggestions.length : 3).forEach((item) => {
+          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+          createSemanticChip(chipRow, item.projectName, "neutral");
+          createSemanticChip(chipRow, item.kind.replace(/-/g, " "), item.kind === "stale-project" || item.kind === "overdue-tasks" ? "alert" : "state");
+          copy.createEl("strong", { text: item.summary });
+          if (item.detail) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.detail });
+          }
+          const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(actions2, item.actionLabel, async () => this.handleCleanupSuggestionAction(item.action), false, item.action === "open-cleanup-note" ? "sparkles" : "file-text");
+          createButton(actions2, "Dismiss", async () => this.plugin.dismissCleanupSuggestion(item.id), false, "x");
         });
+        if (alertsExpanded && cleanupProjects.length > 0) {
+          cleanupProjects.sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left)).slice(0, 10).forEach((project) => {
+            const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
+            const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
+            createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
+            createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
+            row.createEl("strong", { text: project.name });
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+            if (project.staleDays !== null) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
+            }
+            if (project.breakdownTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" \u2022 ")}` });
+            }
+            if (project.duplicateTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" \u2022 ")}` });
+            }
+            if (project.emptySections.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" \u2022 ")}` });
+            }
+            if (project.overdueTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" \u2022 ")}` });
+            }
+            if (project.blockedTasks.length > 0) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" \u2022 ")}` });
+            }
+          });
+        } else {
+          alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
+            const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+            row.createEl("span", { text: line });
+          });
+        }
       }
       const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
-      if (alertLines.length > 6) {
+      if (alertLines.length > 6 || cleanupSuggestions.length > 3 || cleanupProjects.length > 0) {
         createButton(alertActions, alertsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("cleanup-details"), false, alertsExpanded ? "chevrons-up" : "chevrons-down");
       }
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
@@ -6001,17 +6029,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       scale.createEl("span", { text: label });
     });
   }
-  getFilteredWorkLogEntries() {
-    const entries = this.plugin.getAllEntries().flatMap((entry) => entry.completedTasks).sort((left, right) => right.archivedAt.localeCompare(left.archivedAt));
-    return entries.filter((entry) => {
-      const matchesProject = !this.workLogFilters.project || entry.project === this.workLogFilters.project;
-      const matchesKeyword = !this.workLogFilters.keyword || `${entry.project} ${entry.section} ${entry.text}`.toLowerCase().includes(this.workLogFilters.keyword.toLowerCase());
-      const datePart = entry.archivedAt.slice(0, 10);
-      const matchesFrom = !this.workLogFilters.fromDate || datePart >= this.workLogFilters.fromDate;
-      const matchesTo = !this.workLogFilters.toDate || datePart <= this.workLogFilters.toDate;
-      return matchesProject && matchesKeyword && matchesFrom && matchesTo;
-    });
-  }
   getTimelineSearchResults() {
     var _a, _b, _c, _d;
     const entries = this.plugin.getAllEntries();
@@ -6273,12 +6290,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     return "daily-dashboard-heatmap-cell is-0";
   }
   resetDashboardFilters() {
-    this.workLogFilters = {
-      project: "",
-      keyword: "",
-      fromDate: "",
-      toDate: ""
-    };
     this.timelineFilters = {
       keyword: "",
       project: "",
@@ -6301,7 +6312,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     const filters = getSavedDashboardFilters().filter((item) => item.name !== name);
     filters.push({
       name,
-      workLogFilters: { ...this.workLogFilters },
+      workLogFilters: {
+        project: this.timelineFilters.project,
+        keyword: this.timelineFilters.keyword,
+        fromDate: this.timelineFilters.fromDate,
+        toDate: this.timelineFilters.toDate
+      },
       timelineFilters: {
         ...this.timelineFilters,
         kinds: [...this.timelineFilters.kinds]
@@ -6316,9 +6332,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (!filter) {
       return;
     }
-    this.workLogFilters = { ...filter.workLogFilters };
     this.timelineFilters = {
       ...filter.timelineFilters,
+      keyword: filter.timelineFilters.keyword || filter.workLogFilters.keyword,
+      project: filter.timelineFilters.project || filter.workLogFilters.project,
+      fromDate: filter.timelineFilters.fromDate || filter.workLogFilters.fromDate,
+      toDate: filter.timelineFilters.toDate || filter.workLogFilters.toDate,
       kinds: filter.timelineFilters.kinds.length > 0 ? [...filter.timelineFilters.kinds] : ["task", "session", "calendar", "log"]
     };
     this.selectedSavedFilterName = filter.name;
@@ -7696,6 +7715,14 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
           measurementSystem: value === "metric" ? "metric" : "imperial"
         });
       });
+      new import_obsidian3.Setting(containerEl).setName("Show undo notifications").setDesc("Keep the undo stack active while choosing whether the dashboard shows the undo banner after destructive actions.").addToggle((toggle) => {
+        toggle.setValue(settings.showUndoNotifications).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            showUndoNotifications: value
+          });
+        });
+      });
     });
     containerEl.createEl("h3", { text: "AI" });
     new import_obsidian3.Setting(containerEl).setName("AI API key source").setDesc("Environment variables are safer because the raw key is not persisted in plugin data.").addDropdown((dropdown) => {
@@ -7907,11 +7934,10 @@ var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
   { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
   { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
-  { key: "searchable-work-log", title: "Searchable Work Log", order: 12, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 13, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
+  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false },
+  { key: "completed-today", title: "Completed Today", order: 15, hidden: false, pinned: false }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -7922,6 +7948,7 @@ var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+F", label: "Quick capture focus", description: "Open the fast focus-capture flow." },
   { keys: "Alt+Shift+A", label: "Ask AI", description: "Open the dashboard ask-AI modal." },
   { keys: "Alt+Shift+S", label: "Sync repeating tasks", description: "Run repeating-task sync against the project hub." },
+  { keys: "Alt+Shift+Z", label: "Undo last action", description: "Undo the most recent dashboard destructive action even if the banner is hidden." },
   { keys: "Alt+Shift+?", label: "Show shortcut help", description: "Open this shortcut list." }
 ];
 var FIRST_RUN_SETUP_STEPS = [
@@ -8076,6 +8103,10 @@ function renderMomentumBar(parent, label, value, maxValue, tone) {
 }
 function getProjectIssueCount(project) {
   return (project.staleDays !== null ? 1 : 0) + project.duplicateTasks.length + project.emptySections.length + project.breakdownTasks.length + project.overdueTasks.length + project.blockedTasks.length;
+}
+function getProjectLastWorkedSortKey(project) {
+  var _a;
+  return (_a = project.lastCompletedAt) != null ? _a : "";
 }
 function getCollapsedCardState() {
   try {
@@ -8592,7 +8623,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       uiState: {
         onboardingCompleted: false,
         onboardingDeferredUntil: "",
-        dismissedNotificationIds: []
+        dismissedNotificationIds: [],
+        dismissedCleanupSuggestionIds: []
       }
     };
     this.wallpaperOptions = [];
@@ -10805,6 +10837,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.savePluginData();
     this.refreshDashboardViews();
   }
+  async dismissCleanupSuggestion(id) {
+    if (!id.trim() || this.data.uiState.dismissedCleanupSuggestionIds.includes(id)) {
+      return;
+    }
+    this.data.uiState.dismissedCleanupSuggestionIds = [...this.data.uiState.dismissedCleanupSuggestionIds, id].slice(-200);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
   reconcileDismissedNotificationIds(activeDismissibleIds) {
     const allowed = new Set(activeDismissibleIds);
     const nextDismissed = this.data.uiState.dismissedNotificationIds.filter((id) => allowed.has(id));
@@ -10814,14 +10854,34 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.data.uiState.dismissedNotificationIds = nextDismissed;
     void this.savePluginData();
   }
+  reconcileDismissedCleanupSuggestionIds(activeSuggestionIds) {
+    const allowed = new Set(activeSuggestionIds);
+    const nextDismissed = this.data.uiState.dismissedCleanupSuggestionIds.filter((id) => allowed.has(id));
+    if (nextDismissed.length === this.data.uiState.dismissedCleanupSuggestionIds.length) {
+      return;
+    }
+    this.data.uiState.dismissedCleanupSuggestionIds = nextDismissed;
+    void this.savePluginData();
+  }
+  getVisibleCleanupSuggestions(todoSnapshot) {
+    if (!todoSnapshot) {
+      this.reconcileDismissedCleanupSuggestionIds([]);
+      return [];
+    }
+    const activeIds = todoSnapshot.cleanupSuggestions.map((item) => item.id);
+    this.reconcileDismissedCleanupSuggestionIds(activeIds);
+    const dismissed = new Set(this.data.uiState.dismissedCleanupSuggestionIds);
+    return todoSnapshot.cleanupSuggestions.filter((item) => !dismissed.has(item.id));
+  }
   buildDashboardNotificationId(prefix, values, todayKey) {
     const normalized = values.map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0).map((value) => value.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")).join("~").slice(0, 180);
     return normalized.length > 0 ? `${prefix}:${todayKey}:${normalized}` : `${prefix}:${todayKey}`;
   }
   getDashboardNotifications(todoSnapshot, calendarSnapshot, referenceDate = /* @__PURE__ */ new Date()) {
-    var _a;
+    var _a, _b;
     const items = [];
     const todayKey = formatDateKey(referenceDate);
+    const visibleCleanupSuggestions = this.getVisibleCleanupSuggestions(todoSnapshot);
     if (this.isFirstRunSetupPending()) {
       items.push({
         id: "system:onboarding",
@@ -10906,13 +10966,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         dismissible: true
       });
     }
-    if (todoSnapshot && (todoSnapshot.cleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
+    if (todoSnapshot && (visibleCleanupSuggestions.length > 0 || todoSnapshot.staleProjects.length > 0)) {
       items.push({
         id: this.buildDashboardNotificationId(
           "tasks:cleanup",
           [
             ...todoSnapshot.staleProjects.slice(0, 5).map((project) => project.name),
-            ...todoSnapshot.cleanupSuggestions.slice(0, 5)
+            ...visibleCleanupSuggestions.slice(0, 5).map((item) => item.summary)
           ],
           todayKey
         ),
@@ -10920,7 +10980,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         title: "Cleanup and stale work need review",
         description: [
           todoSnapshot.staleProjects.length > 0 ? `${todoSnapshot.staleProjects.length} stale project${todoSnapshot.staleProjects.length === 1 ? "" : "s"}` : "",
-          (_a = todoSnapshot.cleanupSuggestions[0]) != null ? _a : ""
+          (_b = (_a = visibleCleanupSuggestions[0]) == null ? void 0 : _a.summary) != null ? _b : ""
         ].filter((value) => value.length > 0).join(" \u2022 "),
         tone: "alert",
         action: { kind: "open-cleanup-note", label: "Open cleanup note" },
@@ -11341,10 +11401,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
   }
   async showCleanupSuggestions() {
-    var _a, _b;
+    var _a;
     const snapshot = await this.getTodoSnapshot();
-    const suggestions = (_a = snapshot == null ? void 0 : snapshot.cleanupSuggestions) != null ? _a : [];
-    const projectSections = ((_b = snapshot == null ? void 0 : snapshot.projects) != null ? _b : []).filter((project) => project.projectState === "active" && (project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0)).map((project) => {
+    const suggestions = this.getVisibleCleanupSuggestions(snapshot);
+    const projectSections = ((_a = snapshot == null ? void 0 : snapshot.projects) != null ? _a : []).filter((project) => project.projectState === "active" && (project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0)).map((project) => {
       const lines = [
         `## ${project.name}`,
         `- Health: ${project.healthLabel} (${project.healthScore})`,
@@ -11361,7 +11421,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       `# Master Task Hub Cleanup Suggestions - ${formatDateKey(/* @__PURE__ */ new Date())}`,
       "",
       "## Portfolio Summary",
-      ...suggestions.length > 0 ? suggestions.map((item) => `- ${item}`) : ["- No cleanup issues detected."],
+      ...suggestions.length > 0 ? suggestions.map((item) => `- ${item.summary}`) : ["- No cleanup issues detected."],
       "",
       ...projectSections.length > 0 ? projectSections : ["## Projects", "- No project-level cleanup issues detected.", ""],
       ""
@@ -12125,7 +12185,8 @@ No entries available.`;
     return {
       onboardingCompleted: Boolean(state == null ? void 0 : state.onboardingCompleted),
       onboardingDeferredUntil: typeof (state == null ? void 0 : state.onboardingDeferredUntil) === "string" ? state.onboardingDeferredUntil : "",
-      dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : []
+      dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : [],
+      dismissedCleanupSuggestionIds: Array.isArray(state == null ? void 0 : state.dismissedCleanupSuggestionIds) ? state.dismissedCleanupSuggestionIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : []
     };
   }
   async loadPluginData() {

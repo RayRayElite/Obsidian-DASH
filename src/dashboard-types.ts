@@ -365,6 +365,7 @@ export interface DashboardSettings {
   calendarLookaheadHours: number;
   calendarWarningHours: number;
   measurementSystem: MeasurementSystem;
+  showUndoNotifications: boolean;
   wallpaperFolder: string;
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
@@ -533,10 +534,30 @@ export interface TodoSnapshot {
   projects: TodoProjectSummary[];
   staleProjects: TodoProjectSummary[];
   breakdownCandidates: Array<{ project: string; task: string }>;
-  cleanupSuggestions: string[];
+  cleanupSuggestions: CleanupSuggestion[];
   dueSoonTasks: Array<{ project: string; task: TodoTaskSummary }>;
   overdueTasks: Array<{ project: string; task: TodoTaskSummary }>;
   blockedTasks: Array<{ project: string; task: TodoTaskSummary }>;
+}
+
+export type CleanupSuggestionKind =
+  | "stale-project"
+  | "duplicate-tasks"
+  | "breakdown-tasks"
+  | "overdue-tasks"
+  | "blocked-tasks"
+  | "empty-sections";
+
+export type CleanupSuggestionAction = "open-master-todo" | "open-cleanup-note";
+
+export interface CleanupSuggestion {
+  id: string;
+  projectName: string;
+  kind: CleanupSuggestionKind;
+  summary: string;
+  detail: string;
+  action: CleanupSuggestionAction;
+  actionLabel: string;
 }
 
 export interface TodoTaskSummary {
@@ -593,6 +614,7 @@ export interface DashboardUiState {
   onboardingCompleted: boolean;
   onboardingDeferredUntil: string;
   dismissedNotificationIds: string[];
+  dismissedCleanupSuggestionIds: string[];
 }
 
 export type DashboardNotificationActionKind = "open-setup" | "open-master-todo" | "open-cleanup-note" | "end-day" | "repair-day";
@@ -837,6 +859,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   measurementSystem: "imperial",
+  showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [

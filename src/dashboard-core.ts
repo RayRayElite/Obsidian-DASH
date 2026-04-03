@@ -38,6 +38,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
   const calendarLookaheadHours = clamp(Number(settings.calendarLookaheadHours ?? DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number(settings.calendarWarningHours ?? DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
+  const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
 
   return {
     dashboardTitle: settings.dashboardTitle?.trim() || DEFAULT_SETTINGS.dashboardTitle,
@@ -67,6 +68,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
+    showUndoNotifications,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
@@ -688,7 +690,7 @@ export function renderTodoSnapshotForAi(snapshot: TodoSnapshot | null): string {
   const staleLines = snapshot.staleProjects.slice(0, 6)
     .map((project) => `- ${project.name}: ${project.staleDays} stale days`);
 
-  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item}`);
+  const cleanupLines = snapshot.cleanupSuggestions.slice(0, 8).map((item) => `- ${item.summary}`);
   const dueLines = snapshot.overdueTasks.slice(0, 6)
     .map((item) => `- ${item.project}: ${item.task.text}${item.task.dueDate ? ` (${item.task.dueDate})` : ""}`);
   const blockedLines = snapshot.blockedTasks.slice(0, 6)
