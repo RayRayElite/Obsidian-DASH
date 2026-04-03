@@ -86,7 +86,11 @@ The plugin now also supports a separate compiled research wiki workflow for LLM-
 
 Use `Initialize compiled research wiki` once to create the default folder scaffold under `Knowledge Base/` plus starter notes for indexes, source summaries, concept pages, and output notes. The scaffold is controlled by new folder settings, so you can relocate the raw, source-summary, concept, index, output, and asset folders without editing code.
 
-Use `Generate compiled research wiki health check` to write a maintenance note into the knowledge-base outputs folder. The health check summarizes coverage, flags raw notes without matching summary filenames, calls out weakly linked concept notes, and identifies stale index notes so the wiki does not silently decay into an unmaintained dump.
+Use `Compile active note into research source summary` to turn the active markdown note into a structured source-summary note in the compiled wiki. Use `Generate concept note from active research note` to turn the active note into a reusable concept page, and use `Generate research answer note from active note` or `Generate research brief from active note` to write reusable outputs into the knowledge-base outputs folder.
+
+Use `Regenerate compiled research topic index` to rebuild a navigable topic index note from the current source summaries, concept notes, outputs, coverage gaps, open questions, and candidate article ideas.
+
+Use `Generate compiled research wiki health check` to write a maintenance note into the knowledge-base outputs folder. The health check summarizes coverage, flags raw notes without matching summary filenames, calls out weakly linked or duplicate concept candidates, and identifies stale index notes so the wiki does not silently decay into an unmaintained dump.
 
 Recommended retrieval scope for AI remains the compiled layers, not the raw inbox: source summaries, concept notes, and index notes. Keep the raw folder out of `AI indexed folders` unless you explicitly want direct raw-source retrieval noise.
 

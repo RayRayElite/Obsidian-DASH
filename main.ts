@@ -432,6 +432,46 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "compile-active-note-into-research-source-summary",
+      name: "Compile active note into research source summary",
+      callback: () => {
+        void this.compileActiveNoteIntoResearchSourceSummary();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-concept-note-from-active-research-note",
+      name: "Generate concept note from active research note",
+      callback: () => {
+        void this.generateConceptNoteFromActiveResearchNote();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-research-answer-note-from-active-note",
+      name: "Generate research answer note from active note",
+      callback: () => {
+        void this.generateResearchAnswerNoteFromActiveNote();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-research-brief-from-active-note",
+      name: "Generate research brief from active note",
+      callback: () => {
+        void this.generateResearchBriefFromActiveNote();
+      }
+    });
+
+    this.addCommand({
+      id: "regenerate-compiled-research-topic-index",
+      name: "Regenerate compiled research topic index",
+      callback: () => {
+        void this.regenerateCompiledResearchTopicIndex();
+      }
+    });
+
+    this.addCommand({
       id: "open-master-todo",
       name: "Open master todo",
       callback: () => {
@@ -3336,6 +3376,112 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice("Compiled research wiki health check generated.");
   }
 
+  async compileActiveNoteIntoResearchSourceSummary(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown source note before compiling it into a research summary.");
+    if (!activeFile) {
+      return;
+    }
+
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Source Summary",
+      templateKey: "source-summary-compiler",
+      activeFile,
+      query: `Compile source note ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseSourcesFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Source Summary`,
+      fixedPath: `${normalizeFolderPath(this.data.settings.knowledgeBaseSourcesFolder)}/${sanitizeFileName(stripMarkdownExtension(activeFile.name))}.md`,
+      systemPrompt: [
+        "You are compiling one raw research note into a structured markdown source summary for an Obsidian wiki.",
+        "Return markdown that starts with a single H1 title naming the source succinctly.",
+        "Then use headings: Source Metadata, Core Claims, Methods Or Framing, Linked Concepts, Open Questions, Reusable Quotes Or Data.",
+        "In Source Metadata include the raw note path and explain why the source matters.",
+        "Keep claims evidence-aware and uncertainty-aware. Use concise markdown bullets. When useful, suggest wiki-link-ready concept names in Linked Concepts.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Compile the active source note ${activeFile.path} into a structured source summary that can live in the compiled research wiki.`
+    });
+  }
+
+  async generateConceptNoteFromActiveResearchNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown research note before generating a concept note.");
+    if (!activeFile) {
+      return;
+    }
+
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Concept Note",
+      templateKey: "concept-note-generator",
+      activeFile,
+      query: `Generate concept note from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseConceptsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Concept`,
+      systemPrompt: [
+        "You are turning a research note into a reusable concept note for an Obsidian compiled wiki.",
+        "Return markdown that starts with a single H1 title containing the best short concept name.",
+        "Then use headings: Working Definition, Why It Matters, Core Claims, Related Concepts, Source Summaries, Output Hooks.",
+        "Use wiki-link-ready note names where appropriate. Distinguish durable claims from tentative inferences.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Generate a concept note from the active research note ${activeFile.path}. Focus on the durable idea rather than merely restating the source.`
+    });
+  }
+
+  async generateResearchAnswerNoteFromActiveNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown note with the question or topic before generating a research answer note.");
+    if (!activeFile) {
+      return;
+    }
+
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Answer Note",
+      templateKey: "research-answer-note",
+      activeFile,
+      query: `Answer research question from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Answer`,
+      systemPrompt: [
+        "You are writing a research answer note from compiled wiki material.",
+        "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
+        "Then use headings: Direct Answer, Supporting Evidence, Counterpoints And Caveats, Source Notes Used, Promotion Targets.",
+        "Answer directly first. Prefer cited note paths or wiki-link-ready note names over vague references.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Use the active note ${activeFile.path} as the question or topic seed and write a direct research answer note grounded in the compiled research wiki.`,
+      question: `Research answer for ${activeFile.path}`
+    });
+  }
+
+  async generateResearchBriefFromActiveNote(): Promise<void> {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown note with the topic before generating a research brief.");
+    if (!activeFile) {
+      return;
+    }
+
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Brief",
+      templateKey: "research-brief",
+      activeFile,
+      query: `Generate research brief from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Brief`,
+      systemPrompt: [
+        "You are writing a concise research brief from compiled wiki material.",
+        "Return markdown that starts with a single H1 title suitable for a standalone brief.",
+        "Then use headings: Executive Summary, Key Evidence, Implications, Recommended Next Steps, Promotion Targets.",
+        "Keep it concise, practical, and reusable for future synthesis work.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Use the active note ${activeFile.path} as the brief topic and generate a concise research brief grounded in the compiled research wiki.`,
+      question: `Research brief for ${activeFile.path}`
+    });
+  }
+
+  async regenerateCompiledResearchTopicIndex(): Promise<void> {
+    const file = await this.createCompiledResearchTopicIndex();
+    await this.openFile(file);
+    new Notice("Compiled research topic index regenerated.");
+  }
+
   private getKnowledgeBaseFolders(): string[] {
     return [
       this.data.settings.knowledgeBaseRawFolder,
@@ -3439,6 +3585,7 @@ export default class DailyDashboardPlugin extends Plugin {
     })));
     const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
     const staleIndexFiles = indexFiles.filter((file) => generatedAt.getTime() - file.stat.mtime > 30 * 24 * 60 * 60 * 1000);
+    const duplicateConceptGroups = this.getDuplicateConceptCandidateGroups(conceptFiles);
     const assetCount = this.getFilesInFolder(this.data.settings.knowledgeBaseAssetsFolder).length;
     const filePath = this.getAvailableMarkdownPath(`${healthCheckFolder}/${formatDateKey(generatedAt)} Compiled Research Wiki Health Check.md`);
     const content = this.renderCompiledResearchWikiHealthCheck({
@@ -3453,9 +3600,397 @@ export default class DailyDashboardPlugin extends Plugin {
       rawWithoutSummary,
       lowLinkConceptFiles,
       staleIndexFiles,
+      duplicateConceptGroups,
       assetCount,
       recommendedIndexedFolders: this.getKnowledgeBaseRecommendedIndexedFolders()
     });
+    return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private getActiveMarkdownFile(missingNoteMessage: string): TFile | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof TFile) || !activeFile.path.endsWith(".md")) {
+      new Notice(missingNoteMessage);
+      return null;
+    }
+
+    return activeFile;
+  }
+
+  private async runKnowledgeBaseAiWorkflow(input: {
+    kind: string;
+    templateKey: string;
+    activeFile: TFile;
+    query: string;
+    outputFolder: string;
+    defaultFileLabel: string;
+    systemPrompt: string;
+    userPrompt: string;
+    question?: string;
+    fixedPath?: string;
+    additionalSections?: string[];
+  }): Promise<TFile | null> {
+    if (!this.getResolvedAiApiKey()) {
+      new Notice(this.getAiConfigurationMessage());
+      return null;
+    }
+
+    if (this.isAiBusy) {
+      new Notice("An AI request is already running.");
+      return null;
+    }
+
+    this.isAiBusy = true;
+    this.refreshDashboardViews();
+
+    try {
+      const context = await this.buildKnowledgeBaseAiContext({
+        activeFile: input.activeFile,
+        query: input.query,
+        additionalSections: input.additionalSections ?? []
+      });
+      const rawResponse = await this.requestAiCompletion(this.applyAiPromptTemplate(input.systemPrompt, input.templateKey), `${input.userPrompt}\n\n${context}`);
+      const payload = extractAiStructuredPayload(rawResponse);
+      const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
+      const derivedTitle = this.getLeadingMarkdownTitle(cleanedMarkdown) || input.defaultFileLabel;
+      const file = await this.createKnowledgeBaseGeneratedNote({
+        kind: input.kind,
+        folder: input.outputFolder,
+        fileLabel: derivedTitle,
+        markdown: this.stripLeadingMarkdownTitle(cleanedMarkdown),
+        payload,
+        question: input.question,
+        sourceFile: input.activeFile,
+        fixedPath: input.fixedPath
+      });
+
+      this.latestAiArtifact = {
+        kind: input.kind,
+        title: derivedTitle,
+        generatedAt: formatDateTimeKey(new Date()),
+        notePath: file.path,
+        summary: extractAiSummary(cleanedMarkdown),
+        suggestedFocus: payload.suggestedFocus.slice(0, 3),
+        nextActions: (payload.nextActions.length > 0 ? payload.nextActions : payload.suggestedFocus).slice(0, 5)
+      };
+
+      this.refreshDashboardViews();
+      await this.openFile(file);
+      new Notice(`${input.kind} generated.`);
+      return file;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new Notice(`AI request failed: ${message}`);
+      return null;
+    } finally {
+      this.isAiBusy = false;
+      this.refreshDashboardViews();
+    }
+  }
+
+  private async buildKnowledgeBaseAiContext(input: {
+    activeFile: TFile;
+    query: string;
+    additionalSections: string[];
+  }): Promise<string> {
+    const homeNote = this.getKnowledgeBaseStarterNoteDefinitions().find((note) => note.key === "home")?.path ?? "";
+    const openQuestionsNote = this.getKnowledgeBaseStarterNoteDefinitions().find((note) => note.key === "questions")?.path ?? "";
+    const relatedSections = await this.collectKnowledgeBaseContextSections(input.query, [input.activeFile.path], 5);
+    const homeSection = await this.buildVaultNoteContext("Knowledge Base Home", homeNote, 3000);
+    const openQuestionsSection = await this.buildVaultNoteContext("Knowledge Base Open Questions", openQuestionsNote, 3000);
+    const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
+
+    return [
+      homeSection,
+      openQuestionsSection,
+      aiGuardrailsSection,
+      await this.buildActiveNoteSection(input.activeFile, 12000),
+      ...input.additionalSections.filter((section) => section.trim().length > 0),
+      ...relatedSections
+    ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+
+  private async buildActiveNoteSection(file: TFile, charLimit: number): Promise<string> {
+    return [
+      "## Active Research Note",
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), charLimit)
+    ].join("\n\n");
+  }
+
+  private async buildVaultNoteContext(title: string, pathValue: string, charLimit: number): Promise<string> {
+    const path = normalizePath(pathValue);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      return "";
+    }
+
+    return [
+      `## ${title}`,
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), charLimit)
+    ].join("\n\n");
+  }
+
+  private async collectKnowledgeBaseContextSections(query: string, excludePaths: string[] = [], limit = 5): Promise<string[]> {
+    const templatePaths = new Set(this.getKnowledgeBaseStarterNoteDefinitions()
+      .filter((note) => note.key.includes("template"))
+      .map((note) => normalizePath(note.path).toLowerCase()));
+    const excludePathSet = new Set(excludePaths.map((path) => normalizePath(path).toLowerCase()));
+    const terms = this.getKnowledgeBaseSearchTerms(query);
+    const candidates = this.getKnowledgeBaseRecommendedIndexedFolders()
+      .flatMap((folder) => this.getMarkdownFilesInFolder(folder))
+      .filter((file, index, files) => files.findIndex((candidate) => normalizePath(candidate.path) === normalizePath(file.path)) === index)
+      .filter((file) => !templatePaths.has(normalizePath(file.path).toLowerCase()))
+      .filter((file) => !excludePathSet.has(normalizePath(file.path).toLowerCase()))
+      .map((file) => ({
+        file,
+        score: this.scoreKnowledgeBaseContextFile(file, terms)
+      }))
+      .filter((item) => terms.length === 0 || item.score > 0)
+      .sort((left, right) => right.score - left.score || right.file.stat.mtime - left.file.stat.mtime)
+      .slice(0, limit);
+
+    return await Promise.all(candidates.map(async ({ file }) => [
+      `## Related Research Note`,
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), 5000)
+    ].join("\n\n")));
+  }
+
+  private getKnowledgeBaseSearchTerms(value: string): string[] {
+    return Array.from(new Set(value
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((term) => term.trim())
+      .filter((term) => term.length >= 3))).slice(0, 24);
+  }
+
+  private scoreKnowledgeBaseContextFile(file: TFile, terms: string[]): number {
+    const path = normalizePath(file.path).toLowerCase();
+    const name = file.basename.toLowerCase();
+    const recencyScore = Math.max(0, 10 - Math.floor((Date.now() - file.stat.mtime) / 86_400_000));
+    if (terms.length === 0) {
+      return recencyScore;
+    }
+
+    return terms.reduce((score, term) => score
+      + (name.includes(term) ? 6 : 0)
+      + (path.includes(term) ? 2 : 0), recencyScore);
+  }
+
+  private getLeadingMarkdownTitle(value: string): string {
+    const match = value.trimStart().match(/^#\s+(.+)$/m);
+    return match?.[1]?.trim() ?? "";
+  }
+
+  private stripLeadingMarkdownTitle(value: string): string {
+    return value.replace(/^\s*#\s+.+?(?:\r?\n)+/, "").trim();
+  }
+
+  private async createKnowledgeBaseGeneratedNote(input: {
+    kind: string;
+    folder: string;
+    fileLabel: string;
+    markdown: string;
+    payload: AiStructuredPayload;
+    question?: string;
+    sourceFile?: TFile;
+    fixedPath?: string;
+  }): Promise<TFile> {
+    const timestamp = formatFileTimestamp(new Date());
+    const folder = normalizeFolderPath(input.folder);
+    const basePath = input.fixedPath && input.fixedPath.trim().length > 0
+      ? normalizePath(input.fixedPath)
+      : `${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`;
+    const filePath = input.fixedPath && input.fixedPath.trim().length > 0
+      ? basePath
+      : this.getAvailableMarkdownPath(basePath);
+    const concreteActions = (input.payload.nextActions.length > 0 ? input.payload.nextActions : input.payload.suggestedFocus).slice(0, 6);
+    const followUpQuestions = input.payload.followUpQuestions.slice(0, 6);
+    const content = [
+      `# ${input.fileLabel}`,
+      "",
+      `- Generated: ${formatDateTimeKey(new Date())}`,
+      `- Model: ${this.data.settings.aiModel}`,
+      `- Workflow: ${input.kind}`,
+      input.sourceFile ? `- Source note: ${createWikiLink(input.sourceFile.path, input.sourceFile.basename)}` : "",
+      input.question ? `- Prompt basis: ${input.question}` : "",
+      "",
+      "## Response",
+      input.markdown,
+      "",
+      "## Structured Payload",
+      "```json",
+      JSON.stringify(input.payload, null, 2),
+      "```",
+      "",
+      "## Follow-Up Questions",
+      ...(followUpQuestions.length > 0 ? followUpQuestions.map((item) => `- ${item}`) : ["- No follow-up questions were extracted from this response."]),
+      "",
+      "## Concrete Actions",
+      ...(concreteActions.length > 0 ? concreteActions.map((item) => `- ${item}`) : ["- No concrete actions were extracted from this response."]),
+      ""
+    ].filter((line) => line !== "").join("\n");
+
+    return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private extractSectionBulletLines(content: string, heading: string): string[] {
+    const lines = content.split(/\r?\n/);
+    const targetHeading = heading.trim().toLowerCase();
+    let insideSection = false;
+    let sectionLevel = 0;
+    const results: string[] = [];
+
+    for (const line of lines) {
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const currentLevel = headingMatch[1].length;
+        const currentHeading = headingMatch[2].trim().toLowerCase();
+        if (insideSection && currentLevel <= sectionLevel) {
+          break;
+        }
+        if (currentHeading === targetHeading) {
+          insideSection = true;
+          sectionLevel = currentLevel;
+          continue;
+        }
+      }
+
+      if (!insideSection) {
+        continue;
+      }
+
+      const bulletMatch = line.match(/^\s*-\s+(.*)$/);
+      if (bulletMatch) {
+        const value = bulletMatch[1].trim();
+        if (value.length > 0) {
+          results.push(value);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private getDuplicateConceptCandidateGroups(files: TFile[]): TFile[][] {
+    const groups = new Map<string, TFile[]>();
+
+    files.forEach((file) => {
+      const normalizedKey = file.basename
+        .toLowerCase()
+        .replace(/\s+\d+$/, "")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      if (!normalizedKey) {
+        return;
+      }
+
+      groups.set(normalizedKey, [...(groups.get(normalizedKey) ?? []), file]);
+    });
+
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+
+  private async createCompiledResearchTopicIndex(): Promise<TFile> {
+    const starterNotes = this.getKnowledgeBaseStarterNoteDefinitions();
+    const templatePathSet = new Set(starterNotes
+      .filter((note) => note.key.includes("template"))
+      .map((note) => normalizePath(note.path).toLowerCase()));
+    const rawFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseRawFolder);
+    const sourceFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseSourcesFolder)
+      .filter((file) => !templatePathSet.has(normalizePath(file.path).toLowerCase()));
+    const conceptFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseConceptsFolder)
+      .filter((file) => !templatePathSet.has(normalizePath(file.path).toLowerCase()));
+    const outputFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseOutputsFolder)
+      .filter((file) => !normalizePath(file.path).startsWith(`${normalizeFolderPath(this.data.settings.knowledgeBaseOutputsFolder)}/Health Checks/`));
+    const rawWithoutSummary = rawFiles.filter((file) => !sourceFiles.some((summary) => summary.basename.trim().toLowerCase() === file.basename.trim().toLowerCase()));
+    const duplicateConceptGroups = this.getDuplicateConceptCandidateGroups(conceptFiles);
+    const conceptLinkCounts = await Promise.all(conceptFiles.map(async (file) => ({
+      file,
+      linkCount: (await this.app.vault.read(file)).match(/\[\[[^\]]+\]\]/g)?.length ?? 0,
+      openQuestions: this.extractSectionBulletLines(await this.app.vault.read(file), "Open Questions")
+    })));
+    const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
+    const sourceQuestionEntries = await Promise.all(sourceFiles.map(async (file) => ({
+      file,
+      openQuestions: this.extractSectionBulletLines(await this.app.vault.read(file), "Open Questions")
+    })));
+    const unansweredQuestions = [...new Set([
+      ...sourceQuestionEntries.flatMap((item) => item.openQuestions),
+      ...conceptLinkCounts.flatMap((item) => item.openQuestions)
+    ].filter((item) => item.length > 0))].slice(0, 20);
+    const candidateArticleIdeas = [
+      ...unansweredQuestions.map((question) => `Answer note: ${question}`),
+      ...rawWithoutSummary.slice(0, 6).map((file) => `Source summary still needed: ${file.basename}`),
+      ...duplicateConceptGroups.slice(0, 6).map((group) => `Merge or disambiguate concept notes: ${group.map((file) => file.basename).join(" / ")}`)
+    ].slice(0, 16);
+    const filePath = normalizePath(`${normalizeFolderPath(this.data.settings.knowledgeBaseIndexesFolder)}/Topic Index.md`);
+    const content = [
+      "# Topic Index",
+      "",
+      `- Last regenerated: ${formatDateTimeKey(new Date())}`,
+      `- Raw captures: ${rawFiles.length}`,
+      `- Source summaries: ${sourceFiles.length}`,
+      `- Concept notes: ${conceptFiles.length}`,
+      `- Output notes: ${outputFiles.length}`,
+      "",
+      "## Retrieval Guidance",
+      ...this.getKnowledgeBaseRecommendedIndexedFolders().map((folder) => `- Index for AI retrieval: ${folder}`),
+      `- Keep ${this.data.settings.knowledgeBaseRawFolder} optional so raw captures do not dominate retrieval noise.`,
+      "",
+      "## Sources",
+      ...(sourceFiles.length > 0
+        ? sourceFiles
+            .sort((left, right) => left.basename.localeCompare(right.basename))
+            .map((file) => `- ${createWikiLink(file.path, file.basename)}`)
+        : ["- No source summaries yet."]),
+      "",
+      "## Concepts",
+      ...(conceptFiles.length > 0
+        ? conceptFiles
+            .sort((left, right) => left.basename.localeCompare(right.basename))
+            .map((file) => `- ${createWikiLink(file.path, file.basename)}`)
+        : ["- No concept notes yet."]),
+      "",
+      "## Recent Outputs",
+      ...(outputFiles.length > 0
+        ? [...outputFiles]
+            .sort((left, right) => right.stat.mtime - left.stat.mtime)
+            .slice(0, 12)
+            .map((file) => `- ${createWikiLink(file.path, file.basename)}`)
+        : ["- No research output notes yet."]),
+      "",
+      "## Coverage Gaps",
+      ...(rawWithoutSummary.length > 0
+        ? rawWithoutSummary.map((file) => `- Raw without matching summary filename: ${createWikiLink(file.path, file.basename)}`)
+        : ["- Every raw note currently has a matching summary filename."]),
+      ...(lowLinkConceptFiles.length > 0
+        ? lowLinkConceptFiles.map((file) => `- Weakly linked concept candidate: ${createWikiLink(file.path, file.basename)}`)
+        : ["- No weakly linked concept candidates detected."]),
+      ...(duplicateConceptGroups.length > 0
+        ? duplicateConceptGroups.map((group) => `- Possible duplicate concept cluster: ${group.map((file) => createWikiLink(file.path, file.basename)).join(" | ")}`)
+        : ["- No duplicate concept candidates detected."]),
+      "",
+      "## Unanswered Questions",
+      ...(unansweredQuestions.length > 0
+        ? unansweredQuestions.map((question) => `- ${question}`)
+        : ["- No explicit open-question bullets were found in source or concept notes yet."]),
+      "",
+      "## Candidate Article Ideas",
+      ...(candidateArticleIdeas.length > 0
+        ? candidateArticleIdeas.map((idea) => `- ${idea}`)
+        : ["- No candidate article ideas were surfaced yet."]),
+      "",
+      "## Review Guidance",
+      "- Refresh this index after adding several source summaries or concept notes.",
+      "- Promote repeated findings from outputs back into concept notes or indexes.",
+      "- Merge concept notes that stay semantically overlapping after a few source additions.",
+      "- Archive or park raw captures that no longer justify compilation effort.",
+      ""
+    ].join("\n");
+
     return this.upsertMarkdownFile(filePath, content);
   }
 
@@ -5359,6 +5894,7 @@ export default class DailyDashboardPlugin extends Plugin {
     rawWithoutSummary: TFile[];
     lowLinkConceptFiles: TFile[];
     staleIndexFiles: TFile[];
+    duplicateConceptGroups: TFile[][];
     assetCount: number;
     recommendedIndexedFolders: string[];
   }): string {
@@ -5377,6 +5913,7 @@ export default class DailyDashboardPlugin extends Plugin {
       input.missingStarterNotes.length > 0 ? "Run Initialize compiled research wiki to restore missing starter notes." : "Starter notes are present.",
       input.rawWithoutSummary.length > 0 ? "Compile or write summaries for the oldest raw captures so the raw folder does not become a dead inbox." : "Raw captures currently have matching summary coverage by filename.",
       input.lowLinkConceptFiles.length > 0 ? "Add source-summary and concept-note links to weakly connected concept pages." : "Concept notes have at least minimal link density.",
+      input.duplicateConceptGroups.length > 0 ? "Merge or disambiguate duplicate concept-note clusters before they drift further apart." : "No duplicate concept clusters were detected from concept-note filenames.",
       input.staleIndexFiles.length > 0 ? "Refresh stale index notes so the wiki remains navigable as it grows." : "Index notes were updated recently enough to act as live navigation.",
       input.recommendedIndexedFolders.length > 0 ? `For AI retrieval, prefer ${input.recommendedIndexedFolders.join(", ")}.` : "No recommended AI retrieval scope is configured yet."
     ];
@@ -5409,6 +5946,11 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       "## Low-Link Concept Candidates",
       ...renderLinkedFileList(input.lowLinkConceptFiles, "None."),
+      "",
+      "## Duplicate Concept Candidates",
+      ...(input.duplicateConceptGroups.length > 0
+        ? input.duplicateConceptGroups.map((group) => `- ${group.map((file) => createWikiLink(file.path, file.basename)).join(" | ")}`)
+        : ["- None."]),
       "",
       "## Stale Index Candidates",
       ...renderLinkedFileList(input.staleIndexFiles, "None older than 30 days."),

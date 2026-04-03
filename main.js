@@ -100,7 +100,19 @@ var DEFAULT_SETTINGS = {
     "Answer directly first, then move to signals and actions.",
     "",
     "[active-note-analysis]",
-    "Surface the note's practical implications and the next decision it enables."
+    "Surface the note's practical implications and the next decision it enables.",
+    "",
+    "[source-summary-compiler]",
+    "Preserve provenance, extract evidence-backed claims, and prefer wiki-link-ready concept names over vague themes.",
+    "",
+    "[concept-note-generator]",
+    "Prefer durable concepts, sharp definitions, and explicit links back to source summaries.",
+    "",
+    "[research-answer-note]",
+    "Answer directly first, then justify with compiled wiki evidence and promotion targets.",
+    "",
+    "[research-brief]",
+    "Keep the brief concise, decision-relevant, and easy to promote back into concept and index notes."
   ].join("\n"),
   aiContextDays: 14,
   aiRelatedNotesLimit: 6,
@@ -10109,6 +10121,41 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "compile-active-note-into-research-source-summary",
+      name: "Compile active note into research source summary",
+      callback: () => {
+        void this.compileActiveNoteIntoResearchSourceSummary();
+      }
+    });
+    this.addCommand({
+      id: "generate-concept-note-from-active-research-note",
+      name: "Generate concept note from active research note",
+      callback: () => {
+        void this.generateConceptNoteFromActiveResearchNote();
+      }
+    });
+    this.addCommand({
+      id: "generate-research-answer-note-from-active-note",
+      name: "Generate research answer note from active note",
+      callback: () => {
+        void this.generateResearchAnswerNoteFromActiveNote();
+      }
+    });
+    this.addCommand({
+      id: "generate-research-brief-from-active-note",
+      name: "Generate research brief from active note",
+      callback: () => {
+        void this.generateResearchBriefFromActiveNote();
+      }
+    });
+    this.addCommand({
+      id: "regenerate-compiled-research-topic-index",
+      name: "Regenerate compiled research topic index",
+      callback: () => {
+        void this.regenerateCompiledResearchTopicIndex();
+      }
+    });
+    this.addCommand({
       id: "open-master-todo",
       name: "Open master todo",
       callback: () => {
@@ -12521,6 +12568,103 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.openFile(file);
     new import_obsidian4.Notice("Compiled research wiki health check generated.");
   }
+  async compileActiveNoteIntoResearchSourceSummary() {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown source note before compiling it into a research summary.");
+    if (!activeFile) {
+      return;
+    }
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Source Summary",
+      templateKey: "source-summary-compiler",
+      activeFile,
+      query: `Compile source note ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseSourcesFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Source Summary`,
+      fixedPath: `${normalizeFolderPath2(this.data.settings.knowledgeBaseSourcesFolder)}/${sanitizeFileName(stripMarkdownExtension(activeFile.name))}.md`,
+      systemPrompt: [
+        "You are compiling one raw research note into a structured markdown source summary for an Obsidian wiki.",
+        "Return markdown that starts with a single H1 title naming the source succinctly.",
+        "Then use headings: Source Metadata, Core Claims, Methods Or Framing, Linked Concepts, Open Questions, Reusable Quotes Or Data.",
+        "In Source Metadata include the raw note path and explain why the source matters.",
+        "Keep claims evidence-aware and uncertainty-aware. Use concise markdown bullets. When useful, suggest wiki-link-ready concept names in Linked Concepts.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Compile the active source note ${activeFile.path} into a structured source summary that can live in the compiled research wiki.`
+    });
+  }
+  async generateConceptNoteFromActiveResearchNote() {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown research note before generating a concept note.");
+    if (!activeFile) {
+      return;
+    }
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Concept Note",
+      templateKey: "concept-note-generator",
+      activeFile,
+      query: `Generate concept note from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseConceptsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Concept`,
+      systemPrompt: [
+        "You are turning a research note into a reusable concept note for an Obsidian compiled wiki.",
+        "Return markdown that starts with a single H1 title containing the best short concept name.",
+        "Then use headings: Working Definition, Why It Matters, Core Claims, Related Concepts, Source Summaries, Output Hooks.",
+        "Use wiki-link-ready note names where appropriate. Distinguish durable claims from tentative inferences.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Generate a concept note from the active research note ${activeFile.path}. Focus on the durable idea rather than merely restating the source.`
+    });
+  }
+  async generateResearchAnswerNoteFromActiveNote() {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown note with the question or topic before generating a research answer note.");
+    if (!activeFile) {
+      return;
+    }
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Answer Note",
+      templateKey: "research-answer-note",
+      activeFile,
+      query: `Answer research question from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Answer`,
+      systemPrompt: [
+        "You are writing a research answer note from compiled wiki material.",
+        "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
+        "Then use headings: Direct Answer, Supporting Evidence, Counterpoints And Caveats, Source Notes Used, Promotion Targets.",
+        "Answer directly first. Prefer cited note paths or wiki-link-ready note names over vague references.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Use the active note ${activeFile.path} as the question or topic seed and write a direct research answer note grounded in the compiled research wiki.`,
+      question: `Research answer for ${activeFile.path}`
+    });
+  }
+  async generateResearchBriefFromActiveNote() {
+    const activeFile = this.getActiveMarkdownFile("Open a markdown note with the topic before generating a research brief.");
+    if (!activeFile) {
+      return;
+    }
+    await this.runKnowledgeBaseAiWorkflow({
+      kind: "Research Brief",
+      templateKey: "research-brief",
+      activeFile,
+      query: `Generate research brief from ${activeFile.path}`,
+      outputFolder: this.data.settings.knowledgeBaseOutputsFolder,
+      defaultFileLabel: `${stripMarkdownExtension(activeFile.name)} Brief`,
+      systemPrompt: [
+        "You are writing a concise research brief from compiled wiki material.",
+        "Return markdown that starts with a single H1 title suitable for a standalone brief.",
+        "Then use headings: Executive Summary, Key Evidence, Implications, Recommended Next Steps, Promotion Targets.",
+        "Keep it concise, practical, and reusable for future synthesis work.",
+        "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
+      ].join(" "),
+      userPrompt: `Use the active note ${activeFile.path} as the brief topic and generate a concise research brief grounded in the compiled research wiki.`,
+      question: `Research brief for ${activeFile.path}`
+    });
+  }
+  async regenerateCompiledResearchTopicIndex() {
+    const file = await this.createCompiledResearchTopicIndex();
+    await this.openFile(file);
+    new import_obsidian4.Notice("Compiled research topic index regenerated.");
+  }
   getKnowledgeBaseFolders() {
     return [
       this.data.settings.knowledgeBaseRawFolder,
@@ -12608,6 +12752,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }));
     const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
     const staleIndexFiles = indexFiles.filter((file) => generatedAt.getTime() - file.stat.mtime > 30 * 24 * 60 * 60 * 1e3);
+    const duplicateConceptGroups = this.getDuplicateConceptCandidateGroups(conceptFiles);
     const assetCount = this.getFilesInFolder(this.data.settings.knowledgeBaseAssetsFolder).length;
     const filePath = this.getAvailableMarkdownPath(`${healthCheckFolder}/${formatDateKey(generatedAt)} Compiled Research Wiki Health Check.md`);
     const content = this.renderCompiledResearchWikiHealthCheck({
@@ -12622,9 +12767,296 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       rawWithoutSummary,
       lowLinkConceptFiles,
       staleIndexFiles,
+      duplicateConceptGroups,
       assetCount,
       recommendedIndexedFolders: this.getKnowledgeBaseRecommendedIndexedFolders()
     });
+    return this.upsertMarkdownFile(filePath, content);
+  }
+  getActiveMarkdownFile(missingNoteMessage) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!(activeFile instanceof import_obsidian4.TFile) || !activeFile.path.endsWith(".md")) {
+      new import_obsidian4.Notice(missingNoteMessage);
+      return null;
+    }
+    return activeFile;
+  }
+  async runKnowledgeBaseAiWorkflow(input) {
+    var _a;
+    if (!this.getResolvedAiApiKey()) {
+      new import_obsidian4.Notice(this.getAiConfigurationMessage());
+      return null;
+    }
+    if (this.isAiBusy) {
+      new import_obsidian4.Notice("An AI request is already running.");
+      return null;
+    }
+    this.isAiBusy = true;
+    this.refreshDashboardViews();
+    try {
+      const context = await this.buildKnowledgeBaseAiContext({
+        activeFile: input.activeFile,
+        query: input.query,
+        additionalSections: (_a = input.additionalSections) != null ? _a : []
+      });
+      const rawResponse = await this.requestAiCompletion(this.applyAiPromptTemplate(input.systemPrompt, input.templateKey), `${input.userPrompt}
+
+${context}`);
+      const payload = extractAiStructuredPayload(rawResponse);
+      const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
+      const derivedTitle = this.getLeadingMarkdownTitle(cleanedMarkdown) || input.defaultFileLabel;
+      const file = await this.createKnowledgeBaseGeneratedNote({
+        kind: input.kind,
+        folder: input.outputFolder,
+        fileLabel: derivedTitle,
+        markdown: this.stripLeadingMarkdownTitle(cleanedMarkdown),
+        payload,
+        question: input.question,
+        sourceFile: input.activeFile,
+        fixedPath: input.fixedPath
+      });
+      this.latestAiArtifact = {
+        kind: input.kind,
+        title: derivedTitle,
+        generatedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
+        notePath: file.path,
+        summary: extractAiSummary(cleanedMarkdown),
+        suggestedFocus: payload.suggestedFocus.slice(0, 3),
+        nextActions: (payload.nextActions.length > 0 ? payload.nextActions : payload.suggestedFocus).slice(0, 5)
+      };
+      this.refreshDashboardViews();
+      await this.openFile(file);
+      new import_obsidian4.Notice(`${input.kind} generated.`);
+      return file;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${error}`;
+      new import_obsidian4.Notice(`AI request failed: ${message}`);
+      return null;
+    } finally {
+      this.isAiBusy = false;
+      this.refreshDashboardViews();
+    }
+  }
+  async buildKnowledgeBaseAiContext(input) {
+    var _a, _b, _c, _d;
+    const homeNote = (_b = (_a = this.getKnowledgeBaseStarterNoteDefinitions().find((note) => note.key === "home")) == null ? void 0 : _a.path) != null ? _b : "";
+    const openQuestionsNote = (_d = (_c = this.getKnowledgeBaseStarterNoteDefinitions().find((note) => note.key === "questions")) == null ? void 0 : _c.path) != null ? _d : "";
+    const relatedSections = await this.collectKnowledgeBaseContextSections(input.query, [input.activeFile.path], 5);
+    const homeSection = await this.buildVaultNoteContext("Knowledge Base Home", homeNote, 3e3);
+    const openQuestionsSection = await this.buildVaultNoteContext("Knowledge Base Open Questions", openQuestionsNote, 3e3);
+    const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
+    return [
+      homeSection,
+      openQuestionsSection,
+      aiGuardrailsSection,
+      await this.buildActiveNoteSection(input.activeFile, 12e3),
+      ...input.additionalSections.filter((section) => section.trim().length > 0),
+      ...relatedSections
+    ].filter((section) => section.trim().length > 0).join("\n\n");
+  }
+  async buildActiveNoteSection(file, charLimit) {
+    return [
+      "## Active Research Note",
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), charLimit)
+    ].join("\n\n");
+  }
+  async buildVaultNoteContext(title, pathValue, charLimit) {
+    const path = (0, import_obsidian4.normalizePath)(pathValue);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof import_obsidian4.TFile)) {
+      return "";
+    }
+    return [
+      `## ${title}`,
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), charLimit)
+    ].join("\n\n");
+  }
+  async collectKnowledgeBaseContextSections(query, excludePaths = [], limit = 5) {
+    const templatePaths = new Set(this.getKnowledgeBaseStarterNoteDefinitions().filter((note) => note.key.includes("template")).map((note) => (0, import_obsidian4.normalizePath)(note.path).toLowerCase()));
+    const excludePathSet = new Set(excludePaths.map((path) => (0, import_obsidian4.normalizePath)(path).toLowerCase()));
+    const terms = this.getKnowledgeBaseSearchTerms(query);
+    const candidates = this.getKnowledgeBaseRecommendedIndexedFolders().flatMap((folder) => this.getMarkdownFilesInFolder(folder)).filter((file, index, files) => files.findIndex((candidate) => (0, import_obsidian4.normalizePath)(candidate.path) === (0, import_obsidian4.normalizePath)(file.path)) === index).filter((file) => !templatePaths.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase())).filter((file) => !excludePathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase())).map((file) => ({
+      file,
+      score: this.scoreKnowledgeBaseContextFile(file, terms)
+    })).filter((item) => terms.length === 0 || item.score > 0).sort((left, right) => right.score - left.score || right.file.stat.mtime - left.file.stat.mtime).slice(0, limit);
+    return await Promise.all(candidates.map(async ({ file }) => [
+      `## Related Research Note`,
+      `Path: ${file.path}`,
+      truncateText(await this.app.vault.read(file), 5e3)
+    ].join("\n\n")));
+  }
+  getKnowledgeBaseSearchTerms(value) {
+    return Array.from(new Set(value.toLowerCase().split(/[^a-z0-9]+/).map((term) => term.trim()).filter((term) => term.length >= 3))).slice(0, 24);
+  }
+  scoreKnowledgeBaseContextFile(file, terms) {
+    const path = (0, import_obsidian4.normalizePath)(file.path).toLowerCase();
+    const name = file.basename.toLowerCase();
+    const recencyScore = Math.max(0, 10 - Math.floor((Date.now() - file.stat.mtime) / 864e5));
+    if (terms.length === 0) {
+      return recencyScore;
+    }
+    return terms.reduce((score, term) => score + (name.includes(term) ? 6 : 0) + (path.includes(term) ? 2 : 0), recencyScore);
+  }
+  getLeadingMarkdownTitle(value) {
+    var _a, _b;
+    const match = value.trimStart().match(/^#\s+(.+)$/m);
+    return (_b = (_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) != null ? _b : "";
+  }
+  stripLeadingMarkdownTitle(value) {
+    return value.replace(/^\s*#\s+.+?(?:\r?\n)+/, "").trim();
+  }
+  async createKnowledgeBaseGeneratedNote(input) {
+    const timestamp = formatFileTimestamp(/* @__PURE__ */ new Date());
+    const folder = normalizeFolderPath2(input.folder);
+    const basePath = input.fixedPath && input.fixedPath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(input.fixedPath) : `${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`;
+    const filePath = input.fixedPath && input.fixedPath.trim().length > 0 ? basePath : this.getAvailableMarkdownPath(basePath);
+    const concreteActions = (input.payload.nextActions.length > 0 ? input.payload.nextActions : input.payload.suggestedFocus).slice(0, 6);
+    const followUpQuestions = input.payload.followUpQuestions.slice(0, 6);
+    const content = [
+      `# ${input.fileLabel}`,
+      "",
+      `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Model: ${this.data.settings.aiModel}`,
+      `- Workflow: ${input.kind}`,
+      input.sourceFile ? `- Source note: ${createWikiLink(input.sourceFile.path, input.sourceFile.basename)}` : "",
+      input.question ? `- Prompt basis: ${input.question}` : "",
+      "",
+      "## Response",
+      input.markdown,
+      "",
+      "## Structured Payload",
+      "```json",
+      JSON.stringify(input.payload, null, 2),
+      "```",
+      "",
+      "## Follow-Up Questions",
+      ...followUpQuestions.length > 0 ? followUpQuestions.map((item) => `- ${item}`) : ["- No follow-up questions were extracted from this response."],
+      "",
+      "## Concrete Actions",
+      ...concreteActions.length > 0 ? concreteActions.map((item) => `- ${item}`) : ["- No concrete actions were extracted from this response."],
+      ""
+    ].filter((line) => line !== "").join("\n");
+    return this.upsertMarkdownFile(filePath, content);
+  }
+  extractSectionBulletLines(content, heading) {
+    const lines = content.split(/\r?\n/);
+    const targetHeading = heading.trim().toLowerCase();
+    let insideSection = false;
+    let sectionLevel = 0;
+    const results = [];
+    for (const line of lines) {
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const currentLevel = headingMatch[1].length;
+        const currentHeading = headingMatch[2].trim().toLowerCase();
+        if (insideSection && currentLevel <= sectionLevel) {
+          break;
+        }
+        if (currentHeading === targetHeading) {
+          insideSection = true;
+          sectionLevel = currentLevel;
+          continue;
+        }
+      }
+      if (!insideSection) {
+        continue;
+      }
+      const bulletMatch = line.match(/^\s*-\s+(.*)$/);
+      if (bulletMatch) {
+        const value = bulletMatch[1].trim();
+        if (value.length > 0) {
+          results.push(value);
+        }
+      }
+    }
+    return results;
+  }
+  getDuplicateConceptCandidateGroups(files) {
+    const groups = /* @__PURE__ */ new Map();
+    files.forEach((file) => {
+      var _a;
+      const normalizedKey = file.basename.toLowerCase().replace(/\s+\d+$/, "").replace(/[^a-z0-9]+/g, " ").trim();
+      if (!normalizedKey) {
+        return;
+      }
+      groups.set(normalizedKey, [...(_a = groups.get(normalizedKey)) != null ? _a : [], file]);
+    });
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+  async createCompiledResearchTopicIndex() {
+    const starterNotes = this.getKnowledgeBaseStarterNoteDefinitions();
+    const templatePathSet = new Set(starterNotes.filter((note) => note.key.includes("template")).map((note) => (0, import_obsidian4.normalizePath)(note.path).toLowerCase()));
+    const rawFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseRawFolder);
+    const sourceFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseSourcesFolder).filter((file) => !templatePathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase()));
+    const conceptFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseConceptsFolder).filter((file) => !templatePathSet.has((0, import_obsidian4.normalizePath)(file.path).toLowerCase()));
+    const outputFiles = this.getMarkdownFilesInFolder(this.data.settings.knowledgeBaseOutputsFolder).filter((file) => !(0, import_obsidian4.normalizePath)(file.path).startsWith(`${normalizeFolderPath2(this.data.settings.knowledgeBaseOutputsFolder)}/Health Checks/`));
+    const rawWithoutSummary = rawFiles.filter((file) => !sourceFiles.some((summary) => summary.basename.trim().toLowerCase() === file.basename.trim().toLowerCase()));
+    const duplicateConceptGroups = this.getDuplicateConceptCandidateGroups(conceptFiles);
+    const conceptLinkCounts = await Promise.all(conceptFiles.map(async (file) => {
+      var _a, _b;
+      return {
+        file,
+        linkCount: (_b = (_a = (await this.app.vault.read(file)).match(/\[\[[^\]]+\]\]/g)) == null ? void 0 : _a.length) != null ? _b : 0,
+        openQuestions: this.extractSectionBulletLines(await this.app.vault.read(file), "Open Questions")
+      };
+    }));
+    const lowLinkConceptFiles = conceptLinkCounts.filter((item) => item.linkCount < 2).map((item) => item.file);
+    const sourceQuestionEntries = await Promise.all(sourceFiles.map(async (file) => ({
+      file,
+      openQuestions: this.extractSectionBulletLines(await this.app.vault.read(file), "Open Questions")
+    })));
+    const unansweredQuestions = [...new Set([
+      ...sourceQuestionEntries.flatMap((item) => item.openQuestions),
+      ...conceptLinkCounts.flatMap((item) => item.openQuestions)
+    ].filter((item) => item.length > 0))].slice(0, 20);
+    const candidateArticleIdeas = [
+      ...unansweredQuestions.map((question) => `Answer note: ${question}`),
+      ...rawWithoutSummary.slice(0, 6).map((file) => `Source summary still needed: ${file.basename}`),
+      ...duplicateConceptGroups.slice(0, 6).map((group) => `Merge or disambiguate concept notes: ${group.map((file) => file.basename).join(" / ")}`)
+    ].slice(0, 16);
+    const filePath = (0, import_obsidian4.normalizePath)(`${normalizeFolderPath2(this.data.settings.knowledgeBaseIndexesFolder)}/Topic Index.md`);
+    const content = [
+      "# Topic Index",
+      "",
+      `- Last regenerated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Raw captures: ${rawFiles.length}`,
+      `- Source summaries: ${sourceFiles.length}`,
+      `- Concept notes: ${conceptFiles.length}`,
+      `- Output notes: ${outputFiles.length}`,
+      "",
+      "## Retrieval Guidance",
+      ...this.getKnowledgeBaseRecommendedIndexedFolders().map((folder) => `- Index for AI retrieval: ${folder}`),
+      `- Keep ${this.data.settings.knowledgeBaseRawFolder} optional so raw captures do not dominate retrieval noise.`,
+      "",
+      "## Sources",
+      ...sourceFiles.length > 0 ? sourceFiles.sort((left, right) => left.basename.localeCompare(right.basename)).map((file) => `- ${createWikiLink(file.path, file.basename)}`) : ["- No source summaries yet."],
+      "",
+      "## Concepts",
+      ...conceptFiles.length > 0 ? conceptFiles.sort((left, right) => left.basename.localeCompare(right.basename)).map((file) => `- ${createWikiLink(file.path, file.basename)}`) : ["- No concept notes yet."],
+      "",
+      "## Recent Outputs",
+      ...outputFiles.length > 0 ? [...outputFiles].sort((left, right) => right.stat.mtime - left.stat.mtime).slice(0, 12).map((file) => `- ${createWikiLink(file.path, file.basename)}`) : ["- No research output notes yet."],
+      "",
+      "## Coverage Gaps",
+      ...rawWithoutSummary.length > 0 ? rawWithoutSummary.map((file) => `- Raw without matching summary filename: ${createWikiLink(file.path, file.basename)}`) : ["- Every raw note currently has a matching summary filename."],
+      ...lowLinkConceptFiles.length > 0 ? lowLinkConceptFiles.map((file) => `- Weakly linked concept candidate: ${createWikiLink(file.path, file.basename)}`) : ["- No weakly linked concept candidates detected."],
+      ...duplicateConceptGroups.length > 0 ? duplicateConceptGroups.map((group) => `- Possible duplicate concept cluster: ${group.map((file) => createWikiLink(file.path, file.basename)).join(" | ")}`) : ["- No duplicate concept candidates detected."],
+      "",
+      "## Unanswered Questions",
+      ...unansweredQuestions.length > 0 ? unansweredQuestions.map((question) => `- ${question}`) : ["- No explicit open-question bullets were found in source or concept notes yet."],
+      "",
+      "## Candidate Article Ideas",
+      ...candidateArticleIdeas.length > 0 ? candidateArticleIdeas.map((idea) => `- ${idea}`) : ["- No candidate article ideas were surfaced yet."],
+      "",
+      "## Review Guidance",
+      "- Refresh this index after adding several source summaries or concept notes.",
+      "- Promote repeated findings from outputs back into concept notes or indexes.",
+      "- Merge concept notes that stay semantically overlapping after a few source additions.",
+      "- Archive or park raw captures that no longer justify compilation effort.",
+      ""
+    ].join("\n");
     return this.upsertMarkdownFile(filePath, content);
   }
   async ensureSupportNote(pathValue, renderTemplate) {
@@ -14276,6 +14708,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       input.missingStarterNotes.length > 0 ? "Run Initialize compiled research wiki to restore missing starter notes." : "Starter notes are present.",
       input.rawWithoutSummary.length > 0 ? "Compile or write summaries for the oldest raw captures so the raw folder does not become a dead inbox." : "Raw captures currently have matching summary coverage by filename.",
       input.lowLinkConceptFiles.length > 0 ? "Add source-summary and concept-note links to weakly connected concept pages." : "Concept notes have at least minimal link density.",
+      input.duplicateConceptGroups.length > 0 ? "Merge or disambiguate duplicate concept-note clusters before they drift further apart." : "No duplicate concept clusters were detected from concept-note filenames.",
       input.staleIndexFiles.length > 0 ? "Refresh stale index notes so the wiki remains navigable as it grows." : "Index notes were updated recently enough to act as live navigation.",
       input.recommendedIndexedFolders.length > 0 ? `For AI retrieval, prefer ${input.recommendedIndexedFolders.join(", ")}.` : "No recommended AI retrieval scope is configured yet."
     ];
@@ -14303,6 +14736,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "",
       "## Low-Link Concept Candidates",
       ...renderLinkedFileList(input.lowLinkConceptFiles, "None."),
+      "",
+      "## Duplicate Concept Candidates",
+      ...input.duplicateConceptGroups.length > 0 ? input.duplicateConceptGroups.map((group) => `- ${group.map((file) => createWikiLink(file.path, file.basename)).join(" | ")}`) : ["- None."],
       "",
       "## Stale Index Candidates",
       ...renderLinkedFileList(input.staleIndexFiles, "None older than 30 days."),
