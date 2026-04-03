@@ -82,7 +82,6 @@ export class DailyDashboardView extends ItemView {
   private editingFocusIndex: number | null = null;
   private editingFocusText = "";
   private draggedFocusIndex: number | null = null;
-  private selectedSessionTag = getDashboardSelectedSessionTag();
   private selectedSessionProjectName = "";
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
@@ -427,7 +426,7 @@ export class DailyDashboardView extends ItemView {
     bindings: DashboardLayoutCardBinding[],
     layoutByKey: Map<string, DashboardLayoutCardState>
   ): HTMLElement {
-    const key = toClassSlug(title);
+    const key = getDashboardCardLayoutKey(title);
     const config = layoutByKey.get(key);
     if (config?.pinned) {
       card.addClass("is-layout-pinned");
@@ -465,6 +464,9 @@ export class DailyDashboardView extends ItemView {
 
     const hidden = bindings.filter((binding) => layoutByKey.get(binding.key)?.hidden);
     [...visible, ...hidden].forEach((binding) => {
+      const config = layoutByKey.get(binding.key);
+      binding.card.style.order = `${config?.order ?? 0}`;
+      binding.card.style.gridColumn = getDashboardCardGridColumn(binding.key, config, this.getViewMode());
       grid.appendChild(binding.card);
     });
   }
@@ -488,11 +490,6 @@ export class DailyDashboardView extends ItemView {
     }
 
     return "neutral";
-  }
-
-  private setSelectedSessionTag(tag: string): void {
-    this.selectedSessionTag = tag;
-    setDashboardSelectedSessionTag(tag);
   }
 
   private getLatestSessionTag(sessions: WorkSession[]): string {
@@ -966,7 +963,6 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
-      createSemanticChip(dayFlowStatus, activeSessionTag ? `Tag ${activeSessionTag}` : `Default ${this.selectedSessionTag}`, activeSessionTag ? this.getSessionTagTone(activeSessionTag) : this.getSessionTagTone(this.selectedSessionTag));
       createSemanticChip(dayFlowStatus, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
       createSemanticChip(
         dayFlowStatus,
@@ -1089,15 +1085,6 @@ export class DailyDashboardView extends ItemView {
       workProjectSelect.addEventListener("change", () => {
         this.selectedSessionProjectName = workProjectSelect.value;
       });
-      const sessionTagSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
-      SESSION_TAG_OPTIONS.forEach((tag) => {
-        const option = sessionTagSelect.createEl("option", { text: tag });
-        option.value = tag;
-      });
-      sessionTagSelect.value = this.selectedSessionTag;
-      sessionTagSelect.addEventListener("change", () => {
-        this.setSelectedSessionTag(sessionTagSelect.value);
-      });
       if (tagSummary.length > 0) {
         const tagSummaryList = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-chip-row" });
         tagSummary.forEach((item) => {
@@ -1106,11 +1093,11 @@ export class DailyDashboardView extends ItemView {
       }
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work • ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag, this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
-      createButton(dayFlowActions, activeNapSession ? "Stop nap" : `Start nap • ${this.selectedSessionTag}`, async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(this.selectedSessionTag), false, activeNapSession ? "alarm-clock-off" : "bed-single");
-      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : `Start relaxing • ${this.selectedSessionTag}`, async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(this.selectedSessionTag), false, activeRelaxSession ? "square" : "coffee");
-      createButton(dayFlowActions, activeBreakSession ? "End break" : `Start break • ${this.selectedSessionTag}`, async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(this.selectedSessionTag), false, activeBreakSession ? "square" : "pause");
-      createButton(dayFlowActions, activePoopSession ? "Finish poop" : `Start poop • ${this.selectedSessionTag}`, async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(this.selectedSessionTag), false, activePoopSession ? "square" : "bath");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
+      createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), false, activeNapSession ? "alarm-clock-off" : "bed-single");
+      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), false, activeRelaxSession ? "square" : "coffee");
+      createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), false, activeBreakSession ? "square" : "pause");
+      createButton(dayFlowActions, activePoopSession ? "Finish poop" : "Start poop", async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), false, activePoopSession ? "square" : "bath");
 
       const timelineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-live-strip", "Live timeline", "See the current logical day as a strip of tracked sessions so gaps and overlaps are obvious immediately.");
       this.renderTimelineStrip(
@@ -1348,7 +1335,7 @@ export class DailyDashboardView extends ItemView {
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
-              createButton(controls, `Start • ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag, this.selectedSessionProjectName), false, "play");
+              createButton(controls, `Start${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, "", this.selectedSessionProjectName), false, "play");
             }
             if (!isEditingFocus) {
               createButton(controls, "Details", async () => {
@@ -1876,31 +1863,11 @@ export class DailyDashboardView extends ItemView {
         });
       }
       if (consumableSummary.length > 0) {
-        const summaryList = foodCard.createDiv({ cls: "daily-dashboard-project-list" });
+        const summaryRow = foodCard.createDiv({ cls: "daily-dashboard-chip-row" });
         consumableSummary
           .sort((left, right) => right.loggedAt.localeCompare(left.loggedAt))
           .forEach((item) => {
-            const row = summaryList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-            const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-            copy.createEl("strong", { text: `${item.kind} • ${item.label}` });
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total • ${item.count} entr${item.count === 1 ? "y" : "ies"} • last ${item.loggedAt || "Time unknown"}` });
-            const unitInput = row.createEl("input", {
-              cls: "daily-dashboard-input",
-              attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
-            });
-            unitInput.addEventListener("change", () => {
-              void this.plugin.updateIntakeGroupUnit(item.kind, item.label, item.unit, unitInput.value);
-            });
-            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add again" });
-            addButton.type = "button";
-            addButton.addEventListener("click", () => {
-              void this.plugin.addIntakeEntry(item.kind, item.label, item.amount, item.unit, item.note);
-            });
-            const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove latest" });
-            removeButton.type = "button";
-            removeButton.addEventListener("click", () => {
-              void this.plugin.removeLatestMatchingIntakeEntry(item.kind, item.label, item.unit);
-            });
+            createSemanticChip(summaryRow, `${item.label} ${item.totalAmount} ${item.unit}`, item.kind === "medication" ? "alert" : "health");
           });
       }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
@@ -1914,6 +1881,7 @@ export class DailyDashboardView extends ItemView {
       } else {
         intakeEntries.slice(0, 18).forEach((item, index) => {
           const row = intakeList.createDiv({ cls: "daily-dashboard-food-row" });
+          row.addClass("daily-dashboard-food-row--compact");
           const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
           copy.createEl("strong", { text: `${item.kind} • ${item.label}` });
           copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} • ${item.loggedAt || "Time unknown"}${item.note ? ` • ${item.note}` : ""}` });
@@ -1925,15 +1893,9 @@ export class DailyDashboardView extends ItemView {
           amountInput.addEventListener("change", () => {
             void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
           });
-          const unitInput = amountSlot.createEl("input", {
-            cls: "daily-dashboard-input",
-            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
-          });
-          unitInput.addEventListener("change", () => {
-            void this.plugin.updateIntakeEntryUnit(index, unitInput.value);
-          });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
+          setIcon(removeButton, "x");
           removeButton.addEventListener("click", () => {
             const removedItem = { ...item } satisfies IntakeEntry;
             void this.runDestructiveAction(
@@ -3810,6 +3772,7 @@ export class CalendarEventModal extends Modal {
 export class DashboardLayoutModal extends Modal {
   private options: DashboardLayoutModalOptions;
   private cards: DashboardLayoutCardState[];
+  private draggedCardKey: string | null = null;
 
   constructor(app: App, options: DashboardLayoutModalOptions) {
     super(app);
@@ -3840,29 +3803,65 @@ export class DashboardLayoutModal extends Modal {
     const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
     sortDashboardLayoutCardsByOrder(this.cards).forEach((card, index, orderedCards) => {
       const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
+      row.draggable = true;
       if (card.hidden) {
         row.addClass("is-hidden");
       }
       if (card.pinned) {
         row.addClass("is-pinned");
       }
+      row.addEventListener("dragstart", (event) => {
+        this.draggedCardKey = card.key;
+        row.addClass("is-dragging");
+        event.dataTransfer?.setData("text/plain", card.key);
+      });
+      row.addEventListener("dragover", (event) => {
+        if (!this.draggedCardKey || this.draggedCardKey === card.key) {
+          return;
+        }
+
+        event.preventDefault();
+        row.addClass("is-drop-target");
+      });
+      row.addEventListener("dragleave", () => {
+        row.removeClass("is-drop-target");
+      });
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.removeClass("is-drop-target");
+        if (!this.draggedCardKey || this.draggedCardKey === card.key) {
+          return;
+        }
+
+        this.moveCardToIndex(this.draggedCardKey, index);
+        this.draggedCardKey = null;
+        this.renderContent();
+      });
+      row.addEventListener("dragend", () => {
+        this.draggedCardKey = null;
+        row.removeClass("is-dragging");
+        row.removeClass("is-drop-target");
+      });
 
       const copy = row.createDiv({ cls: "daily-dashboard-stack" });
       copy.createEl("strong", { text: `${index + 1}. ${card.title}` });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: [card.pinned ? "Pinned" : "Standard order", card.hidden ? "Hidden" : "Visible"].join(" • ")
+        text: [card.pinned ? "Pinned" : "Standard order", card.hidden ? "Hidden" : "Visible", card.width === "full" ? "Full width" : card.width === "half" ? "Half width" : "Default width"].join(" • ")
       });
 
       const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(controls, "Up", async () => {
-        this.moveCard(card.key, -1);
-        this.renderContent();
-      }, false, "arrow-up");
-      createButton(controls, "Down", async () => {
-        this.moveCard(card.key, 1);
-        this.renderContent();
-      }, false, "arrow-down");
+      const widthSelect = controls.createEl("select", { cls: "daily-dashboard-input" });
+      [["default", "Default width"], ["half", "Half width"], ["full", "Full width"]].forEach(([value, label]) => {
+        const option = widthSelect.createEl("option", { text: label });
+        option.value = value;
+      });
+      widthSelect.value = card.width;
+      widthSelect.addEventListener("change", () => {
+        this.cards = this.cards.map((candidate) => candidate.key === card.key
+          ? { ...candidate, width: widthSelect.value === "half" || widthSelect.value === "full" ? widthSelect.value : "default" }
+          : candidate);
+      });
       createButton(controls, card.pinned ? "Unpin" : "Pin", async () => {
         this.togglePinned(card.key);
         this.renderContent();
@@ -3871,13 +3870,6 @@ export class DashboardLayoutModal extends Modal {
         this.toggleHidden(card.key);
         this.renderContent();
       }, false, card.hidden ? "eye" : "eye-off");
-
-      if (index === 0) {
-        controls.querySelector("button")?.setAttribute("disabled", "true");
-      }
-      if (index === orderedCards.length - 1) {
-        controls.querySelectorAll("button")[1]?.setAttribute("disabled", "true");
-      }
     });
 
     const preview = contentEl.createDiv({ cls: "daily-dashboard-chip-row" });
@@ -3901,20 +3893,17 @@ export class DashboardLayoutModal extends Modal {
     }, false, "x");
   }
 
-  private moveCard(cardKey: string, direction: -1 | 1): void {
+  private moveCardToIndex(cardKey: string, targetIndex: number): void {
     const ordered = sortDashboardLayoutCardsByOrder(this.cards);
     const index = ordered.findIndex((card) => card.key === cardKey);
-    const targetIndex = index + direction;
     if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
       return;
     }
 
-    const current = ordered[index];
-    const target = ordered[targetIndex];
     const next = ordered.map((card) => ({ ...card }));
-    next[index] = { ...target, order: current.order };
-    next[targetIndex] = { ...current, order: target.order };
-    this.cards = normalizeDashboardCardLayoutState(next);
+    const [moved] = next.splice(index, 1);
+    next.splice(targetIndex, 0, moved);
+    this.cards = normalizeDashboardCardLayoutState(next.map((card, orderedIndex) => ({ ...card, order: orderedIndex })));
   }
 
   private togglePinned(cardKey: string): void {
@@ -5436,7 +5425,7 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
-              habitAutomations: parseHabitAutomations(value)
+              habitAutomations: parseHabitAutomations(value, this.plugin.getHabitDefinitions())
             });
           });
 
@@ -5470,6 +5459,7 @@ type DashboardLayoutCardState = {
   order: number;
   hidden: boolean;
   pinned: boolean;
+  width: "default" | "half" | "full";
 };
 
 type DashboardLayoutCardBinding = {
@@ -5512,20 +5502,20 @@ const DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
 const DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights";
 
 const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
-  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
-  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false },
-  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
-  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
-  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 6, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false }
+  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
+  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
+  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
+  { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -5931,7 +5921,8 @@ function normalizeDashboardCardLayoutState(cards: unknown[]): DashboardLayoutCar
         title: card.title,
         order: typeof stored?.order === "number" && Number.isFinite(stored.order) ? stored.order : card.order,
         hidden: Boolean(stored?.hidden),
-        pinned: typeof stored?.pinned === "boolean" ? stored.pinned : card.pinned
+        pinned: typeof stored?.pinned === "boolean" ? stored.pinned : card.pinned,
+        width: stored?.width === "half" || stored?.width === "full" ? stored.width : card.width
       };
     })
     .sort((left, right) => left.order - right.order)
@@ -6424,4 +6415,39 @@ function getClockMinutes(value: string | Date): number {
   const hours = Number(hoursText);
   const minutes = Number(minutesText);
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function getDashboardCardLayoutKey(title: string): string {
+  const normalized = toClassSlug(title);
+  return normalized === "consumables" ? "food-log" : normalized;
+}
+
+function getDashboardCardGridColumn(key: string, config: DashboardLayoutCardState | undefined, viewMode: DashboardViewMode): string {
+  if (viewMode === "mobile") {
+    return "1 / -1";
+  }
+
+  if (config?.width === "full") {
+    return "1 / -1";
+  }
+
+  if (config?.width === "half") {
+    return viewMode === "widescreen" ? "span 9" : "span 6";
+  }
+
+  if (viewMode === "widescreen") {
+    if (key === "weekly-agenda" || key === "ai-workspace" || key === "day-flow") {
+      return "span 18";
+    }
+    if (key === "weekly-agenda" || key === "gamification-center" || key === "timeline-search" || key === "heatmaps") {
+      return "span 9";
+    }
+    return "span 6";
+  }
+
+  if (key === "weekly-agenda" || key === "day-flow" || key === "ai-workspace") {
+    return "1 / -1";
+  }
+
+  return "span 6";
 }

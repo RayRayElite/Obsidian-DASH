@@ -135,7 +135,7 @@ function sanitizeSettings(settings) {
   const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
   const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets) ? settings.intakeQuickPresets.map((preset, index) => normalizeIntakeQuickPreset(preset, index)).filter((preset) => preset !== null) : getDefaultIntakeQuickPresets(measurementSystem);
-  const habitAutomations = Array.isArray(settings.habitAutomations) ? settings.habitAutomations.map((automation, index) => normalizeHabitAutomation(automation, index)).filter((automation) => automation !== null) : DEFAULT_SETTINGS.habitAutomations;
+  const habitAutomations = Array.isArray(settings.habitAutomations) ? settings.habitAutomations.map((automation, index) => normalizeHabitAutomation(automation, index, parsedHabitDefinitions)).filter((automation) => automation !== null) : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = (_c = settings.showUndoNotifications) != null ? _c : DEFAULT_SETTINGS.showUndoNotifications;
   return {
     dashboardTitle: ((_d = settings.dashboardTitle) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.dashboardTitle,
@@ -996,10 +996,12 @@ function normalizeIntakeQuickPreset(input, index) {
     unit
   };
 }
-function parseHabitAutomations(value) {
+function parseHabitAutomations(value, definitions = DEFAULT_SETTINGS.habitDefinitions) {
   const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  const definitionsById = new Map(definitions.map((definition) => [definition.id.toLowerCase(), definition.id]));
+  const definitionsByLabel = new Map(definitions.map((definition) => [definition.label.trim().toLowerCase(), definition.id]));
   return lines.map((line, index) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     const [rawHabitLabel, rawKind, rawLabel, rawAmount, rawUnit, rawNote] = line.split("|");
     const habitLabel = (_a = rawHabitLabel == null ? void 0 : rawHabitLabel.trim()) != null ? _a : "";
     const label = (_b = rawLabel == null ? void 0 : rawLabel.trim()) != null ? _b : "";
@@ -1007,33 +1009,38 @@ function parseHabitAutomations(value) {
     if (!habitLabel || !label || !unit) {
       return null;
     }
+    const normalizedHabitKey = habitLabel.trim().toLowerCase();
+    const habitId = (_e = (_d = definitionsById.get(normalizedHabitKey)) != null ? _d : definitionsByLabel.get(normalizedHabitKey)) != null ? _e : createHabitId(habitLabel);
     const intakeKind = (rawKind == null ? void 0 : rawKind.trim()) === "food" || (rawKind == null ? void 0 : rawKind.trim()) === "medication" || (rawKind == null ? void 0 : rawKind.trim()) === "supplement" || (rawKind == null ? void 0 : rawKind.trim()) === "drink" ? rawKind.trim() : "drink";
     const amount = clamp(Number((rawAmount == null ? void 0 : rawAmount.trim()) || 1), 0.1, 9999);
     return {
-      id: `${createHabitId(habitLabel)}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
-      habitId: createHabitId(habitLabel),
+      id: `${habitId}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+      habitId,
       intakeKind,
       label,
       amount,
       unit,
-      note: (_d = rawNote == null ? void 0 : rawNote.trim()) != null ? _d : ""
+      note: (_f = rawNote == null ? void 0 : rawNote.trim()) != null ? _f : ""
     };
   }).filter((automation) => automation !== null);
 }
-function normalizeHabitAutomation(input, index) {
-  var _a;
+function normalizeHabitAutomation(input, index, definitions) {
+  var _a, _b;
   if (!input || typeof input !== "object") {
     return null;
   }
   const candidate = input;
-  const habitId = typeof candidate.habitId === "string" ? createHabitId(candidate.habitId) : "";
+  const rawHabitId = typeof candidate.habitId === "string" ? candidate.habitId.trim() : "";
+  const normalizedHabitKey = rawHabitId.toLowerCase();
+  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey || definition.label.trim().toLowerCase() === normalizedHabitKey);
+  const habitId = (_a = matchedDefinition == null ? void 0 : matchedDefinition.id) != null ? _a : rawHabitId ? createHabitId(rawHabitId) : "";
   const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
   const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
   if (!habitId || !label || !unit) {
     return null;
   }
   const intakeKind = candidate.intakeKind === "food" || candidate.intakeKind === "medication" || candidate.intakeKind === "supplement" || candidate.intakeKind === "drink" ? candidate.intakeKind : "drink";
-  const amount = clamp(Number((_a = candidate.amount) != null ? _a : 1), 0.1, 9999);
+  const amount = clamp(Number((_b = candidate.amount) != null ? _b : 1), 0.1, 9999);
   return {
     id: typeof candidate.id === "string" && candidate.id.trim().length > 0 ? candidate.id.trim() : `${habitId}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
     habitId,
@@ -3661,7 +3668,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusIndex = null;
     this.editingFocusText = "";
     this.draggedFocusIndex = null;
-    this.selectedSessionTag = getDashboardSelectedSessionTag();
     this.selectedSessionProjectName = "";
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
@@ -3940,7 +3946,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     await this.plugin.openMasterTodo();
   }
   registerGridCard(card, title, bindings, layoutByKey) {
-    const key = toClassSlug(title);
+    const key = getDashboardCardLayoutKey(title);
     const config = layoutByKey.get(key);
     if (config == null ? void 0 : config.pinned) {
       card.addClass("is-layout-pinned");
@@ -3978,6 +3984,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       return (_a = layoutByKey.get(binding.key)) == null ? void 0 : _a.hidden;
     });
     [...visible, ...hidden].forEach((binding) => {
+      var _a;
+      const config = layoutByKey.get(binding.key);
+      binding.card.style.order = `${(_a = config == null ? void 0 : config.order) != null ? _a : 0}`;
+      binding.card.style.gridColumn = getDashboardCardGridColumn(binding.key, config, this.getViewMode());
       grid.appendChild(binding.card);
     });
   }
@@ -3996,10 +4006,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       return "log";
     }
     return "neutral";
-  }
-  setSelectedSessionTag(tag) {
-    this.selectedSessionTag = tag;
-    setDashboardSelectedSessionTag(tag);
   }
   getLatestSessionTag(sessions) {
     var _a, _b;
@@ -4417,7 +4423,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(dayFlowStatus, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(dayFlowStatus, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(dayFlowStatus, activeModeLabel, activePoopSession ? "alert" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
-      createSemanticChip(dayFlowStatus, activeSessionTag ? `Tag ${activeSessionTag}` : `Default ${this.selectedSessionTag}`, activeSessionTag ? this.getSessionTagTone(activeSessionTag) : this.getSessionTagTone(this.selectedSessionTag));
       createSemanticChip(dayFlowStatus, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
       createSemanticChip(
         dayFlowStatus,
@@ -4528,15 +4533,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       workProjectSelect.addEventListener("change", () => {
         this.selectedSessionProjectName = workProjectSelect.value;
       });
-      const sessionTagSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
-      SESSION_TAG_OPTIONS.forEach((tag) => {
-        const option = sessionTagSelect.createEl("option", { text: tag });
-        option.value = tag;
-      });
-      sessionTagSelect.value = this.selectedSessionTag;
-      sessionTagSelect.addEventListener("change", () => {
-        this.setSelectedSessionTag(sessionTagSelect.value);
-      });
       if (tagSummary.length > 0) {
         const tagSummaryList = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-chip-row" });
         tagSummary.forEach((item) => {
@@ -4545,11 +4541,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work \u2022 ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag, this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
-      createButton(dayFlowActions, activeNapSession ? "Stop nap" : `Start nap \u2022 ${this.selectedSessionTag}`, async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(this.selectedSessionTag), false, activeNapSession ? "alarm-clock-off" : "bed-single");
-      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : `Start relaxing \u2022 ${this.selectedSessionTag}`, async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(this.selectedSessionTag), false, activeRelaxSession ? "square" : "coffee");
-      createButton(dayFlowActions, activeBreakSession ? "End break" : `Start break \u2022 ${this.selectedSessionTag}`, async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(this.selectedSessionTag), false, activeBreakSession ? "square" : "pause");
-      createButton(dayFlowActions, activePoopSession ? "Finish poop" : `Start poop \u2022 ${this.selectedSessionTag}`, async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(this.selectedSessionTag), false, activePoopSession ? "square" : "bath");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
+      createButton(dayFlowActions, activeNapSession ? "Stop nap" : "Start nap", async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), false, activeNapSession ? "alarm-clock-off" : "bed-single");
+      createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : "Start relaxing", async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), false, activeRelaxSession ? "square" : "coffee");
+      createButton(dayFlowActions, activeBreakSession ? "End break" : "Start break", async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), false, activeBreakSession ? "square" : "pause");
+      createButton(dayFlowActions, activePoopSession ? "Finish poop" : "Start poop", async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), false, activePoopSession ? "square" : "bath");
       const timelineSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-live-strip", "Live timeline", "See the current logical day as a strip of tracked sessions so gaps and overlaps are obvious immediately.");
       this.renderTimelineStrip(
         timelineSection,
@@ -4778,7 +4774,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
-              createButton(controls, `Start \u2022 ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag, this.selectedSessionProjectName), false, "play");
+              createButton(controls, `Start${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, "", this.selectedSessionProjectName), false, "play");
             }
             if (!isEditingFocus) {
               createButton(controls, "Details", async () => {
@@ -5300,29 +5296,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
       }
       if (consumableSummary.length > 0) {
-        const summaryList = foodCard.createDiv({ cls: "daily-dashboard-project-list" });
+        const summaryRow = foodCard.createDiv({ cls: "daily-dashboard-chip-row" });
         consumableSummary.sort((left, right) => right.loggedAt.localeCompare(left.loggedAt)).forEach((item) => {
-          const row = summaryList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-          copy.createEl("strong", { text: `${item.kind} \u2022 ${item.label}` });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total \u2022 ${item.count} entr${item.count === 1 ? "y" : "ies"} \u2022 last ${item.loggedAt || "Time unknown"}` });
-          const unitInput = row.createEl("input", {
-            cls: "daily-dashboard-input",
-            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
-          });
-          unitInput.addEventListener("change", () => {
-            void this.plugin.updateIntakeGroupUnit(item.kind, item.label, item.unit, unitInput.value);
-          });
-          const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add again" });
-          addButton.type = "button";
-          addButton.addEventListener("click", () => {
-            void this.plugin.addIntakeEntry(item.kind, item.label, item.amount, item.unit, item.note);
-          });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove latest" });
-          removeButton.type = "button";
-          removeButton.addEventListener("click", () => {
-            void this.plugin.removeLatestMatchingIntakeEntry(item.kind, item.label, item.unit);
-          });
+          createSemanticChip(summaryRow, `${item.label} ${item.totalAmount} ${item.unit}`, item.kind === "medication" ? "alert" : "health");
         });
       }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
@@ -5336,6 +5312,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       } else {
         intakeEntries.slice(0, 18).forEach((item, index) => {
           const row = intakeList.createDiv({ cls: "daily-dashboard-food-row" });
+          row.addClass("daily-dashboard-food-row--compact");
           const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
           copy.createEl("strong", { text: `${item.kind} \u2022 ${item.label}` });
           copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} \u2022 ${item.loggedAt || "Time unknown"}${item.note ? ` \u2022 ${item.note}` : ""}` });
@@ -5347,15 +5324,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           amountInput.addEventListener("change", () => {
             void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
           });
-          const unitInput = amountSlot.createEl("input", {
-            cls: "daily-dashboard-input",
-            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
-          });
-          unitInput.addEventListener("change", () => {
-            void this.plugin.updateIntakeEntryUnit(index, unitInput.value);
-          });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
+          (0, import_obsidian3.setIcon)(removeButton, "x");
           removeButton.addEventListener("click", () => {
             const removedItem = { ...item };
             void this.runDestructiveAction(
@@ -6984,6 +6955,7 @@ var CalendarEventModal = class extends import_obsidian3.Modal {
 var DashboardLayoutModal = class extends import_obsidian3.Modal {
   constructor(app, options) {
     super(app);
+    this.draggedCardKey = null;
     this.options = options;
     this.cards = normalizeDashboardCardLayoutState(options.cards);
   }
@@ -7005,29 +6977,61 @@ var DashboardLayoutModal = class extends import_obsidian3.Modal {
     });
     const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
     sortDashboardLayoutCardsByOrder(this.cards).forEach((card, index, orderedCards) => {
-      var _a, _b;
       const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
+      row.draggable = true;
       if (card.hidden) {
         row.addClass("is-hidden");
       }
       if (card.pinned) {
         row.addClass("is-pinned");
       }
+      row.addEventListener("dragstart", (event) => {
+        var _a;
+        this.draggedCardKey = card.key;
+        row.addClass("is-dragging");
+        (_a = event.dataTransfer) == null ? void 0 : _a.setData("text/plain", card.key);
+      });
+      row.addEventListener("dragover", (event) => {
+        if (!this.draggedCardKey || this.draggedCardKey === card.key) {
+          return;
+        }
+        event.preventDefault();
+        row.addClass("is-drop-target");
+      });
+      row.addEventListener("dragleave", () => {
+        row.removeClass("is-drop-target");
+      });
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.removeClass("is-drop-target");
+        if (!this.draggedCardKey || this.draggedCardKey === card.key) {
+          return;
+        }
+        this.moveCardToIndex(this.draggedCardKey, index);
+        this.draggedCardKey = null;
+        this.renderContent();
+      });
+      row.addEventListener("dragend", () => {
+        this.draggedCardKey = null;
+        row.removeClass("is-dragging");
+        row.removeClass("is-drop-target");
+      });
       const copy = row.createDiv({ cls: "daily-dashboard-stack" });
       copy.createEl("strong", { text: `${index + 1}. ${card.title}` });
       copy.createEl("span", {
         cls: "daily-dashboard-row-meta",
-        text: [card.pinned ? "Pinned" : "Standard order", card.hidden ? "Hidden" : "Visible"].join(" \u2022 ")
+        text: [card.pinned ? "Pinned" : "Standard order", card.hidden ? "Hidden" : "Visible", card.width === "full" ? "Full width" : card.width === "half" ? "Half width" : "Default width"].join(" \u2022 ")
       });
       const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(controls, "Up", async () => {
-        this.moveCard(card.key, -1);
-        this.renderContent();
-      }, false, "arrow-up");
-      createButton(controls, "Down", async () => {
-        this.moveCard(card.key, 1);
-        this.renderContent();
-      }, false, "arrow-down");
+      const widthSelect = controls.createEl("select", { cls: "daily-dashboard-input" });
+      [["default", "Default width"], ["half", "Half width"], ["full", "Full width"]].forEach(([value, label]) => {
+        const option = widthSelect.createEl("option", { text: label });
+        option.value = value;
+      });
+      widthSelect.value = card.width;
+      widthSelect.addEventListener("change", () => {
+        this.cards = this.cards.map((candidate) => candidate.key === card.key ? { ...candidate, width: widthSelect.value === "half" || widthSelect.value === "full" ? widthSelect.value : "default" } : candidate);
+      });
       createButton(controls, card.pinned ? "Unpin" : "Pin", async () => {
         this.togglePinned(card.key);
         this.renderContent();
@@ -7036,12 +7040,6 @@ var DashboardLayoutModal = class extends import_obsidian3.Modal {
         this.toggleHidden(card.key);
         this.renderContent();
       }, false, card.hidden ? "eye" : "eye-off");
-      if (index === 0) {
-        (_a = controls.querySelector("button")) == null ? void 0 : _a.setAttribute("disabled", "true");
-      }
-      if (index === orderedCards.length - 1) {
-        (_b = controls.querySelectorAll("button")[1]) == null ? void 0 : _b.setAttribute("disabled", "true");
-      }
     });
     const preview = contentEl.createDiv({ cls: "daily-dashboard-chip-row" });
     const orderedPreview = sortDashboardLayoutCards(this.cards).filter((card) => !card.hidden);
@@ -7062,19 +7060,16 @@ var DashboardLayoutModal = class extends import_obsidian3.Modal {
       this.close();
     }, false, "x");
   }
-  moveCard(cardKey, direction) {
+  moveCardToIndex(cardKey, targetIndex) {
     const ordered = sortDashboardLayoutCardsByOrder(this.cards);
     const index = ordered.findIndex((card) => card.key === cardKey);
-    const targetIndex = index + direction;
     if (index < 0 || targetIndex < 0 || targetIndex >= ordered.length) {
       return;
     }
-    const current = ordered[index];
-    const target = ordered[targetIndex];
     const next = ordered.map((card) => ({ ...card }));
-    next[index] = { ...target, order: current.order };
-    next[targetIndex] = { ...current, order: target.order };
-    this.cards = normalizeDashboardCardLayoutState(next);
+    const [moved] = next.splice(index, 1);
+    next.splice(targetIndex, 0, moved);
+    this.cards = normalizeDashboardCardLayoutState(next.map((card, orderedIndex) => ({ ...card, order: orderedIndex })));
   }
   togglePinned(cardKey) {
     this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, pinned: !card.pinned } : card);
@@ -8099,7 +8094,7 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
       }).join("\n")).onChange(async (value) => {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
-          habitAutomations: parseHabitAutomations(value)
+          habitAutomations: parseHabitAutomations(value, this.plugin.getHabitDefinitions())
         });
       });
       textArea.inputEl.rows = 6;
@@ -8122,27 +8117,26 @@ var DASHBOARD_EXPANDED_SECTIONS_STORAGE_KEY = "daily-dashboard-expanded-sections
 var DASHBOARD_VIEW_MODE_STORAGE_KEY = "daily-dashboard-view-mode";
 var DASHBOARD_COLLAPSED_SUBSECTIONS_STORAGE_KEY = "daily-dashboard-collapsed-subsections";
 var DASHBOARD_DISMISSED_REMINDERS_STORAGE_KEY = "daily-dashboard-dismissed-reminders";
-var DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY = "daily-dashboard-selected-session-tag";
 var DASHBOARD_DISMISSED_ROUTINES_STORAGE_KEY = "daily-dashboard-dismissed-routines";
 var DASHBOARD_SAVED_FILTERS_STORAGE_KEY = "daily-dashboard-saved-filters";
 var DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
 var DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
 var DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights";
 var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
-  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
-  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false },
-  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
-  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
-  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 6, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false }
+  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
+  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
+  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
+  { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -8375,25 +8369,6 @@ function setDashboardViewMode(mode) {
   } catch (e) {
   }
 }
-function getDashboardSelectedSessionTag() {
-  var _a, _b;
-  try {
-    const stored = (_b = (_a = window.localStorage.getItem(DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY)) == null ? void 0 : _a.trim()) != null ? _b : "";
-    return SESSION_TAG_OPTIONS.includes(stored) ? stored : SESSION_TAG_OPTIONS[0];
-  } catch (e) {
-    return SESSION_TAG_OPTIONS[0];
-  }
-}
-function setDashboardSelectedSessionTag(tag) {
-  try {
-    const normalized = tag.trim();
-    window.localStorage.setItem(
-      DASHBOARD_SELECTED_SESSION_TAG_STORAGE_KEY,
-      SESSION_TAG_OPTIONS.includes(normalized) ? normalized : SESSION_TAG_OPTIONS[0]
-    );
-  } catch (e) {
-  }
-}
 function getDashboardSelectedFilterName() {
   var _a, _b;
   try {
@@ -8490,7 +8465,8 @@ function normalizeDashboardCardLayoutState(cards) {
       title: card.title,
       order: typeof (stored == null ? void 0 : stored.order) === "number" && Number.isFinite(stored.order) ? stored.order : card.order,
       hidden: Boolean(stored == null ? void 0 : stored.hidden),
-      pinned: typeof (stored == null ? void 0 : stored.pinned) === "boolean" ? stored.pinned : card.pinned
+      pinned: typeof (stored == null ? void 0 : stored.pinned) === "boolean" ? stored.pinned : card.pinned,
+      width: (stored == null ? void 0 : stored.width) === "half" || (stored == null ? void 0 : stored.width) === "full" ? stored.width : card.width
     };
   }).sort((left, right) => left.order - right.order).map((card, index) => ({ ...card, order: index }));
 }
@@ -8843,6 +8819,34 @@ function getClockMinutes(value) {
   const hours = Number(hoursText);
   const minutes = Number(minutesText);
   return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+function getDashboardCardLayoutKey(title) {
+  const normalized = toClassSlug(title);
+  return normalized === "consumables" ? "food-log" : normalized;
+}
+function getDashboardCardGridColumn(key, config, viewMode) {
+  if (viewMode === "mobile") {
+    return "1 / -1";
+  }
+  if ((config == null ? void 0 : config.width) === "full") {
+    return "1 / -1";
+  }
+  if ((config == null ? void 0 : config.width) === "half") {
+    return viewMode === "widescreen" ? "span 9" : "span 6";
+  }
+  if (viewMode === "widescreen") {
+    if (key === "weekly-agenda" || key === "ai-workspace" || key === "day-flow") {
+      return "span 18";
+    }
+    if (key === "weekly-agenda" || key === "gamification-center" || key === "timeline-search" || key === "heatmaps") {
+      return "span 9";
+    }
+    return "span 6";
+  }
+  if (key === "weekly-agenda" || key === "day-flow" || key === "ai-workspace") {
+    return "1 / -1";
+  }
+  return "span 6";
 }
 
 // main.ts

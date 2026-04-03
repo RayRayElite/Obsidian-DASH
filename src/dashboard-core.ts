@@ -50,7 +50,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     : getDefaultIntakeQuickPresets(measurementSystem);
   const habitAutomations = Array.isArray(settings.habitAutomations)
     ? settings.habitAutomations
-        .map((automation, index) => normalizeHabitAutomation(automation, index))
+        .map((automation, index) => normalizeHabitAutomation(automation, index, parsedHabitDefinitions))
         .filter((automation): automation is HabitAutomation => automation !== null)
     : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
@@ -1114,11 +1114,14 @@ function normalizeIntakeQuickPreset(input: unknown, index: number): IntakeQuickP
   };
 }
 
-export function parseHabitAutomations(value: string): HabitAutomation[] {
+export function parseHabitAutomations(value: string, definitions: HabitDefinition[] = DEFAULT_SETTINGS.habitDefinitions): HabitAutomation[] {
   const lines = value
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+
+  const definitionsById = new Map(definitions.map((definition) => [definition.id.toLowerCase(), definition.id]));
+  const definitionsByLabel = new Map(definitions.map((definition) => [definition.label.trim().toLowerCase(), definition.id]));
 
   return lines
     .map((line, index) => {
@@ -1130,13 +1133,17 @@ export function parseHabitAutomations(value: string): HabitAutomation[] {
         return null;
       }
 
+      const normalizedHabitKey = habitLabel.trim().toLowerCase();
+      const habitId = definitionsById.get(normalizedHabitKey)
+        ?? definitionsByLabel.get(normalizedHabitKey)
+        ?? createHabitId(habitLabel);
       const intakeKind = rawKind?.trim() === "food" || rawKind?.trim() === "medication" || rawKind?.trim() === "supplement" || rawKind?.trim() === "drink"
         ? rawKind.trim()
         : "drink";
       const amount = clamp(Number(rawAmount?.trim() || 1), 0.1, 9999);
       return {
-        id: `${createHabitId(habitLabel)}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
-        habitId: createHabitId(habitLabel),
+        id: `${habitId}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+        habitId,
         intakeKind,
         label,
         amount,
@@ -1147,13 +1154,16 @@ export function parseHabitAutomations(value: string): HabitAutomation[] {
     .filter((automation): automation is HabitAutomation => automation !== null);
 }
 
-function normalizeHabitAutomation(input: unknown, index: number): HabitAutomation | null {
+function normalizeHabitAutomation(input: unknown, index: number, definitions: HabitDefinition[]): HabitAutomation | null {
   if (!input || typeof input !== "object") {
     return null;
   }
 
   const candidate = input as Partial<HabitAutomation>;
-  const habitId = typeof candidate.habitId === "string" ? createHabitId(candidate.habitId) : "";
+  const rawHabitId = typeof candidate.habitId === "string" ? candidate.habitId.trim() : "";
+  const normalizedHabitKey = rawHabitId.toLowerCase();
+  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey || definition.label.trim().toLowerCase() === normalizedHabitKey);
+  const habitId = matchedDefinition?.id ?? (rawHabitId ? createHabitId(rawHabitId) : "");
   const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
   const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
   if (!habitId || !label || !unit) {

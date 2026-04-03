@@ -896,6 +896,12 @@
   align-items: center;
 }
 
+.daily-dashboard-food-row--compact {
+  grid-template-columns: minmax(0, 1fr) 72px 32px;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
 .daily-dashboard-food-row--energy {
   grid-template-columns: minmax(0, 1fr) 64px auto;
 }
@@ -1422,6 +1428,16 @@
   border: 1px solid var(--daily-dashboard-border);
   border-radius: 16px;
   background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+  cursor: grab;
+}
+
+.daily-dashboard-layout-row.is-dragging {
+  opacity: 0.72;
+}
+
+.daily-dashboard-layout-row.is-drop-target {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 38%, var(--background-modifier-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--daily-dashboard-accent-soft) 16%, transparent);
 }
 
 .daily-dashboard-layout-row.is-hidden {
@@ -1434,6 +1450,7 @@
 
 .daily-dashboard-layout-row .daily-dashboard-actions-inline {
   margin-left: auto;
+  align-items: center;
 }
 
 .daily-dashboard-layout-row .daily-dashboard-secondary-button[disabled] {
@@ -1779,6 +1796,15 @@ input.daily-dashboard-input {
 .daily-dashboard-food-amount-slot {
   display: flex;
   justify-content: center;
+}
+
+.daily-dashboard-food-row--compact .daily-dashboard-food-amount-slot {
+  justify-content: stretch;
+}
+
+.daily-dashboard-food-row--compact .daily-dashboard-amount-input {
+  min-width: 0;
+  width: 100%;
 }
 
 .daily-dashboard-week-strip {
