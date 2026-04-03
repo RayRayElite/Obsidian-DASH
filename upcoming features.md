@@ -119,6 +119,8 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add examples of good and bad task wording.
 - [x] Add an archive policy reference.
 - [x] Add a document-freshness review checklist for evergreen notes.
+- [x] Add a recurring friction-patterns note generated from dashboard logs and review signals.
+- [x] Add a weekly project-review archive folder with one note per review cycle for active projects.
 
 ## View Modes, Layout, And UX
 

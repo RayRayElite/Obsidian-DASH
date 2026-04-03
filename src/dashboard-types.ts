@@ -716,6 +716,11 @@ export interface ProjectReviewOption {
   notePath: string;
   status: string;
   projectState: "active" | "incubating" | "someday";
+  projectSummary: string;
+  whyItMatters: string;
+  definitionOfDone: string;
+  lastReview: string;
+  waitingOn: string;
   nextAction: string;
   healthScore: number;
   healthLabel: string;

@@ -898,6 +898,7 @@ export class DailyDashboardView extends ItemView {
         this.openLayoutCustomizationFlow();
       });
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
+      createIconButton(utilityActions, "triangle-alert", "Recurring friction patterns", async () => this.plugin.generateRecurringFrictionPatternsNote(true));
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());

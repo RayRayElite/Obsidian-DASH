@@ -1233,7 +1233,7 @@ function averageEntryScore(entries: DailyEntry[], key: "moodScore" | "energyScor
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
-function buildBlockerPatternLines(entries: DailyEntry[]): string[] {
+export function buildBlockerPatternLines(entries: DailyEntry[]): string[] {
   const counts = new Map<string, { label: string; count: number }>();
   entries.forEach((entry) => {
     splitPatternItems(entry.frictionLog).forEach((item) => {
@@ -1306,6 +1306,70 @@ function buildNarrativeSectionLines(entries: DailyEntry[], sleepInsights: SleepI
     `- Trend read: ${personalTrends.strongestSignals[0] ?? "No strong positive signal clearly dominated."} ${personalTrends.driftSignals[0] ?? "No single drift signal dominated the period."}`,
     `- Portfolio pressure: ${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"} remain visible at period end.`
   ];
+}
+
+export function renderRecurringFrictionPatternsNote(input: {
+  label: string;
+  start: Date;
+  end: Date;
+  entries: DailyEntry[];
+  habits: HabitDefinition[];
+  todoSnapshot: TodoSnapshot | null;
+}): string {
+  const blockerPatterns = buildBlockerPatternLines(input.entries);
+  const personalTrends = buildPersonalTrendSummary(input.entries, input.habits);
+  const missedHabitPatterns = buildMissedHabitPatternLines(input.entries, input.habits);
+  const reflectionSignals = personalTrends.reflectionSignals.slice(0, 6);
+  const rawSignalLines = input.entries
+    .filter((entry) => entry.frictionLog.trim().length > 0 || entry.hurtToday.trim().length > 0)
+    .slice(-10)
+    .map((entry) => {
+      const parts = [
+        entry.frictionLog.trim().length > 0 ? `friction: ${entry.frictionLog.trim()}` : "",
+        entry.hurtToday.trim().length > 0 ? `hurt: ${entry.hurtToday.trim()}` : ""
+      ].filter((item) => item.length > 0);
+      return `- ${entry.date}: ${parts.join(" • ")}`;
+    });
+  const pressuredProjects = [...(input.todoSnapshot?.projects ?? [])]
+    .filter((project) => project.projectState === "active" && (project.blockedTasks.length > 0 || project.overdueTasks.length > 0 || project.staleDays !== null))
+    .sort((left, right) => left.healthScore - right.healthScore)
+    .slice(0, 6);
+  const strongestBlocker = blockerPatterns[0]?.replace(/^[-]\s*/, "") || "No repeated blocker pattern stood out.";
+  const strongestDrift = personalTrends.driftSignals[0] || "No clear drift signal stood out.";
+  const followUp = pressuredProjects[0]?.nextAction || blockerPatterns[0]?.replace(/^[-]\s*/, "") || "No clear follow-up surfaced.";
+
+  return [
+    `# Recurring Friction Patterns - ${input.label}`,
+    "",
+    `- Generated: ${formatDateTimeKey(new Date())}`,
+    `- Window: ${formatDateKey(input.start)} to ${formatDateKey(input.end)}`,
+    `- Days analyzed: ${input.entries.length}`,
+    "",
+    "## Summary Block",
+    `- Main blocker: ${strongestBlocker}`,
+    `- Biggest drift: ${strongestDrift}`,
+    `- Key health signal: ${personalTrends.symptomSignals[0] || personalTrends.reflectionSignals[0] || "No dominant health or reflection signal stood out."}`,
+    `- Most important follow-up: ${followUp}`,
+    `- Context links: ${pressuredProjects.length > 0 ? pressuredProjects.map((project) => createContextLink(project.name, project.noteLinks[0] ?? project.name)).join(", ") : "No project links stood out."}`,
+    "",
+    "## Repeated Friction Patterns",
+    ...(blockerPatterns.length > 0 ? blockerPatterns : ["- No repeated blocker pattern stood out."]),
+    "",
+    "## Reflection Drift",
+    ...(reflectionSignals.length > 0 ? reflectionSignals.map((item) => `- ${item}`) : ["- No repeated reflection drift stood out."]),
+    "",
+    "## Habit And Recovery Correlates",
+    ...(missedHabitPatterns.length > 0 ? missedHabitPatterns.slice(0, 6) : ["- No repeated habit misses stood out alongside friction."]),
+    "",
+    "## Project Pressure Likely Feeding Friction",
+    ...(pressuredProjects.length > 0
+      ? pressuredProjects.map((project) => `- ${project.name}: ${project.healthLabel.toLowerCase()} health • ${project.nextAction}${project.waitingOn && project.waitingOn.toLowerCase() !== "none" ? ` • waiting on ${project.waitingOn}` : ""}`)
+      : ["- No clear project-pressure driver stood out."]),
+    "",
+    "## Recent Raw Signals",
+    ...(rawSignalLines.length > 0 ? rawSignalLines : ["- No recent friction or hurt signals were logged."]),
+    ""
+  ].join("\n");
 }
 
 function splitPatternItems(value: string): string[] {

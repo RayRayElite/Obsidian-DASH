@@ -39,7 +39,7 @@ The `### Repeating` section now supports richer repeat rules instead of only sim
 
 Project health now surfaces a visible next action for every project, explains the reasons behind each health score, renders compact momentum bars from recent completion history, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
 
-The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup.
+The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup, and weekly review generation now also writes one archive review note per active project under the matching review-cycle folder.
 
 ## Document Design
 
@@ -113,7 +113,7 @@ Destructive dashboard actions now also get a visible in-view undo rail. When you
 
 The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard, and the notice popups can optionally play a configurable sound.
 
-The plugin now also supports a reusable `Basic Information` note for long-lived personal context such as age, height, weight, interests, preferences, and AI guidance. That note is created automatically by default, can be surfaced during the setup wizard, can be opened from the command palette or AI workspace, and AI requests can include it automatically. Plugin-generated markdown artifacts can also receive frontmatter tags so daily logs, reports, AI notes, and exports are easier to distinguish in search and graph views.
+The plugin now also supports a reusable `Basic Information` note for long-lived personal context such as age, height, weight, interests, preferences, and AI guidance. That note is created automatically by default, can be surfaced during the setup wizard, can be opened from the command palette or AI workspace, and AI requests can include it automatically. The same support layer now includes a generated `Recurring Friction Patterns` note that synthesizes repeated blocker signals, reflection drift, and project pressure from recent dashboard history. Plugin-generated markdown artifacts can also receive frontmatter tags so daily logs, reports, AI notes, and exports are easier to distinguish in search and graph views.
 
 Consumable presets now stack into the same matching entry when you tap them repeatedly. If you hit a preset like `Water bottle 500 mL` several times, the dashboard updates the amount on that existing row instead of creating duplicate rows for each tap.
 

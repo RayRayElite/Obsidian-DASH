@@ -2242,6 +2242,57 @@ function buildNarrativeSectionLines(entries, sleepInsights, personalTrends, gami
     `- Portfolio pressure: ${staleProjectCount} stale project${staleProjectCount === 1 ? "" : "s"} remain visible at period end.`
   ];
 }
+function renderRecurringFrictionPatternsNote(input) {
+  var _a, _b, _c, _d, _e;
+  const blockerPatterns = buildBlockerPatternLines(input.entries);
+  const personalTrends = buildPersonalTrendSummary(input.entries, input.habits);
+  const missedHabitPatterns = buildMissedHabitPatternLines(input.entries, input.habits);
+  const reflectionSignals = personalTrends.reflectionSignals.slice(0, 6);
+  const rawSignalLines = input.entries.filter((entry) => entry.frictionLog.trim().length > 0 || entry.hurtToday.trim().length > 0).slice(-10).map((entry) => {
+    const parts = [
+      entry.frictionLog.trim().length > 0 ? `friction: ${entry.frictionLog.trim()}` : "",
+      entry.hurtToday.trim().length > 0 ? `hurt: ${entry.hurtToday.trim()}` : ""
+    ].filter((item) => item.length > 0);
+    return `- ${entry.date}: ${parts.join(" \u2022 ")}`;
+  });
+  const pressuredProjects = [...(_b = (_a = input.todoSnapshot) == null ? void 0 : _a.projects) != null ? _b : []].filter((project) => project.projectState === "active" && (project.blockedTasks.length > 0 || project.overdueTasks.length > 0 || project.staleDays !== null)).sort((left, right) => left.healthScore - right.healthScore).slice(0, 6);
+  const strongestBlocker = ((_c = blockerPatterns[0]) == null ? void 0 : _c.replace(/^[-]\s*/, "")) || "No repeated blocker pattern stood out.";
+  const strongestDrift = personalTrends.driftSignals[0] || "No clear drift signal stood out.";
+  const followUp = ((_d = pressuredProjects[0]) == null ? void 0 : _d.nextAction) || ((_e = blockerPatterns[0]) == null ? void 0 : _e.replace(/^[-]\s*/, "")) || "No clear follow-up surfaced.";
+  return [
+    `# Recurring Friction Patterns - ${input.label}`,
+    "",
+    `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+    `- Window: ${formatDateKey(input.start)} to ${formatDateKey(input.end)}`,
+    `- Days analyzed: ${input.entries.length}`,
+    "",
+    "## Summary Block",
+    `- Main blocker: ${strongestBlocker}`,
+    `- Biggest drift: ${strongestDrift}`,
+    `- Key health signal: ${personalTrends.symptomSignals[0] || personalTrends.reflectionSignals[0] || "No dominant health or reflection signal stood out."}`,
+    `- Most important follow-up: ${followUp}`,
+    `- Context links: ${pressuredProjects.length > 0 ? pressuredProjects.map((project) => {
+      var _a2;
+      return createContextLink(project.name, (_a2 = project.noteLinks[0]) != null ? _a2 : project.name);
+    }).join(", ") : "No project links stood out."}`,
+    "",
+    "## Repeated Friction Patterns",
+    ...blockerPatterns.length > 0 ? blockerPatterns : ["- No repeated blocker pattern stood out."],
+    "",
+    "## Reflection Drift",
+    ...reflectionSignals.length > 0 ? reflectionSignals.map((item) => `- ${item}`) : ["- No repeated reflection drift stood out."],
+    "",
+    "## Habit And Recovery Correlates",
+    ...missedHabitPatterns.length > 0 ? missedHabitPatterns.slice(0, 6) : ["- No repeated habit misses stood out alongside friction."],
+    "",
+    "## Project Pressure Likely Feeding Friction",
+    ...pressuredProjects.length > 0 ? pressuredProjects.map((project) => `- ${project.name}: ${project.healthLabel.toLowerCase()} health \u2022 ${project.nextAction}${project.waitingOn && project.waitingOn.toLowerCase() !== "none" ? ` \u2022 waiting on ${project.waitingOn}` : ""}`) : ["- No clear project-pressure driver stood out."],
+    "",
+    "## Recent Raw Signals",
+    ...rawSignalLines.length > 0 ? rawSignalLines : ["- No recent friction or hurt signals were logged."],
+    ""
+  ].join("\n");
+}
 function splitPatternItems(value) {
   return value.split(/\r?\n|[.;]/).map((item) => item.replace(/^[-*]\s*/, "").trim()).filter((item) => item.length >= 4);
 }
@@ -4745,6 +4796,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         this.openLayoutCustomizationFlow();
       });
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
+      createIconButton(utilityActions, "triangle-alert", "Recurring friction patterns", async () => this.plugin.generateRecurringFrictionPatternsNote(true));
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
@@ -9695,6 +9747,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "generate-recurring-friction-patterns-note",
+      name: "Generate recurring friction patterns note",
+      callback: () => {
+        void this.generateRecurringFrictionPatternsNote(true);
+      }
+    });
+    this.addCommand({
       id: "sync-repeating-project-tasks",
       name: "Sync repeating project tasks",
       callback: () => {
@@ -12562,9 +12621,53 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       todoSnapshot,
       habits: this.getHabitDefinitions()
     });
+    const reviewArchiveCount = await this.generateWeeklyProjectReviewArchive(range.label);
+    await this.generateRecurringFrictionPatternsNote(false);
     const file = await this.upsertMarkdownFile(`Dashboard Logs/Weekly Reviews/${range.label}.md`, content);
     await this.openFile(file);
-    new import_obsidian4.Notice("Weekly review note generated.");
+    new import_obsidian4.Notice(`Weekly review note generated${reviewArchiveCount > 0 ? ` with ${reviewArchiveCount} project review archive note${reviewArchiveCount === 1 ? "" : "s"}` : ""}.`);
+  }
+  async generateRecurringFrictionPatternsNote(openAfterGenerate) {
+    const end = /* @__PURE__ */ new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    const entries = this.getEntriesInRange(start, end);
+    const todoSnapshot = await this.getTodoSnapshot();
+    const content = renderRecurringFrictionPatternsNote({
+      label: `${formatDateKey(start)} to ${formatDateKey(end)}`,
+      start,
+      end,
+      entries,
+      habits: this.getHabitDefinitions(),
+      todoSnapshot
+    });
+    const file = await this.upsertMarkdownFile(this.getRecurringFrictionPatternsNotePath(), content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new import_obsidian4.Notice("Recurring friction patterns note generated.");
+    }
+    return file;
+  }
+  async generateWeeklyProjectReviewArchive(label) {
+    const options = await this.getProjectReviewOptions();
+    const activeOptions = options.filter((option) => option.projectState === "active");
+    if (activeOptions.length === 0) {
+      return 0;
+    }
+    const folder = `Dashboard Logs/Project Reviews/${label}`;
+    for (const option of activeOptions) {
+      const safeName = sanitizeFileName(option.projectName);
+      await this.generateProjectReviewChecklist(option, {
+        folder,
+        fileName: `${safeName}.md`,
+        reviewCycleLabel: label,
+        generatedAt: /* @__PURE__ */ new Date()
+      });
+    }
+    return activeOptions.length;
+  }
+  getRecurringFrictionPatternsNotePath() {
+    return "Dashboard Logs/Profile/Recurring Friction Patterns.md";
   }
   async syncRepeatingProjectTasks(showNotice) {
     const todoFile = this.getMasterTodoFile();
@@ -13427,6 +13530,11 @@ No entries available.`;
       notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`,
       status: project.status,
       projectState: project.projectState,
+      projectSummary: project.projectSummary,
+      whyItMatters: project.whyItMatters,
+      definitionOfDone: project.definitionOfDone,
+      lastReview: project.lastReview,
+      waitingOn: project.waitingOn,
       nextAction: project.nextAction,
       healthScore: project.healthScore,
       healthLabel: project.healthLabel,
@@ -13441,21 +13549,40 @@ No entries available.`;
       emptySections: project.emptySections
     })).filter((project) => this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(project.notePath)) instanceof import_obsidian4.TFile);
   }
-  async generateProjectReviewChecklist(option) {
+  async generateProjectReviewChecklist(option, config) {
+    var _a, _b, _c;
+    const generatedAt = (_a = config == null ? void 0 : config.generatedAt) != null ? _a : /* @__PURE__ */ new Date();
     const safeName = sanitizeFileName(option.projectName);
-    const folder = "Dashboard Logs/Project Reviews";
+    const folder = (_b = config == null ? void 0 : config.folder) != null ? _b : "Dashboard Logs/Project Reviews";
+    const fileName = (_c = config == null ? void 0 : config.fileName) != null ? _c : `${formatDateKey(generatedAt)} ${safeName}.md`;
     const content = [
       `# Project Review - ${option.projectName}`,
       "",
-      `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Generated: ${formatDateTimeKey(generatedAt)}`,
+      (config == null ? void 0 : config.reviewCycleLabel) ? `- Review cycle: ${config.reviewCycleLabel}` : "",
       `- Status: ${option.status}`,
       `- State: ${option.projectState}`,
       `- Health: ${option.healthLabel} (${option.healthScore})`,
       `- Next action: ${option.nextAction}`,
+      option.projectSummary ? `- Summary: ${option.projectSummary}` : "",
+      option.whyItMatters ? `- Why it matters: ${option.whyItMatters}` : "",
+      option.definitionOfDone ? `- Definition of done: ${option.definitionOfDone}` : "",
+      option.lastReview ? `- Last review: ${option.lastReview}` : "",
+      option.waitingOn && option.waitingOn.toLowerCase() !== "none" ? `- Waiting on: ${option.waitingOn}` : "",
+      "",
+      "## Review By Exception",
+      ...option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."],
+      option.overdueTasks.length > 0 ? `- Overdue work needs attention: ${option.overdueTasks.slice(0, 3).map((task) => task.text).join(" | ")}` : "- No overdue tasks are currently attached to this project.",
+      option.blockedTasks.length > 0 ? `- Blocked work: ${option.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "- No blocked tasks are currently attached to this project.",
+      option.duplicateTasks.length > 0 ? `- Duplicate pressure: ${option.duplicateTasks.slice(0, 3).join(" | ")}` : "- No duplicate-task pressure recorded.",
+      option.emptySections.length > 0 ? `- Empty sections: ${option.emptySections.join(", ")}` : "- No empty sections stood out.",
       "",
       "## Review Checklist",
       "- [ ] Confirm the current project status still matches reality.",
       `- [ ] Validate or rewrite the next action: ${option.nextAction}`,
+      `- [ ] Refresh Last Review:: to ${formatDateKey(generatedAt)} if this review is still valid.`,
+      option.definitionOfDone ? "- [ ] Confirm the current definition of done still matches the real target." : "- [ ] Write a Definition Of Done:: line before closing review.",
+      option.waitingOn && option.waitingOn.toLowerCase() !== "none" ? `- [ ] Resolve or update Waiting On:: ${option.waitingOn}` : "- [ ] Confirm Waiting On:: is accurate or still None.",
       "- [ ] Prune stale or duplicate tasks.",
       "- [ ] Move one real task into Now if the project is active.",
       "- [ ] Decide whether anything should be blocked, parked, incubating, or someday.",
@@ -13466,22 +13593,21 @@ No entries available.`;
       `- This week completions: ${option.completionsThisWeek}`,
       `- This month completions: ${option.completionsThisMonth}`,
       "",
-      "## Risk Signals",
-      ...option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."],
-      "",
       "## Task Pressure",
       `- Overdue: ${option.overdueTasks.length}`,
       `- Due soon: ${option.dueSoonTasks.length}`,
       `- Blocked: ${option.blockedTasks.length}`,
       `- Duplicate tasks: ${option.duplicateTasks.length}`,
       `- Empty sections: ${option.emptySections.length > 0 ? option.emptySections.join(", ") : "None"}`,
+      ...option.overdueTasks.length > 0 ? option.overdueTasks.slice(0, 5).map((task) => `- Overdue task: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : [],
+      ...option.dueSoonTasks.length > 0 ? option.dueSoonTasks.slice(0, 5).map((task) => `- Due soon: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : [],
       "",
       "## References",
       `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
       `- Project Note: [[${stripMarkdownExtension(option.notePath)}|${option.projectName}]]`,
       ""
-    ].join("\n");
-    return this.upsertMarkdownFile(`${folder}/${formatDateKey(/* @__PURE__ */ new Date())} ${safeName}.md`, content);
+    ].filter((line) => line.length > 0).join("\n");
+    return this.upsertMarkdownFile(`${folder}/${fileName}`, content);
   }
   getHabitStreak(habitId) {
     var _a;
@@ -14761,6 +14887,9 @@ ${body}`;
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath).toLowerCase()) {
       return "profile-note";
     }
+    if (normalizedPath === this.getRecurringFrictionPatternsNotePath().toLowerCase()) {
+      return "friction-patterns";
+    }
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
       return "ai-guardrails";
     }
@@ -14815,6 +14944,8 @@ ${body}`;
     };
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile");
+    } else if (normalizedPath === this.getRecurringFrictionPatternsNotePath().toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/friction-patterns");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.currentSeasonNotePath).toLowerCase()) {

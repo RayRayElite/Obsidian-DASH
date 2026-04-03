@@ -63,6 +63,7 @@ import {
   getSleepMinutesForDay,
   getTrackedWorkMinutes,
   parseDailyLogEntry,
+  renderRecurringFrictionPatternsNote,
   renderDailyLog,
   renderGamificationReport,
   renderGamificationSectionLines,
@@ -431,6 +432,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate weekly review note",
       callback: () => {
         void this.generateWeeklyReview();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-recurring-friction-patterns-note",
+      name: "Generate recurring friction patterns note",
+      callback: () => {
+        void this.generateRecurringFrictionPatternsNote(true);
       }
     });
 
@@ -3902,9 +3911,58 @@ export default class DailyDashboardPlugin extends Plugin {
       todoSnapshot,
       habits: this.getHabitDefinitions()
     });
+    const reviewArchiveCount = await this.generateWeeklyProjectReviewArchive(range.label);
+    await this.generateRecurringFrictionPatternsNote(false);
     const file = await this.upsertMarkdownFile(`Dashboard Logs/Weekly Reviews/${range.label}.md`, content);
     await this.openFile(file);
-    new Notice("Weekly review note generated.");
+    new Notice(`Weekly review note generated${reviewArchiveCount > 0 ? ` with ${reviewArchiveCount} project review archive note${reviewArchiveCount === 1 ? "" : "s"}` : ""}.`);
+  }
+
+  async generateRecurringFrictionPatternsNote(openAfterGenerate: boolean): Promise<TFile | null> {
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 29);
+    const entries = this.getEntriesInRange(start, end);
+    const todoSnapshot = await this.getTodoSnapshot();
+    const content = renderRecurringFrictionPatternsNote({
+      label: `${formatDateKey(start)} to ${formatDateKey(end)}`,
+      start,
+      end,
+      entries,
+      habits: this.getHabitDefinitions(),
+      todoSnapshot
+    });
+    const file = await this.upsertMarkdownFile(this.getRecurringFrictionPatternsNotePath(), content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice("Recurring friction patterns note generated.");
+    }
+    return file;
+  }
+
+  private async generateWeeklyProjectReviewArchive(label: string): Promise<number> {
+    const options = await this.getProjectReviewOptions();
+    const activeOptions = options.filter((option) => option.projectState === "active");
+    if (activeOptions.length === 0) {
+      return 0;
+    }
+
+    const folder = `Dashboard Logs/Project Reviews/${label}`;
+    for (const option of activeOptions) {
+      const safeName = sanitizeFileName(option.projectName);
+      await this.generateProjectReviewChecklist(option, {
+        folder,
+        fileName: `${safeName}.md`,
+        reviewCycleLabel: label,
+        generatedAt: new Date()
+      });
+    }
+
+    return activeOptions.length;
+  }
+
+  private getRecurringFrictionPatternsNotePath(): string {
+    return "Dashboard Logs/Profile/Recurring Friction Patterns.md";
   }
 
   async syncRepeatingProjectTasks(showNotice: boolean): Promise<void> {
@@ -4889,6 +4947,11 @@ export default class DailyDashboardPlugin extends Plugin {
         notePath: `${project.noteLinks[0] ? stripMarkdownExtension(project.noteLinks[0]) : `${this.data.settings.projectNotesFolder}/${project.name}`}.md`,
         status: project.status,
         projectState: project.projectState,
+        projectSummary: project.projectSummary,
+        whyItMatters: project.whyItMatters,
+        definitionOfDone: project.definitionOfDone,
+        lastReview: project.lastReview,
+        waitingOn: project.waitingOn,
         nextAction: project.nextAction,
         healthScore: project.healthScore,
         healthLabel: project.healthLabel,
@@ -4905,21 +4968,44 @@ export default class DailyDashboardPlugin extends Plugin {
       .filter((project) => this.app.vault.getAbstractFileByPath(normalizePath(project.notePath)) instanceof TFile);
   }
 
-  async generateProjectReviewChecklist(option: ProjectReviewOption): Promise<TFile> {
+  async generateProjectReviewChecklist(option: ProjectReviewOption, config?: {
+    folder?: string;
+    fileName?: string;
+    reviewCycleLabel?: string;
+    generatedAt?: Date;
+  }): Promise<TFile> {
+    const generatedAt = config?.generatedAt ?? new Date();
     const safeName = sanitizeFileName(option.projectName);
-    const folder = "Dashboard Logs/Project Reviews";
+    const folder = config?.folder ?? "Dashboard Logs/Project Reviews";
+    const fileName = config?.fileName ?? `${formatDateKey(generatedAt)} ${safeName}.md`;
     const content = [
       `# Project Review - ${option.projectName}`,
       "",
-      `- Generated: ${formatDateTimeKey(new Date())}`,
+      `- Generated: ${formatDateTimeKey(generatedAt)}`,
+      config?.reviewCycleLabel ? `- Review cycle: ${config.reviewCycleLabel}` : "",
       `- Status: ${option.status}`,
       `- State: ${option.projectState}`,
       `- Health: ${option.healthLabel} (${option.healthScore})`,
       `- Next action: ${option.nextAction}`,
+      option.projectSummary ? `- Summary: ${option.projectSummary}` : "",
+      option.whyItMatters ? `- Why it matters: ${option.whyItMatters}` : "",
+      option.definitionOfDone ? `- Definition of done: ${option.definitionOfDone}` : "",
+      option.lastReview ? `- Last review: ${option.lastReview}` : "",
+      option.waitingOn && option.waitingOn.toLowerCase() !== "none" ? `- Waiting on: ${option.waitingOn}` : "",
+      "",
+      "## Review By Exception",
+      ...(option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."]),
+      option.overdueTasks.length > 0 ? `- Overdue work needs attention: ${option.overdueTasks.slice(0, 3).map((task) => task.text).join(" | ")}` : "- No overdue tasks are currently attached to this project.",
+      option.blockedTasks.length > 0 ? `- Blocked work: ${option.blockedTasks.slice(0, 3).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" | ")}` : "- No blocked tasks are currently attached to this project.",
+      option.duplicateTasks.length > 0 ? `- Duplicate pressure: ${option.duplicateTasks.slice(0, 3).join(" | ")}` : "- No duplicate-task pressure recorded.",
+      option.emptySections.length > 0 ? `- Empty sections: ${option.emptySections.join(", ")}` : "- No empty sections stood out.",
       "",
       "## Review Checklist",
       "- [ ] Confirm the current project status still matches reality.",
       `- [ ] Validate or rewrite the next action: ${option.nextAction}`,
+      `- [ ] Refresh Last Review:: to ${formatDateKey(generatedAt)} if this review is still valid.`,
+      option.definitionOfDone ? "- [ ] Confirm the current definition of done still matches the real target." : "- [ ] Write a Definition Of Done:: line before closing review.",
+      option.waitingOn && option.waitingOn.toLowerCase() !== "none" ? `- [ ] Resolve or update Waiting On:: ${option.waitingOn}` : "- [ ] Confirm Waiting On:: is accurate or still None.",
       "- [ ] Prune stale or duplicate tasks.",
       "- [ ] Move one real task into Now if the project is active.",
       "- [ ] Decide whether anything should be blocked, parked, incubating, or someday.",
@@ -4930,23 +5016,22 @@ export default class DailyDashboardPlugin extends Plugin {
       `- This week completions: ${option.completionsThisWeek}`,
       `- This month completions: ${option.completionsThisMonth}`,
       "",
-      "## Risk Signals",
-      ...(option.healthReasons.length > 0 ? option.healthReasons.map((reason) => `- ${reason}`) : ["- No extra risk signals recorded."]),
-      "",
       "## Task Pressure",
       `- Overdue: ${option.overdueTasks.length}`,
       `- Due soon: ${option.dueSoonTasks.length}`,
       `- Blocked: ${option.blockedTasks.length}`,
       `- Duplicate tasks: ${option.duplicateTasks.length}`,
       `- Empty sections: ${option.emptySections.length > 0 ? option.emptySections.join(", ") : "None"}`,
+      ...(option.overdueTasks.length > 0 ? option.overdueTasks.slice(0, 5).map((task) => `- Overdue task: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : []),
+      ...(option.dueSoonTasks.length > 0 ? option.dueSoonTasks.slice(0, 5).map((task) => `- Due soon: ${task.dueDate ? `${task.text} (${task.dueDate})` : task.text}`) : []),
       "",
       "## References",
       `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
       `- Project Note: [[${stripMarkdownExtension(option.notePath)}|${option.projectName}]]`,
       ""
-    ].join("\n");
+    ].filter((line) => line.length > 0).join("\n");
 
-    return this.upsertMarkdownFile(`${folder}/${formatDateKey(new Date())} ${safeName}.md`, content);
+    return this.upsertMarkdownFile(`${folder}/${fileName}`, content);
   }
 
   getHabitStreak(habitId: string): number {
@@ -6574,6 +6659,9 @@ export default class DailyDashboardPlugin extends Plugin {
     if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
       return "profile-note";
     }
+    if (normalizedPath === this.getRecurringFrictionPatternsNotePath().toLowerCase()) {
+      return "friction-patterns";
+    }
     if (normalizedPath === normalizePath(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
       return "ai-guardrails";
     }
@@ -6634,6 +6722,8 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile");
+    } else if (normalizedPath === this.getRecurringFrictionPatternsNotePath().toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/friction-patterns");
     } else if (normalizedPath === normalizePath(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
     } else if (normalizedPath === normalizePath(this.data.settings.currentSeasonNotePath).toLowerCase()) {
