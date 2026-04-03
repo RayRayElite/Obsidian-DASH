@@ -191,6 +191,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
       })
     : ["- No follow-through items"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
+  const trackedWorkByProject = getTrackedWorkMinutesByProject(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
@@ -211,6 +212,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `sleepMinutesOverride: ${entry.sleepMinutesOverride ?? ""}`,
     `trackedSleepMinutes: ${totalSleepMinutes}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
+    `trackedWorkProjectCount: ${trackedWorkByProject.length}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
@@ -250,6 +252,11 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     `- Tracked poop: ${formatMinutesAsHours(totalPoopMinutes)}`,
     `- Bowel movements: ${totalPoopCount}`,
+    "",
+    "## Project Work Totals",
+    ...(trackedWorkByProject.length > 0
+      ? trackedWorkByProject.map((item) => `- ${item.projectName}: ${formatMinutesAsHours(item.minutes)}`)
+      : ["- No project-linked work tracked."]),
     "",
     "## Habits",
     ...habitLines,
@@ -695,6 +702,26 @@ export function closeOpenActivitySessions(entry: DailyEntry, timestamp: string):
 
 export function getTrackedWorkMinutes(entry: DailyEntry): number {
   return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
+}
+
+export function getTrackedWorkMinutesByProject(entry: DailyEntry): Array<{ projectName: string; minutes: number }> {
+  const nowKey = formatDateTimeKey(new Date());
+  const totals = new Map<string, number>();
+
+  entry.workSessions.forEach((session) => {
+    const projectName = session.projectName.trim() || "Unassigned";
+    const end = session.end ?? nowKey;
+    const minutes = Math.max(0, getMinutesBetween(session.start, end));
+    if (minutes <= 0) {
+      return;
+    }
+
+    totals.set(projectName, (totals.get(projectName) ?? 0) + minutes);
+  });
+
+  return [...totals.entries()]
+    .map(([projectName, minutes]) => ({ projectName, minutes }))
+    .sort((left, right) => right.minutes - left.minutes || left.projectName.localeCompare(right.projectName));
 }
 
 export function getTrackedNapMinutes(entry: DailyEntry): number {

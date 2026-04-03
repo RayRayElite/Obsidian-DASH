@@ -1340,6 +1340,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     return `- [${checked}] Follow through on ${event.title} ${renderCalendarEventContextLabel(event)} <!-- ${CALENDAR_FOLLOW_THROUGH_MARKER}${event.id} -->`;
   }) : ["- No follow-through items"];
   const totalWorkMinutes = getTrackedWorkMinutes(entry);
+  const trackedWorkByProject = getTrackedWorkMinutesByProject(entry);
   const totalSleepMinutes = getSleepMinutesForDay(entry, nextEntry);
   const totalNapMinutes = getTrackedMinutes(entry.napSessions);
   const totalRelaxMinutes = getTrackedRelaxMinutes(entry);
@@ -1359,6 +1360,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `sleepMinutesOverride: ${(_a = entry.sleepMinutesOverride) != null ? _a : ""}`,
     `trackedSleepMinutes: ${totalSleepMinutes}`,
     `trackedWorkMinutes: ${totalWorkMinutes}`,
+    `trackedWorkProjectCount: ${trackedWorkByProject.length}`,
     `trackedNapMinutes: ${totalNapMinutes}`,
     `trackedRelaxMinutes: ${totalRelaxMinutes}`,
     `trackedBreakMinutes: ${totalBreakMinutes}`,
@@ -1398,6 +1400,9 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     `- Tracked breaks: ${formatMinutesAsHours(totalBreakMinutes)}`,
     `- Tracked poop: ${formatMinutesAsHours(totalPoopMinutes)}`,
     `- Bowel movements: ${totalPoopCount}`,
+    "",
+    "## Project Work Totals",
+    ...trackedWorkByProject.length > 0 ? trackedWorkByProject.map((item) => `- ${item.projectName}: ${formatMinutesAsHours(item.minutes)}`) : ["- No project-linked work tracked."],
     "",
     "## Habits",
     ...habitLines,
@@ -1788,6 +1793,21 @@ function closeOpenActivitySessions(entry, timestamp) {
 }
 function getTrackedWorkMinutes(entry) {
   return resolveTrackedMinutes(entry.workSessions, entry.workMinutesOverride);
+}
+function getTrackedWorkMinutesByProject(entry) {
+  const nowKey = formatDateTimeKey(/* @__PURE__ */ new Date());
+  const totals = /* @__PURE__ */ new Map();
+  entry.workSessions.forEach((session) => {
+    var _a, _b;
+    const projectName = session.projectName.trim() || "Unassigned";
+    const end = (_a = session.end) != null ? _a : nowKey;
+    const minutes = Math.max(0, getMinutesBetween(session.start, end));
+    if (minutes <= 0) {
+      return;
+    }
+    totals.set(projectName, ((_b = totals.get(projectName)) != null ? _b : 0) + minutes);
+  });
+  return [...totals.entries()].map(([projectName, minutes]) => ({ projectName, minutes })).sort((left, right) => right.minutes - left.minutes || left.projectName.localeCompare(right.projectName));
 }
 function getTrackedNapMinutes(entry) {
   return resolveTrackedMinutes(entry.napSessions, entry.napMinutesOverride);
@@ -5186,6 +5206,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedActivityMinutes = this.plugin.getTrackedActivityMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
+      const trackedWorkByProject = getTrackedWorkMinutesByProject(todayEntry);
       const activeWorkSession = (_k = todayEntry.workSessions.find((session) => session.end === null)) != null ? _k : null;
       const activeNapSession = (_l = todayEntry.napSessions.find((session) => session.end === null)) != null ? _l : null;
       const activeRelaxSession = (_m = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _m : null;
@@ -5231,6 +5252,20 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
+      const sessionProjectSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-stack" });
+      sessionProjectSummary.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: activeWorkSession ? `Current work session: ${activeWorkSession.projectName.trim() || "Unassigned"}` : trackedWorkByProject.length > 0 ? "Today's work is already being grouped by project in the daily log." : "Choose a project before starting work if you want today's time split by project."
+      });
+      if (trackedWorkByProject.length > 0) {
+        const sessionProjectChips = sessionProjectSummary.createDiv({ cls: "daily-dashboard-chip-row" });
+        trackedWorkByProject.slice(0, 4).forEach((item) => {
+          createSemanticChip(sessionProjectChips, `${item.projectName} ${formatMinutesAsHours(item.minutes)}`, item.projectName === "Unassigned" ? "neutral" : "capture");
+        });
+        if (trackedWorkByProject.length > 4) {
+          sessionProjectSummary.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${trackedWorkByProject.length - 4} more project buckets in today's log.` });
+        }
+      }
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick) => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -6346,12 +6381,16 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(aiActions, "Project synthesis", async () => this.plugin.generateAiProjectSynthesis(), false, "network");
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
-      createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
-      createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
-      createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
-      createButton(aiActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
-      createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
-      createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
+      const aiReferencePanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiReferencePanel.createEl("strong", { text: "Reference notes" });
+      aiReferencePanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "These notes feed persistent AI context. They are reference documents, not AI actions, so they live separately from the workflow buttons." });
+      const aiReferenceActions = aiReferencePanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
+      createButton(aiReferenceActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
+      createButton(aiReferenceActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
+      createButton(aiReferenceActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiReferenceActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
+      createButton(aiReferenceActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
+      createButton(aiReferenceActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
       aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Cached note chunks that keep answers grounded without rescanning the vault on every request." });

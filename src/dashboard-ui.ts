@@ -15,7 +15,7 @@ import {
   parseHabitDefinitions,
   renderScore
 } from "./dashboard-core";
-import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes } from "./dashboard-logs";
+import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes, getTrackedWorkMinutesByProject } from "./dashboard-logs";
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
@@ -1020,6 +1020,7 @@ export class DailyDashboardView extends ItemView {
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedActivityMinutes = this.plugin.getTrackedActivityMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
+      const trackedWorkByProject = getTrackedWorkMinutesByProject(todayEntry);
       const activeWorkSession = todayEntry.workSessions.find((session) => session.end === null) ?? null;
       const activeNapSession = todayEntry.napSessions.find((session) => session.end === null) ?? null;
       const activeRelaxSession = todayEntry.relaxSessions.find((session) => session.end === null) ?? null;
@@ -1086,6 +1087,24 @@ export class DailyDashboardView extends ItemView {
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
+      const sessionProjectSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-stack" });
+      sessionProjectSummary.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: activeWorkSession
+          ? `Current work session: ${activeWorkSession.projectName.trim() || "Unassigned"}`
+          : trackedWorkByProject.length > 0
+            ? "Today's work is already being grouped by project in the daily log."
+            : "Choose a project before starting work if you want today's time split by project."
+      });
+      if (trackedWorkByProject.length > 0) {
+        const sessionProjectChips = sessionProjectSummary.createDiv({ cls: "daily-dashboard-chip-row" });
+        trackedWorkByProject.slice(0, 4).forEach((item) => {
+          createSemanticChip(sessionProjectChips, `${item.projectName} ${formatMinutesAsHours(item.minutes)}`, item.projectName === "Unassigned" ? "neutral" : "capture");
+        });
+        if (trackedWorkByProject.length > 4) {
+          sessionProjectSummary.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${trackedWorkByProject.length - 4} more project buckets in today's log.` });
+        }
+      }
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -2230,12 +2249,17 @@ export class DailyDashboardView extends ItemView {
       createButton(aiActions, "Project synthesis", async () => this.plugin.generateAiProjectSynthesis(), false, "network");
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
-      createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
-      createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
-      createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
-      createButton(aiActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
-      createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
-      createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
+
+      const aiReferencePanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
+      aiReferencePanel.createEl("strong", { text: "Reference notes" });
+      aiReferencePanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "These notes feed persistent AI context. They are reference documents, not AI actions, so they live separately from the workflow buttons." });
+      const aiReferenceActions = aiReferencePanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
+      createButton(aiReferenceActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
+      createButton(aiReferenceActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
+      createButton(aiReferenceActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiReferenceActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
+      createButton(aiReferenceActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
+      createButton(aiReferenceActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
 
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });

@@ -113,7 +113,7 @@ The dashboard now separates your real day from the calendar date.
 
 Session Deck now carries the live logical-day status instead of a dedicated `Day Flow` card. If the clock rolls past midnight while the logical day is still active, the notice system still warns that new sessions and edits are landing on yesterday until you explicitly end the day, and the same past-midnight state is visible in Session Deck.
 
-The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
+The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports. Work sessions started from Session Deck with a selected project also roll up into per-project work totals in the daily log.
 
 The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card now uses timestamped mood, energy, and anxiety check-ins during the day, and mood entries can capture a named feeling alongside the score.
 
@@ -182,7 +182,7 @@ Setup notes:
 
 Environment-variable mode avoids persisting the raw API key in plugin data.
 
-The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, the active note you are currently reading, and explicit calendar snapshot context. `AI related note limit` controls how many retrieved notes are included in each request.
+The AI context is now deeper than the dashboard alone. In addition to current-day and recent-report context, the plugin can pull in relevant vault notes, project notes, the active note you are currently reading, and explicit calendar snapshot context. `AI related note limit` controls how many retrieved notes are included in each request. In the AI Workspace, persistent support documents such as Basic Information, Guardrails, Current Season, Dependencies, Decision Journal, and System Map live in their own Reference notes area so they stay visually separate from AI actions.
 
 The plugin now also includes a cached AI note index. Instead of rescanning all eligible notes for every AI request, it builds and stores chunked note excerpts for the folders you choose in `AI indexed folders`. That makes retrieval faster and more stable while keeping the scope explicit.
 
