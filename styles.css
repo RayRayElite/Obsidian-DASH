@@ -2074,6 +2074,22 @@ input.daily-dashboard-input {
   gap: 12px;
 }
 
+.daily-dashboard-layout-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--daily-dashboard-border);
+  background: color-mix(in srgb, var(--background-primary) 90%, transparent);
+  color: var(--text-muted);
+  cursor: grab;
+}
+.daily-dashboard-layout-drag-handle:active {
+  cursor: grabbing;
+}
 .daily-dashboard-calendar-toolbar-copy {
   display: flex;
   flex-direction: column;
@@ -2083,8 +2099,22 @@ input.daily-dashboard-input {
 .daily-dashboard-calendar-panel-header strong,
 .daily-dashboard-calendar-toolbar-copy strong,
 .daily-dashboard-calendar-detail-header strong {
-  font-size: 0.98rem;
-  line-height: 1.1;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+}
+
+.daily-dashboard-habit-top-controls,
+.daily-dashboard-habit-bottom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.daily-dashboard-habit-bottom-controls {
+  justify-content: flex-end;
 }
 
 .daily-dashboard-calendar-nav {
@@ -3026,12 +3056,18 @@ input.daily-dashboard-input {
   }
 
   .daily-dashboard-habit-controls {
-    justify-content: space-between;
+    width: 100%;
+    align-items: stretch;
   }
 
   .daily-dashboard-habit-step-group,
   .daily-dashboard-habit-utility-group {
     flex-wrap: wrap;
+  }
+
+  .daily-dashboard-habit-top-controls,
+  .daily-dashboard-habit-bottom-controls {
+    justify-content: space-between;
   }
 
   .daily-dashboard-focus-controls {

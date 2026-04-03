@@ -1878,7 +1878,8 @@ export class DailyDashboardView extends ItemView {
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
-        const countButtons = controls.createDiv({ cls: "daily-dashboard-habit-step-group" });
+        const topControls = controls.createDiv({ cls: "daily-dashboard-habit-top-controls" });
+        const countButtons = topControls.createDiv({ cls: "daily-dashboard-habit-step-group" });
         for (let index = 1; index <= habit.target; index += 1) {
           const stepButton = countButtons.createEl("button", {
             cls: index <= currentValue ? "daily-dashboard-step is-active" : "daily-dashboard-step",
@@ -1890,9 +1891,10 @@ export class DailyDashboardView extends ItemView {
             void this.plugin.updateHabitValue(habit.id, nextValue);
           });
         }
-        const utilityButtons = controls.createDiv({ cls: "daily-dashboard-habit-utility-group" });
+        const topUtilityButtons = topControls.createDiv({ cls: "daily-dashboard-habit-utility-group" });
+        const bottomControls = controls.createDiv({ cls: "daily-dashboard-habit-bottom-controls" });
         if (currentValue < habit.target || habitMissNoteValue.length > 0 || habitMissExpanded) {
-          const missToggleButton = utilityButtons.createEl("button", {
+          const missToggleButton = bottomControls.createEl("button", {
             cls: habitMissExpanded || habitMissNoteValue.length > 0 ? "daily-dashboard-ghost-button is-active" : "daily-dashboard-ghost-button",
             text: habitMissNoteValue.length > 0 ? "Edit miss note" : "Why missed"
           });
@@ -1906,7 +1908,7 @@ export class DailyDashboardView extends ItemView {
             void this.render();
           });
         }
-        const removeButton = utilityButtons.createEl("button", { cls: "daily-dashboard-remove-button" });
+        const removeButton = topUtilityButtons.createEl("button", { cls: "daily-dashboard-remove-button" });
         removeButton.type = "button";
         removeButton.ariaLabel = `Remove habit ${habit.label}`;
         removeButton.title = `Remove ${habit.label}`;
@@ -4235,14 +4237,20 @@ export class SessionDeckCustomizationModal extends Modal {
     const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
     this.trackers.forEach((tracker, index) => {
       const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
-      row.draggable = true;
       if (!tracker.visible) {
         row.addClass("is-hidden");
       }
-      row.addEventListener("dragstart", (event) => {
+      const dragHandle = row.createDiv({ cls: "daily-dashboard-layout-drag-handle" });
+      dragHandle.draggable = true;
+      dragHandle.ariaLabel = `Drag ${tracker.label}`;
+      setIcon(dragHandle, "grip-vertical");
+      dragHandle.addEventListener("dragstart", (event) => {
         this.draggedTrackerId = tracker.id;
         row.addClass("is-dragging");
         event.dataTransfer?.setData("text/plain", tracker.id);
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+        }
       });
       row.addEventListener("dragover", (event) => {
         if (!this.draggedTrackerId || this.draggedTrackerId === tracker.id) {
@@ -4289,6 +4297,14 @@ export class SessionDeckCustomizationModal extends Modal {
       });
 
       const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(controls, "Up", async () => {
+        this.moveTrackerToIndex(tracker.id, Math.max(0, index - 1));
+        this.renderContent();
+      }, false, "arrow-up");
+      createButton(controls, "Down", async () => {
+        this.moveTrackerToIndex(tracker.id, Math.min(this.trackers.length - 1, index + 1));
+        this.renderContent();
+      }, false, "arrow-down");
       createButton(controls, tracker.visible ? "Hide" : "Show", async () => {
         tracker.visible = !tracker.visible;
         this.renderContent();
