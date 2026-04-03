@@ -284,6 +284,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
+    await this.ensureBasicInformationNoteExists();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
@@ -2228,17 +2229,38 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
+    const normalizedKind = kind === "food" || kind === "medication" || kind === "supplement" || kind === "drink"
+      ? kind
+      : kind === "caffeine" || kind === "water"
+        ? "drink"
+        : "drink";
+    const normalizedAmount = clamp(Number(amount), 0.1, 9999);
+    const normalizedUnit = unit.trim() || "serving";
+    const normalizedNote = note.trim();
+    const loggedAt = formatDateTimeKey(new Date());
+    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === normalizedKind
+      && item.label.trim().toLowerCase() === trimmedLabel.toLowerCase()
+      && item.unit.trim().toLowerCase() === normalizedUnit.toLowerCase()
+      && item.note.trim() === normalizedNote);
+
+    if (existingIndex >= 0) {
+      const existingItem = entry.intakeLog[existingIndex];
+      existingItem.amount = clamp(existingItem.amount + normalizedAmount, 0.1, 9999);
+      existingItem.loggedAt = loggedAt;
+      entry.intakeLog.splice(existingIndex, 1);
+      entry.intakeLog.unshift(existingItem);
+      entry.intakeLog = entry.intakeLog.slice(0, 40);
+      await this.persistEntry(entry);
+      return;
+    }
+
     entry.intakeLog = [{
-      kind: kind === "food" || kind === "medication" || kind === "supplement" || kind === "drink"
-        ? kind
-        : kind === "caffeine" || kind === "water"
-          ? "drink"
-          : "drink",
+      kind: normalizedKind,
       label: trimmedLabel,
-      amount: clamp(Number(amount), 0.1, 9999),
-      unit: unit.trim() || "serving",
-      note: note.trim(),
-      loggedAt: formatDateTimeKey(new Date())
+      amount: normalizedAmount,
+      unit: normalizedUnit,
+      note: normalizedNote,
+      loggedAt
     }, ...entry.intakeLog].slice(0, 40);
     await this.persistEntry(entry);
   }
@@ -3080,6 +3102,16 @@ export default class DailyDashboardPlugin extends Plugin {
       ? existing
       : await this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
     await this.openFile(file);
+  }
+
+  async ensureBasicInformationNoteExists(): Promise<TFile> {
+    const path = normalizePath(this.data.settings.basicInfoNotePath);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      return existing;
+    }
+
+    return this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
   }
 
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {
@@ -4248,7 +4280,9 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       "## Identity",
       "- Preferred name:",
+      "- Pronouns:",
       "- Age:",
+      "- Birthday or birth year:",
       "- Height:",
       "- Time zone:",
       "- Location context:",
@@ -4256,6 +4290,7 @@ export default class DailyDashboardPlugin extends Plugin {
       "## Body Metrics",
       `- Current weight (${weightUnit}): ${latestWeight !== null ? `${latestWeight}` : ""}`,
       "- Goal weight or range:",
+      "- Baseline energy or fatigue notes:",
       "- Important health context:",
       "- Medications or supplements worth remembering:",
       "",
@@ -4264,16 +4299,24 @@ export default class DailyDashboardPlugin extends Plugin {
       "- Main interests:",
       "- Hobbies or recurring activities:",
       "- Typical daily schedule:",
+      "- Current season of life or major responsibilities:",
       "",
       "## Preferences And Constraints",
       "- Food preferences or restrictions:",
       "- Exercise limitations or priorities:",
       "- Sensory or environment preferences:",
       "- Planning style that usually works best:",
+      "- Social preferences or recovery needs:",
+      "",
+      "## Tools And Systems",
+      "- Core apps, trackers, or routines you rely on:",
+      "- Important projects or domains that come up often:",
+      "- Terms, abbreviations, or names the AI should recognize:",
       "",
       "## AI Guidance",
       "- Helpful context for planning and coaching:",
       "- Suggestions to avoid:",
+      "- What a good day looks like:",
       "- Long-term goals the AI should keep in mind:",
       "",
       "## Notes",

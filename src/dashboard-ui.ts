@@ -62,8 +62,9 @@ import {
 
 const DASHBOARD_ACTIVITY_TRACKERS = [
   { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
-  { kind: "study", label: "Study", icon: "book-open", tone: "focus" },
+  { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
   { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
+  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "hobby" },
   { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
   { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
   { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
@@ -1092,7 +1093,6 @@ export class DailyDashboardView extends ItemView {
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
-      createButton(sessionDeckActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -1117,7 +1117,14 @@ export class DailyDashboardView extends ItemView {
         const activeTrackerSession = activeActivitySession?.kind === tracker.kind ? activeActivitySession : null;
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
-      const routineSection = this.createCollapsibleSubsection(sessionDeckCard, "session-deck-routines", "Routine cues", "Keep active or upcoming routine windows near the session timers instead of in a separate card.");
+
+      const focusCard = createGridCard("Execution Hub", "Run today from one place: active focus, queued work, routine cues, suggestions, and calendar context.", {
+        icon: "target",
+        eyebrow: "Execution",
+        tone: "focus",
+        tag: "Focus"
+      });
+      const routineSection = this.createCollapsibleSubsection(focusCard, "focus-routines", "Routine cues", "Keep active or upcoming routine windows beside the rest of the execution stack.");
       const routineTemplates = this.plugin.getRoutineTemplates();
       const dismissedRoutineIds = getDismissedRoutineState(todayEntry.date);
       const currentMinutes = getClockMinutes(new Date());
@@ -1151,13 +1158,6 @@ export class DailyDashboardView extends ItemView {
           }, false, "check");
         });
       }
-
-      const focusCard = createGridCard("Top 3 For Today", "Keep today concrete with just three active focus items.", {
-        icon: "target",
-        eyebrow: "Execution",
-        tone: "focus",
-        tag: "Focus"
-      });
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
       const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot)
         .filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
@@ -4190,6 +4190,7 @@ export class FirstRunSetupWizardModal extends Modal {
     } else {
       createButton(footer, "Save and open dashboard", async () => {
         await this.plugin.updateSettings(this.settingsValue);
+        await this.plugin.ensureBasicInformationNoteExists();
         await this.plugin.completeFirstRunSetupWizard();
         await this.plugin.activateDashboardView();
         this.close();
@@ -4318,6 +4319,27 @@ export class FirstRunSetupWizardModal extends Modal {
   }
 
   private renderAiStep(parent: HTMLElement): void {
+    new Setting(parent)
+      .setName("Basic information note path")
+      .setDesc("This note is created automatically and gives AI a durable place for age, height, interests, preferences, and other stable context.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.basicInfoNotePath)
+          .setValue(this.settingsValue.basicInfoNotePath)
+          .onChange((value) => {
+            this.settingsValue.basicInfoNotePath = value.trim() || DEFAULT_SETTINGS.basicInfoNotePath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Include basic information in AI")
+      .setDesc("Keep this on if you want AI workflows to automatically read the Basic Information note when it exists.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.settingsValue.includeBasicInfoInAi).onChange((value) => {
+          this.settingsValue.includeBasicInfoInAi = value;
+        });
+      });
+
     new Setting(parent)
       .setName("AI output folder")
       .setDesc("Where AI-generated markdown notes should be written.")
@@ -5803,7 +5825,7 @@ const DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights
 const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "week-at-a-glance", title: "Week At A Glance", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "weekly-agenda", title: "Weekly Agenda", order: 1, hidden: false, pinned: false, width: "full" },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "top-3-for-today", title: "Execution Hub", order: 2, hidden: false, pinned: false, width: "default" },
   { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
@@ -6740,6 +6762,9 @@ function getClockMinutes(value: string | Date): number {
 
 function getDashboardCardLayoutKey(title: string): string {
   const normalized = toClassSlug(title);
+  if (normalized === "execution-hub") {
+    return "top-3-for-today";
+  }
   if (normalized === "consumables") {
     return "food-log";
   }

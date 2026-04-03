@@ -5,7 +5,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 ## What It Does
 
 - tracks repeat daily habits with per-day counts, preferred completion windows, difficulty weights, and per-habit miss notes
-- stores mood, energy, wake quality, a richer Top 3 focus list with notes, effort estimates, drag reordering, a Next Up queue, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
+- stores mood, energy, wake quality, a richer execution stack with Top 3 focus items, notes, effort estimates, drag reordering, a Next Up queue, routine cues, calendar blocking actions, suggested Top 3 candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery, and keeps bowel tracking inside Vitals instead of a separate day-flow block
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, link them to a tracked project, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
@@ -56,7 +56,7 @@ The recovery block now adds a wake-quality score, a rolling sleep debt summary, 
 
 The logical day repair flow still includes a manual timeline editor for work, nap, relax, break, and bowel sessions, but the always-on live timeline strip was removed from the dashboard because it was adding more chrome than operational value.
 
-Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live as compact cues in Session Deck and as real notifications instead of taking over a full Day Flow section.
+Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live inside the `Execution Hub` card and as real notifications instead of taking over a separate Day Flow section.
 
 The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3 candidates that blend near-term calendar items, overdue or due-soon tasks, repeating work, and stale projects. Top 3 rows, Next Up rows, and suggestion rows can all create a quick work block directly in the calendar using the estimate on the item when one exists.
 
@@ -82,7 +82,9 @@ Destructive dashboard actions now also get a visible in-view undo rail. When you
 
 The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard, and the notice popups can optionally play a configurable sound.
 
-The plugin now also supports a reusable `Basic Information` note for long-lived personal context such as age, height, weight, interests, preferences, and AI guidance. You can open it from the command palette or AI workspace, and AI requests can include it automatically. Plugin-generated markdown artifacts can also receive frontmatter tags so daily logs, reports, AI notes, and exports are easier to distinguish in search and graph views.
+The plugin now also supports a reusable `Basic Information` note for long-lived personal context such as age, height, weight, interests, preferences, and AI guidance. That note is created automatically by default, can be surfaced during the setup wizard, can be opened from the command palette or AI workspace, and AI requests can include it automatically. Plugin-generated markdown artifacts can also receive frontmatter tags so daily logs, reports, AI notes, and exports are easier to distinguish in search and graph views.
+
+Consumable presets now stack into the same matching entry when you tap them repeatedly. If you hit a preset like `Water bottle 500 mL` several times, the dashboard updates the amount on that existing row instead of creating duplicate rows for each tap.
 
 New installs now open a guided first-run setup wizard automatically until the core configuration is confirmed. The wizard walks through dashboard identity, project-hub paths, reporting and calendar folders, and AI defaults, and it can be reopened later from the command palette or the plugin settings tab.
 

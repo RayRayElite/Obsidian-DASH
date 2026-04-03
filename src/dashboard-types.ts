@@ -10,7 +10,7 @@ export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands",
 export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
 export const HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"] as const;
 export const INTAKE_KIND_OPTIONS = ["drink", "food", "medication", "supplement"] as const;
-export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores"] as const;
+export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "reading", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores", "hobbies"] as const;
 export const EXERCISE_INTENSITY_OPTIONS = ["easy", "moderate", "hard"] as const;
 
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
@@ -718,7 +718,7 @@ export interface ProjectReviewOption {
   emptySections: string[];
 }
 
-export type DashboardTone = "focus" | "state" | "capture" | "log" | "health" | "alert" | "done" | "neutral";
+export type DashboardTone = "focus" | "state" | "capture" | "log" | "health" | "alert" | "done" | "neutral" | "hobby";
 
 export interface CardVisualOptions {
   icon: string;

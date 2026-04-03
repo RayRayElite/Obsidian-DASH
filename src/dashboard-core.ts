@@ -432,8 +432,8 @@ export function formatActivitySessionLabel(kind: ActivitySessionKind): string {
   switch (kind) {
     case "exercise":
       return "Exercise";
-    case "study":
-      return "Study";
+    case "reading":
+      return "Reading";
     case "gaming":
       return "Gaming";
     case "hygiene":
@@ -448,6 +448,8 @@ export function formatActivitySessionLabel(kind: ActivitySessionKind): string {
       return "Social";
     case "chores":
       return "Chores";
+    case "hobbies":
+      return "Hobbies";
     default:
       return "Activity";
   }
@@ -471,8 +473,11 @@ export function normalizeActivitySession(input: unknown): ActivitySession | null
     return null;
   }
 
-  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind as ActivitySessionKind)
-    ? candidate.kind as ActivitySessionKind
+  const legacyKind = candidate.kind === "study"
+    ? "reading"
+    : candidate.kind;
+  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(legacyKind as ActivitySessionKind)
+    ? legacyKind as ActivitySessionKind
     : candidate.kind === "admin"
       ? "chores"
       : "chores";

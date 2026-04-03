@@ -39,7 +39,7 @@ var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["jpg", "jpeg", "png", "gif", "we
 var SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"];
 var HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"];
 var HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"];
-var ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores"];
+var ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "reading", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores", "hobbies"];
 var DEFAULT_SETTINGS = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -450,8 +450,8 @@ function formatActivitySessionLabel(kind) {
   switch (kind) {
     case "exercise":
       return "Exercise";
-    case "study":
-      return "Study";
+    case "reading":
+      return "Reading";
     case "gaming":
       return "Gaming";
     case "hygiene":
@@ -466,6 +466,8 @@ function formatActivitySessionLabel(kind) {
       return "Social";
     case "chores":
       return "Chores";
+    case "hobbies":
+      return "Hobbies";
     default:
       return "Activity";
   }
@@ -484,7 +486,8 @@ function normalizeActivitySession(input) {
   if (typeof candidate.start !== "string" || candidate.start.trim().length === 0) {
     return null;
   }
-  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind) ? candidate.kind : candidate.kind === "admin" ? "chores" : "chores";
+  const legacyKind = candidate.kind === "study" ? "reading" : candidate.kind;
+  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(legacyKind) ? legacyKind : candidate.kind === "admin" ? "chores" : "chores";
   const rawLabel = typeof candidate.label === "string" ? candidate.label.trim() : "";
   return {
     kind,
@@ -3740,8 +3743,9 @@ function appendLinesToSection(content, sectionName, linesToAppend) {
 var import_obsidian3 = require("obsidian");
 var DASHBOARD_ACTIVITY_TRACKERS = [
   { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
-  { kind: "study", label: "Study", icon: "book-open", tone: "focus" },
+  { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
   { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
+  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "hobby" },
   { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
   { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
   { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
@@ -4631,7 +4635,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
-      createButton(sessionDeckActions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick) => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -4656,7 +4659,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.kind ? activeActivitySession : null;
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
-      const routineSection = this.createCollapsibleSubsection(sessionDeckCard, "session-deck-routines", "Routine cues", "Keep active or upcoming routine windows near the session timers instead of in a separate card.");
+      const focusCard = createGridCard("Execution Hub", "Run today from one place: active focus, queued work, routine cues, suggestions, and calendar context.", {
+        icon: "target",
+        eyebrow: "Execution",
+        tone: "focus",
+        tag: "Focus"
+      });
+      const routineSection = this.createCollapsibleSubsection(focusCard, "focus-routines", "Routine cues", "Keep active or upcoming routine windows beside the rest of the execution stack.");
       const routineTemplates = this.plugin.getRoutineTemplates();
       const dismissedRoutineIds = getDismissedRoutineState(todayEntry.date);
       const currentMinutes = getClockMinutes(/* @__PURE__ */ new Date());
@@ -4687,12 +4696,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           }, false, "check");
         });
       }
-      const focusCard = createGridCard("Top 3 For Today", "Keep today concrete with just three active focus items.", {
-        icon: "target",
-        eyebrow: "Execution",
-        tone: "focus",
-        tag: "Focus"
-      });
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
       const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot).filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
       const activeFocusCount = todayEntry.todayFocus.filter((item) => item.status !== "done").length;
@@ -7435,6 +7438,7 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
     } else {
       createButton(footer, "Save and open dashboard", async () => {
         await this.plugin.updateSettings(this.settingsValue);
+        await this.plugin.ensureBasicInformationNoteExists();
         await this.plugin.completeFirstRunSetupWizard();
         await this.plugin.activateDashboardView();
         this.close();
@@ -7501,6 +7505,16 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
     });
   }
   renderAiStep(parent) {
+    new import_obsidian3.Setting(parent).setName("Basic information note path").setDesc("This note is created automatically and gives AI a durable place for age, height, interests, preferences, and other stable context.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.basicInfoNotePath).setValue(this.settingsValue.basicInfoNotePath).onChange((value) => {
+        this.settingsValue.basicInfoNotePath = value.trim() || DEFAULT_SETTINGS.basicInfoNotePath;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Include basic information in AI").setDesc("Keep this on if you want AI workflows to automatically read the Basic Information note when it exists.").addToggle((toggle) => {
+      toggle.setValue(this.settingsValue.includeBasicInfoInAi).onChange((value) => {
+        this.settingsValue.includeBasicInfoInAi = value;
+      });
+    });
     new import_obsidian3.Setting(parent).setName("AI output folder").setDesc("Where AI-generated markdown notes should be written.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.aiOutputFolder).setValue(this.settingsValue.aiOutputFolder).onChange((value) => {
         this.settingsValue.aiOutputFolder = value.trim() || DEFAULT_SETTINGS.aiOutputFolder;
@@ -8479,7 +8493,7 @@ var DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights";
 var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "week-at-a-glance", title: "Week At A Glance", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "weekly-agenda", title: "Weekly Agenda", order: 1, hidden: false, pinned: false, width: "full" },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "top-3-for-today", title: "Execution Hub", order: 2, hidden: false, pinned: false, width: "default" },
   { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
@@ -9189,6 +9203,9 @@ function getClockMinutes(value) {
 }
 function getDashboardCardLayoutKey(title) {
   const normalized = toClassSlug(title);
+  if (normalized === "execution-hub") {
+    return "top-3-for-today";
+  }
   if (normalized === "consumables") {
     return "food-log";
   }
@@ -9336,6 +9353,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async initializeWorkspaceArtifacts() {
     await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
+    await this.ensureBasicInformationNoteExists();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
@@ -10918,13 +10936,29 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return;
     }
     const entry = this.getTodayEntry();
+    const normalizedKind = kind === "food" || kind === "medication" || kind === "supplement" || kind === "drink" ? kind : kind === "caffeine" || kind === "water" ? "drink" : "drink";
+    const normalizedAmount = clamp(Number(amount), 0.1, 9999);
+    const normalizedUnit = unit.trim() || "serving";
+    const normalizedNote = note.trim();
+    const loggedAt = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const existingIndex = entry.intakeLog.findIndex((item) => item.kind === normalizedKind && item.label.trim().toLowerCase() === trimmedLabel.toLowerCase() && item.unit.trim().toLowerCase() === normalizedUnit.toLowerCase() && item.note.trim() === normalizedNote);
+    if (existingIndex >= 0) {
+      const existingItem = entry.intakeLog[existingIndex];
+      existingItem.amount = clamp(existingItem.amount + normalizedAmount, 0.1, 9999);
+      existingItem.loggedAt = loggedAt;
+      entry.intakeLog.splice(existingIndex, 1);
+      entry.intakeLog.unshift(existingItem);
+      entry.intakeLog = entry.intakeLog.slice(0, 40);
+      await this.persistEntry(entry);
+      return;
+    }
     entry.intakeLog = [{
-      kind: kind === "food" || kind === "medication" || kind === "supplement" || kind === "drink" ? kind : kind === "caffeine" || kind === "water" ? "drink" : "drink",
+      kind: normalizedKind,
       label: trimmedLabel,
-      amount: clamp(Number(amount), 0.1, 9999),
-      unit: unit.trim() || "serving",
-      note: note.trim(),
-      loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+      amount: normalizedAmount,
+      unit: normalizedUnit,
+      note: normalizedNote,
+      loggedAt
     }, ...entry.intakeLog].slice(0, 40);
     await this.persistEntry(entry);
   }
@@ -11657,6 +11691,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const existing = this.app.vault.getAbstractFileByPath(path);
     const file = existing instanceof import_obsidian4.TFile ? existing : await this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
     await this.openFile(file);
+  }
+  async ensureBasicInformationNoteExists() {
+    const path = (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof import_obsidian4.TFile) {
+      return existing;
+    }
+    return this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
   }
   async getTodoSnapshot() {
     const todoFile = this.getMasterTodoFile();
@@ -12645,7 +12687,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "",
       "## Identity",
       "- Preferred name:",
+      "- Pronouns:",
       "- Age:",
+      "- Birthday or birth year:",
       "- Height:",
       "- Time zone:",
       "- Location context:",
@@ -12653,6 +12697,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "## Body Metrics",
       `- Current weight (${weightUnit}): ${latestWeight !== null ? `${latestWeight}` : ""}`,
       "- Goal weight or range:",
+      "- Baseline energy or fatigue notes:",
       "- Important health context:",
       "- Medications or supplements worth remembering:",
       "",
@@ -12661,16 +12706,24 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- Main interests:",
       "- Hobbies or recurring activities:",
       "- Typical daily schedule:",
+      "- Current season of life or major responsibilities:",
       "",
       "## Preferences And Constraints",
       "- Food preferences or restrictions:",
       "- Exercise limitations or priorities:",
       "- Sensory or environment preferences:",
       "- Planning style that usually works best:",
+      "- Social preferences or recovery needs:",
+      "",
+      "## Tools And Systems",
+      "- Core apps, trackers, or routines you rely on:",
+      "- Important projects or domains that come up often:",
+      "- Terms, abbreviations, or names the AI should recognize:",
       "",
       "## AI Guidance",
       "- Helpful context for planning and coaching:",
       "- Suggestions to avoid:",
+      "- What a good day looks like:",
       "- Long-term goals the AI should keep in mind:",
       "",
       "## Notes",
