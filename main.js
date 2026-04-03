@@ -39,7 +39,7 @@ var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["jpg", "jpeg", "png", "gif", "we
 var SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"];
 var HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"];
 var HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"];
-var ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "admin", "errand", "commute", "social", "chores"];
+var ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores"];
 var DEFAULT_SETTINGS = {
   dashboardTitle: "Daily Dashboard",
   masterTodoPath: "Master Task Hub.md",
@@ -443,8 +443,12 @@ function formatActivitySessionLabel(kind) {
       return "Exercise";
     case "study":
       return "Study";
-    case "admin":
-      return "Admin";
+    case "gaming":
+      return "Gaming";
+    case "hygiene":
+      return "Hygiene";
+    case "cooking":
+      return "Cooking";
     case "errand":
       return "Errand";
     case "commute":
@@ -471,10 +475,11 @@ function normalizeActivitySession(input) {
   if (typeof candidate.start !== "string" || candidate.start.trim().length === 0) {
     return null;
   }
-  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind) ? candidate.kind : "admin";
+  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind) ? candidate.kind : candidate.kind === "admin" ? "chores" : "chores";
+  const rawLabel = typeof candidate.label === "string" ? candidate.label.trim() : "";
   return {
     kind,
-    label: typeof candidate.label === "string" && candidate.label.trim().length > 0 ? candidate.label.trim() : formatActivitySessionLabel(kind),
+    label: kind === "chores" && rawLabel.toLowerCase() === "admin" ? formatActivitySessionLabel(kind) : rawLabel || formatActivitySessionLabel(kind),
     start: candidate.start,
     end: typeof candidate.end === "string" ? candidate.end : null,
     tag: typeof candidate.tag === "string" ? candidate.tag.trim() : "",
@@ -533,7 +538,7 @@ function getTodayFocusTexts(items) {
 function normalizeTodayFocusItem(value) {
   if (typeof value === "string") {
     const text2 = value.trim();
-    return text2.length > 0 ? { text: text2, notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null } : null;
+    return text2.length > 0 ? { text: text2, projectName: "", notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null } : null;
   }
   if (!value || typeof value !== "object") {
     return null;
@@ -550,6 +555,7 @@ function normalizeTodayFocusItem(value) {
   })) : [];
   return {
     text,
+    projectName: typeof rawItem.projectName === "string" ? rawItem.projectName.trim() : "",
     notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
     estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null,
     status: normalizeTodayFocusStatus(rawItem.status),
@@ -560,7 +566,7 @@ function normalizeTodayFocusItem(value) {
 function normalizeNextUpFocusItem(value) {
   if (typeof value === "string") {
     const text2 = value.trim();
-    return text2.length > 0 ? { text: text2, notes: "", estimateMinutes: null } : null;
+    return text2.length > 0 ? { text: text2, projectName: "", notes: "", estimateMinutes: null } : null;
   }
   if (!value || typeof value !== "object") {
     return null;
@@ -572,6 +578,7 @@ function normalizeNextUpFocusItem(value) {
   }
   return {
     text,
+    projectName: typeof rawItem.projectName === "string" ? rawItem.projectName.trim() : "",
     notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
     estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null
   };
@@ -3725,11 +3732,23 @@ var import_obsidian3 = require("obsidian");
 var DASHBOARD_ACTIVITY_TRACKERS = [
   { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
   { kind: "study", label: "Study", icon: "book-open", tone: "focus" },
-  { kind: "admin", label: "Admin", icon: "briefcase-business", tone: "log" },
+  { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
+  { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
+  { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
   { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
   { kind: "commute", label: "Commute", icon: "car-front", tone: "neutral" },
   { kind: "social", label: "Social", icon: "users", tone: "focus" },
   { kind: "chores", label: "Chores", icon: "house", tone: "log" }
+];
+var WEEK_AT_A_GLANCE_SEGMENTS = [
+  { kind: "sleep", label: "Sleep" },
+  { kind: "work", label: "Work" },
+  { kind: "nap", label: "Nap" },
+  { kind: "relax", label: "Relax" },
+  { kind: "break", label: "Break" },
+  { kind: "poop", label: "Poop" },
+  ...DASHBOARD_ACTIVITY_TRACKERS,
+  { kind: "unknown", label: "Unknown" }
 ];
 var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
@@ -3758,6 +3777,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.draggedFocusIndex = null;
     this.draggedLayoutCardKey = null;
     this.suppressNextCardToggle = false;
+    this.selectedFocusProjectName = "";
     this.selectedSessionProjectName = "";
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
@@ -4174,10 +4194,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     }
     return "neutral";
   }
-  getLatestSessionTag(sessions) {
-    var _a, _b;
-    return (_b = (_a = [...sessions].reverse().find((session) => session.tag.trim().length > 0)) == null ? void 0 : _a.tag) != null ? _b : "";
-  }
   formatTodoTaskMeta(task) {
     return [
       task.section,
@@ -4287,6 +4303,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
       if (!this.quickAddState.projectName && projects.length > 0) {
         this.quickAddState.projectName = projects[0].name;
+      }
+      if (!projects.some((project) => project.name === this.selectedFocusProjectName)) {
+        this.selectedFocusProjectName = "";
       }
       if (!this.selectedSessionProjectName && projects.length > 0) {
         this.selectedSessionProjectName = projects[0].name;
@@ -4472,8 +4491,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
         createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
       }
-      const weekBoardCard = createCard(page, "Week At A Glance", "", {
-        icon: "layout-dashboard",
+      const grid = page.createDiv({ cls: "daily-dashboard-grid" });
+      const createGridCard = (title, description, options) => this.registerGridCard(
+        createCard(grid, title, description, options),
+        title,
+        gridCardBindings,
+        layoutByKey
+      );
+      const weekBoardCard = createGridCard("Week At A Glance", "See the week as stacked tracked time instead of relying on memory and rough impressions.", {
+        icon: "calendar-range",
         eyebrow: "Week",
         tone: "health",
         tag: "Visual"
@@ -4492,29 +4518,19 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           column.createDiv({ cls: "daily-dashboard-week-active-indicator", text: "Active" });
         }
         const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
-        this.renderWeekBarSegment(cylinder, "unknown", day.unknownMinutes);
-        this.renderWeekBarSegment(cylinder, "relax", day.relaxMinutes);
-        this.renderWeekBarSegment(cylinder, "poop", day.poopMinutes);
-        this.renderWeekBarSegment(cylinder, "work", day.workMinutes);
-        this.renderWeekBarSegment(cylinder, "sleep", day.sleepMinutes);
+        WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
+          var _a2;
+          this.renderWeekBarSegment(cylinder, segment.kind, (_a2 = day.minutesByKind[segment.kind]) != null ? _a2 : 0);
+        });
         cylinder.createDiv({ cls: "daily-dashboard-week-cylinder-overlay" });
         const labels = column.createDiv({ cls: "daily-dashboard-week-labels" });
         labels.createEl("strong", { text: day.label.toUpperCase() });
         labels.createEl("span", { text: `${Number.parseInt(day.date.slice(-2), 10)}` });
       });
       const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-week-legend" });
-      this.renderWeekLegendItem(weekLegend, "Sleep", "sleep");
-      this.renderWeekLegendItem(weekLegend, "Work", "work");
-      this.renderWeekLegendItem(weekLegend, "Relax", "relax");
-      this.renderWeekLegendItem(weekLegend, "Poop", "poop");
-      this.renderWeekLegendItem(weekLegend, "Unknown", "unknown");
-      const grid = page.createDiv({ cls: "daily-dashboard-grid" });
-      const createGridCard = (title, description, options) => this.registerGridCard(
-        createCard(grid, title, description, options),
-        title,
-        gridCardBindings,
-        layoutByKey
-      );
+      WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
+        this.renderWeekLegendItem(weekLegend, segment.label, segment.kind);
+      });
       const weeklyAgendaCard = createGridCard("Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
         icon: "calendar-days",
         eyebrow: "Planning",
@@ -4569,15 +4585,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const activeBreakSession = (_n = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _n : null;
       const activePoopSession = (_o = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _o : null;
       const activeActivitySession = this.plugin.getActiveActivitySession(void 0, todayEntry);
-      const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || (activeActivitySession == null ? void 0 : activeActivitySession.tag) || "";
-      const tagSummary = this.getSessionTagSummary([
-        ...todayEntry.workSessions,
-        ...todayEntry.napSessions,
-        ...todayEntry.relaxSessions,
-        ...todayEntry.breakSessions,
-        ...todayEntry.poopSessions,
-        ...todayEntry.activitySessions
-      ]);
       const activeModeLabel = activePoopSession ? "Pooping" : activeBreakSession ? "On break" : activeNapSession ? "Napping" : activeWorkSession ? "Working" : activeRelaxSession ? "Relaxing" : activeActivitySession ? activeActivitySession.label : dayState.status === "in-progress" ? "Idle" : "Offline";
       const dayToggleLabel = dayState.status === "in-progress" ? "End day" : "Begin day";
       const dayToggleIcon = dayState.status === "in-progress" ? "moon-star" : "sunrise";
@@ -4592,9 +4599,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
       createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? (_q = (_p = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)) == null ? void 0 : _p.tone) != null ? _q : "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
       createSemanticChip(sessionDeckSummary, `Tracked ${formatMinutesAsHours(trackedWorkMinutes + trackedNapMinutes + trackedRelaxMinutes + trackedBreakMinutes + trackedPoopMinutes + trackedActivityMinutes)}`, "capture");
-      if (activeSessionTag) {
-        createSemanticChip(sessionDeckSummary, activeSessionTag, this.getSessionTagTone(activeSessionTag));
-      }
       const sessionDeckToolbar = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-toolbar" });
       const sessionProjectSelect = sessionDeckToolbar.createEl("select", { cls: "daily-dashboard-input" });
       const emptyProjectOption = sessionProjectSelect.createEl("option", { text: "Work project" });
@@ -4632,17 +4636,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "alarm-clock-off" : "bed-single", "alert", Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""));
       createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
       createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
-      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${trackedPoopCount} tracked \u2022 ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
+      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${trackedPoopCount}x \u2022 ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
       DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
         const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.kind ? activeActivitySession : null;
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
-      if (tagSummary.length > 0) {
-        const sessionTagSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item) => {
-          createSemanticChip(sessionTagSummary, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
-        });
-      }
       const dayFlowCard = createGridCard("Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
@@ -4659,9 +4657,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         logicalDayInsights.hasActiveSession ? "Session active" : logicalDayInsights.inactiveMinutes !== null ? `Inactive ${formatMinutesAsHours(logicalDayInsights.inactiveMinutes)}` : "No activity yet",
         logicalDayInsights.hasActiveSession ? "capture" : logicalDayInsights.inactiveMinutes !== null && logicalDayInsights.inactiveMinutes >= 120 ? "alert" : "neutral"
       );
-      createSemanticChip(dayFlowStatus, activeRelaxSession ? "Relaxing tracked" : "No relax active", activeRelaxSession ? "health" : "neutral");
-      createSemanticChip(dayFlowStatus, activeBreakSession ? "Break tracked" : "No break active", activeBreakSession ? "alert" : "neutral");
-      createSemanticChip(dayFlowStatus, activePoopSession ? "Poop tracked" : "No poop active", activePoopSession ? "alert" : "neutral");
       const dayPromptSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-prompts", "Auto prompts", "Automatic nudges help you end an inactive day cleanly and warn when you are still logging to yesterday after midnight.");
       if (logicalDayInsights.prompts.length === 0) {
         dayPromptSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No automatic day-end or rollover prompts right now." });
@@ -4685,14 +4680,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.renderDayMetric(dayFlowGrid, "Day start", todayEntry.dayStartedAt || "Not started yet");
       this.renderDayMetric(dayFlowGrid, "Day end", todayEntry.dayEndedAt || "Not ended yet");
       this.renderDayMetric(dayFlowGrid, "Tracked sleep", formatMinutesAsHours(trackedSleepMinutes));
-      this.renderDayMetric(dayFlowGrid, "Tracked work", formatMinutesAsHours(trackedWorkMinutes));
-      this.renderDayMetric(dayFlowGrid, "Tracked naps", formatMinutesAsHours(trackedNapMinutes));
-      this.renderDayMetric(dayFlowGrid, "Tracked relax", formatMinutesAsHours(trackedRelaxMinutes));
-      this.renderDayMetric(dayFlowGrid, "Tracked breaks", formatMinutesAsHours(trackedBreakMinutes));
-      this.renderDayMetric(dayFlowGrid, "Live session", activeWorkSession ? formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
-      this.renderDayMetric(dayFlowGrid, "Live nap", activeNapSession ? formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
-      this.renderDayMetric(dayFlowGrid, "Live relax", activeRelaxSession ? formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
-      this.renderDayMetric(dayFlowGrid, "Live break", activeBreakSession ? formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date()))) : "Not active");
       this.renderDayMetric(dayFlowGrid, "Last activity", logicalDayInsights.lastActivityAt ? formatSyncTimestamp(logicalDayInsights.lastActivityAt) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Inactive for", logicalDayInsights.hasActiveSession ? "Live session active" : logicalDayInsights.inactiveMinutes !== null ? formatMinutesAsHours(logicalDayInsights.inactiveMinutes) : "No activity yet");
       this.renderDayMetric(dayFlowGrid, "Last edited", formatSyncTimestamp(todayEntry.lastEditedAt));
@@ -4911,11 +4898,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             if (focusIndex < 0) {
               return;
             }
-            const latestTag = this.getLatestSessionTag(item.workSessions);
-            if (latestTag && !isEditingFocus) {
-              const tagChipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
-              createSemanticChip(tagChipRow, latestTag, this.getSessionTagTone(latestTag));
-            }
             if (!isEditingFocus) {
               row.draggable = true;
               row.addClass("is-draggable");
@@ -4975,7 +4957,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
-              createButton(controls, `Start${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, "", this.selectedSessionProjectName), false, "play");
+              const relatedProjectName = item.projectName || this.selectedSessionProjectName;
+              createButton(controls, `Start${relatedProjectName ? ` \u2022 ${relatedProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, "", relatedProjectName), false, "play");
             }
             if (!isEditingFocus) {
               createButton(controls, "Details", async () => {
@@ -4983,7 +4966,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
                 new FocusCaptureModal(this.app, {
                   mode: "edit",
                   todayHasTop3Capacity: true,
+                  availableProjectNames: projects.map((project) => project.name),
                   initialText: item.text,
+                  initialProjectName: item.projectName,
                   initialNotes: (_a2 = item.notes) != null ? _a2 : "",
                   initialEstimateMinutes: (_b2 = item.estimateMinutes) != null ? _b2 : null,
                   initialDestination: "top3",
@@ -5045,6 +5030,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         cls: "daily-dashboard-input",
         attr: { type: "text", placeholder: "Add a focus item" }
       });
+      const focusProjectSelect = focusAddRow.createEl("select", { cls: "daily-dashboard-input" });
+      const focusNoProjectOption = focusProjectSelect.createEl("option", { text: "No project" });
+      focusNoProjectOption.value = "";
+      projects.forEach((project) => {
+        const option = focusProjectSelect.createEl("option", { text: project.name });
+        option.value = project.name;
+      });
+      focusProjectSelect.value = this.selectedFocusProjectName;
+      focusProjectSelect.addEventListener("change", () => {
+        this.selectedFocusProjectName = focusProjectSelect.value;
+      });
       const focusButton = focusAddRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
       focusButton.type = "button";
       const submitFocus = async () => {
@@ -5052,7 +5048,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         if (!value) {
           return;
         }
-        await this.plugin.addTodayFocusItem(value);
+        await this.plugin.addTodayFocusItemWithDetails({ text: value, projectName: this.selectedFocusProjectName });
         focusInput.value = "";
       };
       focusInput.addEventListener("keydown", (event) => {
@@ -5095,6 +5091,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           copy.createEl("span", {
             cls: "daily-dashboard-habit-meta",
             text: [
+              item.projectName ? `Project ${item.projectName}` : "No project",
               item.estimateMinutes ? `Estimate ${formatMinutesAsHours(item.estimateMinutes)}` : "No estimate",
               item.notes ? "Queued note" : "Queued"
             ].join(" \u2022 ")
@@ -5122,7 +5119,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             new FocusCaptureModal(this.app, {
               mode: "capture",
               todayHasTop3Capacity: true,
+              availableProjectNames: projects.map((project) => project.name),
               initialText: item.text,
+              initialProjectName: item.projectName,
               initialNotes: item.notes,
               initialEstimateMinutes: item.estimateMinutes,
               initialDestination: "next-up",
@@ -5149,6 +5148,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         new FocusCaptureModal(this.app, {
           mode: "capture",
           todayHasTop3Capacity: true,
+          availableProjectNames: projects.map((project) => project.name),
           initialDestination: "next-up",
           submitLabel: "Queue item",
           onSubmit: async (payload) => {
@@ -5905,9 +5905,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           }
         });
       }
-      const heatmapCard = createGridCard("Patterns", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
-        icon: "grid-2x2",
-        eyebrow: "Patterns",
+      const heatmapCard = createGridCard("Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
+        icon: "layout-grid",
+        eyebrow: "Heatmaps",
         tone: "capture",
         tag: "84 days"
       });
@@ -6249,6 +6249,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       ].filter((value) => value.length > 0).join(" \u2022 ");
     }
     return [
+      item.projectName ? `Project ${item.projectName}` : "No project",
       item.status === "done" ? "Done" : item.isActive ? "Working on" : "Queued",
       `${formatMinutesAsHours(item.trackedMinutes)} tracked`,
       item.completedAt ? `completed ${item.completedAt.slice(11)}` : ""
@@ -6888,18 +6889,22 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       nextDate.setDate(date.getDate() + 1);
       const nextEntry = entryMap.get(formatDateKey(nextDate));
       const sleepMinutes = entry ? getSleepMinutesForDay(entry, nextEntry) : 0;
-      const workMinutes = entry ? this.plugin.getTrackedWorkMinutes(entry) : 0;
-      const relaxMinutes = entry ? this.plugin.getTrackedRelaxMinutes(entry) + this.plugin.getTrackedBreakMinutes(entry) : 0;
-      const poopMinutes = entry ? this.plugin.getTrackedPoopMinutes(entry) : 0;
-      const unknownMinutes = entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes - workMinutes - relaxMinutes - poopMinutes);
+      const minutesByKind = {
+        sleep: sleepMinutes,
+        work: entry ? this.plugin.getTrackedWorkMinutes(entry) : 0,
+        nap: entry ? this.plugin.getTrackedNapMinutes(entry) : 0,
+        relax: entry ? this.plugin.getTrackedRelaxMinutes(entry) : 0,
+        break: entry ? this.plugin.getTrackedBreakMinutes(entry) : 0,
+        poop: entry ? this.plugin.getTrackedPoopMinutes(entry) : 0,
+        unknown: entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes)
+      };
+      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
+        minutesByKind[tracker.kind] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.kind) : 0;
+      });
       return {
         label,
         date: dateKey,
-        sleepMinutes,
-        workMinutes,
-        relaxMinutes,
-        poopMinutes,
-        unknownMinutes,
+        minutesByKind,
         isToday: dateKey === formatDateKey(today),
         isActiveLogicalDay: dateKey === activeLogicalDate
       };
@@ -8481,20 +8486,21 @@ var DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
 var DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
 var DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights";
 var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
-  { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
-  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
-  { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
-  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
-  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
-  { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
-  { key: "exercise-weight", title: "Exercise & Weight", order: 7, hidden: false, pinned: false, width: "default" },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
-  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Patterns", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
+  { key: "week-at-a-glance", title: "Week At A Glance", order: 0, hidden: false, pinned: false, width: "full" },
+  { key: "weekly-agenda", title: "Weekly Agenda", order: 1, hidden: false, pinned: false, width: "full" },
+  { key: "day-flow", title: "Day Flow", order: 2, hidden: false, pinned: true, width: "full" },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "Vitals", order: 4, hidden: false, pinned: false, width: "default" },
+  { key: "gamification-center", title: "Gamification Center", order: 5, hidden: false, pinned: false, width: "default" },
+  { key: "habits", title: "Habits", order: 6, hidden: false, pinned: false, width: "default" },
+  { key: "food-log", title: "Consumables", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "exercise-weight", title: "Exercise & Weight", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false, width: "default" }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -8953,13 +8959,14 @@ function toClassSlug(value) {
 }
 var FocusCaptureModal = class extends import_obsidian3.Modal {
   constructor(app, options) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     super(app);
     this.options = options;
     this.textValue = (_a = options.initialText) != null ? _a : "";
-    this.notesValue = (_b = options.initialNotes) != null ? _b : "";
+    this.projectNameValue = (_b = options.initialProjectName) != null ? _b : "";
+    this.notesValue = (_c = options.initialNotes) != null ? _c : "";
     this.estimateValue = options.initialEstimateMinutes && options.initialEstimateMinutes > 0 ? `${options.initialEstimateMinutes}` : "";
-    this.destinationValue = (_c = options.initialDestination) != null ? _c : options.todayHasTop3Capacity ? "top3" : "next-up";
+    this.destinationValue = (_d = options.initialDestination) != null ? _d : options.todayHasTop3Capacity ? "top3" : "next-up";
   }
   onOpen() {
     this.setTitle(this.options.mode === "edit" ? "Edit Focus Item" : "Quick Capture Focus Item");
@@ -8984,6 +8991,17 @@ var FocusCaptureModal = class extends import_obsidian3.Modal {
       text.inputEl.type = "number";
       text.inputEl.min = "0";
       text.inputEl.step = "5";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Related project").setDesc("Optional project link for this focus item. Leave blank if it stands on its own.").addDropdown((dropdown) => {
+      var _a2;
+      dropdown.addOption("", "No project");
+      [...new Set(((_a2 = this.options.availableProjectNames) != null ? _a2 : []).filter((name) => name.trim().length > 0))].sort((left, right) => left.localeCompare(right)).forEach((name) => {
+        dropdown.addOption(name, name);
+      });
+      dropdown.setValue(this.projectNameValue);
+      dropdown.onChange((value) => {
+        this.projectNameValue = value;
+      });
     });
     new import_obsidian3.Setting(contentEl).setName("Destination").setDesc(this.options.todayHasTop3Capacity ? "Choose whether this belongs in the active Top 3 or the Next Up queue." : "Top 3 is full, so new captures will usually go to Next Up.").addDropdown((dropdown) => {
       dropdown.addOption("top3", "Top 3");
@@ -9035,6 +9053,7 @@ var FocusCaptureModal = class extends import_obsidian3.Modal {
     }
     await this.options.onSubmit({
       text,
+      projectName: this.projectNameValue.trim(),
       notes: this.notesValue.trim(),
       estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes),
       destination: this.destinationValue
@@ -9186,7 +9205,7 @@ function getDashboardCardLayoutKey(title) {
   if (normalized === "state-symptoms-and-friction" || normalized === "vitals") {
     return "state-and-friction";
   }
-  if (normalized === "patterns") {
+  if (normalized === "patterns" || normalized === "heatmaps") {
     return "heatmaps";
   }
   return normalized;
@@ -10247,6 +10266,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       kind: "focus",
       id: `focus-${index}-${item.text.toLowerCase()}`,
       text: item.text,
+      projectName: item.projectName,
       notes: item.notes,
       estimateMinutes: item.estimateMinutes,
       status: item.status,
@@ -11854,6 +11874,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...entry.todayFocus,
       this.createTodayFocusItem(
         trimmedValue,
+        typeof input.projectName === "string" ? input.projectName.trim() : "",
         typeof input.notes === "string" ? input.notes.trim() : "",
         normalizedEstimate
       )
@@ -11895,6 +11916,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     item.text = trimmedValue;
+    item.projectName = typeof updates.projectName === "string" ? updates.projectName.trim() : "";
     item.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
     item.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes)) ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440) : null;
     await this.persistEntry(entry);
@@ -12008,6 +12030,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...entry.nextUpFocus,
       {
         text,
+        projectName: typeof input.projectName === "string" ? input.projectName.trim() : "",
         notes: typeof input.notes === "string" ? input.notes.trim() : "",
         estimateMinutes: Number.isFinite(Number(input.estimateMinutes)) ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440) : null
       }
@@ -12027,7 +12050,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
-      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.notes, item.estimateMinutes)];
+      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.projectName, item.notes, item.estimateMinutes)];
     }
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
@@ -13405,9 +13428,10 @@ No entries available.`;
       occurrenceExceptions: []
     };
   }
-  createTodayFocusItem(text, notes = "", estimateMinutes = null) {
+  createTodayFocusItem(text, projectName = "", notes = "", estimateMinutes = null) {
     return {
       text,
+      projectName,
       notes,
       estimateMinutes,
       status: "pending",
@@ -13416,9 +13440,12 @@ No entries available.`;
     };
   }
   async openQuickCaptureFocusFlow() {
+    var _a;
+    const todoSnapshot = await this.getTodoSnapshot();
     new FocusCaptureModal(this.app, {
       mode: "capture",
       todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
+      availableProjectNames: ((_a = todoSnapshot == null ? void 0 : todoSnapshot.projects) != null ? _a : []).map((project) => project.name),
       onSubmit: async (payload) => {
         if (payload.destination === "top3") {
           await this.addTodayFocusItemWithDetails(payload);

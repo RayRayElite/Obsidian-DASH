@@ -1427,6 +1427,7 @@ export default class DailyDashboardPlugin extends Plugin {
       kind: "focus",
       id: `focus-${index}-${item.text.toLowerCase()}`,
       text: item.text,
+      projectName: item.projectName,
       notes: item.notes,
       estimateMinutes: item.estimateMinutes,
       status: item.status,
@@ -3305,6 +3306,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async addTodayFocusItemWithDetails(input: {
     text: string;
+    projectName?: string;
     notes?: string;
     estimateMinutes?: number | null;
   }): Promise<void> {
@@ -3332,6 +3334,7 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry.todayFocus,
       this.createTodayFocusItem(
         trimmedValue,
+        typeof input.projectName === "string" ? input.projectName.trim() : "",
         typeof input.notes === "string" ? input.notes.trim() : "",
         normalizedEstimate
       )
@@ -3364,6 +3367,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async updateTodayFocusDetails(index: number, updates: {
     text: string;
+    projectName?: string;
     notes?: string;
     estimateMinutes?: number | null;
   }): Promise<boolean> {
@@ -3385,6 +3389,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     item.text = trimmedValue;
+    item.projectName = typeof updates.projectName === "string" ? updates.projectName.trim() : "";
     item.notes = typeof updates.notes === "string" ? updates.notes.trim() : "";
     item.estimateMinutes = Number.isFinite(Number(updates.estimateMinutes))
       ? clamp(Math.round(Number(updates.estimateMinutes)), 0, 1440)
@@ -3503,6 +3508,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async addNextUpFocusItem(input: {
     text: string;
+    projectName?: string;
     notes?: string;
     estimateMinutes?: number | null;
   }): Promise<boolean> {
@@ -3523,6 +3529,7 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry.nextUpFocus,
       {
         text,
+        projectName: typeof input.projectName === "string" ? input.projectName.trim() : "",
         notes: typeof input.notes === "string" ? input.notes.trim() : "",
         estimateMinutes: Number.isFinite(Number(input.estimateMinutes))
           ? clamp(Math.round(Number(input.estimateMinutes)), 0, 1440)
@@ -3547,7 +3554,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     if (!entry.todayFocus.some((candidate) => candidate.text.toLowerCase() === item.text.toLowerCase())) {
-      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.notes, item.estimateMinutes)];
+      entry.todayFocus = [...entry.todayFocus, this.createTodayFocusItem(item.text, item.projectName, item.notes, item.estimateMinutes)];
     }
     entry.nextUpFocus = entry.nextUpFocus.filter((_, candidateIndex) => candidateIndex !== index);
     await this.persistEntry(entry);
@@ -5212,9 +5219,10 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  private createTodayFocusItem(text: string, notes = "", estimateMinutes: number | null = null): TodayFocusItem {
+  private createTodayFocusItem(text: string, projectName = "", notes = "", estimateMinutes: number | null = null): TodayFocusItem {
     return {
       text,
+      projectName,
       notes,
       estimateMinutes,
       status: "pending",
@@ -5224,9 +5232,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async openQuickCaptureFocusFlow(): Promise<void> {
+    const todoSnapshot = await this.getTodoSnapshot();
     new FocusCaptureModal(this.app, {
       mode: "capture",
       todayHasTop3Capacity: this.getTodayEntry().todayFocus.filter((item) => item.status !== "done").length < 3,
+      availableProjectNames: (todoSnapshot?.projects ?? []).map((project) => project.name),
       onSubmit: async (payload) => {
         if (payload.destination === "top3") {
           await this.addTodayFocusItemWithDetails(payload);

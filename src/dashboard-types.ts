@@ -10,7 +10,7 @@ export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands",
 export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
 export const HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"] as const;
 export const INTAKE_KIND_OPTIONS = ["drink", "food", "medication", "supplement"] as const;
-export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "admin", "errand", "commute", "social", "chores"] as const;
+export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "study", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores"] as const;
 export const EXERCISE_INTENSITY_OPTIONS = ["easy", "moderate", "hard"] as const;
 
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
@@ -146,6 +146,7 @@ export interface DashboardFocusDisplayItem {
   id: string;
   sourceEventId?: string;
   text: string;
+  projectName?: string;
   notes?: string;
   estimateMinutes?: number | null;
   status: TodayFocusStatus | "reminder";
@@ -165,6 +166,7 @@ export interface DashboardFocusDisplayItem {
 
 export interface TodayFocusItem {
   text: string;
+  projectName: string;
   notes: string;
   estimateMinutes: number | null;
   status: TodayFocusStatus;
@@ -174,6 +176,7 @@ export interface TodayFocusItem {
 
 export interface NextUpFocusItem {
   text: string;
+  projectName: string;
   notes: string;
   estimateMinutes: number | null;
 }

@@ -425,8 +425,12 @@ export function formatActivitySessionLabel(kind: ActivitySessionKind): string {
       return "Exercise";
     case "study":
       return "Study";
-    case "admin":
-      return "Admin";
+    case "gaming":
+      return "Gaming";
+    case "hygiene":
+      return "Hygiene";
+    case "cooking":
+      return "Cooking";
     case "errand":
       return "Errand";
     case "commute":
@@ -460,11 +464,16 @@ export function normalizeActivitySession(input: unknown): ActivitySession | null
 
   const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(candidate.kind as ActivitySessionKind)
     ? candidate.kind as ActivitySessionKind
-    : "admin";
+    : candidate.kind === "admin"
+      ? "chores"
+      : "chores";
+  const rawLabel = typeof candidate.label === "string" ? candidate.label.trim() : "";
 
   return {
     kind,
-    label: typeof candidate.label === "string" && candidate.label.trim().length > 0 ? candidate.label.trim() : formatActivitySessionLabel(kind),
+    label: kind === "chores" && rawLabel.toLowerCase() === "admin"
+      ? formatActivitySessionLabel(kind)
+      : rawLabel || formatActivitySessionLabel(kind),
     start: candidate.start,
     end: typeof candidate.end === "string" ? candidate.end : null,
     tag: typeof candidate.tag === "string" ? candidate.tag.trim() : "",
@@ -544,7 +553,7 @@ function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
   if (typeof value === "string") {
     const text = value.trim();
     return text.length > 0
-      ? { text, notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null }
+      ? { text, projectName: "", notes: "", estimateMinutes: null, status: "pending", workSessions: [], completedAt: null }
       : null;
   }
 
@@ -570,6 +579,7 @@ function normalizeTodayFocusItem(value: unknown): TodayFocusItem | null {
 
   return {
     text,
+    projectName: typeof rawItem.projectName === "string" ? rawItem.projectName.trim() : "",
     notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
     estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null,
     status: normalizeTodayFocusStatus(rawItem.status),
@@ -582,7 +592,7 @@ function normalizeNextUpFocusItem(value: unknown): NextUpFocusItem | null {
   if (typeof value === "string") {
     const text = value.trim();
     return text.length > 0
-      ? { text, notes: "", estimateMinutes: null }
+      ? { text, projectName: "", notes: "", estimateMinutes: null }
       : null;
   }
 
@@ -598,6 +608,7 @@ function normalizeNextUpFocusItem(value: unknown): NextUpFocusItem | null {
 
   return {
     text,
+    projectName: typeof rawItem.projectName === "string" ? rawItem.projectName.trim() : "",
     notes: typeof rawItem.notes === "string" ? rawItem.notes.trim() : "",
     estimateMinutes: Number.isFinite(Number(rawItem.estimateMinutes)) && Number(rawItem.estimateMinutes) > 0 ? Math.round(Number(rawItem.estimateMinutes)) : null
   };
