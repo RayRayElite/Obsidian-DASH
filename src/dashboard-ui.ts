@@ -10,6 +10,7 @@ import {
   getHabitWeightedCompletion,
   isHabitDueOnDate,
   formatSyncTimestamp,
+  parseHabitAutomations,
   parseHabitDefinitions,
   renderScore
 } from "./dashboard-core";
@@ -1072,35 +1073,9 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
-      const tagButtons = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-session-tag-picker" });
-      SESSION_TAG_OPTIONS.forEach((tag) => {
-        const button = tagButtons.createEl("button", {
-          cls: "daily-dashboard-session-tag-button",
-          text: tag
-        });
-        button.type = "button";
-        button.addClass(`is-${this.getSessionTagTone(tag)}`);
-        if (this.selectedSessionTag === tag) {
-          button.addClass("is-active");
-        }
-        button.addEventListener("click", () => {
-          this.setSelectedSessionTag(tag);
-          void this.render();
-        });
-      });
-
-      if (tagSummary.length > 0) {
-        const tagSummaryList = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item) => {
-          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
-        });
-      } else {
-        dayFlowTagSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No tagged sessions recorded yet today." });
-      }
-
       const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
-      const workProjectSelect = dayFlowActionsSection.createEl("select", { cls: "daily-dashboard-input" });
+      const sessionDefaults = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const workProjectSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
       const noProjectOption = workProjectSelect.createEl("option", { text: "No project" });
       noProjectOption.value = "";
       projects.forEach((project) => {
@@ -1114,6 +1089,21 @@ export class DailyDashboardView extends ItemView {
       workProjectSelect.addEventListener("change", () => {
         this.selectedSessionProjectName = workProjectSelect.value;
       });
+      const sessionTagSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
+      SESSION_TAG_OPTIONS.forEach((tag) => {
+        const option = sessionTagSelect.createEl("option", { text: tag });
+        option.value = tag;
+      });
+      sessionTagSelect.value = this.selectedSessionTag;
+      sessionTagSelect.addEventListener("change", () => {
+        this.setSelectedSessionTag(sessionTagSelect.value);
+      });
+      if (tagSummary.length > 0) {
+        const tagSummaryList = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-chip-row" });
+        tagSummary.forEach((item) => {
+          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
+        });
+      }
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work • ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag, this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
@@ -1830,7 +1820,8 @@ export class DailyDashboardView extends ItemView {
       const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
       const intakeButtons = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(intakeButtons, "Add entry", async () => {
-        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
+        const resolvedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
+        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), resolvedUnit, intakeNote.value);
         intakeLabel.value = "";
         intakeAmount.value = "1";
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
@@ -1838,7 +1829,7 @@ export class DailyDashboardView extends ItemView {
       }, false, "plus-circle");
       createButton(intakeButtons, "Save preset", async () => {
         const trimmedLabel = intakeLabel.value.trim();
-        const trimmedUnit = intakeUnit.value.trim();
+        const trimmedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
         if (!trimmedLabel || !trimmedUnit) {
           return;
         }
@@ -1890,8 +1881,26 @@ export class DailyDashboardView extends ItemView {
           .sort((left, right) => right.loggedAt.localeCompare(left.loggedAt))
           .forEach((item) => {
             const row = summaryList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-            row.createEl("strong", { text: `${item.kind} • ${item.label}` });
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total • ${item.count} entr${item.count === 1 ? "y" : "ies"} • last ${item.loggedAt || "Time unknown"}` });
+            const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+            copy.createEl("strong", { text: `${item.kind} • ${item.label}` });
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total • ${item.count} entr${item.count === 1 ? "y" : "ies"} • last ${item.loggedAt || "Time unknown"}` });
+            const unitInput = row.createEl("input", {
+              cls: "daily-dashboard-input",
+              attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
+            });
+            unitInput.addEventListener("change", () => {
+              void this.plugin.updateIntakeGroupUnit(item.kind, item.label, item.unit, unitInput.value);
+            });
+            const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add again" });
+            addButton.type = "button";
+            addButton.addEventListener("click", () => {
+              void this.plugin.addIntakeEntry(item.kind, item.label, item.amount, item.unit, item.note);
+            });
+            const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove latest" });
+            removeButton.type = "button";
+            removeButton.addEventListener("click", () => {
+              void this.plugin.removeLatestMatchingIntakeEntry(item.kind, item.label, item.unit);
+            });
           });
       }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
@@ -1915,6 +1924,13 @@ export class DailyDashboardView extends ItemView {
           });
           amountInput.addEventListener("change", () => {
             void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
+          });
+          const unitInput = amountSlot.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
+          });
+          unitInput.addEventListener("change", () => {
+            void this.plugin.updateIntakeEntryUnit(index, unitInput.value);
           });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
@@ -5410,6 +5426,25 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Habit automations")
+      .setDesc("One automation per line using Habit Name|Kind|Label|Amount|Unit|Optional Note. Each time the habit count increases, matching consumables are logged at that timestamp.")
+      .addTextArea((textArea) => {
+        const habitLabelById = new Map(settings.habitDefinitions.map((habit) => [habit.id, habit.label]));
+        textArea
+          .setPlaceholder("Take pills|medication|Vyvanse|1|capsule\nTake pills|supplement|Vitamin D|1|softgel")
+          .setValue(settings.habitAutomations.map((automation) => `${habitLabelById.get(automation.habitId) ?? automation.habitId}|${automation.intakeKind}|${automation.label}|${automation.amount}|${automation.unit}|${automation.note}`).join("\n"))
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              habitAutomations: parseHabitAutomations(value)
+            });
+          });
+
+        textArea.inputEl.rows = 6;
+        textArea.inputEl.cols = 36;
+      });
+
+    new Setting(containerEl)
       .setName("Routine templates")
       .setDesc("One routine per line using Label|HH:MM|HH:MM. These appear in Day Flow when their time window is due or coming up.")
       .addTextArea((textArea) => {
@@ -5947,6 +5982,11 @@ function getDefaultIntakeUnit(kind: string, measurementSystem: "imperial" | "met
   }
 
   return "serving";
+}
+
+function resolveIntakeUnitValue(unit: string, kind: string, measurementSystem: "imperial" | "metric"): string {
+  const trimmedUnit = unit.trim();
+  return trimmedUnit.length > 0 ? trimmedUnit : getDefaultIntakeUnit(kind, measurementSystem);
 }
 
 function buildIntakeQuickPreset(input: { kind: string; label: string; amount: number; unit: string }): IntakeQuickPreset {

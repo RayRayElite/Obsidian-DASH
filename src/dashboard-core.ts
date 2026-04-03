@@ -8,6 +8,7 @@ import {
   type DashboardSettings,
   type DayLifecycleState,
   type FoodEntry,
+  type HabitAutomation,
   type HabitCadence,
   type HabitDefinition,
   type HabitCompletionWindow,
@@ -47,6 +48,11 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .map((preset, index) => normalizeIntakeQuickPreset(preset, index))
         .filter((preset): preset is IntakeQuickPreset => preset !== null)
     : getDefaultIntakeQuickPresets(measurementSystem);
+  const habitAutomations = Array.isArray(settings.habitAutomations)
+    ? settings.habitAutomations
+        .map((automation, index) => normalizeHabitAutomation(automation, index))
+        .filter((automation): automation is HabitAutomation => automation !== null)
+    : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
 
   return {
@@ -78,6 +84,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarWarningHours,
     measurementSystem,
     intakeQuickPresets,
+    habitAutomations,
     showUndoNotifications,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
@@ -1104,5 +1111,68 @@ function normalizeIntakeQuickPreset(input: unknown, index: number): IntakeQuickP
     label,
     amount,
     unit
+  };
+}
+
+export function parseHabitAutomations(value: string): HabitAutomation[] {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  return lines
+    .map((line, index) => {
+      const [rawHabitLabel, rawKind, rawLabel, rawAmount, rawUnit, rawNote] = line.split("|");
+      const habitLabel = rawHabitLabel?.trim() ?? "";
+      const label = rawLabel?.trim() ?? "";
+      const unit = rawUnit?.trim() ?? "";
+      if (!habitLabel || !label || !unit) {
+        return null;
+      }
+
+      const intakeKind = rawKind?.trim() === "food" || rawKind?.trim() === "medication" || rawKind?.trim() === "supplement" || rawKind?.trim() === "drink"
+        ? rawKind.trim()
+        : "drink";
+      const amount = clamp(Number(rawAmount?.trim() || 1), 0.1, 9999);
+      return {
+        id: `${createHabitId(habitLabel)}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+        habitId: createHabitId(habitLabel),
+        intakeKind,
+        label,
+        amount,
+        unit,
+        note: rawNote?.trim() ?? ""
+      } satisfies HabitAutomation;
+    })
+    .filter((automation): automation is HabitAutomation => automation !== null);
+}
+
+function normalizeHabitAutomation(input: unknown, index: number): HabitAutomation | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<HabitAutomation>;
+  const habitId = typeof candidate.habitId === "string" ? createHabitId(candidate.habitId) : "";
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
+  if (!habitId || !label || !unit) {
+    return null;
+  }
+
+  const intakeKind = candidate.intakeKind === "food" || candidate.intakeKind === "medication" || candidate.intakeKind === "supplement" || candidate.intakeKind === "drink"
+    ? candidate.intakeKind
+    : "drink";
+  const amount = clamp(Number(candidate.amount ?? 1), 0.1, 9999);
+  return {
+    id: typeof candidate.id === "string" && candidate.id.trim().length > 0
+      ? candidate.id.trim()
+      : `${habitId}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+    habitId,
+    intakeKind,
+    label,
+    amount,
+    unit,
+    note: typeof candidate.note === "string" ? candidate.note.trim() : ""
   };
 }

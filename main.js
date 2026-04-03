@@ -101,6 +101,7 @@ var DEFAULT_SETTINGS = {
     { id: "water-8-oz", kind: "drink", label: "Water", amount: 8, unit: "oz" },
     { id: "coffee-1-cup", kind: "drink", label: "Coffee", amount: 1, unit: "cup" }
   ],
+  habitAutomations: [],
   showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
@@ -134,6 +135,7 @@ function sanitizeSettings(settings) {
   const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
   const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets) ? settings.intakeQuickPresets.map((preset, index) => normalizeIntakeQuickPreset(preset, index)).filter((preset) => preset !== null) : getDefaultIntakeQuickPresets(measurementSystem);
+  const habitAutomations = Array.isArray(settings.habitAutomations) ? settings.habitAutomations.map((automation, index) => normalizeHabitAutomation(automation, index)).filter((automation) => automation !== null) : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = (_c = settings.showUndoNotifications) != null ? _c : DEFAULT_SETTINGS.showUndoNotifications;
   return {
     dashboardTitle: ((_d = settings.dashboardTitle) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.dashboardTitle,
@@ -164,6 +166,7 @@ function sanitizeSettings(settings) {
     calendarWarningHours,
     measurementSystem,
     intakeQuickPresets,
+    habitAutomations,
     showUndoNotifications,
     wallpaperFolder: normalizeFolderPath(((_y = settings.wallpaperFolder) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_z = settings.selectedWallpaper) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
@@ -991,6 +994,54 @@ function normalizeIntakeQuickPreset(input, index) {
     label,
     amount,
     unit
+  };
+}
+function parseHabitAutomations(value) {
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  return lines.map((line, index) => {
+    var _a, _b, _c, _d;
+    const [rawHabitLabel, rawKind, rawLabel, rawAmount, rawUnit, rawNote] = line.split("|");
+    const habitLabel = (_a = rawHabitLabel == null ? void 0 : rawHabitLabel.trim()) != null ? _a : "";
+    const label = (_b = rawLabel == null ? void 0 : rawLabel.trim()) != null ? _b : "";
+    const unit = (_c = rawUnit == null ? void 0 : rawUnit.trim()) != null ? _c : "";
+    if (!habitLabel || !label || !unit) {
+      return null;
+    }
+    const intakeKind = (rawKind == null ? void 0 : rawKind.trim()) === "food" || (rawKind == null ? void 0 : rawKind.trim()) === "medication" || (rawKind == null ? void 0 : rawKind.trim()) === "supplement" || (rawKind == null ? void 0 : rawKind.trim()) === "drink" ? rawKind.trim() : "drink";
+    const amount = clamp(Number((rawAmount == null ? void 0 : rawAmount.trim()) || 1), 0.1, 9999);
+    return {
+      id: `${createHabitId(habitLabel)}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+      habitId: createHabitId(habitLabel),
+      intakeKind,
+      label,
+      amount,
+      unit,
+      note: (_d = rawNote == null ? void 0 : rawNote.trim()) != null ? _d : ""
+    };
+  }).filter((automation) => automation !== null);
+}
+function normalizeHabitAutomation(input, index) {
+  var _a;
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const habitId = typeof candidate.habitId === "string" ? createHabitId(candidate.habitId) : "";
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
+  if (!habitId || !label || !unit) {
+    return null;
+  }
+  const intakeKind = candidate.intakeKind === "food" || candidate.intakeKind === "medication" || candidate.intakeKind === "supplement" || candidate.intakeKind === "drink" ? candidate.intakeKind : "drink";
+  const amount = clamp(Number((_a = candidate.amount) != null ? _a : 1), 0.1, 9999);
+  return {
+    id: typeof candidate.id === "string" && candidate.id.trim().length > 0 ? candidate.id.trim() : `${habitId}-${intakeKind}-${createHabitId(`${label}-${unit}-${index}`)}`,
+    habitId,
+    intakeKind,
+    label,
+    amount,
+    unit,
+    note: typeof candidate.note === "string" ? candidate.note.trim() : ""
   };
 }
 
@@ -4461,33 +4512,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           row.createEl("span", { text: diagnosis });
         });
       }
-      const dayFlowTagSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-tags", "Session tags", "Pick the tag new work, focus, break, relax, nap, and bowel sessions should carry.");
-      const tagButtons = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row daily-dashboard-session-tag-picker" });
-      SESSION_TAG_OPTIONS.forEach((tag) => {
-        const button = tagButtons.createEl("button", {
-          cls: "daily-dashboard-session-tag-button",
-          text: tag
-        });
-        button.type = "button";
-        button.addClass(`is-${this.getSessionTagTone(tag)}`);
-        if (this.selectedSessionTag === tag) {
-          button.addClass("is-active");
-        }
-        button.addEventListener("click", () => {
-          this.setSelectedSessionTag(tag);
-          void this.render();
-        });
-      });
-      if (tagSummary.length > 0) {
-        const tagSummaryList = dayFlowTagSection.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item) => {
-          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
-        });
-      } else {
-        dayFlowTagSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No tagged sessions recorded yet today." });
-      }
       const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
-      const workProjectSelect = dayFlowActionsSection.createEl("select", { cls: "daily-dashboard-input" });
+      const sessionDefaults = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const workProjectSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
       const noProjectOption = workProjectSelect.createEl("option", { text: "No project" });
       noProjectOption.value = "";
       projects.forEach((project) => {
@@ -4501,6 +4528,21 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       workProjectSelect.addEventListener("change", () => {
         this.selectedSessionProjectName = workProjectSelect.value;
       });
+      const sessionTagSelect = sessionDefaults.createEl("select", { cls: "daily-dashboard-input" });
+      SESSION_TAG_OPTIONS.forEach((tag) => {
+        const option = sessionTagSelect.createEl("option", { text: tag });
+        option.value = tag;
+      });
+      sessionTagSelect.value = this.selectedSessionTag;
+      sessionTagSelect.addEventListener("change", () => {
+        this.setSelectedSessionTag(sessionTagSelect.value);
+      });
+      if (tagSummary.length > 0) {
+        const tagSummaryList = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-chip-row" });
+        tagSummary.forEach((item) => {
+          createSemanticChip(tagSummaryList, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
+        });
+      }
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work \u2022 ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag, this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
@@ -5203,7 +5245,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
       const intakeButtons = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(intakeButtons, "Add entry", async () => {
-        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
+        const resolvedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
+        await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), resolvedUnit, intakeNote.value);
         intakeLabel.value = "";
         intakeAmount.value = "1";
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
@@ -5211,7 +5254,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }, false, "plus-circle");
       createButton(intakeButtons, "Save preset", async () => {
         const trimmedLabel = intakeLabel.value.trim();
-        const trimmedUnit = intakeUnit.value.trim();
+        const trimmedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
         if (!trimmedLabel || !trimmedUnit) {
           return;
         }
@@ -5260,8 +5303,26 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const summaryList = foodCard.createDiv({ cls: "daily-dashboard-project-list" });
         consumableSummary.sort((left, right) => right.loggedAt.localeCompare(left.loggedAt)).forEach((item) => {
           const row = summaryList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item.kind} \u2022 ${item.label}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total \u2022 ${item.count} entr${item.count === 1 ? "y" : "ies"} \u2022 last ${item.loggedAt || "Time unknown"}` });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: `${item.kind} \u2022 ${item.label}` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total \u2022 ${item.count} entr${item.count === 1 ? "y" : "ies"} \u2022 last ${item.loggedAt || "Time unknown"}` });
+          const unitInput = row.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
+          });
+          unitInput.addEventListener("change", () => {
+            void this.plugin.updateIntakeGroupUnit(item.kind, item.label, item.unit, unitInput.value);
+          });
+          const addButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Add again" });
+          addButton.type = "button";
+          addButton.addEventListener("click", () => {
+            void this.plugin.addIntakeEntry(item.kind, item.label, item.amount, item.unit, item.note);
+          });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove latest" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeLatestMatchingIntakeEntry(item.kind, item.label, item.unit);
+          });
         });
       }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
@@ -5285,6 +5346,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
           amountInput.addEventListener("change", () => {
             void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
+          });
+          const unitInput = amountSlot.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", value: item.unit, ariaLabel: `Unit for ${item.label}` }
+          });
+          unitInput.addEventListener("change", () => {
+            void this.plugin.updateIntakeEntryUnit(index, unitInput.value);
           });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
@@ -8023,6 +8091,20 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
       textArea.inputEl.rows = 8;
       textArea.inputEl.cols = 36;
     });
+    new import_obsidian3.Setting(containerEl).setName("Habit automations").setDesc("One automation per line using Habit Name|Kind|Label|Amount|Unit|Optional Note. Each time the habit count increases, matching consumables are logged at that timestamp.").addTextArea((textArea) => {
+      const habitLabelById = new Map(settings.habitDefinitions.map((habit) => [habit.id, habit.label]));
+      textArea.setPlaceholder("Take pills|medication|Vyvanse|1|capsule\nTake pills|supplement|Vitamin D|1|softgel").setValue(settings.habitAutomations.map((automation) => {
+        var _a;
+        return `${(_a = habitLabelById.get(automation.habitId)) != null ? _a : automation.habitId}|${automation.intakeKind}|${automation.label}|${automation.amount}|${automation.unit}|${automation.note}`;
+      }).join("\n")).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          habitAutomations: parseHabitAutomations(value)
+        });
+      });
+      textArea.inputEl.rows = 6;
+      textArea.inputEl.cols = 36;
+    });
     new import_obsidian3.Setting(containerEl).setName("Routine templates").setDesc("One routine per line using Label|HH:MM|HH:MM. These appear in Day Flow when their time window is due or coming up.").addTextArea((textArea) => {
       textArea.setPlaceholder("Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30").setValue(settings.routineTemplates).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -8450,6 +8532,10 @@ function getDefaultIntakeUnit(kind, measurementSystem) {
     return "pill";
   }
   return "serving";
+}
+function resolveIntakeUnitValue(unit, kind, measurementSystem) {
+  const trimmedUnit = unit.trim();
+  return trimmedUnit.length > 0 ? trimmedUnit : getDefaultIntakeUnit(kind, measurementSystem);
 }
 function buildIntakeQuickPreset(input) {
   const label = input.label.trim();
@@ -10217,24 +10303,42 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.persistEntry(entry);
   }
   async updateHabitValue(habitId, value) {
-    var _a;
+    var _a, _b;
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
     if (!definition) {
       return;
     }
     const entry = this.getTodayEntry();
+    const previousValue = (_a = entry.habits[habitId]) != null ? _a : 0;
     const nextValue = clamp(value, 0, definition.target);
-    const currentEvents = [...(_a = entry.habitEvents[habitId]) != null ? _a : []];
+    const currentEvents = [...(_b = entry.habitEvents[habitId]) != null ? _b : []];
+    const addedTimestamps = [];
     if (nextValue > currentEvents.length) {
       for (let index = currentEvents.length; index < nextValue; index += 1) {
-        currentEvents.push(formatDateTimeKey(/* @__PURE__ */ new Date()));
+        const timestamp = formatDateTimeKey(/* @__PURE__ */ new Date());
+        currentEvents.push(timestamp);
+        addedTimestamps.push(timestamp);
       }
     } else if (nextValue < currentEvents.length) {
       currentEvents.length = nextValue;
     }
     entry.habitEvents[habitId] = currentEvents;
     entry.habits[habitId] = nextValue;
+    if (nextValue > previousValue && addedTimestamps.length > 0) {
+      const automations = this.getSettings().habitAutomations.filter((automation) => automation.habitId === habitId);
+      if (automations.length > 0) {
+        const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
+          kind: automation.intakeKind,
+          label: automation.label,
+          amount: automation.amount,
+          unit: automation.unit,
+          note: automation.note,
+          loggedAt: timestamp
+        })));
+        entry.intakeLog = [...automatedEntries.reverse(), ...entry.intakeLog].slice(0, 40);
+      }
+    }
     await this.persistEntry(entry);
   }
   async updateHabitMissNote(habitId, value) {
@@ -10330,6 +10434,43 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return;
     }
     nextEntry.amount = clamp(Number(amount), 0.1, 9999);
+    await this.persistEntry(entry);
+  }
+  async updateIntakeEntryUnit(index, unit) {
+    const entry = this.getTodayEntry();
+    const nextEntry = entry.intakeLog[index];
+    const trimmedUnit = unit.trim();
+    if (!nextEntry || !trimmedUnit) {
+      return;
+    }
+    nextEntry.unit = trimmedUnit;
+    await this.persistEntry(entry);
+  }
+  async updateIntakeGroupUnit(kind, label, unit, nextUnit) {
+    const trimmedUnit = unit.trim().toLowerCase();
+    const trimmedNextUnit = nextUnit.trim();
+    if (!trimmedNextUnit) {
+      return;
+    }
+    const entry = this.getTodayEntry();
+    let changed = false;
+    entry.intakeLog.forEach((item) => {
+      if (item.kind === kind && item.label.trim().toLowerCase() === label.trim().toLowerCase() && item.unit.trim().toLowerCase() === trimmedUnit) {
+        item.unit = trimmedNextUnit;
+        changed = true;
+      }
+    });
+    if (changed) {
+      await this.persistEntry(entry);
+    }
+  }
+  async removeLatestMatchingIntakeEntry(kind, label, unit) {
+    const entry = this.getTodayEntry();
+    const targetIndex = entry.intakeLog.findIndex((item) => item.kind === kind && item.label.trim().toLowerCase() === label.trim().toLowerCase() && item.unit.trim().toLowerCase() === unit.trim().toLowerCase());
+    if (targetIndex === -1) {
+      return;
+    }
+    entry.intakeLog.splice(targetIndex, 1);
     await this.persistEntry(entry);
   }
   async restoreIntakeEntry(item, index) {

@@ -1950,11 +1950,15 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
+    const previousValue = entry.habits[habitId] ?? 0;
     const nextValue = clamp(value, 0, definition.target);
     const currentEvents = [...(entry.habitEvents[habitId] ?? [])];
+    const addedTimestamps: string[] = [];
     if (nextValue > currentEvents.length) {
       for (let index = currentEvents.length; index < nextValue; index += 1) {
-        currentEvents.push(formatDateTimeKey(new Date()));
+        const timestamp = formatDateTimeKey(new Date());
+        currentEvents.push(timestamp);
+        addedTimestamps.push(timestamp);
       }
     } else if (nextValue < currentEvents.length) {
       currentEvents.length = nextValue;
@@ -1962,6 +1966,20 @@ export default class DailyDashboardPlugin extends Plugin {
 
     entry.habitEvents[habitId] = currentEvents;
     entry.habits[habitId] = nextValue;
+    if (nextValue > previousValue && addedTimestamps.length > 0) {
+      const automations = this.getSettings().habitAutomations.filter((automation) => automation.habitId === habitId);
+      if (automations.length > 0) {
+        const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
+          kind: automation.intakeKind,
+          label: automation.label,
+          amount: automation.amount,
+          unit: automation.unit,
+          note: automation.note,
+          loggedAt: timestamp
+        })));
+        entry.intakeLog = [...automatedEntries.reverse(), ...entry.intakeLog].slice(0, 40);
+      }
+    }
     await this.persistEntry(entry);
   }
 
@@ -2078,6 +2096,50 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     nextEntry.amount = clamp(Number(amount), 0.1, 9999);
+    await this.persistEntry(entry);
+  }
+
+  async updateIntakeEntryUnit(index: number, unit: string): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextEntry = entry.intakeLog[index];
+    const trimmedUnit = unit.trim();
+    if (!nextEntry || !trimmedUnit) {
+      return;
+    }
+
+    nextEntry.unit = trimmedUnit;
+    await this.persistEntry(entry);
+  }
+
+  async updateIntakeGroupUnit(kind: string, label: string, unit: string, nextUnit: string): Promise<void> {
+    const trimmedUnit = unit.trim().toLowerCase();
+    const trimmedNextUnit = nextUnit.trim();
+    if (!trimmedNextUnit) {
+      return;
+    }
+
+    const entry = this.getTodayEntry();
+    let changed = false;
+    entry.intakeLog.forEach((item) => {
+      if (item.kind === kind && item.label.trim().toLowerCase() === label.trim().toLowerCase() && item.unit.trim().toLowerCase() === trimmedUnit) {
+        item.unit = trimmedNextUnit;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await this.persistEntry(entry);
+    }
+  }
+
+  async removeLatestMatchingIntakeEntry(kind: string, label: string, unit: string): Promise<void> {
+    const entry = this.getTodayEntry();
+    const targetIndex = entry.intakeLog.findIndex((item) => item.kind === kind && item.label.trim().toLowerCase() === label.trim().toLowerCase() && item.unit.trim().toLowerCase() === unit.trim().toLowerCase());
+    if (targetIndex === -1) {
+      return;
+    }
+
+    entry.intakeLog.splice(targetIndex, 1);
     await this.persistEntry(entry);
   }
 

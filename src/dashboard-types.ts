@@ -182,6 +182,16 @@ export interface IntakeQuickPreset {
   unit: string;
 }
 
+export interface HabitAutomation {
+  id: string;
+  habitId: string;
+  intakeKind: IntakeKind;
+  label: string;
+  amount: number;
+  unit: string;
+  note: string;
+}
+
 export interface SymptomEntry {
   symptom: string;
   severity: number;
@@ -379,6 +389,7 @@ export interface DashboardSettings {
   calendarWarningHours: number;
   measurementSystem: MeasurementSystem;
   intakeQuickPresets: IntakeQuickPreset[];
+  habitAutomations: HabitAutomation[];
   showUndoNotifications: boolean;
   wallpaperFolder: string;
   selectedWallpaper: string;
@@ -877,6 +888,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
     { id: "water-8-oz", kind: "drink", label: "Water", amount: 8, unit: "oz" },
     { id: "coffee-1-cup", kind: "drink", label: "Coffee", amount: 1, unit: "cup" }
   ],
+  habitAutomations: [],
   showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
