@@ -19,6 +19,7 @@ import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrac
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
+  CORE_SESSION_TRACKER_OPTIONS,
   DEFAULT_SETTINGS,
   HABIT_CADENCE_OPTIONS,
   HABIT_WINDOW_OPTIONS,
@@ -63,6 +64,11 @@ import {
 } from "./dashboard-types";
 
 const DASHBOARD_ACTIVITY_TRACKER_ICON_MAP: Record<string, string> = {
+  work: "play",
+  nap: "bed-single",
+  relax: "coffee",
+  break: "pause",
+  poop: "bath",
   exercise: "dumbbell",
   reading: "book-open",
   gaming: "gamepad-2",
@@ -635,8 +641,24 @@ export class DailyDashboardView extends ItemView {
     return this.plugin.getVisibleSessionTrackers();
   }
 
+  private getActivitySessionTrackers(): SessionTrackerDefinition[] {
+    return this.plugin.getActivitySessionTrackers();
+  }
+
   private getSessionTrackerTone(trackerId: string): DashboardTone {
     const normalized = trackerId.trim().toLowerCase();
+    if (normalized === "work") {
+      return "capture";
+    }
+    if (normalized === "nap" || normalized === "relax") {
+      return "health";
+    }
+    if (normalized === "break") {
+      return "alert";
+    }
+    if (normalized === "poop" || normalized === "chores" || normalized === "commute") {
+      return "log";
+    }
     if (normalized === "exercise" || normalized === "hygiene") {
       return "health";
     }
@@ -991,7 +1013,7 @@ export class DailyDashboardView extends ItemView {
         tag: "Visual"
       });
       const weekBoardSegments = [
-        ...WEEK_AT_A_GLANCE_SEGMENTS.slice(0, -1),
+        WEEK_AT_A_GLANCE_SEGMENTS[0],
         ...visibleSessionTrackers.map((tracker) => ({ kind: tracker.id, label: tracker.label })),
         WEEK_AT_A_GLANCE_SEGMENTS[WEEK_AT_A_GLANCE_SEGMENTS.length - 1]
       ];
@@ -1140,7 +1162,8 @@ export class DailyDashboardView extends ItemView {
       const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
       createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
-      const sessionProjectSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-stack" });
+      const sessionProjectSummaryRow = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-project-summary" });
+      const sessionProjectSummary = sessionProjectSummaryRow.createDiv({ cls: "daily-dashboard-stack" });
       sessionProjectSummary.createEl("span", {
         cls: "daily-dashboard-row-meta",
         text: activeWorkSession
@@ -1158,6 +1181,15 @@ export class DailyDashboardView extends ItemView {
           sessionProjectSummary.createEl("span", { cls: "daily-dashboard-row-meta", text: `+${trackedWorkByProject.length - 4} more project buckets in today's log.` });
         }
       }
+      const customizeSessionDeckButton = sessionProjectSummaryRow.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-session-customize-button" });
+      customizeSessionDeckButton.type = "button";
+      customizeSessionDeckButton.ariaLabel = "Customize Session Deck";
+      customizeSessionDeckButton.title = "Customize Session Deck";
+      const customizeSessionDeckIcon = customizeSessionDeckButton.createSpan({ cls: "daily-dashboard-button-icon" });
+      setIcon(customizeSessionDeckIcon, "sliders-horizontal");
+      customizeSessionDeckButton.addEventListener("click", () => {
+        new SessionDeckCustomizationModal(this.app, this.plugin).open();
+      });
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
       const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>, accentColor?: string): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
@@ -1177,21 +1209,28 @@ export class DailyDashboardView extends ItemView {
           void onClick();
         });
       };
-      createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : "play", "capture", Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName));
-      createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "alarm-clock-off" : "bed-single", "alert", Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""));
-      createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
-      createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
-      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount}x • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
-      const customizeSessionDeckButton = sessionDeckActions.createEl("button", { cls: "daily-dashboard-icon-button" });
-      customizeSessionDeckButton.type = "button";
-      customizeSessionDeckButton.ariaLabel = "Customize Session Deck";
-      customizeSessionDeckButton.title = "Customize Session Deck";
-      const customizeSessionDeckIcon = customizeSessionDeckButton.createSpan({ cls: "daily-dashboard-button-icon" });
-      setIcon(customizeSessionDeckIcon, "sliders-horizontal");
-      customizeSessionDeckButton.addEventListener("click", () => {
-        new SessionDeckCustomizationModal(this.app, this.plugin).open();
-      });
       visibleSessionTrackers.forEach((tracker) => {
+        if (tracker.id === "work") {
+          createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName), tracker.color);
+          return;
+        }
+        if (tracker.id === "nap") {
+          createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""), tracker.color);
+          return;
+        }
+        if (tracker.id === "relax") {
+          createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""), tracker.color);
+          return;
+        }
+        if (tracker.id === "break") {
+          createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""), tracker.color);
+          return;
+        }
+        if (tracker.id === "poop") {
+          createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount}x • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""), tracker.color);
+          return;
+        }
+
         const activeTrackerSession = activeActivitySession?.kind === tracker.id ? activeActivitySession : null;
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.id))} today`, activeTrackerSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.id) : this.plugin.startActivitySession(tracker.id), tracker.color);
       });
@@ -1880,7 +1919,7 @@ export class DailyDashboardView extends ItemView {
           );
         });
         if (habitMissExpanded) {
-          const missNoteWrap = copy.createDiv({ cls: "daily-dashboard-habit-miss-note" });
+          const missNoteWrap = row.createDiv({ cls: "daily-dashboard-habit-miss-note" });
           missNoteWrap.createEl("span", { cls: "daily-dashboard-row-meta", text: "Why was this missed? Keep it short so repeated patterns stay easy to scan later." });
           const missNote = missNoteWrap.createEl("input", {
             cls: "daily-dashboard-input",
@@ -3053,14 +3092,7 @@ export class DailyDashboardView extends ItemView {
     const endBoundary = new Date(`${date}T23:59:00`);
     const totalSpan = endBoundary.getTime() - startBoundary.getTime();
     const legend = parent.createDiv({ cls: "daily-dashboard-chip-row" });
-    [
-      { kind: "work", label: "Work", tone: "capture" },
-      { kind: "nap", label: "Nap", tone: "health" },
-      { kind: "relax", label: "Relax", tone: "health" },
-      { kind: "break", label: "Break", tone: "alert" },
-      { kind: "poop", label: "Poop", tone: "log" },
-      ...this.getVisibleSessionTrackers().map((tracker) => ({ kind: tracker.id, label: tracker.label, tone: this.getSessionTrackerTone(tracker.id) }))
-    ].forEach((item) => {
+      this.getVisibleSessionTrackers().map((tracker) => ({ kind: tracker.id, label: tracker.label, tone: this.getSessionTrackerTone(tracker.id) })).forEach((item) => {
       if (parsedSessions.some((session) => session.kind === item.kind)) {
         createSemanticChip(legend, item.label, item.tone as DashboardTone);
       }
@@ -3122,7 +3154,7 @@ export class DailyDashboardView extends ItemView {
         this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
         this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
         this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
-        this.getSessionTrackers().forEach((tracker) => {
+        this.getActivitySessionTrackers().forEach((tracker) => {
           this.pushTimelineSessionResults(results, entry.date, tracker.id, entry.activitySessions.filter((session) => session.kind === tracker.id));
         });
 
@@ -3506,7 +3538,7 @@ export class DailyDashboardView extends ItemView {
         poop: entry ? this.plugin.getTrackedPoopMinutes(entry) : 0,
         unknown: entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes)
       };
-      this.getSessionTrackers().forEach((tracker) => {
+      this.getActivitySessionTrackers().forEach((tracker) => {
         minutesByKind[tracker.id] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.id) : 0;
       });
 
@@ -4255,7 +4287,7 @@ export class SessionDeckCustomizationModal extends Modal {
         tracker.visible = !tracker.visible;
         this.renderContent();
       }, false, tracker.visible ? "eye-off" : "eye");
-      const canDelete = !ACTIVITY_SESSION_KIND_OPTIONS.includes(tracker.id as (typeof ACTIVITY_SESSION_KIND_OPTIONS)[number]);
+      const canDelete = !DEFAULT_SETTINGS.sessionTrackers.some((defaultTracker) => defaultTracker.id === tracker.id);
       if (canDelete) {
         createButton(controls, "Delete", async () => {
           this.trackers = this.trackers.filter((candidate) => candidate.id !== tracker.id);

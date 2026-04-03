@@ -10,6 +10,7 @@ export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands",
 export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
 export const HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"] as const;
 export const INTAKE_KIND_OPTIONS = ["drink", "food", "medication", "supplement"] as const;
+export const CORE_SESSION_TRACKER_OPTIONS = ["work", "nap", "relax", "break", "poop"] as const;
 export const ACTIVITY_SESSION_KIND_OPTIONS = ["exercise", "reading", "gaming", "hygiene", "cooking", "errand", "commute", "social", "chores", "hobbies"] as const;
 export const EXERCISE_INTENSITY_OPTIONS = ["easy", "moderate", "hard"] as const;
 
@@ -66,6 +67,24 @@ export interface SessionTrackerDefinition {
   color: string;
   visible: boolean;
 }
+
+export const DEFAULT_SESSION_TRACKERS: SessionTrackerDefinition[] = [
+  { id: "work", label: "Work", color: "#5f95d6", visible: true },
+  { id: "nap", label: "Nap", color: "#8b7dd6", visible: true },
+  { id: "relax", label: "Relax", color: "#3fae95", visible: true },
+  { id: "break", label: "Break", color: "#d5a24d", visible: true },
+  { id: "poop", label: "Poop", color: "#8d6b4c", visible: true },
+  { id: "exercise", label: "Exercise", color: "#d84f60", visible: true },
+  { id: "reading", label: "Reading", color: "#e55d93", visible: true },
+  { id: "gaming", label: "Gaming", color: "#d9d0c2", visible: true },
+  { id: "hobbies", label: "Hobbies", color: "#353c41", visible: true },
+  { id: "hygiene", label: "Hygiene", color: "#39c99c", visible: true },
+  { id: "cooking", label: "Cooking", color: "#e2703d", visible: true },
+  { id: "errand", label: "Errand", color: "#b39233", visible: true },
+  { id: "commute", label: "Commute", color: "#6e829d", visible: true },
+  { id: "social", label: "Social", color: "#5f1814", visible: true },
+  { id: "chores", label: "Chores", color: "#6fb149", visible: true }
+];
 
 export interface ExerciseEntry {
   label: string;
@@ -1022,16 +1041,5 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
     { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", cadence: "daily", anchorDate: "", difficultyWeight: 2 }
   ],
   routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30",
-  sessionTrackers: [
-    { id: "exercise", label: "Exercise", color: "#d84f60", visible: true },
-    { id: "reading", label: "Reading", color: "#e55d93", visible: true },
-    { id: "gaming", label: "Gaming", color: "#d9d0c2", visible: true },
-    { id: "hobbies", label: "Hobbies", color: "#353c41", visible: true },
-    { id: "hygiene", label: "Hygiene", color: "#39c99c", visible: true },
-    { id: "cooking", label: "Cooking", color: "#e2703d", visible: true },
-    { id: "errand", label: "Errand", color: "#b39233", visible: true },
-    { id: "commute", label: "Commute", color: "#6e829d", visible: true },
-    { id: "social", label: "Social", color: "#5f1814", visible: true },
-    { id: "chores", label: "Chores", color: "#6fb149", visible: true }
-  ]
+  sessionTrackers: DEFAULT_SESSION_TRACKERS.map((tracker) => ({ ...tracker }))
 };

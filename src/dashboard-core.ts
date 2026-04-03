@@ -4,6 +4,7 @@ import {
   ACTIVITY_SESSION_KIND_OPTIONS,
   DEFAULT_SETTINGS,
   EXERCISE_INTENSITY_OPTIONS,
+  DEFAULT_SESSION_TRACKERS,
   type AiRelevantNote,
   type AiStructuredPayload,
   type ActivitySession,
@@ -70,7 +71,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     ? settings.sessionTrackers
         .map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index))
         .filter((tracker): tracker is SessionTrackerDefinition => tracker !== null)
-    : DEFAULT_SETTINGS.sessionTrackers;
+    : [];
+  const mergedSessionTrackers = mergeSessionTrackerDefinitions(sessionTrackers, DEFAULT_SESSION_TRACKERS);
   const notificationSound = settings.notificationSound === "off"
     || settings.notificationSound === "ping"
     || settings.notificationSound === "alert"
@@ -135,8 +137,20 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
-    sessionTrackers: sessionTrackers.length > 0 ? sessionTrackers : DEFAULT_SETTINGS.sessionTrackers
+    sessionTrackers: mergedSessionTrackers
   };
+}
+
+function mergeSessionTrackerDefinitions(trackers: SessionTrackerDefinition[], defaults: SessionTrackerDefinition[]): SessionTrackerDefinition[] {
+  const normalizedDefaults = defaults.map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index)).filter((tracker): tracker is SessionTrackerDefinition => tracker !== null);
+  const byId = new Map(trackers.map((tracker) => [tracker.id, tracker]));
+  const merged = normalizedDefaults.map((tracker) => byId.get(tracker.id) ?? tracker);
+  trackers.forEach((tracker) => {
+    if (!normalizedDefaults.some((defaultTracker) => defaultTracker.id === tracker.id)) {
+      merged.push(tracker);
+    }
+  });
+  return merged;
 }
 
 function normalizeSessionTrackerDefinition(input: unknown, index: number): SessionTrackerDefinition | null {

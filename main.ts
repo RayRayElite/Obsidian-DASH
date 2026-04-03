@@ -109,6 +109,8 @@ import {
   PromoteTaskModal
 } from "./src/dashboard-ui";
 import {
+  ACTIVITY_SESSION_KIND_OPTIONS,
+  CORE_SESSION_TRACKER_OPTIONS,
   DEFAULT_SETTINGS,
   IMAGE_EXTENSIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
@@ -997,6 +999,14 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getVisibleSessionTrackers(): SessionTrackerDefinition[] {
     return this.getSessionTrackers().filter((tracker) => tracker.visible);
+  }
+
+  getActivitySessionTrackers(): SessionTrackerDefinition[] {
+    return this.getSessionTrackers().filter((tracker) => !CORE_SESSION_TRACKER_OPTIONS.includes(tracker.id as typeof CORE_SESSION_TRACKER_OPTIONS[number]));
+  }
+
+  getVisibleActivitySessionTrackers(): SessionTrackerDefinition[] {
+    return this.getVisibleSessionTrackers().filter((tracker) => !CORE_SESSION_TRACKER_OPTIONS.includes(tracker.id as typeof CORE_SESSION_TRACKER_OPTIONS[number]));
   }
 
   getSessionTracker(id: string): SessionTrackerDefinition | null {
