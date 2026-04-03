@@ -29,6 +29,8 @@ The stronger recommended document structure now lives in `Documentation/Document
 
 The command palette now also includes `Refresh master task hub portfolio snapshot`, which writes or updates a compact `## Portfolio Snapshot` section near the top of the hub with portfolio pressure, external blockers, and momentum highlights. Plugin-driven hub changes such as project creation, archive sweeps, repeating-task sync, and reference offload also refresh that section automatically.
 
+If older hub projects or project notes predate the newer metadata and section structure, run `Repair master task hub and project notes`. That workflow only adds missing metadata lines, missing sections, missing project notes, and a refreshed portfolio snapshot; it does not delete or rewrite existing hub content.
+
 1. keep active work as unchecked checklist items in non-reference sections
 2. mark a task complete with `- [x]`
 3. the plugin automatically moves it into that project's `Completed Archive` section and records it in that day's dashboard log
@@ -42,6 +44,8 @@ The `### Repeating` section now supports richer repeat rules instead of only sim
 Project health now surfaces a visible next action for every project, explains the reasons behind each health score, renders compact momentum bars from recent completion history, and respects `Status:: Incubating` or `Status:: Someday` so parked work does not look artificially broken just because it is not active right now.
 
 The cleanup workflow now expands into project-level drill-down rows for stale, duplicate, empty-section, blocked, overdue, and needs-breakdown issues, and the cleanup note command writes a grouped portfolio review note instead of a flat alert dump. Project review mode also now supports a structured checklist note that opens beside the master hub and project note so weekly or ad hoc reviews can happen in a consistent three-pane setup, and weekly review generation now also writes one archive review note per active project under the matching review-cycle folder.
+
+The command palette now also includes `Generate dependency review note`, which writes a focused review artifact under `Dashboard Logs/Dependency Reviews` using `Waiting On::` metadata and blocked-task pressure so outside blockers can be reviewed from one place instead of staying scattered across projects.
 
 ## Document Design
 

@@ -61,6 +61,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add duplicate / stale / empty project cleanup suggestions.
 - [x] Add structured project review checklist mode.
 - [x] Add lightweight task annotations for effort, energy, context, trigger, and minimum-step support.
+- [x] Add a non-destructive repair flow for older master hub and project note structures.
 
 ## Habits, Health, And Personal Data
 
@@ -103,6 +104,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add saved dashboard filters.
 - [x] Add heatmaps for work, sleep, and habits.
 - [x] Add blocker-pattern reporting from friction logs.
+- [x] Add a generated dependency review note for outside blockers and Waiting On pressure.
 - [x] Add accomplishment reports grouped by project and period.
 - [x] Add richer month-end narrative reports.
 - [x] Add missed-habit pattern reports.

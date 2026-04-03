@@ -84,6 +84,8 @@ import {
   isRepeatingTaskDue,
   offloadReferencesFromMasterHub,
   parseTodoSnapshot,
+  repairMasterHubStructure,
+  repairProjectNoteStructure,
   reconcileCompletedTasks,
   renderExistingProjectNoteTemplate,
   renderProjectNoteTemplate,
@@ -438,10 +440,26 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "repair-master-hub-and-project-notes",
+      name: "Repair master task hub and project notes",
+      callback: () => {
+        void this.repairMasterHubAndProjectNotes(true);
+      }
+    });
+
+    this.addCommand({
       id: "generate-weekly-review-note",
       name: "Generate weekly review note",
       callback: () => {
         void this.generateWeeklyReview();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-dependency-review-note",
+      name: "Generate dependency review note",
+      callback: () => {
+        void this.generateDependencyReviewNote(true);
       }
     });
 
@@ -3648,6 +3666,70 @@ export default class DailyDashboardPlugin extends Plugin {
     }
   }
 
+  async repairMasterHubAndProjectNotes(showNotice: boolean): Promise<void> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (showNotice) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return;
+    }
+
+    const originalHubContent = await this.app.vault.read(todoFile);
+    const repairedHub = repairMasterHubStructure(originalHubContent, {
+      masterTodoPath: this.data.settings.masterTodoPath,
+      projectNotesFolder: this.data.settings.projectNotesFolder
+    });
+
+    let activeHubContent = originalHubContent;
+    if (repairedHub.content !== originalHubContent) {
+      await this.app.vault.modify(todoFile, repairedHub.content);
+      activeHubContent = repairedHub.content;
+    }
+
+    await this.createMissingProjectNotesFromTodo(false);
+
+    const snapshot = parseTodoSnapshot(activeHubContent);
+    let repairedNotes = 0;
+    let noteMetadataAdded = 0;
+    let noteSectionsAdded = 0;
+
+    for (const project of snapshot.projects) {
+      const notePath = this.getProjectNotePath(project.name, project.noteLinks);
+      const target = this.app.vault.getAbstractFileByPath(normalizePath(notePath));
+      if (!(target instanceof TFile)) {
+        continue;
+      }
+
+      const noteContent = await this.app.vault.read(target);
+      const repairedNote = repairProjectNoteStructure(noteContent, {
+        projectName: project.name,
+        masterTodoPath: this.data.settings.masterTodoPath,
+        notePath: target.path
+      });
+      if (repairedNote.content === noteContent) {
+        continue;
+      }
+
+      await this.app.vault.modify(target, repairedNote.content);
+      repairedNotes += 1;
+      noteMetadataAdded += repairedNote.addedMetadata;
+      noteSectionsAdded += repairedNote.addedSections;
+    }
+
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    this.refreshDashboardViews();
+
+    if (showNotice) {
+      const changedHubProjects = repairedHub.updatedProjects;
+      if (changedHubProjects === 0 && repairedNotes === 0) {
+        new Notice("Master task hub and project notes already match the current structure.");
+      } else {
+        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"} and ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
+      }
+    }
+  }
+
   async addTodayFocusItem(value: string): Promise<void> {
     await this.addTodayFocusItemWithDetails({ text: value });
   }
@@ -3989,6 +4071,58 @@ export default class DailyDashboardPlugin extends Plugin {
     if (openAfterGenerate) {
       await this.openFile(file);
       new Notice("Recurring friction patterns note generated.");
+    }
+    return file;
+  }
+
+  async generateDependencyReviewNote(openAfterGenerate: boolean): Promise<TFile | null> {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (openAfterGenerate) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+
+    const activeWaitingProjects = snapshot.projects
+      .filter((project) => project.projectState === "active" && project.waitingOn.trim().length > 0 && project.waitingOn.trim().toLowerCase() !== "none");
+    const blockedWithOwners = snapshot.blockedTasks.filter(({ task }) => task.blockedReason.trim().length > 0);
+    const content = [
+      `# Dependency Review - ${formatDateKey(new Date())}`,
+      "",
+      `- Generated: ${formatDateTimeKey(new Date())}`,
+      `- Projects with Waiting On:: ${activeWaitingProjects.length}`,
+      `- Blocked tasks: ${snapshot.blockedTasks.length}`,
+      `- People / External Dependencies note: [[${stripMarkdownExtension(this.data.settings.peopleDependenciesNotePath)}|People and External Dependencies]]`,
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      "",
+      "## Projects Waiting On",
+      ...(activeWaitingProjects.length > 0
+        ? activeWaitingProjects.map((project) => `- ${project.name}: ${project.waitingOn}${project.nextAction ? ` | Next action: ${project.nextAction}` : ""}`)
+        : ["- No active projects currently list Waiting On::." ]),
+      "",
+      "## Blocked Task Pressure",
+      ...(blockedWithOwners.length > 0
+        ? blockedWithOwners.slice(0, 12).map(({ project, task }) => `- ${project}: ${[task.text, task.blockedReason ? `blocked ${task.blockedReason}` : "", task.unblockDate ? `unblock ${task.unblockDate}` : "", task.minimumStep ? `minimum step ${task.minimumStep}` : ""].filter((value) => value.length > 0).join(" • ")}`)
+        : ["- No blocked tasks currently include a blocker reason."]),
+      "",
+      "## Follow-Up Checklist",
+      "- [ ] Update the People / External Dependencies note with any blocker that affects more than one project.",
+      "- [ ] Add a concrete next follow-up date or owner where Waiting On:: is still vague.",
+      "- [ ] Decide whether any blocked task needs escalation, fallback, or scope reduction.",
+      "- [ ] Remove or rewrite stale Waiting On:: lines that no longer reflect reality.",
+      "",
+      "## Review Questions",
+      "- Which outside dependency is slowing more than one project right now?",
+      "- Which blocker is actually unclear ownership rather than lack of effort?",
+      "- Which dependency should be parked in the dedicated support note instead of staying scattered across project notes?",
+      ""
+    ].join("\n");
+
+    const file = await this.upsertMarkdownFile(`Dashboard Logs/Dependency Reviews/${formatDateKey(new Date())}.md`, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice("Dependency review note generated.");
     }
     return file;
   }
@@ -6967,6 +7101,9 @@ export default class DailyDashboardPlugin extends Plugin {
     if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
       return "project-review";
     }
+    if (normalizedPath.startsWith("dashboard logs/dependency reviews/")) {
+      return "dependency-review";
+    }
     if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
       return "cleanup-note";
     }
@@ -7018,6 +7155,8 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/weekly-review");
     } else if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
       autoTags.push("daily-dashboard/project-review");
+    } else if (normalizedPath.startsWith("dashboard logs/dependency reviews/")) {
+      autoTags.push("daily-dashboard/dependency-review");
     } else if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
       autoTags.push("daily-dashboard/cleanup");
     }

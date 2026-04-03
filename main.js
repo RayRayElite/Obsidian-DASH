@@ -160,18 +160,18 @@ function sanitizeSettings(settings) {
   return {
     dashboardTitle: ((_e = settings.dashboardTitle) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.dashboardTitle,
     masterTodoPath: ((_f = settings.masterTodoPath) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.masterTodoPath,
-    projectNotesFolder: normalizeFolderPath(((_g = settings.projectNotesFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
+    projectNotesFolder: normalizeFolderPath2(((_g = settings.projectNotesFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
     dailyLogFolder: ((_h = settings.dailyLogFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
     weeklyReportFolder: ((_i = settings.weeklyReportFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
     monthlyReportFolder: ((_j = settings.monthlyReportFolder) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
-    exportFolder: normalizeFolderPath(((_k = settings.exportFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.exportFolder),
+    exportFolder: normalizeFolderPath2(((_k = settings.exportFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.exportFolder),
     generatedDocumentTags: typeof settings.generatedDocumentTags === "string" ? settings.generatedDocumentTags : DEFAULT_SETTINGS.generatedDocumentTags,
     aiApiKey: ((_l = settings.aiApiKey) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
     aiApiKeyEnvVar: ((_m = settings.aiApiKeyEnvVar) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
     aiModel: ((_n = settings.aiModel) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: ((_o = settings.aiBaseUrl) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    aiOutputFolder: normalizeFolderPath(((_p = settings.aiOutputFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    aiOutputFolder: normalizeFolderPath2(((_p = settings.aiOutputFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     basicInfoNotePath: ((_q = settings.basicInfoNotePath) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
     includeBasicInfoInAi: (_r = settings.includeBasicInfoInAi) != null ? _r : DEFAULT_SETTINGS.includeBasicInfoInAi,
     aiGuardrailsNotePath: ((_s = settings.aiGuardrailsNotePath) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
@@ -203,13 +203,13 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath(((_J = settings.wallpaperFolder) == null ? void 0 : _J.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    wallpaperFolder: normalizeFolderPath2(((_J = settings.wallpaperFolder) == null ? void 0 : _J.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_K = settings.selectedWallpaper) == null ? void 0 : _K.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
 }
-function normalizeFolderPath(value) {
+function normalizeFolderPath2(value) {
   const normalized = (0, import_obsidian.normalizePath)(value.trim());
   return normalized.replace(/\/+$/g, "");
 }
@@ -255,7 +255,7 @@ function normalizeNoteIndexCache(cache) {
   };
 }
 function getIndexedFolderList(settings) {
-  return settings.aiIndexedFolders.split(/\r?\n/).map((item) => normalizeFolderPath(item)).filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+  return settings.aiIndexedFolders.split(/\r?\n/).map((item) => normalizeFolderPath2(item)).filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
 }
 function shouldRebuildAiIndex(previous, next) {
   return previous.aiIndexEnabled !== next.aiIndexEnabled || previous.aiIndexedFolders !== next.aiIndexedFolders || previous.aiChunkCharLimit !== next.aiChunkCharLimit || previous.aiEmbeddingsEnabled !== next.aiEmbeddingsEnabled || previous.aiEmbeddingModel !== next.aiEmbeddingModel || previous.masterTodoPath !== next.masterTodoPath;
@@ -364,7 +364,7 @@ function getRelevantIndexedNotes(noteIndex, terms, queryEmbedding, settings, act
 function scoreIndexedEntry(entry, terms, settings, activeFilePath, includeActiveNote) {
   let score = 0;
   const path = entry.path.toLowerCase();
-  const projectNotesFolder = normalizeFolderPath(settings.projectNotesFolder).toLowerCase();
+  const projectNotesFolder = normalizeFolderPath2(settings.projectNotesFolder).toLowerCase();
   if (includeActiveNote && entry.path === (0, import_obsidian.normalizePath)(activeFilePath)) {
     score += 80;
   }
@@ -895,10 +895,10 @@ function buildAiSearchTerms(question, todayEntry, snapshot) {
 function shouldExcludeAiContextFile(path, settings) {
   const normalizedPath = (0, import_obsidian.normalizePath)(path);
   const excludedPrefixes = [
-    normalizeFolderPath(settings.aiOutputFolder),
-    normalizeFolderPath(settings.dailyLogFolder),
-    normalizeFolderPath(settings.weeklyReportFolder),
-    normalizeFolderPath(settings.monthlyReportFolder)
+    normalizeFolderPath2(settings.aiOutputFolder),
+    normalizeFolderPath2(settings.dailyLogFolder),
+    normalizeFolderPath2(settings.weeklyReportFolder),
+    normalizeFolderPath2(settings.monthlyReportFolder)
   ].filter((prefix) => prefix.length > 0);
   const excludedFiles = [
     (0, import_obsidian.normalizePath)(settings.basicInfoNotePath),
@@ -916,7 +916,7 @@ function deriveAiNoteReason(path, settings, activeFilePath, includeActiveNote, t
   if (normalizedPath === (0, import_obsidian.normalizePath)(settings.masterTodoPath)) {
     return "Master task hub";
   }
-  if (normalizedPath.startsWith(`${normalizeFolderPath(settings.projectNotesFolder)}/`)) {
+  if (normalizedPath.startsWith(`${normalizeFolderPath2(settings.projectNotesFolder)}/`)) {
     return "Project note matched current context";
   }
   const matchedTerms = terms.filter((term) => normalizedPath.toLowerCase().includes(term)).slice(0, 3);
@@ -3445,6 +3445,93 @@ function extractFirstNoteLinkPath(value) {
   const match = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/.exec(value);
   return match ? match[1] : null;
 }
+function repairMasterHubStructure(content, input) {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0 };
+  }
+  const output = [...lines];
+  let updatedProjects = 0;
+  let addedMetadata = 0;
+  let addedSections = 0;
+  [...projectRanges].reverse().forEach((project) => {
+    const result = repairMasterHubProjectLines(output.slice(project.start, project.end + 1), {
+      masterTodoPath: input.masterTodoPath,
+      projectNotesFolder: input.projectNotesFolder
+    });
+    if (result.content !== output.slice(project.start, project.end + 1).join("\n")) {
+      output.splice(project.start, project.end - project.start + 1, ...result.content.split("\n"));
+      updatedProjects += 1;
+      addedMetadata += result.addedMetadata;
+      addedSections += result.addedSections;
+    }
+  });
+  return {
+    content: output.join("\n"),
+    updatedProjects,
+    addedMetadata,
+    addedSections
+  };
+}
+function repairProjectNoteStructure(content, input) {
+  const originalLines = content.split(/\r?\n/);
+  const lines = [...originalLines];
+  let addedMetadata = 0;
+  let addedSections = 0;
+  if (!lines.some((line) => /^#\s+/.test(line.trim()))) {
+    lines.unshift(`# ${input.projectName}`, "");
+  }
+  const titleIndex = lines.findIndex((line) => /^#\s+/.test(line.trim()));
+  const metadataKeys = new Set(lines.map((line) => {
+    var _a;
+    return (_a = parseProjectMeta(line)) == null ? void 0 : _a.key;
+  }).filter((key) => Boolean(key)));
+  const metadataInsertIndex = getProjectNoteMetadataInsertIndex(lines, titleIndex);
+  const noteLink = createWikiLink(input.notePath, input.projectName);
+  const missingMetaLines = [
+    !metadataKeys.has("status") ? "Status:: Planning" : "",
+    !metadataKeys.has("focus") ? "Focus:: Define the current focus for this project." : "",
+    !metadataKeys.has("project summary") ? `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.` : "",
+    !metadataKeys.has("why it matters") ? "Why It Matters:: Define why this project deserves attention right now." : "",
+    !metadataKeys.has("definition of done") ? "Definition Of Done:: Describe what meaningful progress or completion looks like." : "",
+    !metadataKeys.has("last review") ? `Last Review:: ${formatDateKey(/* @__PURE__ */ new Date())}` : "",
+    !metadataKeys.has("waiting on") ? "Waiting On:: None" : "",
+    !metadataKeys.has("relationships") ? `Relationships:: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]], ${noteLink}` : ""
+  ].filter((line) => line.length > 0);
+  if (missingMetaLines.length > 0) {
+    lines.splice(metadataInsertIndex, 0, ...missingMetaLines);
+    addedMetadata += missingMetaLines.length;
+  }
+  const existingSections = new Set(lines.map((line) => getMarkdownHeadingName(line)).filter((heading) => Boolean(heading)).map((heading) => heading.toLowerCase()));
+  const sectionsToAdd = [
+    { heading: "Current Bottleneck", body: ["- Capture the main constraint, ambiguity, or drag factor here."] },
+    { heading: "Current Focus", body: ["- Add the current objective here."] },
+    { heading: "Repeating Tasks", body: ["- [ ] Weekly review [weekly]"] },
+    { heading: "Priority Lanes", body: ["### Now", "- [ ]", "", "### Next", "- [ ]", "", "### Later", "- [ ]", "", "### Parking Lot", "- Idea:"] },
+    { heading: "Risks", body: ["- Capture the major failure modes, drift risks, or watch-outs here."] },
+    { heading: "Constraints", body: ["- Capture time, energy, dependency, or scope constraints here."] },
+    { heading: "Relationships", body: ["- Related projects, dependencies, and blockers."] },
+    { heading: "Review History", body: [`- ${formatDateKey(/* @__PURE__ */ new Date())}: Added by the DASH structure repair workflow.`] },
+    { heading: "Decisions", body: ["- Capture important decisions and tradeoffs here."] },
+    { heading: "Change Log", body: [`- ${formatDateKey(/* @__PURE__ */ new Date())}: Added by the DASH structure repair workflow.`] },
+    { heading: "Known Terms / Definitions", body: ["- Capture domain-specific language, abbreviations, or naming rules here."] },
+    { heading: "References", body: ["- Add links, assets, commands, or supporting notes here."] },
+    { heading: "Useful Links / Assets", body: ["- Add durable repo links, docs, screenshots, files, or commands here."] }
+  ];
+  sectionsToAdd.forEach((section) => {
+    if (existingSections.has(section.heading.toLowerCase())) {
+      return;
+    }
+    appendMarkdownSection(lines, `## ${section.heading}`, section.body);
+    addedSections += 1;
+  });
+  return {
+    content: lines.join("\n"),
+    addedMetadata,
+    addedSections
+  };
+}
 function insertTaskIntoProjectSection(content, projectName, sectionName, taskText) {
   var _a;
   const lines = content.split(/\r?\n/);
@@ -3500,6 +3587,108 @@ function insertTaskIntoProjectSection(content, projectName, sectionName, taskTex
   }
   output.splice(insertIndex, 0, "", `### ${normalizedSection}`, taskLine);
   return output.join("\n");
+}
+function repairMasterHubProjectLines(projectLines, input) {
+  var _a, _b, _c, _d, _e;
+  const lines = [...projectLines];
+  const headingLine = (_b = (_a = lines[0]) == null ? void 0 : _a.trim()) != null ? _b : "";
+  const projectName = headingLine.replace(/^##\s+/, "").trim();
+  const metadataKeys = new Set(lines.map((line) => {
+    var _a2;
+    return (_a2 = parseProjectMeta(line)) == null ? void 0 : _a2.key;
+  }).filter((key) => Boolean(key)));
+  const projectNoteMeta = (_d = (_c = lines.map((line) => parseProjectMeta(line)).find((meta) => (meta == null ? void 0 : meta.key) === "project note")) == null ? void 0 : _c.value) != null ? _d : "";
+  const notePath = (_e = extractFirstNoteLinkPath(projectNoteMeta)) != null ? _e : buildDefaultProjectNotePath(projectName, input.projectNotesFolder);
+  const metadataInsertIndex = getProjectBlockMetadataInsertIndex(lines);
+  const missingMetaLines = [
+    !metadataKeys.has("project note") ? `Project Note:: ${createWikiLink(notePath, projectName)}` : "",
+    !metadataKeys.has("project summary") ? `Project Summary:: ${projectName} is an active project inside Obsidian DASH.` : "",
+    !metadataKeys.has("why it matters") ? "Why It Matters:: Define why this project deserves attention right now." : "",
+    !metadataKeys.has("definition of done") ? "Definition Of Done:: Describe what meaningful progress or completion looks like." : "",
+    !metadataKeys.has("last review") ? `Last Review:: ${formatDateKey(/* @__PURE__ */ new Date())}` : "",
+    !metadataKeys.has("waiting on") ? "Waiting On:: None" : "",
+    !metadataKeys.has("relationships") ? `Relationships:: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]], ${createWikiLink(notePath, projectName)}` : ""
+  ].filter((line) => line.length > 0);
+  if (missingMetaLines.length > 0) {
+    lines.splice(metadataInsertIndex, 0, ...missingMetaLines);
+  }
+  const existingSections = new Set(lines.map((line) => getSectionName(line)).filter((heading) => Boolean(heading)).map((heading) => heading.toLowerCase()));
+  const sectionsToAdd = [
+    { heading: "Parking Lot", body: ["- Idea:"] },
+    { heading: "Risks", body: ["- Capture risks, drift patterns, and failure modes here."] },
+    { heading: "Constraints", body: ["- Capture hard limits, dependencies, or health constraints here."] },
+    { heading: "Decisions", body: ["- Capture important decisions and tradeoffs here."] },
+    { heading: "Assets", body: ["- Add durable links, files, commands, or supporting assets here."] },
+    { heading: "Reference", body: ["- Add durable support material here."] },
+    { heading: "Completed Archive", body: [] }
+  ];
+  let addedSections = 0;
+  sectionsToAdd.forEach((section) => {
+    if (existingSections.has(section.heading.toLowerCase())) {
+      return;
+    }
+    appendHubSection(lines, section.heading, section.body);
+    addedSections += 1;
+  });
+  return {
+    content: lines.join("\n"),
+    addedMetadata: missingMetaLines.length,
+    addedSections
+  };
+}
+function getProjectBlockMetadataInsertIndex(lines) {
+  let index = 1;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === "" || parseProjectMeta(line)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+function getProjectNoteMetadataInsertIndex(lines, titleIndex) {
+  let index = Math.max(titleIndex + 1, 1);
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === "" || parseProjectMeta(line)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+function appendHubSection(lines, heading, body) {
+  const completedArchiveIndex = lines.findIndex((line) => {
+    var _a;
+    return ((_a = getSectionName(line)) == null ? void 0 : _a.toLowerCase()) === "completed archive";
+  });
+  const insertIndex = completedArchiveIndex >= 0 && heading.toLowerCase() !== "completed archive" ? completedArchiveIndex : lines.length;
+  const block = ["", `### ${heading}`, ...body];
+  if (heading.toLowerCase() !== "completed archive") {
+    block.push("");
+  }
+  lines.splice(insertIndex, 0, ...block);
+}
+function appendMarkdownSection(lines, heading, body) {
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+    lines.pop();
+  }
+  lines.push("", heading, ...body, "");
+}
+function getMarkdownHeadingName(line) {
+  const trimmed = line.trim();
+  if (!/^##+\s+/.test(trimmed)) {
+    return null;
+  }
+  return trimmed.replace(/^##+\s+/, "").trim();
+}
+function buildDefaultProjectNotePath(projectName, projectNotesFolder) {
+  const noteFolder = normalizeFolderPath(projectNotesFolder);
+  const safeProjectName = sanitizeFileName(projectName);
+  return noteFolder ? `${noteFolder}/${safeProjectName}.md` : `${safeProjectName}.md`;
 }
 function extractRepeatingTasks(noteContent) {
   const lines = noteContent.split(/\r?\n/);
@@ -9837,10 +10026,24 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "repair-master-hub-and-project-notes",
+      name: "Repair master task hub and project notes",
+      callback: () => {
+        void this.repairMasterHubAndProjectNotes(true);
+      }
+    });
+    this.addCommand({
       id: "generate-weekly-review-note",
       name: "Generate weekly review note",
       callback: () => {
         void this.generateWeeklyReview();
+      }
+    });
+    this.addCommand({
+      id: "generate-dependency-review-note",
+      name: "Generate dependency review note",
+      callback: () => {
+        void this.generateDependencyReviewNote(true);
       }
     });
     this.addCommand({
@@ -12123,7 +12326,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const todoSnapshot = await this.getTodoSnapshot();
     const habits = this.getHabitDefinitions();
     const exportStamp = `${formatDateKey(today)} ${formatFileTimestamp(today)}`;
-    const folder = normalizeFolderPath(`${this.data.settings.exportFolder}/${exportStamp}`);
+    const folder = normalizeFolderPath2(`${this.data.settings.exportFolder}/${exportStamp}`);
     const summaryContent = this.renderDashboardExportSummary({
       generatedAt: today,
       entries,
@@ -12488,7 +12691,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
       return;
     }
-    const noteFolder = normalizeFolderPath(this.data.settings.projectNotesFolder);
+    const noteFolder = normalizeFolderPath2(this.data.settings.projectNotesFolder);
     if (noteFolder) {
       await this.ensureFolder(noteFolder);
     }
@@ -12503,6 +12706,60 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     if (showNotice) {
       new import_obsidian4.Notice(createdCount > 0 ? `Created ${createdCount} missing project note${createdCount === 1 ? "" : "s"}.` : "All project notes already exist.");
+    }
+  }
+  async repairMasterHubAndProjectNotes(showNotice) {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return;
+    }
+    const originalHubContent = await this.app.vault.read(todoFile);
+    const repairedHub = repairMasterHubStructure(originalHubContent, {
+      masterTodoPath: this.data.settings.masterTodoPath,
+      projectNotesFolder: this.data.settings.projectNotesFolder
+    });
+    let activeHubContent = originalHubContent;
+    if (repairedHub.content !== originalHubContent) {
+      await this.app.vault.modify(todoFile, repairedHub.content);
+      activeHubContent = repairedHub.content;
+    }
+    await this.createMissingProjectNotesFromTodo(false);
+    const snapshot = parseTodoSnapshot(activeHubContent);
+    let repairedNotes = 0;
+    let noteMetadataAdded = 0;
+    let noteSectionsAdded = 0;
+    for (const project of snapshot.projects) {
+      const notePath = this.getProjectNotePath(project.name, project.noteLinks);
+      const target = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(notePath));
+      if (!(target instanceof import_obsidian4.TFile)) {
+        continue;
+      }
+      const noteContent = await this.app.vault.read(target);
+      const repairedNote = repairProjectNoteStructure(noteContent, {
+        projectName: project.name,
+        masterTodoPath: this.data.settings.masterTodoPath,
+        notePath: target.path
+      });
+      if (repairedNote.content === noteContent) {
+        continue;
+      }
+      await this.app.vault.modify(target, repairedNote.content);
+      repairedNotes += 1;
+      noteMetadataAdded += repairedNote.addedMetadata;
+      noteSectionsAdded += repairedNote.addedSections;
+    }
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    this.refreshDashboardViews();
+    if (showNotice) {
+      const changedHubProjects = repairedHub.updatedProjects;
+      if (changedHubProjects === 0 && repairedNotes === 0) {
+        new import_obsidian4.Notice("Master task hub and project notes already match the current structure.");
+      } else {
+        new import_obsidian4.Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"} and ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
+      }
     }
   }
   async addTodayFocusItem(value) {
@@ -12782,6 +13039,50 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (openAfterGenerate) {
       await this.openFile(file);
       new import_obsidian4.Notice("Recurring friction patterns note generated.");
+    }
+    return file;
+  }
+  async generateDependencyReviewNote(openAfterGenerate) {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+    const activeWaitingProjects = snapshot.projects.filter((project) => project.projectState === "active" && project.waitingOn.trim().length > 0 && project.waitingOn.trim().toLowerCase() !== "none");
+    const blockedWithOwners = snapshot.blockedTasks.filter(({ task }) => task.blockedReason.trim().length > 0);
+    const content = [
+      `# Dependency Review - ${formatDateKey(/* @__PURE__ */ new Date())}`,
+      "",
+      `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Projects with Waiting On:: ${activeWaitingProjects.length}`,
+      `- Blocked tasks: ${snapshot.blockedTasks.length}`,
+      `- People / External Dependencies note: [[${stripMarkdownExtension(this.data.settings.peopleDependenciesNotePath)}|People and External Dependencies]]`,
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      "",
+      "## Projects Waiting On",
+      ...activeWaitingProjects.length > 0 ? activeWaitingProjects.map((project) => `- ${project.name}: ${project.waitingOn}${project.nextAction ? ` | Next action: ${project.nextAction}` : ""}`) : ["- No active projects currently list Waiting On::."],
+      "",
+      "## Blocked Task Pressure",
+      ...blockedWithOwners.length > 0 ? blockedWithOwners.slice(0, 12).map(({ project, task }) => `- ${project}: ${[task.text, task.blockedReason ? `blocked ${task.blockedReason}` : "", task.unblockDate ? `unblock ${task.unblockDate}` : "", task.minimumStep ? `minimum step ${task.minimumStep}` : ""].filter((value) => value.length > 0).join(" \u2022 ")}`) : ["- No blocked tasks currently include a blocker reason."],
+      "",
+      "## Follow-Up Checklist",
+      "- [ ] Update the People / External Dependencies note with any blocker that affects more than one project.",
+      "- [ ] Add a concrete next follow-up date or owner where Waiting On:: is still vague.",
+      "- [ ] Decide whether any blocked task needs escalation, fallback, or scope reduction.",
+      "- [ ] Remove or rewrite stale Waiting On:: lines that no longer reflect reality.",
+      "",
+      "## Review Questions",
+      "- Which outside dependency is slowing more than one project right now?",
+      "- Which blocker is actually unclear ownership rather than lack of effort?",
+      "- Which dependency should be parked in the dedicated support note instead of staying scattered across project notes?",
+      ""
+    ].join("\n");
+    const file = await this.upsertMarkdownFile(`Dashboard Logs/Dependency Reviews/${formatDateKey(/* @__PURE__ */ new Date())}.md`, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new import_obsidian4.Notice("Dependency review note generated.");
     }
     return file;
   }
@@ -13755,7 +14056,7 @@ No entries available.`;
   async createAiOutputNote(input) {
     const dateKey = formatDateKey(/* @__PURE__ */ new Date());
     const timestamp = formatFileTimestamp(/* @__PURE__ */ new Date());
-    const folder = normalizeFolderPath(`${this.data.settings.aiOutputFolder}/${dateKey}`);
+    const folder = normalizeFolderPath2(`${this.data.settings.aiOutputFolder}/${dateKey}`);
     const basePath = `${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`;
     const filePath = this.getAvailableMarkdownPath(basePath);
     const concreteActions = (input.payload.nextActions.length > 0 ? input.payload.nextActions : input.payload.suggestedFocus).slice(0, 6);
@@ -13996,7 +14297,7 @@ No entries available.`;
     this.app.workspace.revealLeaf(leaf);
   }
   async createProjectNote(input) {
-    const noteFolder = normalizeFolderPath(this.data.settings.projectNotesFolder);
+    const noteFolder = normalizeFolderPath2(this.data.settings.projectNotesFolder);
     if (noteFolder) {
       await this.ensureFolder(noteFolder);
     }
@@ -14005,7 +14306,7 @@ No entries available.`;
     return await this.app.vault.create(uniquePath, renderProjectNoteTemplate(input, this.data.settings.masterTodoPath));
   }
   getPreferredProjectNotePath(projectName) {
-    const noteFolder = normalizeFolderPath(this.data.settings.projectNotesFolder);
+    const noteFolder = normalizeFolderPath2(this.data.settings.projectNotesFolder);
     const safeProjectName = sanitizeFileName(projectName.trim());
     return noteFolder ? `${noteFolder}/${safeProjectName}.md` : `${safeProjectName}.md`;
   }
@@ -14635,16 +14936,16 @@ No entries available.`;
     }
   }
   getDailyLogPath(date, settings = this.data.settings) {
-    return (0, import_obsidian4.normalizePath)(`${normalizeFolderPath(settings.dailyLogFolder)}/${date}.md`);
+    return (0, import_obsidian4.normalizePath)(`${normalizeFolderPath2(settings.dailyLogFolder)}/${date}.md`);
   }
   isDailyLogPath(path, settings = this.data.settings) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(path);
-    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    const dailyLogFolder = normalizeFolderPath2(settings.dailyLogFolder);
     return dailyLogFolder.length > 0 && normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
   }
   async loadDailyEntriesFromVault(settings) {
     const entries = {};
-    const dailyLogFolder = normalizeFolderPath(settings.dailyLogFolder);
+    const dailyLogFolder = normalizeFolderPath2(settings.dailyLogFolder);
     const files = this.app.vault.getMarkdownFiles().filter((file) => {
       const normalizedPath = (0, import_obsidian4.normalizePath)(file.path);
       return normalizedPath.startsWith(`${dailyLogFolder}/`) && normalizedPath.endsWith(".md");
@@ -15110,7 +15411,7 @@ No entries available.`;
       return "";
     }
     const firstLink = (_b = (_a = noteLinks.find((link) => link.trim().length > 0)) == null ? void 0 : _a.trim()) != null ? _b : "";
-    const basePath = firstLink ? stripMarkdownExtension(firstLink) : normalizeFolderPath(`${this.data.settings.projectNotesFolder}/${safeName}`);
+    const basePath = firstLink ? stripMarkdownExtension(firstLink) : normalizeFolderPath2(`${this.data.settings.projectNotesFolder}/${safeName}`);
     return basePath ? `${basePath}.md` : "";
   }
   renderCalendarProjectLink(projectName, projectNotePath) {
@@ -15246,6 +15547,9 @@ ${body}`;
     if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
       return "project-review";
     }
+    if (normalizedPath.startsWith("dashboard logs/dependency reviews/")) {
+      return "dependency-review";
+    }
     if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
       return "cleanup-note";
     }
@@ -15291,6 +15595,8 @@ ${body}`;
       autoTags.push("daily-dashboard/weekly-review");
     } else if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
       autoTags.push("daily-dashboard/project-review");
+    } else if (normalizedPath.startsWith("dashboard logs/dependency reviews/")) {
+      autoTags.push("daily-dashboard/dependency-review");
     } else if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
       autoTags.push("daily-dashboard/cleanup");
     }
@@ -15511,8 +15817,8 @@ ${body}`;
   }
   getWallpaperFolderCandidates() {
     var _a;
-    const configuredFolder = normalizeFolderPath(this.data.settings.wallpaperFolder);
-    const pluginDir = normalizeFolderPath((_a = this.manifest.dir) != null ? _a : "");
+    const configuredFolder = normalizeFolderPath2(this.data.settings.wallpaperFolder);
+    const pluginDir = normalizeFolderPath2((_a = this.manifest.dir) != null ? _a : "");
     const candidates = /* @__PURE__ */ new Set();
     if (!configuredFolder) {
       if (pluginDir) {
@@ -15521,7 +15827,7 @@ ${body}`;
     } else {
       candidates.add(configuredFolder);
       if (pluginDir) {
-        const pluginRelativeFolder = configuredFolder.toLowerCase().startsWith(pluginDir.toLowerCase()) ? configuredFolder : normalizeFolderPath(`${pluginDir}/${configuredFolder}`);
+        const pluginRelativeFolder = configuredFolder.toLowerCase().startsWith(pluginDir.toLowerCase()) ? configuredFolder : normalizeFolderPath2(`${pluginDir}/${configuredFolder}`);
         candidates.add(pluginRelativeFolder);
       }
     }

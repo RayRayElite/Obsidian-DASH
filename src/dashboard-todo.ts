@@ -980,6 +980,111 @@ export function extractFirstNoteLinkPath(value: string): string | null {
   return match ? match[1] : null;
 }
 
+export function repairMasterHubStructure(content: string, input: {
+  masterTodoPath: string;
+  projectNotesFolder: string;
+}): { content: string; updatedProjects: number; addedMetadata: number; addedSections: number } {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0 };
+  }
+
+  const output = [...lines];
+  let updatedProjects = 0;
+  let addedMetadata = 0;
+  let addedSections = 0;
+
+  [...projectRanges].reverse().forEach((project) => {
+    const result = repairMasterHubProjectLines(output.slice(project.start, project.end + 1), {
+      masterTodoPath: input.masterTodoPath,
+      projectNotesFolder: input.projectNotesFolder
+    });
+    if (result.content !== output.slice(project.start, project.end + 1).join("\n")) {
+      output.splice(project.start, project.end - project.start + 1, ...result.content.split("\n"));
+      updatedProjects += 1;
+      addedMetadata += result.addedMetadata;
+      addedSections += result.addedSections;
+    }
+  });
+
+  return {
+    content: output.join("\n"),
+    updatedProjects,
+    addedMetadata,
+    addedSections
+  };
+}
+
+export function repairProjectNoteStructure(content: string, input: {
+  projectName: string;
+  masterTodoPath: string;
+  notePath: string;
+}): { content: string; addedMetadata: number; addedSections: number } {
+  const originalLines = content.split(/\r?\n/);
+  const lines = [...originalLines];
+  let addedMetadata = 0;
+  let addedSections = 0;
+
+  if (!lines.some((line) => /^#\s+/.test(line.trim()))) {
+    lines.unshift(`# ${input.projectName}`, "");
+  }
+
+  const titleIndex = lines.findIndex((line) => /^#\s+/.test(line.trim()));
+  const metadataKeys = new Set(lines.map((line) => parseProjectMeta(line)?.key).filter((key): key is string => Boolean(key)));
+  const metadataInsertIndex = getProjectNoteMetadataInsertIndex(lines, titleIndex);
+  const noteLink = createWikiLink(input.notePath, input.projectName);
+  const missingMetaLines = [
+    !metadataKeys.has("status") ? "Status:: Planning" : "",
+    !metadataKeys.has("focus") ? "Focus:: Define the current focus for this project." : "",
+    !metadataKeys.has("project summary") ? `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.` : "",
+    !metadataKeys.has("why it matters") ? "Why It Matters:: Define why this project deserves attention right now." : "",
+    !metadataKeys.has("definition of done") ? "Definition Of Done:: Describe what meaningful progress or completion looks like." : "",
+    !metadataKeys.has("last review") ? `Last Review:: ${formatDateKey(new Date())}` : "",
+    !metadataKeys.has("waiting on") ? "Waiting On:: None" : "",
+    !metadataKeys.has("relationships") ? `Relationships:: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]], ${noteLink}` : ""
+  ].filter((line) => line.length > 0);
+
+  if (missingMetaLines.length > 0) {
+    lines.splice(metadataInsertIndex, 0, ...missingMetaLines);
+    addedMetadata += missingMetaLines.length;
+  }
+
+  const existingSections = new Set(lines
+    .map((line) => getMarkdownHeadingName(line))
+    .filter((heading): heading is string => Boolean(heading))
+    .map((heading) => heading.toLowerCase()));
+  const sectionsToAdd: Array<{ heading: string; body: string[] }> = [
+    { heading: "Current Bottleneck", body: ["- Capture the main constraint, ambiguity, or drag factor here."] },
+    { heading: "Current Focus", body: ["- Add the current objective here."] },
+    { heading: "Repeating Tasks", body: ["- [ ] Weekly review [weekly]"] },
+    { heading: "Priority Lanes", body: ["### Now", "- [ ]", "", "### Next", "- [ ]", "", "### Later", "- [ ]", "", "### Parking Lot", "- Idea:"] },
+    { heading: "Risks", body: ["- Capture the major failure modes, drift risks, or watch-outs here."] },
+    { heading: "Constraints", body: ["- Capture time, energy, dependency, or scope constraints here."] },
+    { heading: "Relationships", body: ["- Related projects, dependencies, and blockers."] },
+    { heading: "Review History", body: [`- ${formatDateKey(new Date())}: Added by the DASH structure repair workflow.`] },
+    { heading: "Decisions", body: ["- Capture important decisions and tradeoffs here."] },
+    { heading: "Change Log", body: [`- ${formatDateKey(new Date())}: Added by the DASH structure repair workflow.`] },
+    { heading: "Known Terms / Definitions", body: ["- Capture domain-specific language, abbreviations, or naming rules here."] },
+    { heading: "References", body: ["- Add links, assets, commands, or supporting notes here."] },
+    { heading: "Useful Links / Assets", body: ["- Add durable repo links, docs, screenshots, files, or commands here."] }
+  ];
+
+  sectionsToAdd.forEach((section) => {
+    if (existingSections.has(section.heading.toLowerCase())) {
+      return;
+    }
+    appendMarkdownSection(lines, `## ${section.heading}`, section.body);
+    addedSections += 1;
+  });
+
+  return {
+    content: lines.join("\n"),
+    addedMetadata,
+    addedSections
+  };
+}
+
 export function insertTaskIntoProjectSection(content: string, projectName: string, sectionName: string, taskText: string): string {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -1039,6 +1144,118 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 
   output.splice(insertIndex, 0, "", `### ${normalizedSection}`, taskLine);
   return output.join("\n");
+}
+
+function repairMasterHubProjectLines(projectLines: string[], input: {
+  masterTodoPath: string;
+  projectNotesFolder: string;
+}): { content: string; addedMetadata: number; addedSections: number } {
+  const lines = [...projectLines];
+  const headingLine = lines[0]?.trim() ?? "";
+  const projectName = headingLine.replace(/^##\s+/, "").trim();
+  const metadataKeys = new Set(lines.map((line) => parseProjectMeta(line)?.key).filter((key): key is string => Boolean(key)));
+  const projectNoteMeta = lines.map((line) => parseProjectMeta(line)).find((meta) => meta?.key === "project note")?.value ?? "";
+  const notePath = extractFirstNoteLinkPath(projectNoteMeta) ?? buildDefaultProjectNotePath(projectName, input.projectNotesFolder);
+  const metadataInsertIndex = getProjectBlockMetadataInsertIndex(lines);
+  const missingMetaLines = [
+    !metadataKeys.has("project note") ? `Project Note:: ${createWikiLink(notePath, projectName)}` : "",
+    !metadataKeys.has("project summary") ? `Project Summary:: ${projectName} is an active project inside Obsidian DASH.` : "",
+    !metadataKeys.has("why it matters") ? "Why It Matters:: Define why this project deserves attention right now." : "",
+    !metadataKeys.has("definition of done") ? "Definition Of Done:: Describe what meaningful progress or completion looks like." : "",
+    !metadataKeys.has("last review") ? `Last Review:: ${formatDateKey(new Date())}` : "",
+    !metadataKeys.has("waiting on") ? "Waiting On:: None" : "",
+    !metadataKeys.has("relationships") ? `Relationships:: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]], ${createWikiLink(notePath, projectName)}` : ""
+  ].filter((line) => line.length > 0);
+
+  if (missingMetaLines.length > 0) {
+    lines.splice(metadataInsertIndex, 0, ...missingMetaLines);
+  }
+
+  const existingSections = new Set(lines
+    .map((line) => getSectionName(line))
+    .filter((heading): heading is string => Boolean(heading))
+    .map((heading) => heading.toLowerCase()));
+  const sectionsToAdd: Array<{ heading: string; body: string[] }> = [
+    { heading: "Parking Lot", body: ["- Idea:"] },
+    { heading: "Risks", body: ["- Capture risks, drift patterns, and failure modes here."] },
+    { heading: "Constraints", body: ["- Capture hard limits, dependencies, or health constraints here."] },
+    { heading: "Decisions", body: ["- Capture important decisions and tradeoffs here."] },
+    { heading: "Assets", body: ["- Add durable links, files, commands, or supporting assets here."] },
+    { heading: "Reference", body: ["- Add durable support material here."] },
+    { heading: "Completed Archive", body: [] }
+  ];
+
+  let addedSections = 0;
+  sectionsToAdd.forEach((section) => {
+    if (existingSections.has(section.heading.toLowerCase())) {
+      return;
+    }
+    appendHubSection(lines, section.heading, section.body);
+    addedSections += 1;
+  });
+
+  return {
+    content: lines.join("\n"),
+    addedMetadata: missingMetaLines.length,
+    addedSections
+  };
+}
+
+function getProjectBlockMetadataInsertIndex(lines: string[]): number {
+  let index = 1;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === "" || parseProjectMeta(line)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function getProjectNoteMetadataInsertIndex(lines: string[], titleIndex: number): number {
+  let index = Math.max(titleIndex + 1, 1);
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.trim() === "" || parseProjectMeta(line)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function appendHubSection(lines: string[], heading: string, body: string[]): void {
+  const completedArchiveIndex = lines.findIndex((line) => getSectionName(line)?.toLowerCase() === "completed archive");
+  const insertIndex = completedArchiveIndex >= 0 && heading.toLowerCase() !== "completed archive" ? completedArchiveIndex : lines.length;
+  const block = ["", `### ${heading}`, ...body];
+  if (heading.toLowerCase() !== "completed archive") {
+    block.push("");
+  }
+  lines.splice(insertIndex, 0, ...block);
+}
+
+function appendMarkdownSection(lines: string[], heading: string, body: string[]): void {
+  while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+    lines.pop();
+  }
+  lines.push("", heading, ...body, "");
+}
+
+function getMarkdownHeadingName(line: string): string | null {
+  const trimmed = line.trim();
+  if (!/^##+\s+/.test(trimmed)) {
+    return null;
+  }
+  return trimmed.replace(/^##+\s+/, "").trim();
+}
+
+function buildDefaultProjectNotePath(projectName: string, projectNotesFolder: string): string {
+  const noteFolder = normalizeFolderPath(projectNotesFolder);
+  const safeProjectName = sanitizeFileName(projectName);
+  return noteFolder ? `${noteFolder}/${safeProjectName}.md` : `${safeProjectName}.md`;
 }
 
 export function extractRepeatingTasks(noteContent: string): RepeatingTaskDefinition[] {
