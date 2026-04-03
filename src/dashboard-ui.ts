@@ -982,6 +982,7 @@ export class DailyDashboardView extends ItemView {
         gridCardBindings,
         layoutByKey
       );
+      const visibleSessionTrackers = this.getVisibleSessionTrackers();
 
       const weekBoardCard = createGridCard("Week At A Glance", "See the week as stacked tracked time instead of relying on memory and rough impressions.", {
         icon: "calendar-range",
@@ -1065,7 +1066,6 @@ export class DailyDashboardView extends ItemView {
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
       const aiStatus = this.plugin.getAiStatus();
-      const visibleSessionTrackers = this.getVisibleSessionTrackers();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
