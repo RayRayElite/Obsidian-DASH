@@ -8,9 +8,11 @@ export const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "s
 export const SESSION_TAG_OPTIONS = ["deep work", "admin", "creative", "errands", "recovery"] as const;
 
 export const HABIT_WINDOW_OPTIONS = ["anytime", "morning", "afternoon", "evening", "before-bed"] as const;
-export const INTAKE_KIND_OPTIONS = ["water", "caffeine", "supplement", "medication"] as const;
+export const HABIT_CADENCE_OPTIONS = ["daily", "every-other-day", "weekly"] as const;
+export const INTAKE_KIND_OPTIONS = ["drink", "food", "medication", "supplement"] as const;
 
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
+export type HabitCadence = (typeof HABIT_CADENCE_OPTIONS)[number];
 export type IntakeKind = (typeof INTAKE_KIND_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
 
@@ -19,6 +21,8 @@ export interface HabitDefinition {
   label: string;
   target: number;
   completionWindow: HabitCompletionWindow;
+  cadence: HabitCadence;
+  anchorDate: string;
   difficultyWeight: number;
 }
 
@@ -41,6 +45,7 @@ export interface WorkSession {
   start: string;
   end: string | null;
   tag: string;
+  projectName: string;
 }
 
 export type AiApiKeySource = "settings" | "env";
@@ -869,18 +874,18 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarWarningHours: 12,
   measurementSystem: "imperial",
   intakeQuickPresets: [
-    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
-    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+    { id: "water-8-oz", kind: "drink", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "drink", label: "Coffee", amount: 1, unit: "cup" }
   ],
   showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
   habitDefinitions: [
-    { id: "pills", label: "Take pills", target: 1, completionWindow: "morning", difficultyWeight: 2 },
-    { id: "brush-teeth", label: "Brush teeth", target: 2, completionWindow: "anytime", difficultyWeight: 2 },
-    { id: "floss", label: "Floss", target: 2, completionWindow: "before-bed", difficultyWeight: 2 },
-    { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", difficultyWeight: 1 },
-    { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", difficultyWeight: 2 }
+    { id: "pills", label: "Take pills", target: 1, completionWindow: "morning", cadence: "daily", anchorDate: "", difficultyWeight: 2 },
+    { id: "brush-teeth", label: "Brush teeth", target: 2, completionWindow: "anytime", cadence: "daily", anchorDate: "", difficultyWeight: 2 },
+    { id: "floss", label: "Floss", target: 2, completionWindow: "before-bed", cadence: "daily", anchorDate: "", difficultyWeight: 2 },
+    { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", cadence: "daily", anchorDate: "", difficultyWeight: 1 },
+    { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", cadence: "daily", anchorDate: "", difficultyWeight: 2 }
   ],
   routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
 };

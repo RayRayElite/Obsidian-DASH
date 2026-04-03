@@ -10,6 +10,7 @@ import {
   createEmptyNoteIndexCache,
   extractAiStructuredPayload,
   extractAiSummary,
+  foodEntryToIntakeEntry,
   formatDateKey,
   formatDateTimeKey,
   formatFileTimestamp,
@@ -18,6 +19,7 @@ import {
   getEntryRecencyKey,
   getIndexedFolderList,
   getRelevantIndexedNotes,
+  isHabitDueOnDate,
   normalizeFoodEntry,
   normalizeFolderPath,
   normalizeIntakeEntry,
@@ -833,7 +835,7 @@ export default class DailyDashboardPlugin extends Plugin {
     if ((awakeUnknownMinutes ?? 0) >= 180) {
       diagnostics.push("There are at least 3 hours of awake time with no timer coverage. Meals, chores, commuting, or missed session starts are likely hiding there.");
     }
-    if (trackedAwakeMinutes === 0 && (entry.foodLog.length > 0 || entry.completedTasks.length > 0 || Object.values(entry.habitEvents).some((items) => items.length > 0))) {
+    if (trackedAwakeMinutes === 0 && (entry.intakeLog.length > 0 || entry.completedTasks.length > 0 || Object.values(entry.habitEvents).some((items) => items.length > 0))) {
       diagnostics.push("You recorded real activity, but none of it was tied to a session timer. Consider using work, break, relax, or nap timers more aggressively.");
     }
     if (!entry.sleepTime && !nextEntry?.wakeTime) {
@@ -1974,7 +1976,7 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
-  async addHabitDefinition(label: string, target: number, completionWindow = "anytime", difficultyWeight = 1): Promise<void> {
+  async addHabitDefinition(label: string, target: number, completionWindow = "anytime", difficultyWeight = 1, cadence = "daily"): Promise<void> {
     const normalizedLabel = label.trim();
     if (!normalizedLabel) {
       new Notice("Habit name is required.");
@@ -1998,6 +2000,8 @@ export default class DailyDashboardPlugin extends Plugin {
           completionWindow: completionWindow === "morning" || completionWindow === "afternoon" || completionWindow === "evening" || completionWindow === "before-bed"
             ? completionWindow
             : "anytime",
+          cadence: cadence === "every-other-day" || cadence === "weekly" ? cadence : "daily",
+          anchorDate: this.getTodayKey(),
           difficultyWeight: clamp(Math.round(difficultyWeight), 1, 3)
         }
       ]
@@ -2035,14 +2039,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async addFoodEntry(value: string, amount = 1): Promise<void> {
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
-      return;
-    }
-
-    const entry = this.getTodayEntry();
-    entry.foodLog = [{ text: trimmedValue, amount: clamp(Math.round(amount), 1, 24), loggedAt: formatDateTimeKey(new Date()) }, ...entry.foodLog];
-    await this.persistEntry(entry);
+    await this.addIntakeEntry("food", value, amount, amount === 1 ? "serving" : "servings");
   }
 
   async addIntakeEntry(kind: string, label: string, amount = 1, unit = "serving", note = ""): Promise<void> {
@@ -2053,9 +2050,13 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const entry = this.getTodayEntry();
     entry.intakeLog = [{
-      kind: kind === "caffeine" || kind === "supplement" || kind === "medication" ? kind : "water",
+      kind: kind === "food" || kind === "medication" || kind === "supplement" || kind === "drink"
+        ? kind
+        : kind === "caffeine" || kind === "water"
+          ? "drink"
+          : "drink",
       label: trimmedLabel,
-      amount: clamp(Math.round(amount), 1, 64),
+      amount: clamp(Number(amount), 0.1, 9999),
       unit: unit.trim() || "serving",
       note: note.trim(),
       loggedAt: formatDateTimeKey(new Date())
@@ -2066,6 +2067,17 @@ export default class DailyDashboardPlugin extends Plugin {
   async removeIntakeEntry(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.intakeLog = entry.intakeLog.filter((_, candidateIndex) => candidateIndex !== index);
+    await this.persistEntry(entry);
+  }
+
+  async updateIntakeEntryAmount(index: number, amount: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    const nextEntry = entry.intakeLog[index];
+    if (!nextEntry) {
+      return;
+    }
+
+    nextEntry.amount = clamp(Number(amount), 0.1, 9999);
     await this.persistEntry(entry);
   }
 
@@ -2109,27 +2121,32 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async updateFoodEntryAmount(index: number, amount: number): Promise<void> {
     const entry = this.getTodayEntry();
-    const nextEntry = entry.foodLog[index];
+    const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
+    const nextEntry = foodEntries[index];
     if (!nextEntry) {
       return;
     }
 
-    nextEntry.amount = clamp(Math.round(amount), 1, 24);
+    nextEntry.amount = clamp(Number(amount), 0.1, 9999);
     await this.persistEntry(entry);
   }
 
   async removeFoodEntry(index: number): Promise<void> {
     const entry = this.getTodayEntry();
-    entry.foodLog = entry.foodLog.filter((_, candidateIndex) => candidateIndex !== index);
+    let foodIndex = -1;
+    entry.intakeLog = entry.intakeLog.filter((item) => {
+      if (item.kind !== "food") {
+        return true;
+      }
+
+      foodIndex += 1;
+      return foodIndex !== index;
+    });
     await this.persistEntry(entry);
   }
 
   async restoreFoodEntry(item: FoodEntry, index: number): Promise<void> {
-    const entry = this.getTodayEntry();
-    const nextLog = [...entry.foodLog];
-    nextLog.splice(clamp(index, 0, nextLog.length), 0, { ...item });
-    entry.foodLog = nextLog;
-    await this.persistEntry(entry);
+    await this.restoreIntakeEntry(foodEntryToIntakeEntry(item), index);
   }
 
   async addEnergyCheckIn(score: number, note = ""): Promise<void> {
@@ -2206,7 +2223,8 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async generateDailyDietInsight(): Promise<void> {
     const entry = this.getTodayEntry();
-    if (entry.foodLog.length === 0) {
+    const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
+    if (foodEntries.length === 0) {
       new Notice("Log at least one food entry before asking for a diet summary.");
       return;
     }
@@ -2225,7 +2243,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
 
     try {
-      const foodLines = entry.foodLog.map((item) => `${item.loggedAt}: ${item.amount}x ${item.text}`).join("\n");
+      const foodLines = foodEntries.map((item) => `${item.loggedAt}: ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`).join("\n");
       const response = await this.requestAiCompletion(
         [
           "You are a concise nutrition estimation assistant for a personal dashboard.",
@@ -2406,7 +2424,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
-  async startWorkSession(tag = ""): Promise<void> {
+  async startWorkSession(tag = "", projectName = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before starting work tracking.");
       return;
@@ -2421,7 +2439,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const timestamp = formatDateTimeKey(new Date());
     this.closeCompetingSessions(entry, timestamp, "work");
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    entry.workSessions = [...entry.workSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: projectName.trim() }];
     await this.persistEntry(entry);
     new Notice("Work session started.");
   }
@@ -2457,7 +2475,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "nap");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    entry.napSessions = [...entry.napSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: "" }];
     await this.persistEntry(entry);
     new Notice("Nap started.");
   }
@@ -2491,7 +2509,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "relax");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    entry.relaxSessions = [...entry.relaxSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: "" }];
     await this.persistEntry(entry);
     new Notice("Relaxing started.");
   }
@@ -2525,7 +2543,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "break");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: "" }];
     await this.persistEntry(entry);
     new Notice("Break started.");
   }
@@ -2546,7 +2564,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "break");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: "recovery" }];
+    entry.breakSessions = [...entry.breakSessions, { start: timestamp, end: null, tag: "recovery", projectName: "" }];
     await this.persistEntry(entry);
     new Notice("Paused active sessions and started a break.");
   }
@@ -2580,7 +2598,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.closeCompetingSessions(entry, timestamp, "poop");
     this.closeOpenTodayFocusSessions(entry, timestamp);
     this.ensureWakeAndDayStartFromActivity(entry, timestamp);
-    entry.poopSessions = [...entry.poopSessions, { start: timestamp, end: null, tag: tag.trim() }];
+    entry.poopSessions = [...entry.poopSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: "" }];
     await this.persistEntry(entry);
     new Notice("Bowel movement tracking started.");
   }
@@ -3248,7 +3266,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
-  async startTodayFocusItem(index: number, tag = ""): Promise<void> {
+  async startTodayFocusItem(index: number, tag = "", projectName = ""): Promise<void> {
     if (this.data.dayState.status !== "in-progress") {
       new Notice("Begin your logical day before tracking a Top 3 item.");
       return;
@@ -3265,7 +3283,7 @@ export default class DailyDashboardPlugin extends Plugin {
     item.status = "working";
     item.completedAt = null;
     if (!item.workSessions.some((session) => session.end === null)) {
-      item.workSessions = [...item.workSessions, { start: timestamp, end: null, tag: tag.trim() }];
+      item.workSessions = [...item.workSessions, { start: timestamp, end: null, tag: tag.trim(), projectName: projectName.trim() }];
     }
     await this.persistEntry(entry);
   }
@@ -4287,6 +4305,10 @@ export default class DailyDashboardPlugin extends Plugin {
     let streak = 0;
 
     for (const date of dates) {
+      if (!isHabitDueOnDate(habitDefinition, date)) {
+        continue;
+      }
+
       const entry = this.data.entries[date];
       const value = entry.habits[habitId] ?? 0;
       if (value >= habitDefinition.target) {
@@ -4311,6 +4333,10 @@ export default class DailyDashboardPlugin extends Plugin {
     let currentStreak = 0;
 
     for (const date of dates) {
+      if (!isHabitDueOnDate(habitDefinition, date)) {
+        continue;
+      }
+
       const entry = this.data.entries[date];
       const value = entry.habits[habitId] ?? 0;
       if (value >= habitDefinition.target) {
@@ -4460,6 +4486,18 @@ export default class DailyDashboardPlugin extends Plugin {
       normalizedHabits[habit.id] = normalizedCount;
       normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
     });
+    const legacyFoodEntries = Array.isArray(entry.foodLog)
+      ? entry.foodLog
+          .map((item) => normalizeFoodEntry(item))
+          .filter((item): item is FoodEntry => item !== null)
+      : [];
+    const normalizedIntakeEntries = Array.isArray(entry.intakeLog)
+      ? entry.intakeLog
+          .map((item) => normalizeIntakeEntry(item))
+          .filter((item): item is IntakeEntry => item !== null)
+      : [];
+    const mergedIntakeLog = [...normalizedIntakeEntries, ...legacyFoodEntries.map((item) => foodEntryToIntakeEntry(item))]
+      .sort((left, right) => right.loggedAt.localeCompare(left.loggedAt));
 
     const normalizedMoodCheckIns = Array.isArray(entry.moodCheckIns)
       ? entry.moodCheckIns
@@ -4510,20 +4548,19 @@ export default class DailyDashboardPlugin extends Plugin {
         ? entry.calendarFollowThroughCompleted.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
         : [],
       frictionLog: typeof entry.frictionLog === "string" ? entry.frictionLog : "",
-      missedHabits: computeMissedHabits(normalizedHabits, settings.habitDefinitions),
+      missedHabits: computeMissedHabits(
+        Object.fromEntries(
+          settings.habitDefinitions
+            .filter((habit) => isHabitDueOnDate(habit, date))
+            .map((habit) => [habit.id, normalizedHabits[habit.id] ?? 0])
+        ),
+        settings.habitDefinitions.filter((habit) => isHabitDueOnDate(habit, date))
+      ),
       habitMissNotes: entry.habitMissNotes && typeof entry.habitMissNotes === "object"
         ? Object.fromEntries(Object.entries(entry.habitMissNotes).filter((item): item is [string, string] => typeof item[0] === "string" && typeof item[1] === "string" && item[1].trim().length > 0).map(([key, value]) => [key, value.trim()]))
         : {},
-      foodLog: Array.isArray(entry.foodLog)
-        ? entry.foodLog
-            .map((item) => normalizeFoodEntry(item))
-            .filter((item): item is FoodEntry => item !== null)
-        : [],
-      intakeLog: Array.isArray(entry.intakeLog)
-        ? entry.intakeLog
-            .map((item) => normalizeIntakeEntry(item))
-            .filter((item): item is IntakeEntry => item !== null)
-        : [],
+      foodLog: [],
+      intakeLog: mergedIntakeLog,
       symptomLog: Array.isArray(entry.symptomLog)
         ? entry.symptomLog
             .map((item) => normalizeSymptomEntry(item))
@@ -4544,7 +4581,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => ({
               start: item.start,
               end: typeof item.end === "string" ? item.end : null,
-              tag: typeof item.tag === "string" ? item.tag.trim() : ""
+              tag: typeof item.tag === "string" ? item.tag.trim() : "",
+              projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
         : [],
       workMinutesOverride: Number.isFinite(Number(entry.workMinutesOverride)) ? clamp(Number(entry.workMinutesOverride), 0, 1440) : null,
@@ -4554,7 +4592,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => ({
               start: item.start,
               end: typeof item.end === "string" ? item.end : null,
-              tag: typeof item.tag === "string" ? item.tag.trim() : ""
+              tag: typeof item.tag === "string" ? item.tag.trim() : "",
+              projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
         : [],
       napMinutesOverride: Number.isFinite(Number(entry.napMinutesOverride)) ? clamp(Number(entry.napMinutesOverride), 0, 1440) : null,
@@ -4564,7 +4603,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => ({
               start: item.start,
               end: typeof item.end === "string" ? item.end : null,
-              tag: typeof item.tag === "string" ? item.tag.trim() : ""
+              tag: typeof item.tag === "string" ? item.tag.trim() : "",
+              projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
         : [],
       relaxMinutesOverride: Number.isFinite(Number(entry.relaxMinutesOverride)) ? clamp(Number(entry.relaxMinutesOverride), 0, 1440) : null,
@@ -4574,7 +4614,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => ({
               start: item.start,
               end: typeof item.end === "string" ? item.end : null,
-              tag: typeof item.tag === "string" ? item.tag.trim() : ""
+              tag: typeof item.tag === "string" ? item.tag.trim() : "",
+              projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
         : [],
       breakMinutesOverride: Number.isFinite(Number(entry.breakMinutesOverride)) ? clamp(Number(entry.breakMinutesOverride), 0, 1440) : null,
@@ -4584,7 +4625,8 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => ({
               start: item.start,
               end: typeof item.end === "string" ? item.end : null,
-              tag: typeof item.tag === "string" ? item.tag.trim() : ""
+              tag: typeof item.tag === "string" ? item.tag.trim() : "",
+              projectName: typeof item.projectName === "string" ? item.projectName.trim() : ""
             }))
         : [],
       poopQualityByStart: entry.poopQualityByStart && typeof entry.poopQualityByStart === "object"
@@ -5807,7 +5849,7 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       "## Habit Definitions",
       ...(input.habits.length > 0
-        ? input.habits.map((habit) => `- ${habit.label}: target ${habit.target}, ${habit.completionWindow}, difficulty ${habit.difficultyWeight}/3`)
+        ? input.habits.map((habit) => `- ${habit.label}: target ${habit.target}, ${habit.cadence}, ${habit.completionWindow}, difficulty ${habit.difficultyWeight}/3`)
         : ["- No habits configured."]),
       ""
     ].join("\n");
@@ -5822,6 +5864,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const rows = entries.map((entry) => {
       const nextEntry = this.getNextEntry(entry.date);
       const sleepMinutes = getSleepMinutesForDay(entry, nextEntry);
+      const foodEntryCount = entry.intakeLog.filter((item) => item.kind === "food").length;
+      const drinkEntryCount = entry.intakeLog.filter((item) => item.kind === "drink").length;
       return [
         entry.date,
         `${entry.moodScore}`,
@@ -5838,8 +5882,8 @@ export default class DailyDashboardPlugin extends Plugin {
         `${getHabitWeightedCompletion(entry, habits)}`,
         `${entry.todayFocus.length}`,
         `${entry.completedTasks.length}`,
-        `${entry.foodLog.length}`,
-        `${entry.intakeLog.length}`,
+        `${foodEntryCount}`,
+        `${drinkEntryCount}`,
         `${entry.symptomLog.length}`,
         `${entry.energyCheckIns.length}`,
         `${calendarCountsByDate.get(entry.date) ?? 0}`,

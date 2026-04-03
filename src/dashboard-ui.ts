@@ -3,10 +3,12 @@ import { App, ItemView, Modal, Notice, PluginSettingTab, Setting, WorkspaceLeaf,
 import type DailyDashboardPlugin from "../main";
 import {
   countHabitEventsInWindow,
+  formatHabitCadenceLabel,
   formatHabitWindowLabel,
   formatDateKey,
   formatDateTimeKey,
   getHabitWeightedCompletion,
+  isHabitDueOnDate,
   formatSyncTimestamp,
   parseHabitDefinitions,
   renderScore
@@ -15,6 +17,7 @@ import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrac
 import { splitMultilineInput } from "./dashboard-todo";
 import {
   DEFAULT_SETTINGS,
+  HABIT_CADENCE_OPTIONS,
   HABIT_WINDOW_OPTIONS,
   SESSION_TAG_OPTIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
@@ -30,7 +33,6 @@ import {
   type DashboardSettings,
   type DashboardTone,
   type DashboardViewMode,
-  type FoodEntry,
   type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
@@ -80,6 +82,7 @@ export class DailyDashboardView extends ItemView {
   private editingFocusText = "";
   private draggedFocusIndex: number | null = null;
   private selectedSessionTag = getDashboardSelectedSessionTag();
+  private selectedSessionProjectName = "";
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
   private selectedCalendarDate = formatDateKey(new Date());
@@ -628,6 +631,9 @@ export class DailyDashboardView extends ItemView {
       if (!this.quickAddState.projectName && projects.length > 0) {
         this.quickAddState.projectName = projects[0].name;
       }
+      if (!this.selectedSessionProjectName && projects.length > 0) {
+        this.selectedSessionProjectName = projects[0].name;
+      }
 
       contentEl.empty();
       contentEl.addClass("daily-dashboard-view");
@@ -1094,9 +1100,23 @@ export class DailyDashboardView extends ItemView {
       }
 
       const dayFlowActionsSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-actions", "Session controls", "Start and stop the current day, work, break, relax, nap, and bowel tracking flows.");
+      const workProjectSelect = dayFlowActionsSection.createEl("select", { cls: "daily-dashboard-input" });
+      const noProjectOption = workProjectSelect.createEl("option", { text: "No project" });
+      noProjectOption.value = "";
+      projects.forEach((project) => {
+        const option = workProjectSelect.createEl("option", { text: project.name });
+        option.value = project.name;
+      });
+      if (!projects.some((project) => project.name === this.selectedSessionProjectName)) {
+        this.selectedSessionProjectName = "";
+      }
+      workProjectSelect.value = this.selectedSessionProjectName;
+      workProjectSelect.addEventListener("change", () => {
+        this.selectedSessionProjectName = workProjectSelect.value;
+      });
       const dayFlowActions = dayFlowActionsSection.createDiv({ cls: "daily-dashboard-dayflow-actions" });
       createButton(dayFlowActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work • ${this.selectedSessionTag}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag), false, activeWorkSession ? "square" : "play");
+      createButton(dayFlowActions, activeWorkSession ? "Stop work" : `Start work • ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession(this.selectedSessionTag, this.selectedSessionProjectName), false, activeWorkSession ? "square" : "play");
       createButton(dayFlowActions, activeNapSession ? "Stop nap" : `Start nap • ${this.selectedSessionTag}`, async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(this.selectedSessionTag), false, activeNapSession ? "alarm-clock-off" : "bed-single");
       createButton(dayFlowActions, activeRelaxSession ? "End relaxing" : `Start relaxing • ${this.selectedSessionTag}`, async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(this.selectedSessionTag), false, activeRelaxSession ? "square" : "coffee");
       createButton(dayFlowActions, activeBreakSession ? "End break" : `Start break • ${this.selectedSessionTag}`, async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(this.selectedSessionTag), false, activeBreakSession ? "square" : "pause");
@@ -1338,7 +1358,7 @@ export class DailyDashboardView extends ItemView {
             } else if (item.isActive) {
               createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
             } else {
-              createButton(controls, `Start • ${this.selectedSessionTag}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag), false, "play");
+              createButton(controls, `Start • ${this.selectedSessionTag}${this.selectedSessionProjectName ? ` • ${this.selectedSessionProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, this.selectedSessionTag, this.selectedSessionProjectName), false, "play");
             }
             if (!isEditingFocus) {
               createButton(controls, "Details", async () => {
@@ -1719,7 +1739,7 @@ export class DailyDashboardView extends ItemView {
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} day streak • best ${this.plugin.getHabitBestStreak(habit.id)} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3`
+          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} due-day streak • best ${this.plugin.getHabitBestStreak(habit.id)} • ${formatHabitCadenceLabel(habit.cadence)} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3${isHabitDueOnDate(habit, todayEntry.date) ? "" : " • not due today"}`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
@@ -1729,7 +1749,7 @@ export class DailyDashboardView extends ItemView {
         } else {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Window ${formatHabitWindowLabel(habit.completionWindow)} • no completions yet`
+            text: `${formatHabitCadenceLabel(habit.cadence)} • Window ${formatHabitWindowLabel(habit.completionWindow)} • no completions yet${isHabitDueOnDate(habit, todayEntry.date) ? "" : " • not due today"}`
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
@@ -1774,115 +1794,48 @@ export class DailyDashboardView extends ItemView {
         }
       });
 
-      const foodCard = createGridCard("Food Log", "Quick meal capture so routine and energy stay analyzable.", {
+      const foodCard = createGridCard("Consumables", "Track drinks, food, medication, and supplements in one place with usable amounts and timestamps.", {
         icon: "utensils-crossed",
         eyebrow: "Body",
         tone: "log",
         tag: "Log"
       });
-      const foodInputRow = foodCard.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
-      const foodAmountInput = foodInputRow.createEl("input", {
-        cls: "daily-dashboard-amount-input",
-        attr: { type: "number", min: "1", max: "24", value: "1", ariaLabel: "Food amount" }
-      });
-      const foodInput = foodInputRow.createEl("input", {
-        cls: "daily-dashboard-input",
-        attr: { type: "text", placeholder: "Add a meal or snack" }
-      });
-      const foodButton = foodInputRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
-      foodButton.type = "button";
-      const submitFood = async (): Promise<void> => {
-        const value = foodInput.value.trim();
-        if (!value) {
-          return;
-        }
-        await this.plugin.addFoodEntry(value, Number(foodAmountInput.value));
-        foodInput.value = "";
-        foodAmountInput.value = "1";
-      };
-      foodInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void submitFood();
-        }
-      });
-      foodButton.addEventListener("click", () => {
-        void submitFood();
-      });
-      const foodInsight = foodCard.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-food-insight" });
-      foodInsight.createEl("strong", { text: "Diet insight" });
-      foodInsight.createEl("span", {
-        cls: "daily-dashboard-habit-meta",
-        text: todayEntry.dietInsight || "Run a quick AI pass to estimate calories and flag the biggest nutrition signals for today."
-      });
-      const foodInsightActions = foodInsight.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
-      const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       const measurementSystem = settings.measurementSystem;
-      if (todayEntry.foodLog.length === 0) {
-        const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
-        emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
-        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Breakfast", async () => this.plugin.addFoodEntry("Breakfast", 1), false, "sunrise");
-        createButton(emptyActions, "Lunch", async () => this.plugin.addFoodEntry("Lunch", 1), false, "utensils-crossed");
-        createButton(emptyActions, "Dinner", async () => this.plugin.addFoodEntry("Dinner", 1), false, "moon-star");
-      } else {
-        todayEntry.foodLog.forEach((item, index) => {
-          const row = foodList.createDiv({ cls: "daily-dashboard-food-row" });
-          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
-          copy.createEl("strong", { text: item.text });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
-          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
-          const amountInput = amountSlot.createEl("input", {
-            cls: "daily-dashboard-amount-input",
-            attr: { type: "number", min: "1", max: "24", value: `${item.amount}`, ariaLabel: `Amount for ${item.text}` }
-          });
-          amountInput.addEventListener("change", () => {
-            void this.plugin.updateFoodEntryAmount(index, Number(amountInput.value));
-          });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
-          removeButton.type = "button";
-          removeButton.addEventListener("click", () => {
-            const removedItem = { ...item } satisfies FoodEntry;
-            void this.runDestructiveAction(
-              `Removed food entry \"${item.text}\".`,
-              async () => this.plugin.removeFoodEntry(index),
-              async () => this.plugin.restoreFoodEntry(removedItem, index)
-            );
-          });
-        });
-      }
-      const intakeSection = this.createCollapsibleSubsection(foodCard, "body-intake", "Water, caffeine, meds", "Track hydration, stimulants, supplements, and medication without burying them in notes.");
-      const intakePresets = settings.intakeQuickPresets;
-      const intakeForm = intakeSection.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const intakeEntries = todayEntry.intakeLog;
+      const consumableSummary = Array.from(
+        intakeEntries.reduce((groups, item) => {
+          const key = `${item.kind}::${item.label.toLowerCase()}::${item.unit.toLowerCase()}`;
+          const current = groups.get(key) ?? { ...item, totalAmount: 0, count: 0 };
+          current.totalAmount += item.amount;
+          current.count += 1;
+          current.loggedAt = current.loggedAt > item.loggedAt ? current.loggedAt : item.loggedAt;
+          groups.set(key, current);
+          return groups;
+        }, new Map<string, IntakeEntry & { totalAmount: number; count: number }>()).values()
+      );
+      const intakeForm = foodCard.createDiv({ cls: "daily-dashboard-stacked-form" });
       const intakeKind = intakeForm.createEl("select", { cls: "daily-dashboard-input" });
-      [
-        ["water", "Water"],
-        ["caffeine", "Caffeine"],
-        ["supplement", "Supplement"],
-        ["medication", "Medication"]
-      ].forEach(([value, label]) => {
+      [["drink", "Drink"], ["food", "Food"], ["medication", "Medication"], ["supplement", "Supplement"]].forEach(([value, label]) => {
         const option = intakeKind.createEl("option", { text: label });
         option.value = value;
       });
-      const intakeLabel = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "What did you take or drink?" } });
+      const intakeLabel = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "What did you have?" } });
       const intakeMeta = intakeForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
-      const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "64", value: "1" } });
-      const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "oz, cup, pill, serving" } });
+      const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0.1", step: "0.1", value: "1" } });
+      const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "mL, can, slice, pill, serving" } });
       intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
-      intakeUnit.placeholder = measurementSystem === "metric" ? "mL, tablet, serving" : "oz, cup, pill, serving";
       intakeKind.addEventListener("change", () => {
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
       });
       const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
-      const intakeButtons = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(intakeButtons, "Add intake", async () => {
+      const intakeButtons = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(intakeButtons, "Add entry", async () => {
         await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), intakeUnit.value, intakeNote.value);
         intakeLabel.value = "";
         intakeAmount.value = "1";
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
         intakeNote.value = "";
-      }, false, "droplets");
+      }, false, "plus-circle");
       createButton(intakeButtons, "Save preset", async () => {
         const trimmedLabel = intakeLabel.value.trim();
         const trimmedUnit = intakeUnit.value.trim();
@@ -1903,9 +1856,17 @@ export class DailyDashboardView extends ItemView {
         });
         await this.render();
       }, false, "bookmark-plus");
-      if (intakePresets.length > 0) {
-        const intakePresetRow = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
-        intakePresets.forEach((preset) => {
+      const foodInsight = foodCard.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-food-insight" });
+      foodInsight.createEl("strong", { text: "Diet insight" });
+      foodInsight.createEl("span", {
+        cls: "daily-dashboard-habit-meta",
+        text: todayEntry.dietInsight || "Run a quick AI pass to estimate calories and flag the biggest nutrition signals for today."
+      });
+      const foodInsightActions = foodInsight.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
+      if (settings.intakeQuickPresets.length > 0) {
+        const intakePresetRow = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
+        settings.intakeQuickPresets.forEach((preset) => {
           const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
           createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
             await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
@@ -1923,20 +1884,44 @@ export class DailyDashboardView extends ItemView {
           });
         });
       }
-      const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
-      if (todayEntry.intakeLog.length === 0) {
-        intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
+      if (consumableSummary.length > 0) {
+        const summaryList = foodCard.createDiv({ cls: "daily-dashboard-project-list" });
+        consumableSummary
+          .sort((left, right) => right.loggedAt.localeCompare(left.loggedAt))
+          .forEach((item) => {
+            const row = summaryList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+            row.createEl("strong", { text: `${item.kind} • ${item.label}` });
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.totalAmount} ${item.unit} total • ${item.count} entr${item.count === 1 ? "y" : "ies"} • last ${item.loggedAt || "Time unknown"}` });
+          });
+      }
+      const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
+      if (intakeEntries.length === 0) {
+        const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+        emptyState.createEl("span", { text: "No consumables logged yet today. Use one flow for drinks, food, meds, and supplements so totals stay analyzable." });
+        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(emptyActions, "Water", async () => this.plugin.addIntakeEntry("drink", "Water", measurementSystem === "metric" ? 250 : 8, getDefaultIntakeUnit("drink", measurementSystem)), false, "glass-water");
+        createButton(emptyActions, "Meal", async () => this.plugin.addIntakeEntry("food", "Meal", 1, "serving"), false, "utensils-crossed");
+        createButton(emptyActions, "Medication", async () => this.plugin.addIntakeEntry("medication", "Medication", 1, "pill"), false, "pill");
       } else {
-        todayEntry.intakeLog.slice(0, 10).forEach((item, index) => {
-          const row = intakeList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item.kind} • ${item.label}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} • ${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
+        intakeEntries.slice(0, 18).forEach((item, index) => {
+          const row = intakeList.createDiv({ cls: "daily-dashboard-food-row" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: `${item.kind} • ${item.label}` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.amount} ${item.unit} • ${item.loggedAt || "Time unknown"}${item.note ? ` • ${item.note}` : ""}` });
+          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
+          const amountInput = amountSlot.createEl("input", {
+            cls: "daily-dashboard-amount-input",
+            attr: { type: "number", min: "0.1", step: "0.1", value: `${item.amount}`, ariaLabel: `Amount for ${item.label}` }
+          });
+          amountInput.addEventListener("change", () => {
+            void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
+          });
           const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
             const removedItem = { ...item } satisfies IntakeEntry;
             void this.runDestructiveAction(
-              `Removed intake entry \"${item.label}\".`,
+              `Removed ${item.kind} entry \"${item.label}\".`,
               async () => this.plugin.removeIntakeEntry(index),
               async () => this.plugin.restoreIntakeEntry(removedItem, index)
             );
@@ -2995,25 +2980,10 @@ export class DailyDashboardView extends ItemView {
             date: entry.date,
             sortKey: item.loggedAt || `${entry.date} 23:59`,
             kind: "log",
-            title: `Intake • ${item.label}`,
+            title: `${item.kind === "food" ? "Food" : "Consumable"} • ${item.label}`,
             summary: `${item.kind} • ${item.amount} ${item.unit}`,
             detail: item.note.trim(),
-            tone: item.kind === "caffeine" ? "alert" : "health",
-            project: "",
-            tag: ""
-          });
-        });
-
-        entry.foodLog.forEach((item, index) => {
-          results.push({
-            id: `food-${entry.date}-${index}-${item.loggedAt}`,
-            date: entry.date,
-            sortKey: item.loggedAt || `${entry.date} 23:59`,
-            kind: "log",
-            title: `Food • ${item.text}`,
-            summary: `${item.amount} serving${item.amount === 1 ? "" : "s"}`,
-            detail: item.loggedAt ? `Logged ${item.loggedAt.slice(11, 16)}` : "",
-            tone: "health",
+            tone: item.kind === "medication" ? "alert" : "health",
             project: "",
             tag: ""
           });
@@ -5423,11 +5393,11 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Habit definitions")
-      .setDesc("One habit per line using the format Habit Name|Target Count.")
+      .setDesc("One habit per line using Habit Name|Target Count|Window|Cadence|Weight|Anchor Date. Older shorter lines still work.")
       .addTextArea((textArea) => {
         textArea
-          .setPlaceholder("Take pills|1\nBrush teeth|2\nFloss|2\nShower|1\nLog sleep|1")
-          .setValue(settings.habitDefinitions.map((habit) => `${habit.label}|${habit.target}`).join("\n"))
+          .setPlaceholder("Take pills|1|morning|daily|2\nWater plants|1|anytime|every-other-day|1\nTrash night|1|evening|weekly|1|2026-04-01")
+          .setValue(settings.habitDefinitions.map((habit) => `${habit.label}|${habit.target}|${habit.completionWindow}|${habit.cadence}|${habit.difficultyWeight}|${habit.anchorDate}`).join("\n"))
           .onChange(async (value) => {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
@@ -5968,18 +5938,22 @@ function setDashboardTextareaHeight(key: string, height: string): void {
 }
 
 function getDefaultIntakeUnit(kind: string, measurementSystem: "imperial" | "metric"): string {
-  if (kind === "water" || kind === "caffeine") {
-    return measurementSystem === "metric" ? "mL" : kind === "caffeine" ? "cup" : "oz";
+  if (kind === "drink") {
+    return measurementSystem === "metric" ? "mL" : "oz";
   }
 
-  return kind === "medication" ? "pill" : "serving";
+  if (kind === "medication") {
+    return "pill";
+  }
+
+  return "serving";
 }
 
 function buildIntakeQuickPreset(input: { kind: string; label: string; amount: number; unit: string }): IntakeQuickPreset {
   const label = input.label.trim();
   const unit = input.unit.trim();
-  const amount = Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 64);
-  const kind = input.kind === "caffeine" || input.kind === "supplement" || input.kind === "medication" ? input.kind : "water";
+  const amount = Math.min(Math.max(Number(input.amount) || 1, 0.1), 9999);
+  const kind = input.kind === "food" || input.kind === "supplement" || input.kind === "medication" || input.kind === "drink" ? input.kind : "drink";
   const slug = `${kind}-${label.toLowerCase()}-${amount}-${unit.toLowerCase()}`
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -5998,8 +5972,8 @@ function formatIntakeQuickPresetButtonLabel(preset: IntakeQuickPreset): string {
 }
 
 function getIntakePresetIcon(kind: IntakeQuickPreset["kind"]): string {
-  if (kind === "caffeine") {
-    return "coffee";
+  if (kind === "food") {
+    return "utensils-crossed";
   }
   if (kind === "supplement" || kind === "medication") {
     return "pill";
@@ -6232,6 +6206,7 @@ export class AddHabitModal extends Modal {
   private habitName = "";
   private targetCount = "1";
   private completionWindow = "anytime";
+  private cadence = "daily";
   private difficultyWeight = "1";
 
   constructor(app: App, plugin: DailyDashboardPlugin) {
@@ -6283,6 +6258,17 @@ export class AddHabitModal extends Modal {
       });
 
     new Setting(contentEl)
+      .setName("Cadence")
+      .setDesc("Choose whether this habit is due daily, every other day, or weekly.")
+      .addDropdown((dropdown) => {
+        HABIT_CADENCE_OPTIONS.forEach((cadence) => dropdown.addOption(cadence, formatHabitCadenceLabel(cadence)));
+        dropdown.setValue(this.cadence);
+        dropdown.onChange((value) => {
+          this.cadence = value;
+        });
+      });
+
+    new Setting(contentEl)
       .setName("Difficulty weight")
       .setDesc("Higher weights make the habit count more in weighted completion and recovery scoring.")
       .addText((text) => {
@@ -6300,7 +6286,7 @@ export class AddHabitModal extends Modal {
     new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Add habit").setCta().onClick(async () => {
-          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight));
+          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight), this.cadence);
           this.close();
         });
       })

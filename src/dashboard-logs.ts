@@ -2,6 +2,7 @@ import {
   clamp,
   countHabitEventsInWindow,
   createEmptyEntry,
+  formatHabitCadenceLabel,
   formatHabitWindowLabel,
   formatDateKey,
   formatDateTimeKey,
@@ -23,13 +24,15 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     const events = entry.habitEvents[habit.id] ?? [];
     const timing = events.length > 0 ? ` at ${events.map((item) => item.slice(11)).join(", ")}` : "";
     const inWindowCount = countHabitEventsInWindow(events, habit.completionWindow);
-    return `- ${habit.label}: ${entry.habits[habit.id] ?? 0}/${habit.target}${timing} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3 • in window ${inWindowCount}/${events.length || 0}`;
+    return `- ${habit.label}: ${entry.habits[habit.id] ?? 0}/${habit.target}${timing} • ${formatHabitCadenceLabel(habit.cadence)} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3 • in window ${inWindowCount}/${events.length || 0}`;
   });
   const habitMissNoteLines = habits
     .filter((habit) => (entry.habitMissNotes[habit.id] ?? "").trim().length > 0)
     .map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
-  const foodLines = entry.foodLog.length > 0
-    ? entry.foodLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount > 1 ? `${item.amount}x ` : ""}${item.text}`)
+  const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
+  const drinkEntries = entry.intakeLog.filter((item) => item.kind === "drink");
+  const foodLines = foodEntries.length > 0
+    ? foodEntries.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`)
     : ["- None logged"];
   const intakeLines = entry.intakeLog.length > 0
     ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} • ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`)
@@ -104,8 +107,8 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     `relaxMinutesOverride: ${entry.relaxMinutesOverride ?? ""}`,
     `breakMinutesOverride: ${entry.breakMinutesOverride ?? ""}`,
     `workCompleted: ${entry.completedTasks.length}`,
-    `foodEntryCount: ${entry.foodLog.length}`,
-    `intakeEntryCount: ${entry.intakeLog.length}`,
+    `foodEntryCount: ${foodEntries.length}`,
+    `intakeEntryCount: ${drinkEntries.length}`,
     `symptomEntryCount: ${entry.symptomLog.length}`,
     `energyCheckInCount: ${entry.energyCheckIns.length}`,
     `dreamLogged: ${entry.dreamLog.trim().length > 0}`,
@@ -721,8 +724,8 @@ export function buildPersonalTrendSummary(entries: DailyEntry[], habits: HabitDe
   const secondMood = averageEntryScore(secondHalf, "moodScore");
   const firstRecovery = buildSleepInsights(firstHalf, undefined, habits).averageRecoveryScore;
   const secondRecovery = buildSleepInsights(secondHalf, undefined, habits).averageRecoveryScore;
-  const waterDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "water")).length;
-  const caffeineDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "caffeine")).length;
+  const waterDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "drink" && /water/i.test(item.label))).length;
+  const caffeineDays = orderedEntries.filter((entry) => entry.intakeLog.some((item) => item.kind === "drink" && /coffee|tea|cola|caffeine|energy/i.test(item.label))).length;
   const helpedDays = orderedEntries.filter((entry) => entry.helpedToday.trim().length > 0).length;
   const hurtDays = orderedEntries.filter((entry) => entry.hurtToday.trim().length > 0).length;
   const missCounts = new Map<string, number>();

@@ -8,6 +8,7 @@ import {
   type DashboardSettings,
   type DayLifecycleState,
   type FoodEntry,
+  type HabitCadence,
   type HabitDefinition,
   type HabitCompletionWindow,
   type IntakeEntry,
@@ -31,6 +32,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
           label: typeof habit.label === "string" ? habit.label.trim() : "Habit",
           target: clamp(Number(habit.target ?? 1), 1, 12),
           completionWindow: normalizeHabitWindow(habit.completionWindow),
+          cadence: normalizeHabitCadence(habit.cadence),
+          anchorDate: typeof habit.anchorDate === "string" ? habit.anchorDate : "",
           difficultyWeight: clamp(Number(habit.difficultyWeight ?? 1), 1, 3)
         }))
         .filter((habit) => habit.label.length > 0)
@@ -514,7 +517,7 @@ export function parseHabitDefinitions(value: string): HabitDefinition[] {
   }
 
   return lines.map((line) => {
-    const [rawLabel, rawTarget, rawWindow, rawWeight] = line.split("|");
+    const [rawLabel, rawTarget, rawWindow, rawCadence, rawWeight, rawAnchorDate] = line.split("|");
     const label = rawLabel?.trim() || "Habit";
     const target = clamp(Number(rawTarget?.trim() || 1), 1, 12);
     return {
@@ -522,9 +525,55 @@ export function parseHabitDefinitions(value: string): HabitDefinition[] {
       label,
       target,
       completionWindow: normalizeHabitWindow(rawWindow),
-      difficultyWeight: clamp(Number(rawWeight?.trim() || 1), 1, 3)
+      cadence: normalizeHabitCadence(rawCadence),
+      difficultyWeight: clamp(Number(rawWeight?.trim() || 1), 1, 3),
+      anchorDate: normalizeHabitAnchorDate(rawAnchorDate)
     };
   });
+}
+
+export function normalizeHabitCadence(value: unknown): HabitCadence {
+  return value === "every-other-day" || value === "weekly"
+    ? value
+    : "daily";
+}
+
+export function normalizeHabitAnchorDate(value: unknown): string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
+    ? value.trim()
+    : "";
+}
+
+export function isHabitDueOnDate(habit: HabitDefinition, date: string): boolean {
+  if (habit.cadence === "daily") {
+    return true;
+  }
+
+  const anchorDate = normalizeHabitAnchorDate(habit.anchorDate) || date;
+  const anchor = new Date(`${anchorDate}T00:00:00`);
+  const target = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(anchor.getTime()) || Number.isNaN(target.getTime())) {
+    return true;
+  }
+
+  const dayDifference = Math.floor((target.getTime() - anchor.getTime()) / 86_400_000);
+  if (dayDifference < 0) {
+    return false;
+  }
+
+  if (habit.cadence === "every-other-day") {
+    return dayDifference % 2 === 0;
+  }
+
+  return dayDifference % 7 === 0;
+}
+
+export function formatHabitCadenceLabel(cadence: HabitCadence): string {
+  if (cadence === "every-other-day") {
+    return "Every other day";
+  }
+
+  return cadence === "weekly" ? "Weekly" : "Daily";
 }
 
 export function normalizeHabitWindow(value: unknown): HabitCompletionWindow {
@@ -541,10 +590,20 @@ export function formatHabitWindowLabel(window: HabitCompletionWindow): string {
 
 export function getHabitWeightedCompletion(entry: DailyEntry, definitions: HabitDefinition[]): { completed: number; target: number; percentage: number } {
   const completed = definitions.reduce((sum, definition) => {
+    if (!isHabitDueOnDate(definition, entry.date)) {
+      return sum;
+    }
+
     const capped = Math.min(entry.habits[definition.id] ?? 0, definition.target);
     return sum + (capped * definition.difficultyWeight);
   }, 0);
-  const target = definitions.reduce((sum, definition) => sum + (definition.target * definition.difficultyWeight), 0);
+  const target = definitions.reduce((sum, definition) => {
+    if (!isHabitDueOnDate(definition, entry.date)) {
+      return sum;
+    }
+
+    return sum + (definition.target * definition.difficultyWeight);
+  }, 0);
   return {
     completed,
     target,
@@ -731,12 +790,13 @@ export function renderRoutineSignalsForAi(entries: DailyEntry[], habits: HabitDe
 
   const habitLines = habits.map((habit) => {
     const timestamps = entries.flatMap((entry) => entry.habitEvents[habit.id] ?? []).map((item) => item.slice(11));
-    const averageCount = (entries.reduce((sum, entry) => sum + (entry.habits[habit.id] ?? 0), 0) / entries.length).toFixed(1);
+    const dueEntries = entries.filter((entry) => isHabitDueOnDate(habit, entry.date));
+    const averageCount = ((dueEntries.reduce((sum, entry) => sum + (entry.habits[habit.id] ?? 0), 0)) / Math.max(dueEntries.length, 1)).toFixed(1);
     const missNotes = entries.map((entry) => entry.habitMissNotes[habit.id]).filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-    return `- ${habit.label}: avg ${averageCount}/${habit.target}, window ${formatHabitWindowLabel(habit.completionWindow)}, weight ${habit.difficultyWeight}/3, recent times ${timestamps.slice(-8).join(", ") || "none"}, miss notes ${missNotes.slice(-3).join(" | ") || "none"}`;
+    return `- ${habit.label}: avg ${averageCount}/${habit.target}, ${formatHabitCadenceLabel(habit.cadence).toLowerCase()}, window ${formatHabitWindowLabel(habit.completionWindow)}, weight ${habit.difficultyWeight}/3, recent times ${timestamps.slice(-8).join(", ") || "none"}, miss notes ${missNotes.slice(-3).join(" | ") || "none"}`;
   });
 
-  const foodTimes = entries.flatMap((entry) => entry.foodLog.map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
+  const foodTimes = entries.flatMap((entry) => entry.intakeLog.filter((item) => item.kind === "food").map((item) => item.loggedAt.slice(11))).filter((item) => item.length > 0);
   const intakeLines = entries.flatMap((entry) => entry.intakeLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.kind} ${item.amount} ${item.unit} ${item.label}`));
   const symptomLines = entries.flatMap((entry) => entry.symptomLog.slice(0, 3).map((item) => `${item.loggedAt.slice(0, 16)} ${item.symptom} ${item.severity}/5${item.note ? ` ${item.note}` : ""}`));
   const dreamDays = entries.filter((entry) => entry.dreamLog.trim().length > 0).map((entry) => entry.date);
@@ -848,8 +908,19 @@ export function normalizeFoodEntry(input: unknown): FoodEntry | null {
 
   return {
     text,
-    amount: clamp(Math.round(Number(candidate.amount ?? 1)), 1, 24),
+    amount: clamp(Number(candidate.amount ?? 1), 0.1, 9999),
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
+  };
+}
+
+export function foodEntryToIntakeEntry(entry: FoodEntry): IntakeEntry {
+  return {
+    kind: "food",
+    label: entry.text,
+    amount: entry.amount,
+    unit: entry.amount === 1 ? "serving" : "servings",
+    note: "",
+    loggedAt: entry.loggedAt
   };
 }
 
@@ -865,9 +936,13 @@ export function normalizeIntakeEntry(input: unknown): IntakeEntry | null {
   }
 
   return {
-    kind: candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water",
+    kind: candidate.kind === "food" || candidate.kind === "medication" || candidate.kind === "supplement" || candidate.kind === "drink"
+      ? candidate.kind
+      : candidate.kind === "caffeine" || candidate.kind === "water"
+        ? "drink"
+        : "drink",
     label,
-    amount: clamp(Math.round(Number(candidate.amount ?? 1)), 1, 64),
+    amount: clamp(Number(candidate.amount ?? 1), 0.1, 9999),
     unit: typeof candidate.unit === "string" && candidate.unit.trim().length > 0 ? candidate.unit.trim() : "serving",
     note: typeof candidate.note === "string" ? candidate.note.trim() : "",
     loggedAt: typeof candidate.loggedAt === "string" ? candidate.loggedAt : ""
@@ -990,14 +1065,14 @@ export function parseAiPromptTemplates(value: string): Record<string, string> {
 export function getDefaultIntakeQuickPresets(measurementSystem: DashboardSettings["measurementSystem"]): IntakeQuickPreset[] {
   if (measurementSystem === "metric") {
     return [
-      { id: "water-250-ml", kind: "water", label: "Water", amount: 250, unit: "mL" },
-      { id: "coffee-250-ml", kind: "caffeine", label: "Coffee", amount: 250, unit: "mL" }
+      { id: "water-250-ml", kind: "drink", label: "Water", amount: 250, unit: "mL" },
+      { id: "coffee-250-ml", kind: "drink", label: "Coffee", amount: 250, unit: "mL" }
     ];
   }
 
   return [
-    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
-    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+    { id: "water-8-oz", kind: "drink", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "drink", label: "Coffee", amount: 1, unit: "cup" }
   ];
 }
 
@@ -1013,8 +1088,12 @@ function normalizeIntakeQuickPreset(input: unknown, index: number): IntakeQuickP
     return null;
   }
 
-  const kind = candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water";
-  const amount = clamp(Math.round(Number(candidate.amount ?? 1)), 1, 64);
+  const kind = candidate.kind === "food" || candidate.kind === "medication" || candidate.kind === "supplement" || candidate.kind === "drink"
+    ? candidate.kind
+    : candidate.kind === "caffeine" || candidate.kind === "water"
+      ? "drink"
+      : "drink";
+  const amount = clamp(Number(candidate.amount ?? 1), 0.1, 9999);
   const baseId = typeof candidate.id === "string" && candidate.id.trim().length > 0
     ? candidate.id.trim()
     : `${kind}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${amount}-${unit.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index}`;
