@@ -82,6 +82,8 @@ export class DailyDashboardView extends ItemView {
   private editingFocusIndex: number | null = null;
   private editingFocusText = "";
   private draggedFocusIndex: number | null = null;
+  private draggedLayoutCardKey: string | null = null;
+  private suppressNextCardToggle = false;
   private selectedSessionProjectName = "";
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
@@ -428,6 +430,7 @@ export class DailyDashboardView extends ItemView {
   ): HTMLElement {
     const key = getDashboardCardLayoutKey(title);
     const config = layoutByKey.get(key);
+    card.dataset.layoutKey = key;
     if (config?.pinned) {
       card.addClass("is-layout-pinned");
       const controls = card.querySelector<HTMLElement>(".daily-dashboard-card-header-controls");
@@ -439,8 +442,79 @@ export class DailyDashboardView extends ItemView {
       card.addClass("is-layout-hidden");
     }
 
+    const header = card.querySelector<HTMLElement>(".daily-dashboard-card-header");
+    if (header && !config?.hidden) {
+      header.addClass("is-layout-draggable");
+      header.draggable = true;
+      header.addEventListener("click", (event) => {
+        if (!this.suppressNextCardToggle) {
+          return;
+        }
+
+        this.suppressNextCardToggle = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+      header.addEventListener("dragstart", (event) => {
+        this.draggedLayoutCardKey = key;
+        this.suppressNextCardToggle = false;
+        card.addClass("is-layout-dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", key);
+        }
+      });
+      header.addEventListener("dragend", () => {
+        this.draggedLayoutCardKey = null;
+        card.removeClass("is-layout-dragging");
+        this.contentEl.querySelectorAll(".daily-dashboard-card.is-layout-drop-target").forEach((element) => {
+          element.removeClass("is-layout-drop-target");
+        });
+      });
+      card.addEventListener("dragover", (event) => {
+        if (!this.draggedLayoutCardKey || this.draggedLayoutCardKey === key) {
+          return;
+        }
+
+        event.preventDefault();
+        card.addClass("is-layout-drop-target");
+      });
+      card.addEventListener("dragleave", (event) => {
+        if (!(event.relatedTarget instanceof Node) || !card.contains(event.relatedTarget)) {
+          card.removeClass("is-layout-drop-target");
+        }
+      });
+      card.addEventListener("drop", (event) => {
+        const sourceKey = this.draggedLayoutCardKey;
+        if (!sourceKey || sourceKey === key) {
+          return;
+        }
+
+        event.preventDefault();
+        card.removeClass("is-layout-drop-target");
+        this.suppressNextCardToggle = true;
+        void this.reorderDashboardCards(sourceKey, key);
+      });
+    }
+
     bindings.push({ key, card });
     return card;
+  }
+
+  private async reorderDashboardCards(sourceKey: string, targetKey: string): Promise<void> {
+    const cards = sortDashboardLayoutCardsByOrder(getDashboardCardLayoutState());
+    const sourceIndex = cards.findIndex((card) => card.key === sourceKey);
+    const targetIndex = cards.findIndex((card) => card.key === targetKey);
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+      return;
+    }
+
+    const nextCards = [...cards];
+    const [movedCard] = nextCards.splice(sourceIndex, 1);
+    const insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    nextCards.splice(insertionIndex, 0, movedCard);
+    setDashboardCardLayoutState(nextCards.map((card, index) => ({ ...card, order: index })));
+    await this.render();
   }
 
   private applyGridLayout(grid: HTMLElement, bindings: DashboardLayoutCardBinding[], layoutByKey: Map<string, DashboardLayoutCardState>): void {
@@ -804,7 +878,6 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
-      createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
@@ -1518,7 +1591,7 @@ export class DailyDashboardView extends ItemView {
       }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
-      const stateCard = createGridCard("State And Friction", "Log mood, energy, and friction so weak days have context.", {
+      const stateCard = createGridCard("State, Symptoms And Friction", "Log mood, energy, symptoms, and friction while the day is still readable.", {
         icon: "activity",
         eyebrow: "State",
         tone: "state",
@@ -1668,6 +1741,43 @@ export class DailyDashboardView extends ItemView {
       frictionInput.addEventListener("change", () => {
         void this.plugin.updateFrictionLog(frictionInput.value);
       });
+
+      const symptomsSection = this.createCollapsibleSubsection(stateCard, "state-symptoms", "Symptoms", "Track pain, symptoms, and likely triggers before the context gets flattened later.");
+      const symptomSummary = symptomsSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(symptomSummary, todayEntry.symptomLog.length > 0 ? `${todayEntry.symptomLog.length} logged` : "No symptoms", todayEntry.symptomLog.length > 0 ? "health" : "neutral");
+      createSemanticChip(symptomSummary, todayEntry.symptomLog[0] ? `${todayEntry.symptomLog[0].severity}/5 latest` : "No severity yet", todayEntry.symptomLog[0] ? "alert" : "neutral");
+      const symptomForm = symptomsSection.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
+      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
+      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
+      const symptomButtons = symptomsSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(symptomButtons, "Log symptom", async () => {
+        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
+        symptomInput.value = "";
+        symptomSeverity.value = "3";
+        symptomNote.value = "";
+      }, false, "heart-pulse");
+      const symptomList = symptomsSection.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.symptomLog.length === 0) {
+        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
+      } else {
+        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
+          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item.symptom} • ${item.severity}/5` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            const removedItem = { ...item } satisfies SymptomEntry;
+            void this.runDestructiveAction(
+              `Removed symptom entry \"${item.symptom}\".`,
+              async () => this.plugin.removeSymptomEntry(index),
+              async () => this.plugin.restoreSymptomEntry(removedItem, index)
+            );
+          });
+        });
+      }
 
       const gamificationCard = createGridCard("Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
         icon: "trophy",
@@ -1862,14 +1972,6 @@ export class DailyDashboardView extends ItemView {
           });
         });
       }
-      if (consumableSummary.length > 0) {
-        const summaryRow = foodCard.createDiv({ cls: "daily-dashboard-chip-row" });
-        consumableSummary
-          .sort((left, right) => right.loggedAt.localeCompare(left.loggedAt))
-          .forEach((item) => {
-            createSemanticChip(summaryRow, `${item.label} ${item.totalAmount} ${item.unit}`, item.kind === "medication" ? "alert" : "health");
-          });
-      }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       if (intakeEntries.length === 0) {
         const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
@@ -1902,45 +2004,6 @@ export class DailyDashboardView extends ItemView {
               `Removed ${item.kind} entry \"${item.label}\".`,
               async () => this.plugin.removeIntakeEntry(index),
               async () => this.plugin.restoreIntakeEntry(removedItem, index)
-            );
-          });
-        });
-      }
-
-      const symptomsCard = createGridCard("Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
-        icon: "heart-pulse",
-        eyebrow: "Body",
-        tone: "health",
-        tag: "Observe"
-      });
-      const symptomForm = symptomsCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
-      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
-      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
-      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
-      const symptomButtons = symptomsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(symptomButtons, "Log symptom", async () => {
-        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
-        symptomInput.value = "";
-        symptomSeverity.value = "3";
-        symptomNote.value = "";
-      }, false, "heart-pulse");
-      const symptomList = symptomsCard.createDiv({ cls: "daily-dashboard-project-list" });
-      if (todayEntry.symptomLog.length === 0) {
-        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
-      } else {
-        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
-          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item.symptom} • ${item.severity}/5` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
-          removeButton.type = "button";
-          removeButton.addEventListener("click", () => {
-            const removedItem = { ...item } satisfies SymptomEntry;
-            void this.runDestructiveAction(
-              `Removed symptom entry \"${item.symptom}\".`,
-              async () => this.plugin.removeSymptomEntry(index),
-              async () => this.plugin.restoreSymptomEntry(removedItem, index)
             );
           });
         });
@@ -2139,7 +2202,6 @@ export class DailyDashboardView extends ItemView {
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
       const timelineActions = timelineCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(timelineActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
       createButton(timelineActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
       createButton(timelineActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
       const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
@@ -5505,17 +5567,16 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
   { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
-  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "State, Symptoms And Friction", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
   { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false, width: "default" },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
-  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 10, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 11, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 12, hidden: false, pinned: false, width: "default" }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -6419,7 +6480,13 @@ function getClockMinutes(value: string | Date): number {
 
 function getDashboardCardLayoutKey(title: string): string {
   const normalized = toClassSlug(title);
-  return normalized === "consumables" ? "food-log" : normalized;
+  if (normalized === "consumables") {
+    return "food-log";
+  }
+  if (normalized === "state-symptoms-and-friction") {
+    return "state-and-friction";
+  }
+  return normalized;
 }
 
 function getDashboardCardGridColumn(key: string, config: DashboardLayoutCardState | undefined, viewMode: DashboardViewMode): string {

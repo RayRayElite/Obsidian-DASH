@@ -1032,8 +1032,9 @@ function normalizeHabitAutomation(input, index, definitions) {
   const candidate = input;
   const rawHabitId = typeof candidate.habitId === "string" ? candidate.habitId.trim() : "";
   const normalizedHabitKey = rawHabitId.toLowerCase();
-  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey || definition.label.trim().toLowerCase() === normalizedHabitKey);
-  const habitId = (_a = matchedDefinition == null ? void 0 : matchedDefinition.id) != null ? _a : rawHabitId ? createHabitId(rawHabitId) : "";
+  const normalizedHabitSlug = createHabitId(rawHabitId);
+  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey || definition.label.trim().toLowerCase() === normalizedHabitKey || createHabitId(definition.label) === normalizedHabitSlug);
+  const habitId = (_a = matchedDefinition == null ? void 0 : matchedDefinition.id) != null ? _a : normalizedHabitSlug;
   const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
   const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
   if (!habitId || !label || !unit) {
@@ -1071,7 +1072,6 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   }).map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
   const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
   const drinkEntries = entry.intakeLog.filter((item) => item.kind === "drink");
-  const foodLines = foodEntries.length > 0 ? foodEntries.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
   const intakeLines = entry.intakeLog.length > 0 ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} \u2022 ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
   const symptomLines = entry.symptomLog.length > 0 ? entry.symptomLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.symptom} \u2022 ${item.severity}/5${item.note ? ` - ${item.note}` : ""}`) : ["- None logged"];
   const energyCheckInLines = entry.energyCheckIns.length > 0 ? entry.energyCheckIns.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.score}/5${item.note ? ` - ${item.note}` : ""}`) : ["- No energy check-ins logged"];
@@ -1162,22 +1162,22 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "## Calendar Follow-Through",
     ...calendarFollowThroughLines,
     "",
-    "## State",
+    "## State, Symptoms And Friction",
     `- Mood: ${renderScore(entry.moodScore)}`,
     `- Energy: ${renderScore(entry.energyScore)}`,
     `- Anxiety: ${renderScore(entry.anxietyScore)}`,
     "",
-    "## Energy Timeline",
+    "### Symptoms",
+    ...symptomLines,
+    "",
+    "### Friction",
+    entry.frictionLog || "No friction log yet.",
+    "",
+    "### Energy Timeline",
     ...energyCheckInLines,
     "",
-    "## Food Log",
-    ...foodLines,
-    "",
-    "## Intake Log",
+    "## Consumables",
     ...intakeLines,
-    "",
-    "## Symptoms And Pain",
-    ...symptomLines,
     "",
     "## Diet Insight",
     entry.dietInsight || "No AI nutrition summary yet.",
@@ -1377,7 +1377,7 @@ function renderPeriodReport(input) {
   let trackedPoopCount = 0;
   let daysWithNaps = 0;
   input.entries.forEach((entry) => {
-    if (entry.foodLog.length > 0) {
+    if (entry.intakeLog.length > 0) {
       daysWithFood += 1;
     }
     if (entry.sleepLog.trim().length > 0) {
@@ -1427,7 +1427,7 @@ function renderPeriodReport(input) {
   });
   const workLines = Array.from(workByProject.entries()).sort((left, right) => right[1] - left[1]).map(([project, count]) => `- ${project}: ${count}`);
   const dayLines = input.entries.map((entry) => {
-    const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
+    const foodSummary = entry.intakeLog.length > 0 ? `${entry.intakeLog.length} consumables` : "no consumables";
     const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
     const trackedSleepMinutesForEntry = getSleepMinutesForDay(entry, input.entries.find((candidate) => candidate.date > entry.date));
     const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
@@ -1446,7 +1446,7 @@ function renderPeriodReport(input) {
     "## Overview",
     `- Days captured: ${input.entries.length}`,
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
-    `- Days with food logged: ${daysWithFood}`,
+    `- Days with consumables logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
     `- Days with dream logs: ${daysWithDreams}`,
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
@@ -1698,24 +1698,6 @@ function buildPersonalTrendSummary(entries, habits) {
       orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Hurt: ${item}`)
     ].flat()
   };
-}
-function renderWinsArchive(input) {
-  const accomplishmentLines = buildAccomplishmentSectionLines(input.entries);
-  const helpedLines = input.entries.filter((entry) => entry.helpedToday.trim().length > 0).map((entry) => `- ${entry.date}: ${entry.helpedToday.trim()}`);
-  const archivedTaskLines = input.entries.flatMap((entry) => entry.completedTasks.slice(0, 6).map((task) => `- ${entry.date}: ${task.project} / ${task.section} - ${task.text}`));
-  return [
-    `# ${input.title}`,
-    "",
-    "## Accomplishments By Project",
-    ...accomplishmentLines.length > 0 ? accomplishmentLines : ["- No accomplishments were archived in this range."],
-    "",
-    "## Helpful Signals",
-    ...helpedLines.length > 0 ? helpedLines : ["- No 'helped today' reflections were logged in this range."],
-    "",
-    "## Wins By Day",
-    ...archivedTaskLines.length > 0 ? archivedTaskLines : ["- No archived tasks were captured in this range."],
-    ""
-  ].join("\n");
 }
 function renderPersonalTrendSectionLines(summary) {
   return [
@@ -3668,6 +3650,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusIndex = null;
     this.editingFocusText = "";
     this.draggedFocusIndex = null;
+    this.draggedLayoutCardKey = null;
+    this.suppressNextCardToggle = false;
     this.selectedSessionProjectName = "";
     this.selectedSavedFilterName = getDashboardSelectedFilterName();
     this.calendarCursorDate = /* @__PURE__ */ new Date();
@@ -3948,6 +3932,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   registerGridCard(card, title, bindings, layoutByKey) {
     const key = getDashboardCardLayoutKey(title);
     const config = layoutByKey.get(key);
+    card.dataset.layoutKey = key;
     if (config == null ? void 0 : config.pinned) {
       card.addClass("is-layout-pinned");
       const controls = card.querySelector(".daily-dashboard-card-header-controls");
@@ -3958,8 +3943,73 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     if (config == null ? void 0 : config.hidden) {
       card.addClass("is-layout-hidden");
     }
+    const header = card.querySelector(".daily-dashboard-card-header");
+    if (header && !(config == null ? void 0 : config.hidden)) {
+      header.addClass("is-layout-draggable");
+      header.draggable = true;
+      header.addEventListener("click", (event) => {
+        if (!this.suppressNextCardToggle) {
+          return;
+        }
+        this.suppressNextCardToggle = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+      header.addEventListener("dragstart", (event) => {
+        this.draggedLayoutCardKey = key;
+        this.suppressNextCardToggle = false;
+        card.addClass("is-layout-dragging");
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", key);
+        }
+      });
+      header.addEventListener("dragend", () => {
+        this.draggedLayoutCardKey = null;
+        card.removeClass("is-layout-dragging");
+        this.contentEl.querySelectorAll(".daily-dashboard-card.is-layout-drop-target").forEach((element) => {
+          element.removeClass("is-layout-drop-target");
+        });
+      });
+      card.addEventListener("dragover", (event) => {
+        if (!this.draggedLayoutCardKey || this.draggedLayoutCardKey === key) {
+          return;
+        }
+        event.preventDefault();
+        card.addClass("is-layout-drop-target");
+      });
+      card.addEventListener("dragleave", (event) => {
+        if (!(event.relatedTarget instanceof Node) || !card.contains(event.relatedTarget)) {
+          card.removeClass("is-layout-drop-target");
+        }
+      });
+      card.addEventListener("drop", (event) => {
+        const sourceKey = this.draggedLayoutCardKey;
+        if (!sourceKey || sourceKey === key) {
+          return;
+        }
+        event.preventDefault();
+        card.removeClass("is-layout-drop-target");
+        this.suppressNextCardToggle = true;
+        void this.reorderDashboardCards(sourceKey, key);
+      });
+    }
     bindings.push({ key, card });
     return card;
+  }
+  async reorderDashboardCards(sourceKey, targetKey) {
+    const cards = sortDashboardLayoutCardsByOrder(getDashboardCardLayoutState());
+    const sourceIndex = cards.findIndex((card) => card.key === sourceKey);
+    const targetIndex = cards.findIndex((card) => card.key === targetKey);
+    if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+      return;
+    }
+    const nextCards = [...cards];
+    const [movedCard] = nextCards.splice(sourceIndex, 1);
+    const insertionIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    nextCards.splice(insertionIndex, 0, movedCard);
+    setDashboardCardLayoutState(nextCards.map((card, index) => ({ ...card, order: index })));
+    await this.render();
   }
   applyGridLayout(grid, bindings, layoutByKey) {
     const visible = bindings.filter((binding) => {
@@ -4287,7 +4337,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "notebook-pen", "Weekly review", async () => this.plugin.generateWeeklyReview());
       createIconButton(utilityActions, "bar-chart-3", "Weekly report", async () => this.plugin.generateWeeklyReport());
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
-      createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
       const latestUndoAction = (_j = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _j : null;
@@ -4957,7 +5006,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         }).open();
       }, false, "list-plus");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
-      const stateCard = createGridCard("State And Friction", "Log mood, energy, and friction so weak days have context.", {
+      const stateCard = createGridCard("State, Symptoms And Friction", "Log mood, energy, symptoms, and friction while the day is still readable.", {
         icon: "activity",
         eyebrow: "State",
         tone: "state",
@@ -5104,6 +5153,42 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       frictionInput.addEventListener("change", () => {
         void this.plugin.updateFrictionLog(frictionInput.value);
       });
+      const symptomsSection = this.createCollapsibleSubsection(stateCard, "state-symptoms", "Symptoms", "Track pain, symptoms, and likely triggers before the context gets flattened later.");
+      const symptomSummary = symptomsSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(symptomSummary, todayEntry.symptomLog.length > 0 ? `${todayEntry.symptomLog.length} logged` : "No symptoms", todayEntry.symptomLog.length > 0 ? "health" : "neutral");
+      createSemanticChip(symptomSummary, todayEntry.symptomLog[0] ? `${todayEntry.symptomLog[0].severity}/5 latest` : "No severity yet", todayEntry.symptomLog[0] ? "alert" : "neutral");
+      const symptomForm = symptomsSection.createDiv({ cls: "daily-dashboard-stacked-form" });
+      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
+      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
+      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
+      const symptomButtons = symptomsSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(symptomButtons, "Log symptom", async () => {
+        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
+        symptomInput.value = "";
+        symptomSeverity.value = "3";
+        symptomNote.value = "";
+      }, false, "heart-pulse");
+      const symptomList = symptomsSection.createDiv({ cls: "daily-dashboard-project-list" });
+      if (todayEntry.symptomLog.length === 0) {
+        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
+      } else {
+        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
+          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `${item.symptom} \u2022 ${item.severity}/5` });
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` \u2022 ${item.note}` : ""}` });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            const removedItem = { ...item };
+            void this.runDestructiveAction(
+              `Removed symptom entry "${item.symptom}".`,
+              async () => this.plugin.removeSymptomEntry(index),
+              async () => this.plugin.restoreSymptomEntry(removedItem, index)
+            );
+          });
+        });
+      }
       const gamificationCard = createGridCard("Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
         icon: "trophy",
         eyebrow: "Scores",
@@ -5295,12 +5380,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         });
       }
-      if (consumableSummary.length > 0) {
-        const summaryRow = foodCard.createDiv({ cls: "daily-dashboard-chip-row" });
-        consumableSummary.sort((left, right) => right.loggedAt.localeCompare(left.loggedAt)).forEach((item) => {
-          createSemanticChip(summaryRow, `${item.label} ${item.totalAmount} ${item.unit}`, item.kind === "medication" ? "alert" : "health");
-        });
-      }
       const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       if (intakeEntries.length === 0) {
         const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
@@ -5333,44 +5412,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               `Removed ${item.kind} entry "${item.label}".`,
               async () => this.plugin.removeIntakeEntry(index),
               async () => this.plugin.restoreIntakeEntry(removedItem, index)
-            );
-          });
-        });
-      }
-      const symptomsCard = createGridCard("Symptoms And Pain", "Track symptoms, discomfort, and severity before the day blurs together.", {
-        icon: "heart-pulse",
-        eyebrow: "Body",
-        tone: "health",
-        tag: "Observe"
-      });
-      const symptomForm = symptomsCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const symptomInput = symptomForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Headache, nausea, back pain..." } });
-      const symptomMeta = symptomForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
-      const symptomSeverity = symptomMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "1", max: "5", value: "3" } });
-      const symptomNote = symptomMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional trigger or context" } });
-      const symptomButtons = symptomsCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(symptomButtons, "Log symptom", async () => {
-        await this.plugin.addSymptomEntry(symptomInput.value, Number(symptomSeverity.value), symptomNote.value);
-        symptomInput.value = "";
-        symptomSeverity.value = "3";
-        symptomNote.value = "";
-      }, false, "heart-pulse");
-      const symptomList = symptomsCard.createDiv({ cls: "daily-dashboard-project-list" });
-      if (todayEntry.symptomLog.length === 0) {
-        symptomList.createDiv({ cls: "daily-dashboard-empty-state", text: "No symptoms or pain logged today." });
-      } else {
-        todayEntry.symptomLog.slice(0, 10).forEach((item, index) => {
-          const row = symptomList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `${item.symptom} \u2022 ${item.severity}/5` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: `${item.loggedAt}${item.note ? ` \u2022 ${item.note}` : ""}` });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
-          removeButton.type = "button";
-          removeButton.addEventListener("click", () => {
-            const removedItem = { ...item };
-            void this.runDestructiveAction(
-              `Removed symptom entry "${item.symptom}".`,
-              async () => this.plugin.removeSymptomEntry(index),
-              async () => this.plugin.restoreSymptomEntry(removedItem, index)
             );
           });
         });
@@ -5565,7 +5606,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "calendar").length} calendar`, timelineResults.some((item) => item.kind === "calendar") ? "focus" : "neutral");
       createSemanticChip(timelineSummary, `${timelineResults.filter((item) => item.kind === "log").length} logs`, timelineResults.some((item) => item.kind === "log") ? "log" : "neutral");
       const timelineActions = timelineCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(timelineActions, "Wins archive", async () => this.plugin.generateWinsArchive(), false, "medal");
       createButton(timelineActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
       createButton(timelineActions, "Monthly report", async () => this.plugin.generateMonthlyReport(), false, "line-chart");
       const timelineList = timelineCard.createDiv({ cls: "daily-dashboard-completed-list" });
@@ -8126,17 +8166,16 @@ var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true, width: "full" },
   { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false, width: "default" },
-  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false, width: "default" },
+  { key: "state-and-friction", title: "State, Symptoms And Friction", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
   { key: "food-log", title: "Consumables", order: 6, hidden: false, pinned: false, width: "default" },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false, width: "default" },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
-  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 7, hidden: false, pinned: false, width: "default" },
+  { key: "timeline-search", title: "Timeline Search", order: 8, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 9, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 10, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 11, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 12, hidden: false, pinned: false, width: "default" }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -8822,7 +8861,13 @@ function getClockMinutes(value) {
 }
 function getDashboardCardLayoutKey(title) {
   const normalized = toClassSlug(title);
-  return normalized === "consumables" ? "food-log" : normalized;
+  if (normalized === "consumables") {
+    return "food-log";
+  }
+  if (normalized === "state-symptoms-and-friction") {
+    return "state-and-friction";
+  }
+  return normalized;
 }
 function getDashboardCardGridColumn(key, config, viewMode) {
   if (viewMode === "mobile") {
@@ -8939,13 +8984,6 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Generate monthly dashboard report",
       callback: () => {
         void this.generateMonthlyReport();
-      }
-    });
-    this.addCommand({
-      id: "generate-wins-archive",
-      name: "Generate wins archive",
-      callback: () => {
-        void this.generateWinsArchive();
       }
     });
     this.addCommand({
@@ -10330,7 +10368,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.habitEvents[habitId] = currentEvents;
     entry.habits[habitId] = nextValue;
     if (nextValue > previousValue && addedTimestamps.length > 0) {
-      const automations = this.getSettings().habitAutomations.filter((automation) => automation.habitId === habitId);
+      const definitionLabelKey = definition.label.trim().toLowerCase();
+      const definitionSlug = createHabitId(definition.label);
+      const automations = this.getSettings().habitAutomations.filter((automation) => {
+        const automationKey = automation.habitId.trim().toLowerCase();
+        const automationSlug = createHabitId(automation.habitId);
+        return automationKey === habitId.toLowerCase() || automationKey === definitionLabelKey || automationSlug === habitId.toLowerCase() || automationSlug === definitionSlug;
+      });
       if (automations.length > 0) {
         const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
           kind: automation.intakeKind,
@@ -11043,17 +11087,6 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     );
     await this.openFile(file);
     new import_obsidian4.Notice("Monthly dashboard report generated.");
-  }
-  async generateWinsArchive() {
-    const today = /* @__PURE__ */ new Date();
-    const label = formatDateKey(today);
-    const content = renderWinsArchive({
-      title: `Wins Archive - ${label}`,
-      entries: this.getAllEntries()
-    });
-    const file = await this.upsertMarkdownFile(`Dashboard Logs/Wins Archive/${label}.md`, content);
-    await this.openFile(file);
-    new import_obsidian4.Notice("Wins archive generated.");
   }
   async generateGamificationReport() {
     const today = /* @__PURE__ */ new Date();

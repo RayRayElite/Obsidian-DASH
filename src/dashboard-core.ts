@@ -1162,8 +1162,11 @@ function normalizeHabitAutomation(input: unknown, index: number, definitions: Ha
   const candidate = input as Partial<HabitAutomation>;
   const rawHabitId = typeof candidate.habitId === "string" ? candidate.habitId.trim() : "";
   const normalizedHabitKey = rawHabitId.toLowerCase();
-  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey || definition.label.trim().toLowerCase() === normalizedHabitKey);
-  const habitId = matchedDefinition?.id ?? (rawHabitId ? createHabitId(rawHabitId) : "");
+  const normalizedHabitSlug = createHabitId(rawHabitId);
+  const matchedDefinition = definitions.find((definition) => definition.id.toLowerCase() === normalizedHabitKey
+    || definition.label.trim().toLowerCase() === normalizedHabitKey
+    || createHabitId(definition.label) === normalizedHabitSlug);
+  const habitId = matchedDefinition?.id ?? normalizedHabitSlug;
   const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
   const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
   if (!habitId || !label || !unit) {

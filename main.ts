@@ -62,7 +62,6 @@ import {
   renderGamificationSectionLines,
   renderPersonalTrendSectionLines,
   renderPeriodReport,
-  renderWinsArchive,
   renderWeeklyReview
 } from "./src/dashboard-logs";
 import {
@@ -252,14 +251,6 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate monthly dashboard report",
       callback: () => {
         void this.generateMonthlyReport();
-      }
-    });
-
-    this.addCommand({
-      id: "generate-wins-archive",
-      name: "Generate wins archive",
-      callback: () => {
-        void this.generateWinsArchive();
       }
     });
 
@@ -1967,7 +1958,16 @@ export default class DailyDashboardPlugin extends Plugin {
     entry.habitEvents[habitId] = currentEvents;
     entry.habits[habitId] = nextValue;
     if (nextValue > previousValue && addedTimestamps.length > 0) {
-      const automations = this.getSettings().habitAutomations.filter((automation) => automation.habitId === habitId);
+      const definitionLabelKey = definition.label.trim().toLowerCase();
+      const definitionSlug = createHabitId(definition.label);
+      const automations = this.getSettings().habitAutomations.filter((automation) => {
+        const automationKey = automation.habitId.trim().toLowerCase();
+        const automationSlug = createHabitId(automation.habitId);
+        return automationKey === habitId.toLowerCase()
+          || automationKey === definitionLabelKey
+          || automationSlug === habitId.toLowerCase()
+          || automationSlug === definitionSlug;
+      });
       if (automations.length > 0) {
         const automatedEntries = addedTimestamps.flatMap((timestamp) => automations.map((automation) => ({
           kind: automation.intakeKind,
@@ -2791,19 +2791,6 @@ export default class DailyDashboardPlugin extends Plugin {
 
     await this.openFile(file);
     new Notice("Monthly dashboard report generated.");
-  }
-
-  async generateWinsArchive(): Promise<void> {
-    const today = new Date();
-    const label = formatDateKey(today);
-    const content = renderWinsArchive({
-      title: `Wins Archive - ${label}`,
-      entries: this.getAllEntries()
-    });
-
-    const file = await this.upsertMarkdownFile(`Dashboard Logs/Wins Archive/${label}.md`, content);
-    await this.openFile(file);
-    new Notice("Wins archive generated.");
   }
 
   async generateGamificationReport(): Promise<void> {

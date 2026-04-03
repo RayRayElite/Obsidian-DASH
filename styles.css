@@ -316,6 +316,12 @@
   transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
+.daily-dashboard-icon-button .svg-icon,
+.daily-dashboard-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .daily-dashboard-icon-button:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--daily-dashboard-accent) 12%, var(--background-primary));
@@ -642,7 +648,23 @@
   margin: 0;
   font-size: 1.08rem;
   letter-spacing: -0.02em;
-  color: color-mix(in srgb, var(--daily-dashboard-card-accent) 76%, var(--text-normal));
+  color: var(--text-normal);
+}
+
+.daily-dashboard-card-header.is-layout-draggable {
+  cursor: grab;
+}
+
+.daily-dashboard-card-header.is-layout-draggable:active {
+  cursor: grabbing;
+}
+
+.daily-dashboard-card.is-layout-dragging {
+  opacity: 0.62;
+}
+
+.daily-dashboard-card.is-layout-drop-target {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--daily-dashboard-card-accent) 28%, transparent);
 }
 
 .daily-dashboard-card-header p {

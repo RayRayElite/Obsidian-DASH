@@ -31,9 +31,6 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     .map((habit) => `- ${habit.label}: ${entry.habitMissNotes[habit.id]}`);
   const foodEntries = entry.intakeLog.filter((item) => item.kind === "food");
   const drinkEntries = entry.intakeLog.filter((item) => item.kind === "drink");
-  const foodLines = foodEntries.length > 0
-    ? foodEntries.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`)
-    : ["- None logged"];
   const intakeLines = entry.intakeLog.length > 0
     ? entry.intakeLog.map((item) => `- ${item.loggedAt ? `${item.loggedAt}: ` : ""}${item.kind} • ${item.amount} ${item.unit} ${item.label}${item.note ? ` - ${item.note}` : ""}`)
     : ["- None logged"];
@@ -151,22 +148,22 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "## Calendar Follow-Through",
     ...calendarFollowThroughLines,
     "",
-    "## State",
+    "## State, Symptoms And Friction",
     `- Mood: ${renderScore(entry.moodScore)}`,
     `- Energy: ${renderScore(entry.energyScore)}`,
     `- Anxiety: ${renderScore(entry.anxietyScore)}`,
     "",
-    "## Energy Timeline",
+    "### Symptoms",
+    ...symptomLines,
+    "",
+    "### Friction",
+    entry.frictionLog || "No friction log yet.",
+    "",
+    "### Energy Timeline",
     ...energyCheckInLines,
     "",
-    "## Food Log",
-    ...foodLines,
-    "",
-    "## Intake Log",
+    "## Consumables",
     ...intakeLines,
-    "",
-    "## Symptoms And Pain",
-    ...symptomLines,
     "",
     "## Diet Insight",
     entry.dietInsight || "No AI nutrition summary yet.",
@@ -402,7 +399,7 @@ export function renderPeriodReport(input: {
   let daysWithNaps = 0;
 
   input.entries.forEach((entry) => {
-    if (entry.foodLog.length > 0) {
+    if (entry.intakeLog.length > 0) {
       daysWithFood += 1;
     }
 
@@ -461,7 +458,7 @@ export function renderPeriodReport(input: {
     .map(([project, count]) => `- ${project}: ${count}`);
 
   const dayLines = input.entries.map((entry) => {
-    const foodSummary = entry.foodLog.length > 0 ? `${entry.foodLog.length} food entries` : "no food log";
+    const foodSummary = entry.intakeLog.length > 0 ? `${entry.intakeLog.length} consumables` : "no consumables";
     const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
     const trackedSleepMinutesForEntry = getSleepMinutesForDay(entry, input.entries.find((candidate) => candidate.date > entry.date));
     const napSummary = trackedNapMinutesForEntry > 0 ? `${formatMinutesAsHours(trackedNapMinutesForEntry)} naps` : "no naps";
@@ -483,7 +480,7 @@ export function renderPeriodReport(input: {
     "## Overview",
     `- Days captured: ${input.entries.length}`,
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
-    `- Days with food logged: ${daysWithFood}`,
+    `- Days with consumables logged: ${daysWithFood}`,
     `- Days with sleep logged: ${daysWithSleep}`,
     `- Days with dream logs: ${daysWithDreams}`,
     `- Tracked work time: ${formatMinutesAsHours(trackedWorkMinutes)}`,
@@ -765,29 +762,6 @@ export function buildPersonalTrendSummary(entries: DailyEntry[], habits: HabitDe
       orderedEntries.map((entry) => entry.hurtToday.trim()).filter((item) => item.length > 0).slice(-3).map((item) => `Hurt: ${item}`)
     ].flat()
   };
-}
-
-export function renderWinsArchive(input: { title: string; entries: DailyEntry[] }): string {
-  const accomplishmentLines = buildAccomplishmentSectionLines(input.entries);
-  const helpedLines = input.entries
-    .filter((entry) => entry.helpedToday.trim().length > 0)
-    .map((entry) => `- ${entry.date}: ${entry.helpedToday.trim()}`);
-  const archivedTaskLines = input.entries
-    .flatMap((entry) => entry.completedTasks.slice(0, 6).map((task) => `- ${entry.date}: ${task.project} / ${task.section} - ${task.text}`));
-
-  return [
-    `# ${input.title}`,
-    "",
-    "## Accomplishments By Project",
-    ...(accomplishmentLines.length > 0 ? accomplishmentLines : ["- No accomplishments were archived in this range."]),
-    "",
-    "## Helpful Signals",
-    ...(helpedLines.length > 0 ? helpedLines : ["- No 'helped today' reflections were logged in this range."]),
-    "",
-    "## Wins By Day",
-    ...(archivedTaskLines.length > 0 ? archivedTaskLines : ["- No archived tasks were captured in this range."]),
-    ""
-  ].join("\n");
 }
 
 export function renderPersonalTrendSectionLines(summary: PersonalTrendSummary): string[] {
