@@ -5457,6 +5457,19 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         sessionDeckDropTarget = null;
         sessionDeckDropPreview.detach();
       };
+      sessionDeckDropPreview.addEventListener("dragover", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+        event.preventDefault();
+      });
+      sessionDeckDropPreview.addEventListener("drop", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+        event.preventDefault();
+        commitSessionDeckDrop();
+      });
       const createSessionDeckButton = (trackerId, label, detail, icon, tone, isActive, onClick, accentColor) => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
         button.type = "button";
@@ -5521,8 +5534,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         if (!this.draggedSessionDeckTrackerId) {
           return;
         }
+        event.preventDefault();
         if (event.target === sessionDeckGrid) {
-          event.preventDefault();
           const visibleTrackers = this.getVisibleSessionTrackers();
           const lastTracker = visibleTrackers[visibleTrackers.length - 1];
           if (!lastTracker) {

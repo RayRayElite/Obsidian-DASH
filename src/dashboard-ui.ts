@@ -1243,6 +1243,21 @@ export class DailyDashboardView extends ItemView {
         sessionDeckDropTarget = null;
         sessionDeckDropPreview.detach();
       };
+      sessionDeckDropPreview.addEventListener("dragover", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+
+        event.preventDefault();
+      });
+      sessionDeckDropPreview.addEventListener("drop", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+
+        event.preventDefault();
+        commitSessionDeckDrop();
+      });
       const createSessionDeckButton = (trackerId: string, label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>, accentColor?: string): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
         button.type = "button";
@@ -1310,8 +1325,9 @@ export class DailyDashboardView extends ItemView {
           return;
         }
 
+        event.preventDefault();
+
         if (event.target === sessionDeckGrid) {
-          event.preventDefault();
           const visibleTrackers = this.getVisibleSessionTrackers();
           const lastTracker = visibleTrackers[visibleTrackers.length - 1];
           if (!lastTracker) {
