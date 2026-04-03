@@ -21,7 +21,7 @@ export type ExerciseIntensity = (typeof EXERCISE_INTENSITY_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
 export type WeightGoalMode = "lose" | "maintain" | "gain";
 export type DashboardNotificationSound = "off" | "chime" | "ping" | "alert";
-export type ResearchGroundingMode = "wiki-only" | "wiki-plus-model" | "wiki-plus-web";
+export type ResearchGroundingMode = "vault-only" | "vault-plus-model" | "vault-plus-web";
 
 export interface HabitDefinition {
   id: string;

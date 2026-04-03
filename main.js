@@ -6388,7 +6388,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "wiki-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
       createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
@@ -8647,7 +8647,7 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
     this.additionalContext = "";
     this.generateBrief = true;
     this.generateAnswer = true;
-    this.groundingMode = "wiki-plus-web";
+    this.groundingMode = "vault-plus-web";
     this.plugin = plugin;
     this.question = initialQuestion;
   }
@@ -8678,18 +8678,18 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
         this.generateAnswer = value;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("Grounding mode").setDesc(`Controls whether research questions use only your wiki, your wiki plus model knowledge, or your wiki plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`).addDropdown((dropdown) => {
-      dropdown.addOption("wiki-only", "Wiki only");
-      dropdown.addOption("wiki-plus-model", "Wiki + model knowledge");
-      dropdown.addOption("wiki-plus-web", "Wiki + web search");
+    new import_obsidian3.Setting(contentEl).setName("Grounding mode").setDesc(`Controls whether research questions use your full indexed vault context only, vault context plus model knowledge, or vault context plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`).addDropdown((dropdown) => {
+      dropdown.addOption("vault-only", "Vault only");
+      dropdown.addOption("vault-plus-model", "Vault + model knowledge");
+      dropdown.addOption("vault-plus-web", "Vault + web search");
       dropdown.setValue(this.groundingMode);
       dropdown.onChange((value) => {
-        this.groundingMode = value === "wiki-only" || value === "wiki-plus-model" ? value : "wiki-plus-web";
+        this.groundingMode = value === "vault-only" || value === "vault-plus-model" ? value : "vault-plus-web";
       });
     });
     contentEl.createEl("p", {
       cls: "daily-dashboard-row-meta",
-      text: "This workflow can now run in wiki-only, wiki-plus-model, or wiki-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
+      text: "This workflow can now run in vault-only, vault-plus-model, or vault-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
     });
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Write wiki notes").setCta().onClick(async () => {
@@ -10272,6 +10272,34 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Generate research brief from active note",
       callback: () => {
         void this.generateResearchBriefFromActiveNote();
+      }
+    });
+    this.addCommand({
+      id: "generate-research-marp-slide-deck-from-active-note",
+      name: "Generate research Marp slide deck from active note",
+      callback: () => {
+        void this.generateResearchMarpSlideDeckFromActiveNote();
+      }
+    });
+    this.addCommand({
+      id: "promote-active-research-output-to-concept-note",
+      name: "Promote active research output to concept note",
+      callback: () => {
+        void this.promoteActiveResearchOutputToConceptNote();
+      }
+    });
+    this.addCommand({
+      id: "promote-follow-up-questions-from-active-research-note",
+      name: "Promote follow-up questions from active research note",
+      callback: () => {
+        void this.promoteFollowUpQuestionsFromActiveResearchNote();
+      }
+    });
+    this.addCommand({
+      id: "generate-compiled-research-retrieval-tuning-note",
+      name: "Generate compiled research retrieval tuning note",
+      callback: () => {
+        void this.generateCompiledResearchRetrievalTuningNote();
       }
     });
     this.addCommand({
@@ -12786,7 +12814,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const trimmedContext = (_b = (_a = input.additionalContext) == null ? void 0 : _a.trim()) != null ? _b : "";
     const generateBrief = (_c = input.generateBrief) != null ? _c : true;
     const generateAnswer = (_d = input.generateAnswer) != null ? _d : true;
-    const groundingMode = (_e = input.groundingMode) != null ? _e : "wiki-plus-web";
+    const groundingMode = (_e = input.groundingMode) != null ? _e : "vault-plus-web";
     if (!trimmedQuestion) {
       new import_obsidian4.Notice("Enter a research question first.");
       return;
@@ -12842,7 +12870,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           question: trimmedQuestion,
           additionalSections,
           modelOverride: this.getResearchModel(),
-          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          requestMode: groundingMode === "vault-plus-web" ? "responses-web-search" : "chat",
           groundingModeLabel: groundingMode
         });
         if (briefFile) {
@@ -12870,7 +12898,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           question: trimmedQuestion,
           additionalSections,
           modelOverride: this.getResearchModel(),
-          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          requestMode: groundingMode === "vault-plus-web" ? "responses-web-search" : "chat",
           groundingModeLabel: groundingMode
         });
         if (answerFile) {
@@ -13290,11 +13318,11 @@ ${context}`, resolvedModel);
   }
   getResearchGroundingSummary(mode) {
     switch (mode) {
-      case "wiki-only":
+      case "vault-only":
         return "Use only the seed note plus compiled wiki notes. If coverage is weak, say that clearly instead of filling gaps.";
-      case "wiki-plus-model":
+      case "vault-plus-model":
         return "Use compiled wiki notes first and then clearly labeled model prior knowledge when the wiki is thin.";
-      case "wiki-plus-web":
+      case "vault-plus-web":
         return "Use compiled wiki notes, model prior knowledge, and live web search results, while labeling what came from each source of grounding.";
       default:
         return "Prefer compiled wiki notes first and clearly label anything that comes from outside the current wiki.";
@@ -13302,19 +13330,19 @@ ${context}`, resolvedModel);
   }
   getResearchGroundingInstructions(mode) {
     switch (mode) {
-      case "wiki-only":
+      case "vault-only":
         return [
           "Use only the compiled wiki material and the seed note.",
           "Do not fill missing gaps with general model knowledge or web claims.",
           "If the wiki does not support a confident answer, say that directly and explain what is missing."
         ];
-      case "wiki-plus-model":
+      case "vault-plus-model":
         return [
           "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
           "Do not imply live web browsing, external verification, or source access you do not actually have.",
           "When you rely on model prior knowledge or inference, label that clearly in the markdown."
         ];
-      case "wiki-plus-web":
+      case "vault-plus-web":
         return [
           "Use compiled wiki material first, but you may also use live web search results and well-established model prior knowledge to answer the question.",
           "Do not pretend every claim came from the wiki. Distinguish wiki grounding, web findings, and model prior knowledge clearly.",

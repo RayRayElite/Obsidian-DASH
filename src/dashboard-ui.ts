@@ -2274,7 +2274,7 @@ export class DailyDashboardView extends ItemView {
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
       createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "wiki-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "vault-plus-web" }), false, "notebook-pen");
       createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
@@ -5157,7 +5157,7 @@ export class AskResearchQuestionModal extends Modal {
   private additionalContext = "";
   private generateBrief = true;
   private generateAnswer = true;
-  private groundingMode: ResearchGroundingMode = "wiki-plus-web";
+  private groundingMode: ResearchGroundingMode = "vault-plus-web";
 
   constructor(app: App, plugin: DailyDashboardPlugin, initialQuestion = "") {
     super(app);
@@ -5221,20 +5221,20 @@ export class AskResearchQuestionModal extends Modal {
 
     new Setting(contentEl)
       .setName("Grounding mode")
-      .setDesc(`Controls whether research questions use only your wiki, your wiki plus model knowledge, or your wiki plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`)
+      .setDesc(`Controls whether research questions use your full indexed vault context only, vault context plus model knowledge, or vault context plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`)
       .addDropdown((dropdown) => {
-        dropdown.addOption("wiki-only", "Wiki only");
-        dropdown.addOption("wiki-plus-model", "Wiki + model knowledge");
-        dropdown.addOption("wiki-plus-web", "Wiki + web search");
+        dropdown.addOption("vault-only", "Vault only");
+        dropdown.addOption("vault-plus-model", "Vault + model knowledge");
+        dropdown.addOption("vault-plus-web", "Vault + web search");
         dropdown.setValue(this.groundingMode);
         dropdown.onChange((value) => {
-          this.groundingMode = value === "wiki-only" || value === "wiki-plus-model" ? value : "wiki-plus-web";
+          this.groundingMode = value === "vault-only" || value === "vault-plus-model" ? value : "vault-plus-web";
         });
       });
 
     contentEl.createEl("p", {
       cls: "daily-dashboard-row-meta",
-      text: "This workflow can now run in wiki-only, wiki-plus-model, or wiki-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
+      text: "This workflow can now run in vault-only, vault-plus-model, or vault-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
     });
 
     new Setting(contentEl)

@@ -466,6 +466,38 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "generate-research-marp-slide-deck-from-active-note",
+      name: "Generate research Marp slide deck from active note",
+      callback: () => {
+        void this.generateResearchMarpSlideDeckFromActiveNote();
+      }
+    });
+
+    this.addCommand({
+      id: "promote-active-research-output-to-concept-note",
+      name: "Promote active research output to concept note",
+      callback: () => {
+        void this.promoteActiveResearchOutputToConceptNote();
+      }
+    });
+
+    this.addCommand({
+      id: "promote-follow-up-questions-from-active-research-note",
+      name: "Promote follow-up questions from active research note",
+      callback: () => {
+        void this.promoteFollowUpQuestionsFromActiveResearchNote();
+      }
+    });
+
+    this.addCommand({
+      id: "generate-compiled-research-retrieval-tuning-note",
+      name: "Generate compiled research retrieval tuning note",
+      callback: () => {
+        void this.generateCompiledResearchRetrievalTuningNote();
+      }
+    });
+
+    this.addCommand({
       id: "regenerate-compiled-research-topic-index",
       name: "Regenerate compiled research topic index",
       callback: () => {
@@ -3483,7 +3515,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const trimmedContext = input.additionalContext?.trim() ?? "";
     const generateBrief = input.generateBrief ?? true;
     const generateAnswer = input.generateAnswer ?? true;
-    const groundingMode = input.groundingMode ?? "wiki-plus-web";
+    const groundingMode = input.groundingMode ?? "vault-plus-web";
 
     if (!trimmedQuestion) {
       new Notice("Enter a research question first.");
@@ -3548,7 +3580,7 @@ export default class DailyDashboardPlugin extends Plugin {
           question: trimmedQuestion,
           additionalSections,
           modelOverride: this.getResearchModel(),
-          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          requestMode: groundingMode === "vault-plus-web" ? "responses-web-search" : "chat",
           groundingModeLabel: groundingMode
         });
         if (briefFile) {
@@ -3577,7 +3609,7 @@ export default class DailyDashboardPlugin extends Plugin {
           question: trimmedQuestion,
           additionalSections,
           modelOverride: this.getResearchModel(),
-          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          requestMode: groundingMode === "vault-plus-web" ? "responses-web-search" : "chat",
           groundingModeLabel: groundingMode
         });
         if (answerFile) {
@@ -4080,11 +4112,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private getResearchGroundingSummary(mode: ResearchGroundingMode): string {
     switch (mode) {
-      case "wiki-only":
+      case "vault-only":
         return "Use only the seed note plus compiled wiki notes. If coverage is weak, say that clearly instead of filling gaps.";
-      case "wiki-plus-model":
+      case "vault-plus-model":
         return "Use compiled wiki notes first and then clearly labeled model prior knowledge when the wiki is thin.";
-      case "wiki-plus-web":
+      case "vault-plus-web":
         return "Use compiled wiki notes, model prior knowledge, and live web search results, while labeling what came from each source of grounding.";
       default:
         return "Prefer compiled wiki notes first and clearly label anything that comes from outside the current wiki.";
@@ -4093,19 +4125,19 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private getResearchGroundingInstructions(mode: ResearchGroundingMode): string[] {
     switch (mode) {
-      case "wiki-only":
+      case "vault-only":
         return [
           "Use only the compiled wiki material and the seed note.",
           "Do not fill missing gaps with general model knowledge or web claims.",
           "If the wiki does not support a confident answer, say that directly and explain what is missing."
         ];
-      case "wiki-plus-model":
+      case "vault-plus-model":
         return [
           "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
           "Do not imply live web browsing, external verification, or source access you do not actually have.",
           "When you rely on model prior knowledge or inference, label that clearly in the markdown."
         ];
-      case "wiki-plus-web":
+      case "vault-plus-web":
         return [
           "Use compiled wiki material first, but you may also use live web search results and well-established model prior knowledge to answer the question.",
           "Do not pretend every claim came from the wiki. Distinguish wiki grounding, web findings, and model prior knowledge clearly.",
