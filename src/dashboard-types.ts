@@ -409,6 +409,8 @@ export interface DashboardSettings {
   includeAiGuardrailsInAi: boolean;
   currentSeasonNotePath: string;
   includeCurrentSeasonInAi: boolean;
+  peopleDependenciesNotePath: string;
+  includePeopleDependenciesInAi: boolean;
   decisionJournalNotePath: string;
   systemMapNotePath: string;
   aiPromptTemplates: string;
@@ -903,6 +905,8 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   includeAiGuardrailsInAi: true,
   currentSeasonNotePath: "Dashboard Logs/Profile/Current Season.md",
   includeCurrentSeasonInAi: true,
+  peopleDependenciesNotePath: "Dashboard Logs/Profile/People and External Dependencies.md",
+  includePeopleDependenciesInAi: false,
   decisionJournalNotePath: "Dashboard Logs/Profile/Decision Journal.md",
   systemMapNotePath: "Dashboard Logs/Profile/System Map.md",
   aiPromptTemplates: [

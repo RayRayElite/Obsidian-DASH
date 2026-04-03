@@ -2231,6 +2231,7 @@ export class DailyDashboardView extends ItemView {
       createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
       createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
       createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
       createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
       createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
 
@@ -4257,6 +4258,27 @@ export class FirstRunSetupWizardModal extends Modal {
       });
 
     new Setting(parent)
+      .setName("People / External Dependencies note path")
+      .setDesc("Optional note for recurring outside blockers, dependency owners, and stable coordination context.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.peopleDependenciesNotePath)
+          .setValue(this.settingsValue.peopleDependenciesNotePath)
+          .onChange((value) => {
+            this.settingsValue.peopleDependenciesNotePath = value.trim() || DEFAULT_SETTINGS.peopleDependenciesNotePath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Include People / External Dependencies in AI")
+      .setDesc("Turn this on if outside blockers are common enough that AI should automatically read this note during planning and review.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.settingsValue.includePeopleDependenciesInAi).onChange((value) => {
+          this.settingsValue.includePeopleDependenciesInAi = value;
+        });
+      });
+
+    new Setting(parent)
       .setName("Decision Journal note path")
       .setDesc("Lightweight running record of important choices and why they were made.")
       .addText((text) => {
@@ -5543,6 +5565,33 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
           await this.plugin.updateSettings({
             ...this.plugin.getSettings(),
             includeCurrentSeasonInAi: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("People / External Dependencies note path")
+      .setDesc("Optional support note for outside blockers, dependency owners, and durable coordination context.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.peopleDependenciesNotePath)
+          .setValue(settings.peopleDependenciesNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              peopleDependenciesNotePath: value.trim() || DEFAULT_SETTINGS.peopleDependenciesNotePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Include People / External Dependencies in AI")
+      .setDesc("Automatically inject this note when outside coordination or vendor blockers are common enough to affect planning quality.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.includePeopleDependenciesInAi).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            includePeopleDependenciesInAi: value
           });
         });
       });

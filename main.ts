@@ -390,6 +390,14 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: "open-people-dependencies-note",
+      name: "Open People / External Dependencies note",
+      callback: () => {
+        void this.openPeopleDependenciesNote();
+      }
+    });
+
+    this.addCommand({
       id: "open-decision-journal-note",
       name: "Open Decision Journal note",
       callback: () => {
@@ -3227,6 +3235,15 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.ensureSupportNote(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
   }
 
+  async openPeopleDependenciesNote(): Promise<void> {
+    const file = await this.ensurePeopleDependenciesNoteExists();
+    await this.openFile(file);
+  }
+
+  async ensurePeopleDependenciesNoteExists(): Promise<TFile> {
+    return this.ensureSupportNote(this.data.settings.peopleDependenciesNotePath, () => this.renderPeopleDependenciesTemplate());
+  }
+
   async openDecisionJournalNote(): Promise<void> {
     const file = await this.ensureDecisionJournalNoteExists();
     await this.openFile(file);
@@ -4585,6 +4602,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const basicInfoSection = await this.buildBasicInformationAiContext();
     const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
     const currentSeasonSection = await this.buildCurrentSeasonAiContext();
+    const peopleDependenciesSection = await this.buildPeopleDependenciesAiContext();
     const activeNoteSection = activeFile instanceof TFile
       ? `## Active Note\nPath: ${activeFile.path}\n\n${truncateText(await this.app.vault.read(activeFile), 8000)}`
       : "";
@@ -4616,6 +4634,8 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       currentSeasonSection,
       "",
+      peopleDependenciesSection,
+      "",
       ...extraContextSections.flatMap((section) => section.trim().length > 0 ? [section, ""] : []),
       activeNoteSection,
       "",
@@ -4634,6 +4654,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async buildCurrentSeasonAiContext(): Promise<string> {
     return this.buildSupportNoteAiContext("Current Season", this.data.settings.currentSeasonNotePath, this.data.settings.includeCurrentSeasonInAi, 5000);
+  }
+
+  private async buildPeopleDependenciesAiContext(): Promise<string> {
+    return this.buildSupportNoteAiContext("People / External Dependencies", this.data.settings.peopleDependenciesNotePath, this.data.settings.includePeopleDependenciesInAi, 5000);
   }
 
   private async buildSupportNoteAiContext(title: string, pathValue: string, enabled: boolean, charLimit: number): Promise<string> {
@@ -4773,6 +4797,43 @@ export default class DailyDashboardPlugin extends Plugin {
     ].join("\n");
   }
 
+  private renderPeopleDependenciesTemplate(): string {
+    return [
+      "# People and External Dependencies",
+      "",
+      "## Active Relationships",
+      "- Name / team:",
+      "  - Role:",
+      "  - What they affect:",
+      "  - Normal response speed or cadence:",
+      "  - Best contact method:",
+      "  - Current status:",
+      "",
+      "## Current Waiting Ons",
+      "- Dependency:",
+      "  - Project:",
+      "  - Owner:",
+      "  - Needed by:",
+      "  - Next follow-up:",
+      "  - Risk if delayed:",
+      "",
+      "## External Systems",
+      "- Vendor, service, or external tool:",
+      "  - What it blocks or enables:",
+      "  - Renewal / review cadence:",
+      "  - Failure mode to watch:",
+      "",
+      "## Communication Notes",
+      "- Capture stable preferences, recurring friction, or coordination constraints here.",
+      "",
+      "## Review Prompts",
+      "- Which waiting-ons are now old enough to deserve escalation or a fallback path?",
+      "- Which projects depend on the same outside person or system?",
+      "- Which blocker is actually ambiguous ownership rather than slow execution?",
+      ""
+    ].join("\n");
+  }
+
   private renderDecisionJournalTemplate(): string {
     return [
       "# Decision Journal",
@@ -4797,6 +4858,7 @@ export default class DailyDashboardPlugin extends Plugin {
       "- [[Basic Information]]: stable personal context and enduring constraints.",
       "- [[AI Guardrails]]: instructions for how AI should behave.",
       "- [[Current Season]]: temporary priorities and constraints for the present phase.",
+      "- [[People and External Dependencies]]: stable relationship context, outside blockers, and dependency review points.",
       "- [[Decision Journal]]: preserved reasoning behind important choices.",
       "",
       "## Generated Artifacts",
@@ -6869,6 +6931,9 @@ export default class DailyDashboardPlugin extends Plugin {
     if (normalizedPath === normalizePath(this.data.settings.currentSeasonNotePath).toLowerCase()) {
       return "current-season";
     }
+    if (normalizedPath === normalizePath(this.data.settings.peopleDependenciesNotePath).toLowerCase()) {
+      return "people-dependencies";
+    }
     if (normalizedPath === normalizePath(this.data.settings.decisionJournalNotePath).toLowerCase()) {
       return "decision-journal";
     }
@@ -6929,6 +6994,8 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
     } else if (normalizedPath === normalizePath(this.data.settings.currentSeasonNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/current-season");
+    } else if (normalizedPath === normalizePath(this.data.settings.peopleDependenciesNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/people-dependencies");
     } else if (normalizedPath === normalizePath(this.data.settings.decisionJournalNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
     } else if (normalizedPath === normalizePath(this.data.settings.systemMapNotePath).toLowerCase()) {

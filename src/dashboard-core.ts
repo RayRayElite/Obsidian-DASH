@@ -92,6 +92,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     includeAiGuardrailsInAi: settings.includeAiGuardrailsInAi ?? DEFAULT_SETTINGS.includeAiGuardrailsInAi,
     currentSeasonNotePath: settings.currentSeasonNotePath?.trim() || DEFAULT_SETTINGS.currentSeasonNotePath,
     includeCurrentSeasonInAi: settings.includeCurrentSeasonInAi ?? DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    peopleDependenciesNotePath: settings.peopleDependenciesNotePath?.trim() || DEFAULT_SETTINGS.peopleDependenciesNotePath,
+    includePeopleDependenciesInAi: settings.includePeopleDependenciesInAi ?? DEFAULT_SETTINGS.includePeopleDependenciesInAi,
     decisionJournalNotePath: settings.decisionJournalNotePath?.trim() || DEFAULT_SETTINGS.decisionJournalNotePath,
     systemMapNotePath: settings.systemMapNotePath?.trim() || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
@@ -991,7 +993,8 @@ export function shouldExcludeAiContextFile(path: string, settings: DashboardSett
   const excludedFiles = [
     normalizePath(settings.basicInfoNotePath),
     normalizePath(settings.aiGuardrailsNotePath),
-    normalizePath(settings.currentSeasonNotePath)
+    normalizePath(settings.currentSeasonNotePath),
+    normalizePath(settings.peopleDependenciesNotePath)
   ].filter((filePath) => filePath.length > 0);
 
   return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix)

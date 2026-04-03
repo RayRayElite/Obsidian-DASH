@@ -52,6 +52,7 @@ Recommended supporting notes:
 - `Basic Information`: stable personal facts, constraints, and enduring context.
 - `AI Guardrails`: how AI should behave, what tone to use, and what to avoid.
 - `Current Season`: temporary priorities, obligations, and constraints for the current month or phase.
+- `People / External Dependencies`: outside blockers, vendors, collaborators, and relationship context that repeatedly affects project flow.
 - `Decision Journal`: preserved reasoning behind meaningful choices.
 - `System Map`: one-page explanation of what each major note and folder is for.
 
@@ -67,6 +68,7 @@ Supporting repo docs created from that plan:
 - `Documentation/AI Guardrails Template.md`
 - `Documentation/Current Season Template.md`
 - `Documentation/Decision Journal Template.md`
+- `Documentation/People External Dependencies Template.md`
 - `Documentation/System Map.md`
 - `Documentation/Reference Offload Inbox.md`
 - `Documentation/Shelf Life Guide.md`

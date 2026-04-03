@@ -61,6 +61,8 @@ var DEFAULT_SETTINGS = {
   includeAiGuardrailsInAi: true,
   currentSeasonNotePath: "Dashboard Logs/Profile/Current Season.md",
   includeCurrentSeasonInAi: true,
+  peopleDependenciesNotePath: "Dashboard Logs/Profile/People and External Dependencies.md",
+  includePeopleDependenciesInAi: false,
   decisionJournalNotePath: "Dashboard Logs/Profile/Decision Journal.md",
   systemMapNotePath: "Dashboard Logs/Profile/System Map.md",
   aiPromptTemplates: [
@@ -131,7 +133,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -176,19 +178,21 @@ function sanitizeSettings(settings) {
     includeAiGuardrailsInAi: (_t = settings.includeAiGuardrailsInAi) != null ? _t : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
     currentSeasonNotePath: ((_u = settings.currentSeasonNotePath) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
     includeCurrentSeasonInAi: (_v = settings.includeCurrentSeasonInAi) != null ? _v : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
-    decisionJournalNotePath: ((_w = settings.decisionJournalNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
-    systemMapNotePath: ((_x = settings.systemMapNotePath) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
+    peopleDependenciesNotePath: ((_w = settings.peopleDependenciesNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
+    includePeopleDependenciesInAi: (_x = settings.includePeopleDependenciesInAi) != null ? _x : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
+    decisionJournalNotePath: ((_y = settings.decisionJournalNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: ((_z = settings.systemMapNotePath) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_y = settings.aiContextDays) != null ? _y : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_z = settings.aiRelatedNotesLimit) != null ? _z : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_A = settings.aiIndexEnabled) != null ? _A : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_A = settings.aiContextDays) != null ? _A : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_B = settings.aiRelatedNotesLimit) != null ? _B : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_C = settings.aiIndexEnabled) != null ? _C : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_B = settings.aiChunkCharLimit) != null ? _B : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_C = settings.aiEmbeddingsEnabled) != null ? _C : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_D = settings.aiEmbeddingModel) == null ? void 0 : _D.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_E = settings.aiEmbeddingApiUrl) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_F = settings.calendarEnabled) != null ? _F : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_G = settings.calendarDocumentPath) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_D = settings.aiChunkCharLimit) != null ? _D : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_E = settings.aiEmbeddingsEnabled) != null ? _E : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_F = settings.aiEmbeddingModel) == null ? void 0 : _F.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_G = settings.aiEmbeddingApiUrl) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_H = settings.calendarEnabled) != null ? _H : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_I = settings.calendarDocumentPath) == null ? void 0 : _I.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
@@ -199,8 +203,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath(((_H = settings.wallpaperFolder) == null ? void 0 : _H.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_I = settings.selectedWallpaper) == null ? void 0 : _I.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath(((_J = settings.wallpaperFolder) == null ? void 0 : _J.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_K = settings.selectedWallpaper) == null ? void 0 : _K.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -899,7 +903,8 @@ function shouldExcludeAiContextFile(path, settings) {
   const excludedFiles = [
     (0, import_obsidian.normalizePath)(settings.basicInfoNotePath),
     (0, import_obsidian.normalizePath)(settings.aiGuardrailsNotePath),
-    (0, import_obsidian.normalizePath)(settings.currentSeasonNotePath)
+    (0, import_obsidian.normalizePath)(settings.currentSeasonNotePath),
+    (0, import_obsidian.normalizePath)(settings.peopleDependenciesNotePath)
   ].filter((filePath) => filePath.length > 0);
   return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix) || excludedFiles.includes(normalizedPath);
 }
@@ -6114,6 +6119,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
       createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
       createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiActions, "Dependencies", async () => this.plugin.openPeopleDependenciesNote(), false, "users");
       createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
       createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
@@ -7775,6 +7781,16 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
         this.settingsValue.includeCurrentSeasonInAi = value;
       });
     });
+    new import_obsidian3.Setting(parent).setName("People / External Dependencies note path").setDesc("Optional note for recurring outside blockers, dependency owners, and stable coordination context.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.peopleDependenciesNotePath).setValue(this.settingsValue.peopleDependenciesNotePath).onChange((value) => {
+        this.settingsValue.peopleDependenciesNotePath = value.trim() || DEFAULT_SETTINGS.peopleDependenciesNotePath;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Include People / External Dependencies in AI").setDesc("Turn this on if outside blockers are common enough that AI should automatically read this note during planning and review.").addToggle((toggle) => {
+      toggle.setValue(this.settingsValue.includePeopleDependenciesInAi).onChange((value) => {
+        this.settingsValue.includePeopleDependenciesInAi = value;
+      });
+    });
     new import_obsidian3.Setting(parent).setName("Decision Journal note path").setDesc("Lightweight running record of important choices and why they were made.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.decisionJournalNotePath).setValue(this.settingsValue.decisionJournalNotePath).onChange((value) => {
         this.settingsValue.decisionJournalNotePath = value.trim() || DEFAULT_SETTINGS.decisionJournalNotePath;
@@ -8651,6 +8667,22 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           includeCurrentSeasonInAi: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("People / External Dependencies note path").setDesc("Optional support note for outside blockers, dependency owners, and durable coordination context.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.peopleDependenciesNotePath).setValue(settings.peopleDependenciesNotePath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          peopleDependenciesNotePath: value.trim() || DEFAULT_SETTINGS.peopleDependenciesNotePath
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Include People / External Dependencies in AI").setDesc("Automatically inject this note when outside coordination or vendor blockers are common enough to affect planning quality.").addToggle((toggle) => {
+      toggle.setValue(settings.includePeopleDependenciesInAi).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          includePeopleDependenciesInAi: value
         });
       });
     });
@@ -9760,6 +9792,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Open Current Season note",
       callback: () => {
         void this.openCurrentSeasonNote();
+      }
+    });
+    this.addCommand({
+      id: "open-people-dependencies-note",
+      name: "Open People / External Dependencies note",
+      callback: () => {
+        void this.openPeopleDependenciesNote();
       }
     });
     this.addCommand({
@@ -12122,6 +12161,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async ensureCurrentSeasonNoteExists() {
     return this.ensureSupportNote(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
   }
+  async openPeopleDependenciesNote() {
+    const file = await this.ensurePeopleDependenciesNoteExists();
+    await this.openFile(file);
+  }
+  async ensurePeopleDependenciesNoteExists() {
+    return this.ensureSupportNote(this.data.settings.peopleDependenciesNotePath, () => this.renderPeopleDependenciesTemplate());
+  }
   async openDecisionJournalNote() {
     const file = await this.ensureDecisionJournalNoteExists();
     await this.openFile(file);
@@ -13263,6 +13309,7 @@ ${context}`);
     const basicInfoSection = await this.buildBasicInformationAiContext();
     const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
     const currentSeasonSection = await this.buildCurrentSeasonAiContext();
+    const peopleDependenciesSection = await this.buildPeopleDependenciesAiContext();
     const activeNoteSection = activeFile instanceof import_obsidian4.TFile ? `## Active Note
 Path: ${activeFile.path}
 
@@ -13294,6 +13341,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "",
       currentSeasonSection,
       "",
+      peopleDependenciesSection,
+      "",
       ...extraContextSections.flatMap((section) => section.trim().length > 0 ? [section, ""] : []),
       activeNoteSection,
       "",
@@ -13309,6 +13358,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
   }
   async buildCurrentSeasonAiContext() {
     return this.buildSupportNoteAiContext("Current Season", this.data.settings.currentSeasonNotePath, this.data.settings.includeCurrentSeasonInAi, 5e3);
+  }
+  async buildPeopleDependenciesAiContext() {
+    return this.buildSupportNoteAiContext("People / External Dependencies", this.data.settings.peopleDependenciesNotePath, this.data.settings.includePeopleDependenciesInAi, 5e3);
   }
   async buildSupportNoteAiContext(title, pathValue, enabled, charLimit) {
     if (!enabled) {
@@ -13440,6 +13492,42 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- AI outputs rely less on scattered implicit context."
     ].join("\n");
   }
+  renderPeopleDependenciesTemplate() {
+    return [
+      "# People and External Dependencies",
+      "",
+      "## Active Relationships",
+      "- Name / team:",
+      "  - Role:",
+      "  - What they affect:",
+      "  - Normal response speed or cadence:",
+      "  - Best contact method:",
+      "  - Current status:",
+      "",
+      "## Current Waiting Ons",
+      "- Dependency:",
+      "  - Project:",
+      "  - Owner:",
+      "  - Needed by:",
+      "  - Next follow-up:",
+      "  - Risk if delayed:",
+      "",
+      "## External Systems",
+      "- Vendor, service, or external tool:",
+      "  - What it blocks or enables:",
+      "  - Renewal / review cadence:",
+      "  - Failure mode to watch:",
+      "",
+      "## Communication Notes",
+      "- Capture stable preferences, recurring friction, or coordination constraints here.",
+      "",
+      "## Review Prompts",
+      "- Which waiting-ons are now old enough to deserve escalation or a fallback path?",
+      "- Which projects depend on the same outside person or system?",
+      "- Which blocker is actually ambiguous ownership rather than slow execution?",
+      ""
+    ].join("\n");
+  }
   renderDecisionJournalTemplate() {
     return [
       "# Decision Journal",
@@ -13463,6 +13551,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- [[Basic Information]]: stable personal context and enduring constraints.",
       "- [[AI Guardrails]]: instructions for how AI should behave.",
       "- [[Current Season]]: temporary priorities and constraints for the present phase.",
+      "- [[People and External Dependencies]]: stable relationship context, outside blockers, and dependency review points.",
       "- [[Decision Journal]]: preserved reasoning behind important choices.",
       "",
       "## Generated Artifacts",
@@ -15121,6 +15210,9 @@ ${body}`;
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.currentSeasonNotePath).toLowerCase()) {
       return "current-season";
     }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.peopleDependenciesNotePath).toLowerCase()) {
+      return "people-dependencies";
+    }
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.decisionJournalNotePath).toLowerCase()) {
       return "decision-journal";
     }
@@ -15175,6 +15267,8 @@ ${body}`;
       autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.currentSeasonNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/current-season");
+    } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.peopleDependenciesNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/people-dependencies");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.decisionJournalNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.systemMapNotePath).toLowerCase()) {
