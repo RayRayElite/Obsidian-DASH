@@ -4472,67 +4472,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         createButton(undoActions, "Undo", async () => this.undoPendingAction(), true, "rotate-ccw");
         createButton(undoActions, "Dismiss", async () => this.dismissPendingUndo(), false, "x");
       }
-      const sessionDeckCard = createCard(page, "Session Deck", "Keep timers visible and one click away so session tracking stays practical during the day.", {
-        icon: "timer-reset",
-        eyebrow: "Live",
-        tone: "capture",
-        tag: activeModeLabel
-      });
-      const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
-      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? (_l = (_k = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)) == null ? void 0 : _k.tone) != null ? _l : "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
-      createSemanticChip(sessionDeckSummary, `Tracked ${formatMinutesAsHours(trackedWorkMinutes + trackedNapMinutes + trackedRelaxMinutes + trackedBreakMinutes + trackedPoopMinutes + trackedActivityMinutes)}`, "capture");
-      if (activeSessionTag) {
-        createSemanticChip(sessionDeckSummary, activeSessionTag, this.getSessionTagTone(activeSessionTag));
-      }
-      const sessionDeckToolbar = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-toolbar" });
-      const sessionProjectSelect = sessionDeckToolbar.createEl("select", { cls: "daily-dashboard-input" });
-      const emptyProjectOption = sessionProjectSelect.createEl("option", { text: "Work project" });
-      emptyProjectOption.value = "";
-      projects.forEach((project) => {
-        const option = sessionProjectSelect.createEl("option", { text: project.name });
-        option.value = project.name;
-      });
-      if (!projects.some((project) => project.name === this.selectedSessionProjectName)) {
-        this.selectedSessionProjectName = "";
-      }
-      sessionProjectSelect.value = this.selectedSessionProjectName;
-      sessionProjectSelect.addEventListener("change", () => {
-        this.selectedSessionProjectName = sessionProjectSelect.value;
-      });
-      const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
-      createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
-      const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
-      const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick) => {
-        const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
-        button.type = "button";
-        button.toggleClass("is-active", isActive);
-        button.addClass(`is-${tone}`);
-        const iconEl = button.createSpan({ cls: "daily-dashboard-session-button-icon" });
-        (0, import_obsidian3.setIcon)(iconEl, icon);
-        const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
-        copy.createEl("strong", { text: label });
-        copy.createEl("span", { cls: "daily-dashboard-row-meta", text: detail });
-        button.addEventListener("click", () => {
-          void onClick();
-        });
-      };
-      createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : "play", "capture", Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName));
-      createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "alarm-clock-off" : "bed-single", "alert", Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""));
-      createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
-      createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
-      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${trackedPoopCount} tracked \u2022 ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.kind ? activeActivitySession : null;
-        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
-      });
-      if (tagSummary.length > 0) {
-        const sessionTagSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
-        tagSummary.forEach((item) => {
-          createSemanticChip(sessionTagSummary, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
-        });
-      }
       const weekBoardCard = createCard(page, "Week At A Glance", "", {
         icon: "layout-dashboard",
         eyebrow: "Week",
@@ -4624,11 +4563,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedActivityMinutes = this.plugin.getTrackedActivityMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
-      const activeWorkSession = (_m = todayEntry.workSessions.find((session) => session.end === null)) != null ? _m : null;
-      const activeNapSession = (_n = todayEntry.napSessions.find((session) => session.end === null)) != null ? _n : null;
-      const activeRelaxSession = (_o = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _o : null;
-      const activeBreakSession = (_p = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _p : null;
-      const activePoopSession = (_q = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _q : null;
+      const activeWorkSession = (_k = todayEntry.workSessions.find((session) => session.end === null)) != null ? _k : null;
+      const activeNapSession = (_l = todayEntry.napSessions.find((session) => session.end === null)) != null ? _l : null;
+      const activeRelaxSession = (_m = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _m : null;
+      const activeBreakSession = (_n = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _n : null;
+      const activePoopSession = (_o = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _o : null;
       const activeActivitySession = this.plugin.getActiveActivitySession(void 0, todayEntry);
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || (activeActivitySession == null ? void 0 : activeActivitySession.tag) || "";
       const tagSummary = this.getSessionTagSummary([
@@ -4643,6 +4582,67 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const dayToggleLabel = dayState.status === "in-progress" ? "End day" : "Begin day";
       const dayToggleIcon = dayState.status === "in-progress" ? "moon-star" : "sunrise";
       const dayToggleAction = dayState.status === "in-progress" ? async () => this.plugin.endLogicalDay() : async () => this.plugin.beginLogicalDay();
+      const sessionDeckCard = createCard(page, "Session Deck", "Keep timers visible and one click away so session tracking stays practical during the day.", {
+        icon: "timer-reset",
+        eyebrow: "Live",
+        tone: "capture",
+        tag: activeModeLabel
+      });
+      const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
+      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? (_q = (_p = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)) == null ? void 0 : _p.tone) != null ? _q : "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(sessionDeckSummary, `Tracked ${formatMinutesAsHours(trackedWorkMinutes + trackedNapMinutes + trackedRelaxMinutes + trackedBreakMinutes + trackedPoopMinutes + trackedActivityMinutes)}`, "capture");
+      if (activeSessionTag) {
+        createSemanticChip(sessionDeckSummary, activeSessionTag, this.getSessionTagTone(activeSessionTag));
+      }
+      const sessionDeckToolbar = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-toolbar" });
+      const sessionProjectSelect = sessionDeckToolbar.createEl("select", { cls: "daily-dashboard-input" });
+      const emptyProjectOption = sessionProjectSelect.createEl("option", { text: "Work project" });
+      emptyProjectOption.value = "";
+      projects.forEach((project) => {
+        const option = sessionProjectSelect.createEl("option", { text: project.name });
+        option.value = project.name;
+      });
+      if (!projects.some((project) => project.name === this.selectedSessionProjectName)) {
+        this.selectedSessionProjectName = "";
+      }
+      sessionProjectSelect.value = this.selectedSessionProjectName;
+      sessionProjectSelect.addEventListener("change", () => {
+        this.selectedSessionProjectName = sessionProjectSelect.value;
+      });
+      const sessionDeckActions = sessionDeckToolbar.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(sessionDeckActions, dayToggleLabel, dayToggleAction, dayState.status !== "in-progress", dayToggleIcon);
+      createButton(sessionDeckActions, "Pause into break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause");
+      const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
+      const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick) => {
+        const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
+        button.type = "button";
+        button.toggleClass("is-active", isActive);
+        button.addClass(`is-${tone}`);
+        const iconEl = button.createSpan({ cls: "daily-dashboard-session-button-icon" });
+        (0, import_obsidian3.setIcon)(iconEl, icon);
+        const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
+        copy.createEl("strong", { text: label });
+        copy.createEl("span", { cls: "daily-dashboard-row-meta", text: detail });
+        button.addEventListener("click", () => {
+          void onClick();
+        });
+      };
+      createSessionDeckButton(activeWorkSession ? "Stop Work" : "Start Work", activeWorkSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeWorkSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedWorkMinutes)} today${this.selectedSessionProjectName ? ` \u2022 ${this.selectedSessionProjectName}` : ""}`, activeWorkSession ? "square" : "play", "capture", Boolean(activeWorkSession), async () => activeWorkSession ? this.plugin.stopWorkSession() : this.plugin.startWorkSession("", this.selectedSessionProjectName));
+      createSessionDeckButton(activeNapSession ? "Stop Nap" : "Start Nap", activeNapSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeNapSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedNapMinutes)} today`, activeNapSession ? "alarm-clock-off" : "bed-single", "alert", Boolean(activeNapSession), async () => activeNapSession ? this.plugin.stopNapSession() : this.plugin.startNapSession(""));
+      createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
+      createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
+      createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${trackedPoopCount} tracked \u2022 ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
+      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
+        const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.kind ? activeActivitySession : null;
+        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
+      });
+      if (tagSummary.length > 0) {
+        const sessionTagSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
+        tagSummary.forEach((item) => {
+          createSemanticChip(sessionTagSummary, `${item.tag} ${formatMinutesAsHours(item.minutes)}`, this.getSessionTagTone(item.tag));
+        });
+      }
       const dayFlowCard = createGridCard("Day Flow", "Control when your real day begins and ends so late nights stay on the right log date.", {
         icon: "sun-moon",
         eyebrow: "Cycle",
