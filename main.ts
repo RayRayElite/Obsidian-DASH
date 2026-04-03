@@ -152,6 +152,7 @@ import {
   type ProjectReviewOption,
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
+  type ResearchGroundingMode,
   type RetrievalIndexStatus,
   type RoutineTemplateDefinition,
   type SleepInsights,
@@ -3476,11 +3477,13 @@ export default class DailyDashboardPlugin extends Plugin {
     additionalContext?: string;
     generateBrief?: boolean;
     generateAnswer?: boolean;
+    groundingMode?: ResearchGroundingMode;
   }): Promise<void> {
     const trimmedQuestion = input.question.trim();
     const trimmedContext = input.additionalContext?.trim() ?? "";
     const generateBrief = input.generateBrief ?? true;
     const generateAnswer = input.generateAnswer ?? true;
+    const groundingMode = input.groundingMode ?? "wiki-plus-web";
 
     if (!trimmedQuestion) {
       new Notice("Enter a research question first.");
@@ -3502,7 +3505,8 @@ export default class DailyDashboardPlugin extends Plugin {
         question: trimmedQuestion,
         additionalContext: trimmedContext,
         generateBrief,
-        generateAnswer
+        generateAnswer,
+        groundingMode
       });
       await this.openFile(seedFile);
       new Notice("Research question seed note created. Generating requested wiki notes...");
@@ -3533,18 +3537,19 @@ export default class DailyDashboardPlugin extends Plugin {
           defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Brief`,
           systemPrompt: [
             "You are writing a concise research brief from a user-authored question seed note.",
-            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-            "Do not imply live web browsing, external verification, or source access you do not actually have.",
-            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            ...this.getResearchGroundingInstructions(groundingMode),
             "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
             "Return markdown that starts with a single H1 title suitable for a standalone brief.",
             "Then use headings: Direct Takeaway, Most Likely Explanation, What To Watch Or Verify, Related Wiki Hooks, Promotion Targets.",
             "Keep it concise, practical, and durable for later review.",
             "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
           ].join(" "),
-          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly, pulls from the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly and follow the configured grounding mode exactly.`,
           question: trimmedQuestion,
-          additionalSections
+          additionalSections,
+          modelOverride: this.getResearchModel(),
+          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          groundingModeLabel: groundingMode
         });
         if (briefFile) {
           generatedFiles.push(briefFile);
@@ -3561,18 +3566,19 @@ export default class DailyDashboardPlugin extends Plugin {
           defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Answer`,
           systemPrompt: [
             "You are writing a detailed teaching-oriented research answer from a user-authored question seed note.",
-            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-            "Do not imply live web browsing, external verification, or source access you do not actually have.",
-            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            ...this.getResearchGroundingInstructions(groundingMode),
             "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
             "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
             "Then use headings: Plain-English Answer, Mechanisms Or Concepts, Variations And Caveats, Source Basis And Confidence, Related Wiki Hooks, Promotion Targets.",
             "Teach clearly, explain why, and make the note useful to revisit later.",
             "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
           ].join(" "),
-          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly, uses the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly and follow the configured grounding mode exactly.`,
           question: trimmedQuestion,
-          additionalSections
+          additionalSections,
+          modelOverride: this.getResearchModel(),
+          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          groundingModeLabel: groundingMode
         });
         if (answerFile) {
           generatedFiles.push(answerFile);
@@ -3937,6 +3943,9 @@ export default class DailyDashboardPlugin extends Plugin {
     question?: string;
     fixedPath?: string;
     additionalSections?: string[];
+    modelOverride?: string;
+    requestMode?: "chat" | "responses-web-search";
+    groundingModeLabel?: ResearchGroundingMode;
   }): Promise<TFile | null> {
     if (!this.getResolvedAiApiKey()) {
       new Notice(this.getAiConfigurationMessage());
@@ -3957,7 +3966,11 @@ export default class DailyDashboardPlugin extends Plugin {
         query: input.query,
         additionalSections: input.additionalSections ?? []
       });
-      const rawResponse = await this.requestAiCompletion(this.applyAiPromptTemplate(input.systemPrompt, input.templateKey), `${input.userPrompt}\n\n${context}`);
+      const resolvedModel = input.modelOverride?.trim() || this.data.settings.aiModel;
+      const resolvedPrompt = this.applyAiPromptTemplate(input.systemPrompt, input.templateKey);
+      const rawResponse = input.requestMode === "responses-web-search"
+        ? await this.requestAiCompletionWithWebSearch(resolvedPrompt, `${input.userPrompt}\n\n${context}`, resolvedModel)
+        : await this.requestAiCompletion(resolvedPrompt, `${input.userPrompt}\n\n${context}`, resolvedModel);
       const payload = extractAiStructuredPayload(rawResponse);
       const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
       const derivedTitle = this.getLeadingMarkdownTitle(cleanedMarkdown) || input.defaultFileLabel;
@@ -3969,7 +3982,9 @@ export default class DailyDashboardPlugin extends Plugin {
         payload,
         question: input.question,
         sourceFile: input.activeFile,
-        fixedPath: input.fixedPath
+        fixedPath: input.fixedPath,
+        modelName: resolvedModel,
+        groundingMode: input.groundingModeLabel
       });
 
       this.latestAiArtifact = {
@@ -4021,6 +4036,7 @@ export default class DailyDashboardPlugin extends Plugin {
     additionalContext: string;
     generateBrief: boolean;
     generateAnswer: boolean;
+    groundingMode: ResearchGroundingMode;
   }): Promise<TFile> {
     const timestamp = formatFileTimestamp(new Date());
     const folder = normalizeFolderPath(`${this.data.settings.knowledgeBaseRawFolder}/Questions`);
@@ -4037,7 +4053,8 @@ export default class DailyDashboardPlugin extends Plugin {
       `- Captured: ${formatDateTimeKey(new Date())}`,
       "- Workflow: Research Question Seed",
       `- Requested outputs: ${requestedOutputs.length > 0 ? requestedOutputs.join(", ") : "None specified"}`,
-      "- Grounding rule: Prefer compiled wiki notes first. If coverage is thin, clearly label general model knowledge instead of pretending it came from notes or live web results.",
+      `- Grounding mode: ${input.groundingMode}`,
+      `- Grounding rule: ${this.getResearchGroundingSummary(input.groundingMode)}`,
       "",
       "## Question",
       input.question,
@@ -4055,6 +4072,48 @@ export default class DailyDashboardPlugin extends Plugin {
     ].join("\n");
 
     return this.upsertMarkdownFile(filePath, content);
+  }
+
+  private getResearchModel(): string {
+    return this.data.settings.researchAiModel.trim() || this.data.settings.aiModel;
+  }
+
+  private getResearchGroundingSummary(mode: ResearchGroundingMode): string {
+    switch (mode) {
+      case "wiki-only":
+        return "Use only the seed note plus compiled wiki notes. If coverage is weak, say that clearly instead of filling gaps.";
+      case "wiki-plus-model":
+        return "Use compiled wiki notes first and then clearly labeled model prior knowledge when the wiki is thin.";
+      case "wiki-plus-web":
+        return "Use compiled wiki notes, model prior knowledge, and live web search results, while labeling what came from each source of grounding.";
+      default:
+        return "Prefer compiled wiki notes first and clearly label anything that comes from outside the current wiki.";
+    }
+  }
+
+  private getResearchGroundingInstructions(mode: ResearchGroundingMode): string[] {
+    switch (mode) {
+      case "wiki-only":
+        return [
+          "Use only the compiled wiki material and the seed note.",
+          "Do not fill missing gaps with general model knowledge or web claims.",
+          "If the wiki does not support a confident answer, say that directly and explain what is missing."
+        ];
+      case "wiki-plus-model":
+        return [
+          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+          "Do not imply live web browsing, external verification, or source access you do not actually have.",
+          "When you rely on model prior knowledge or inference, label that clearly in the markdown."
+        ];
+      case "wiki-plus-web":
+        return [
+          "Use compiled wiki material first, but you may also use live web search results and well-established model prior knowledge to answer the question.",
+          "Do not pretend every claim came from the wiki. Distinguish wiki grounding, web findings, and model prior knowledge clearly.",
+          "When web search results conflict or are weak, say so instead of smoothing over the uncertainty."
+        ];
+      default:
+        return [];
+    }
   }
 
   private async buildKnowledgeBaseAiContext(input: {
@@ -4166,6 +4225,8 @@ export default class DailyDashboardPlugin extends Plugin {
     question?: string;
     sourceFile?: TFile;
     fixedPath?: string;
+    modelName?: string;
+    groundingMode?: ResearchGroundingMode;
   }): Promise<TFile> {
     const timestamp = formatFileTimestamp(new Date());
     const folder = normalizeFolderPath(input.folder);
@@ -4181,8 +4242,9 @@ export default class DailyDashboardPlugin extends Plugin {
       `# ${input.fileLabel}`,
       "",
       `- Generated: ${formatDateTimeKey(new Date())}`,
-      `- Model: ${this.data.settings.aiModel}`,
+      `- Model: ${input.modelName ?? this.data.settings.aiModel}`,
       `- Workflow: ${input.kind}`,
+      input.groundingMode ? `- Grounding mode: ${input.groundingMode}` : "",
       input.sourceFile ? `- Source note: ${createWikiLink(input.sourceFile.path, input.sourceFile.basename)}` : "",
       input.question ? `- Prompt basis: ${input.question}` : "",
       "",
@@ -6513,7 +6575,7 @@ export default class DailyDashboardPlugin extends Plugin {
     );
   }
 
-  private async requestAiCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+  private async requestAiCompletion(systemPrompt: string, userPrompt: string, modelOverride?: string): Promise<string> {
     const apiKey = this.getResolvedAiApiKey();
     if (!apiKey) {
       throw new Error(this.getAiConfigurationMessage());
@@ -6526,7 +6588,7 @@ export default class DailyDashboardPlugin extends Plugin {
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: this.data.settings.aiModel,
+        model: modelOverride?.trim() || this.data.settings.aiModel,
         temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
@@ -6565,6 +6627,71 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     throw new Error("OpenAI returned an empty response.");
+  }
+
+  private async requestAiCompletionWithWebSearch(systemPrompt: string, userPrompt: string, modelName: string): Promise<string> {
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
+    }
+
+    const response = await fetch(this.data.settings.researchResponsesApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: modelName,
+        temperature: 0.4,
+        tools: [{ type: "web_search_preview" }],
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: systemPrompt }]
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: userPrompt }]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    const data = await response.json() as {
+      output_text?: string;
+      error?: { message?: string };
+      output?: Array<{
+        content?: Array<{
+          type?: string;
+          text?: string;
+        }>;
+      }>;
+    };
+
+    if (data.error?.message) {
+      throw new Error(data.error.message);
+    }
+
+    if (typeof data.output_text === "string" && data.output_text.trim().length > 0) {
+      return data.output_text.trim();
+    }
+
+    const text = (data.output ?? [])
+      .flatMap((item) => item.content ?? [])
+      .filter((item) => (item.type === "output_text" || item.type === "text") && typeof item.text === "string")
+      .map((item) => item.text ?? "")
+      .join("\n")
+      .trim();
+    if (text.length > 0) {
+      return text;
+    }
+
+    throw new Error("OpenAI web search response was empty.");
   }
 
   private async requestQueryEmbedding(text: string): Promise<number[] | null> {

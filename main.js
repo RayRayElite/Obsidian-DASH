@@ -54,6 +54,8 @@ var DEFAULT_SETTINGS = {
   aiApiKeyEnvVar: "OPENAI_API_KEY",
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
+  researchAiModel: "gpt-4.1",
+  researchResponsesApiUrl: "https://api.openai.com/v1/responses",
   aiOutputFolder: "Dashboard Logs/AI",
   knowledgeBaseRawFolder: "Knowledge Base/raw",
   knowledgeBaseSourcesFolder: "Knowledge Base/wiki/sources",
@@ -163,7 +165,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -201,34 +203,36 @@ function sanitizeSettings(settings) {
     aiApiKeyEnvVar: ((_m = settings.aiApiKeyEnvVar) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
     aiModel: ((_n = settings.aiModel) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: ((_o = settings.aiBaseUrl) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    aiOutputFolder: normalizeFolderPath2(((_p = settings.aiOutputFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
-    knowledgeBaseRawFolder: normalizeFolderPath2(((_q = settings.knowledgeBaseRawFolder) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
-    knowledgeBaseSourcesFolder: normalizeFolderPath2(((_r = settings.knowledgeBaseSourcesFolder) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),
-    knowledgeBaseConceptsFolder: normalizeFolderPath2(((_s = settings.knowledgeBaseConceptsFolder) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder),
-    knowledgeBaseIndexesFolder: normalizeFolderPath2(((_t = settings.knowledgeBaseIndexesFolder) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder),
-    knowledgeBaseOutputsFolder: normalizeFolderPath2(((_u = settings.knowledgeBaseOutputsFolder) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder),
-    knowledgeBaseAssetsFolder: normalizeFolderPath2(((_v = settings.knowledgeBaseAssetsFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder),
-    basicInfoNotePath: ((_w = settings.basicInfoNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
-    includeBasicInfoInAi: (_x = settings.includeBasicInfoInAi) != null ? _x : DEFAULT_SETTINGS.includeBasicInfoInAi,
-    aiGuardrailsNotePath: ((_y = settings.aiGuardrailsNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
-    includeAiGuardrailsInAi: (_z = settings.includeAiGuardrailsInAi) != null ? _z : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
-    currentSeasonNotePath: ((_A = settings.currentSeasonNotePath) == null ? void 0 : _A.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
-    includeCurrentSeasonInAi: (_B = settings.includeCurrentSeasonInAi) != null ? _B : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
-    peopleDependenciesNotePath: ((_C = settings.peopleDependenciesNotePath) == null ? void 0 : _C.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
-    includePeopleDependenciesInAi: (_D = settings.includePeopleDependenciesInAi) != null ? _D : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
-    decisionJournalNotePath: ((_E = settings.decisionJournalNotePath) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
-    systemMapNotePath: ((_F = settings.systemMapNotePath) == null ? void 0 : _F.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
+    researchAiModel: ((_p = settings.researchAiModel) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.researchAiModel,
+    researchResponsesApiUrl: ((_q = settings.researchResponsesApiUrl) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.researchResponsesApiUrl,
+    aiOutputFolder: normalizeFolderPath2(((_r = settings.aiOutputFolder) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    knowledgeBaseRawFolder: normalizeFolderPath2(((_s = settings.knowledgeBaseRawFolder) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
+    knowledgeBaseSourcesFolder: normalizeFolderPath2(((_t = settings.knowledgeBaseSourcesFolder) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),
+    knowledgeBaseConceptsFolder: normalizeFolderPath2(((_u = settings.knowledgeBaseConceptsFolder) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder),
+    knowledgeBaseIndexesFolder: normalizeFolderPath2(((_v = settings.knowledgeBaseIndexesFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder),
+    knowledgeBaseOutputsFolder: normalizeFolderPath2(((_w = settings.knowledgeBaseOutputsFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder),
+    knowledgeBaseAssetsFolder: normalizeFolderPath2(((_x = settings.knowledgeBaseAssetsFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder),
+    basicInfoNotePath: ((_y = settings.basicInfoNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
+    includeBasicInfoInAi: (_z = settings.includeBasicInfoInAi) != null ? _z : DEFAULT_SETTINGS.includeBasicInfoInAi,
+    aiGuardrailsNotePath: ((_A = settings.aiGuardrailsNotePath) == null ? void 0 : _A.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
+    includeAiGuardrailsInAi: (_B = settings.includeAiGuardrailsInAi) != null ? _B : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
+    currentSeasonNotePath: ((_C = settings.currentSeasonNotePath) == null ? void 0 : _C.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
+    includeCurrentSeasonInAi: (_D = settings.includeCurrentSeasonInAi) != null ? _D : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    peopleDependenciesNotePath: ((_E = settings.peopleDependenciesNotePath) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
+    includePeopleDependenciesInAi: (_F = settings.includePeopleDependenciesInAi) != null ? _F : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
+    decisionJournalNotePath: ((_G = settings.decisionJournalNotePath) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: ((_H = settings.systemMapNotePath) == null ? void 0 : _H.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_G = settings.aiContextDays) != null ? _G : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_H = settings.aiRelatedNotesLimit) != null ? _H : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_I = settings.aiIndexEnabled) != null ? _I : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_I = settings.aiContextDays) != null ? _I : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_J = settings.aiRelatedNotesLimit) != null ? _J : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_K = settings.aiIndexEnabled) != null ? _K : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_J = settings.aiChunkCharLimit) != null ? _J : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_K = settings.aiEmbeddingsEnabled) != null ? _K : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_L = settings.aiEmbeddingModel) == null ? void 0 : _L.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_M = settings.aiEmbeddingApiUrl) == null ? void 0 : _M.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_N = settings.calendarEnabled) != null ? _N : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_O = settings.calendarDocumentPath) == null ? void 0 : _O.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_L = settings.aiChunkCharLimit) != null ? _L : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_M = settings.aiEmbeddingsEnabled) != null ? _M : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_N = settings.aiEmbeddingModel) == null ? void 0 : _N.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_O = settings.aiEmbeddingApiUrl) == null ? void 0 : _O.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_P = settings.calendarEnabled) != null ? _P : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_Q = settings.calendarDocumentPath) == null ? void 0 : _Q.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
@@ -239,8 +243,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath2(((_P = settings.wallpaperFolder) == null ? void 0 : _P.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_Q = settings.selectedWallpaper) == null ? void 0 : _Q.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath2(((_R = settings.wallpaperFolder) == null ? void 0 : _R.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_S = settings.selectedWallpaper) == null ? void 0 : _S.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -4393,6 +4397,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.pendingUndoActions = [];
     this.notificationPanelOpen = false;
     this.quickAddPanelOpen = false;
+    this.aiQuestionDraft = "";
     this.handleDocumentPointerDown = (event) => {
       if (!this.notificationPanelOpen && !this.quickAddPanelOpen || !this.contentEl.isConnected) {
         return;
@@ -6376,11 +6381,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       aiAskPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Ask AI stays in dashboard/vault mode. Write wiki notes creates durable knowledge-base notes from the question. Open research modal lets you add context before running it." });
       const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
       aiQuestion.placeholder = "What needs attention first? Which project is dragging hardest? What am I underestimating right now?";
+      aiQuestion.value = this.aiQuestionDraft;
+      aiQuestion.addEventListener("input", () => {
+        this.aiQuestionDraft = aiQuestion.value;
+      });
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
-      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: aiQuestion.value, generateBrief: true, generateAnswer: true }), false, "notebook-pen");
-      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(aiQuestion.value), false, "library-big");
+      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "wiki-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
       const latestPanel = aiLower.createDiv({ cls: "daily-dashboard-ai-panel daily-dashboard-ai-panel--latest" });
@@ -8638,6 +8647,7 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
     this.additionalContext = "";
     this.generateBrief = true;
     this.generateAnswer = true;
+    this.groundingMode = "wiki-plus-web";
     this.plugin = plugin;
     this.question = initialQuestion;
   }
@@ -8668,9 +8678,18 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
         this.generateAnswer = value;
       });
     });
+    new import_obsidian3.Setting(contentEl).setName("Grounding mode").setDesc(`Controls whether research questions use only your wiki, your wiki plus model knowledge, or your wiki plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`).addDropdown((dropdown) => {
+      dropdown.addOption("wiki-only", "Wiki only");
+      dropdown.addOption("wiki-plus-model", "Wiki + model knowledge");
+      dropdown.addOption("wiki-plus-web", "Wiki + web search");
+      dropdown.setValue(this.groundingMode);
+      dropdown.onChange((value) => {
+        this.groundingMode = value === "wiki-only" || value === "wiki-plus-model" ? value : "wiki-plus-web";
+      });
+    });
     contentEl.createEl("p", {
       cls: "daily-dashboard-row-meta",
-      text: "This workflow uses your compiled wiki when relevant and falls back to general model knowledge when coverage is thin. Live web search is not wired into this command yet."
+      text: "This workflow can now run in wiki-only, wiki-plus-model, or wiki-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
     });
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Write wiki notes").setCta().onClick(async () => {
@@ -8686,7 +8705,8 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
           question: this.question,
           additionalContext: this.additionalContext,
           generateBrief: this.generateBrief,
-          generateAnswer: this.generateAnswer
+          generateAnswer: this.generateAnswer,
+          groundingMode: this.groundingMode
         });
         this.close();
       });
@@ -8933,11 +8953,27 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         });
       });
     });
+    new import_obsidian3.Setting(containerEl).setName("Research AI model").setDesc("Used by direct research-question wiki workflows. Recommended default: gpt-4.1 or another stronger model than the dashboard coaching model.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.researchAiModel).setValue(settings.researchAiModel).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          researchAiModel: value.trim() || DEFAULT_SETTINGS.researchAiModel
+        });
+      });
+    });
     new import_obsidian3.Setting(containerEl).setName("AI API URL").setDesc("Defaults to OpenAI chat completions. Change this only if you know you need a different compatible endpoint.").addText((text) => {
       text.setPlaceholder(DEFAULT_SETTINGS.aiBaseUrl).setValue(settings.aiBaseUrl).onChange(async (value) => {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           aiBaseUrl: value.trim() || DEFAULT_SETTINGS.aiBaseUrl
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Research web search API URL").setDesc("Used when the research grounding mode includes web search. Defaults to the OpenAI Responses API.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.researchResponsesApiUrl).setValue(settings.researchResponsesApiUrl).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          researchResponsesApiUrl: value.trim() || DEFAULT_SETTINGS.researchResponsesApiUrl
         });
       });
     });
@@ -9332,6 +9368,12 @@ function createButton(parent, text, onClick, isPrimary = false, iconName) {
   }
   button.createSpan({ cls: "daily-dashboard-button-label", text });
   button.type = "button";
+  button.addEventListener("mousedown", (event) => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
+      event.preventDefault();
+    }
+  });
   button.addEventListener("click", () => {
     void onClick();
   });
@@ -12739,11 +12781,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
   }
   async askResearchQuestionAndWriteWikiNotes(input) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const trimmedQuestion = input.question.trim();
     const trimmedContext = (_b = (_a = input.additionalContext) == null ? void 0 : _a.trim()) != null ? _b : "";
     const generateBrief = (_c = input.generateBrief) != null ? _c : true;
     const generateAnswer = (_d = input.generateAnswer) != null ? _d : true;
+    const groundingMode = (_e = input.groundingMode) != null ? _e : "wiki-plus-web";
     if (!trimmedQuestion) {
       new import_obsidian4.Notice("Enter a research question first.");
       return;
@@ -12761,7 +12804,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         question: trimmedQuestion,
         additionalContext: trimmedContext,
         generateBrief,
-        generateAnswer
+        generateAnswer,
+        groundingMode
       });
       await this.openFile(seedFile);
       new import_obsidian4.Notice("Research question seed note created. Generating requested wiki notes...");
@@ -12787,18 +12831,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Brief`,
           systemPrompt: [
             "You are writing a concise research brief from a user-authored question seed note.",
-            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-            "Do not imply live web browsing, external verification, or source access you do not actually have.",
-            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            ...this.getResearchGroundingInstructions(groundingMode),
             "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
             "Return markdown that starts with a single H1 title suitable for a standalone brief.",
             "Then use headings: Direct Takeaway, Most Likely Explanation, What To Watch Or Verify, Related Wiki Hooks, Promotion Targets.",
             "Keep it concise, practical, and durable for later review.",
             "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
           ].join(" "),
-          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly, pulls from the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a concise brief that answers the question directly and follow the configured grounding mode exactly.`,
           question: trimmedQuestion,
-          additionalSections
+          additionalSections,
+          modelOverride: this.getResearchModel(),
+          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          groundingModeLabel: groundingMode
         });
         if (briefFile) {
           generatedFiles.push(briefFile);
@@ -12814,18 +12859,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           defaultFileLabel: `${stripMarkdownExtension(seedFile.name)} Answer`,
           systemPrompt: [
             "You are writing a detailed teaching-oriented research answer from a user-authored question seed note.",
-            "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
-            "Do not imply live web browsing, external verification, or source access you do not actually have.",
-            "When you rely on model prior knowledge or inference, label that clearly in the markdown.",
+            ...this.getResearchGroundingInstructions(groundingMode),
             "For health, safety, legal, or other sensitive questions, stay educational, avoid presenting a diagnosis or certainty, and call out obvious reasons to seek qualified help.",
             "Return markdown that starts with a single H1 title suitable for a standalone answer note.",
             "Then use headings: Plain-English Answer, Mechanisms Or Concepts, Variations And Caveats, Source Basis And Confidence, Related Wiki Hooks, Promotion Targets.",
             "Teach clearly, explain why, and make the note useful to revisit later.",
             "End with one fenced json block containing keys suggestedFocus, nextActions, keyRisks, followUpQuestions."
           ].join(" "),
-          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly, uses the compiled wiki when relevant, and falls back to clearly labeled general model knowledge when the wiki is thin.`,
+          userPrompt: `Use the active note ${seedFile.path} as the research-question seed. Write a detailed answer note that teaches the topic clearly and follow the configured grounding mode exactly.`,
           question: trimmedQuestion,
-          additionalSections
+          additionalSections,
+          modelOverride: this.getResearchModel(),
+          requestMode: groundingMode === "wiki-plus-web" ? "responses-web-search" : "chat",
+          groundingModeLabel: groundingMode
         });
         if (answerFile) {
           generatedFiles.push(answerFile);
@@ -13126,7 +13172,7 @@ ${context}`
     return activeFile;
   }
   async runKnowledgeBaseAiWorkflow(input) {
-    var _a;
+    var _a, _b;
     if (!this.getResolvedAiApiKey()) {
       new import_obsidian4.Notice(this.getAiConfigurationMessage());
       return null;
@@ -13143,9 +13189,13 @@ ${context}`
         query: input.query,
         additionalSections: (_a = input.additionalSections) != null ? _a : []
       });
-      const rawResponse = await this.requestAiCompletion(this.applyAiPromptTemplate(input.systemPrompt, input.templateKey), `${input.userPrompt}
+      const resolvedModel = ((_b = input.modelOverride) == null ? void 0 : _b.trim()) || this.data.settings.aiModel;
+      const resolvedPrompt = this.applyAiPromptTemplate(input.systemPrompt, input.templateKey);
+      const rawResponse = input.requestMode === "responses-web-search" ? await this.requestAiCompletionWithWebSearch(resolvedPrompt, `${input.userPrompt}
 
-${context}`);
+${context}`, resolvedModel) : await this.requestAiCompletion(resolvedPrompt, `${input.userPrompt}
+
+${context}`, resolvedModel);
       const payload = extractAiStructuredPayload(rawResponse);
       const cleanedMarkdown = stripJsonCodeBlocks(rawResponse).trim();
       const derivedTitle = this.getLeadingMarkdownTitle(cleanedMarkdown) || input.defaultFileLabel;
@@ -13157,7 +13207,9 @@ ${context}`);
         payload,
         question: input.question,
         sourceFile: input.activeFile,
-        fixedPath: input.fixedPath
+        fixedPath: input.fixedPath,
+        modelName: resolvedModel,
+        groundingMode: input.groundingModeLabel
       });
       this.latestAiArtifact = {
         kind: input.kind,
@@ -13214,7 +13266,8 @@ ${context}`);
       `- Captured: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
       "- Workflow: Research Question Seed",
       `- Requested outputs: ${requestedOutputs.length > 0 ? requestedOutputs.join(", ") : "None specified"}`,
-      "- Grounding rule: Prefer compiled wiki notes first. If coverage is thin, clearly label general model knowledge instead of pretending it came from notes or live web results.",
+      `- Grounding mode: ${input.groundingMode}`,
+      `- Grounding rule: ${this.getResearchGroundingSummary(input.groundingMode)}`,
       "",
       "## Question",
       input.question,
@@ -13231,6 +13284,45 @@ ${context}`);
       ""
     ].join("\n");
     return this.upsertMarkdownFile(filePath, content);
+  }
+  getResearchModel() {
+    return this.data.settings.researchAiModel.trim() || this.data.settings.aiModel;
+  }
+  getResearchGroundingSummary(mode) {
+    switch (mode) {
+      case "wiki-only":
+        return "Use only the seed note plus compiled wiki notes. If coverage is weak, say that clearly instead of filling gaps.";
+      case "wiki-plus-model":
+        return "Use compiled wiki notes first and then clearly labeled model prior knowledge when the wiki is thin.";
+      case "wiki-plus-web":
+        return "Use compiled wiki notes, model prior knowledge, and live web search results, while labeling what came from each source of grounding.";
+      default:
+        return "Prefer compiled wiki notes first and clearly label anything that comes from outside the current wiki.";
+    }
+  }
+  getResearchGroundingInstructions(mode) {
+    switch (mode) {
+      case "wiki-only":
+        return [
+          "Use only the compiled wiki material and the seed note.",
+          "Do not fill missing gaps with general model knowledge or web claims.",
+          "If the wiki does not support a confident answer, say that directly and explain what is missing."
+        ];
+      case "wiki-plus-model":
+        return [
+          "Use compiled wiki material when it exists, but if the wiki lacks direct coverage you may use well-established model prior knowledge.",
+          "Do not imply live web browsing, external verification, or source access you do not actually have.",
+          "When you rely on model prior knowledge or inference, label that clearly in the markdown."
+        ];
+      case "wiki-plus-web":
+        return [
+          "Use compiled wiki material first, but you may also use live web search results and well-established model prior knowledge to answer the question.",
+          "Do not pretend every claim came from the wiki. Distinguish wiki grounding, web findings, and model prior knowledge clearly.",
+          "When web search results conflict or are weak, say so instead of smoothing over the uncertainty."
+        ];
+      default:
+        return [];
+    }
   }
   async buildKnowledgeBaseAiContext(input) {
     var _a, _b, _c, _d;
@@ -13303,6 +13395,7 @@ ${context}`);
     return value.replace(/^\s*#\s+.+?(?:\r?\n)+/, "").trim();
   }
   async createKnowledgeBaseGeneratedNote(input) {
+    var _a;
     const timestamp = formatFileTimestamp(/* @__PURE__ */ new Date());
     const folder = normalizeFolderPath2(input.folder);
     const basePath = input.fixedPath && input.fixedPath.trim().length > 0 ? (0, import_obsidian4.normalizePath)(input.fixedPath) : `${folder}/${timestamp} ${sanitizeFileName(input.fileLabel)}.md`;
@@ -13313,8 +13406,9 @@ ${context}`);
       `# ${input.fileLabel}`,
       "",
       `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
-      `- Model: ${this.data.settings.aiModel}`,
+      `- Model: ${(_a = input.modelName) != null ? _a : this.data.settings.aiModel}`,
       `- Workflow: ${input.kind}`,
+      input.groundingMode ? `- Grounding mode: ${input.groundingMode}` : "",
       input.sourceFile ? `- Source note: ${createWikiLink(input.sourceFile.path, input.sourceFile.basename)}` : "",
       input.question ? `- Prompt basis: ${input.question}` : "",
       "",
@@ -15293,7 +15387,7 @@ No entries available.`;
       this.data.settings.aiRelatedNotesLimit
     );
   }
-  async requestAiCompletion(systemPrompt, userPrompt) {
+  async requestAiCompletion(systemPrompt, userPrompt, modelOverride) {
     var _a, _b, _c, _d;
     const apiKey = this.getResolvedAiApiKey();
     if (!apiKey) {
@@ -15306,7 +15400,7 @@ No entries available.`;
         Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: this.data.settings.aiModel,
+        model: (modelOverride == null ? void 0 : modelOverride.trim()) || this.data.settings.aiModel,
         temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
@@ -15335,6 +15429,56 @@ No entries available.`;
       }
     }
     throw new Error("OpenAI returned an empty response.");
+  }
+  async requestAiCompletionWithWebSearch(systemPrompt, userPrompt, modelName) {
+    var _a, _b;
+    const apiKey = this.getResolvedAiApiKey();
+    if (!apiKey) {
+      throw new Error(this.getAiConfigurationMessage());
+    }
+    const response = await fetch(this.data.settings.researchResponsesApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: modelName,
+        temperature: 0.4,
+        tools: [{ type: "web_search_preview" }],
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: systemPrompt }]
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: userPrompt }]
+          }
+        ]
+      })
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const data = await response.json();
+    if ((_a = data.error) == null ? void 0 : _a.message) {
+      throw new Error(data.error.message);
+    }
+    if (typeof data.output_text === "string" && data.output_text.trim().length > 0) {
+      return data.output_text.trim();
+    }
+    const text = ((_b = data.output) != null ? _b : []).flatMap((item) => {
+      var _a2;
+      return (_a2 = item.content) != null ? _a2 : [];
+    }).filter((item) => (item.type === "output_text" || item.type === "text") && typeof item.text === "string").map((item) => {
+      var _a2;
+      return (_a2 = item.text) != null ? _a2 : "";
+    }).join("\n").trim();
+    if (text.length > 0) {
+      return text;
+    }
+    throw new Error("OpenAI web search response was empty.");
   }
   async requestQueryEmbedding(text) {
     var _a;

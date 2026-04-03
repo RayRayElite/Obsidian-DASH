@@ -24,6 +24,7 @@ import {
   HABIT_WINDOW_OPTIONS,
   SESSION_TAG_OPTIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
+  type ResearchGroundingMode,
   type CalendarEventOccurrence,
   type CalendarEventCategory,
   type CalendarRepeatCadence,
@@ -117,6 +118,7 @@ export class DailyDashboardView extends ItemView {
   private pendingUndoActions: DashboardUndoAction[] = [];
   private notificationPanelOpen = false;
   private quickAddPanelOpen = false;
+  private aiQuestionDraft = "";
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
     if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
       return;
@@ -2265,11 +2267,15 @@ export class DailyDashboardView extends ItemView {
       aiAskPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Ask AI stays in dashboard/vault mode. Write wiki notes creates durable knowledge-base notes from the question. Open research modal lets you add context before running it." });
       const aiQuestion = aiAskPanel.createEl("textarea", { cls: "daily-dashboard-textarea daily-dashboard-ai-question" });
       aiQuestion.placeholder = "What needs attention first? Which project is dragging hardest? What am I underestimating right now?";
+      aiQuestion.value = this.aiQuestionDraft;
+      aiQuestion.addEventListener("input", () => {
+        this.aiQuestionDraft = aiQuestion.value;
+      });
       aiQuestion.rows = 4;
       const aiQuestionActions = aiAskPanel.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-ai-actions" });
-      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(aiQuestion.value), true, "message-square");
-      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: aiQuestion.value, generateBrief: true, generateAnswer: true }), false, "notebook-pen");
-      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(aiQuestion.value), false, "library-big");
+      createButton(aiQuestionActions, "Ask AI", async () => this.plugin.askAiQuestion(this.aiQuestionDraft), true, "message-square");
+      createButton(aiQuestionActions, "Write wiki notes", async () => this.plugin.askResearchQuestionAndWriteWikiNotes({ question: this.aiQuestionDraft, generateBrief: true, generateAnswer: true, groundingMode: "wiki-plus-web" }), false, "notebook-pen");
+      createButton(aiQuestionActions, "Open research modal", async () => this.plugin.openAskResearchQuestionFlow(this.aiQuestionDraft), false, "library-big");
       createButton(aiQuestionActions, "Open ask modal", async () => this.plugin.openAskAiFlow(), false, "panel-top-open");
       createButton(aiQuestionActions, "Rebuild index", async () => this.plugin.rebuildAiNoteIndex(true), false, "database-zap");
 
@@ -5151,6 +5157,7 @@ export class AskResearchQuestionModal extends Modal {
   private additionalContext = "";
   private generateBrief = true;
   private generateAnswer = true;
+  private groundingMode: ResearchGroundingMode = "wiki-plus-web";
 
   constructor(app: App, plugin: DailyDashboardPlugin, initialQuestion = "") {
     super(app);
@@ -5212,9 +5219,22 @@ export class AskResearchQuestionModal extends Modal {
           });
       });
 
+    new Setting(contentEl)
+      .setName("Grounding mode")
+      .setDesc(`Controls whether research questions use only your wiki, your wiki plus model knowledge, or your wiki plus live web search. Research model: ${this.plugin.getSettings().researchAiModel}`)
+      .addDropdown((dropdown) => {
+        dropdown.addOption("wiki-only", "Wiki only");
+        dropdown.addOption("wiki-plus-model", "Wiki + model knowledge");
+        dropdown.addOption("wiki-plus-web", "Wiki + web search");
+        dropdown.setValue(this.groundingMode);
+        dropdown.onChange((value) => {
+          this.groundingMode = value === "wiki-only" || value === "wiki-plus-model" ? value : "wiki-plus-web";
+        });
+      });
+
     contentEl.createEl("p", {
       cls: "daily-dashboard-row-meta",
-      text: "This workflow uses your compiled wiki when relevant and falls back to general model knowledge when coverage is thin. Live web search is not wired into this command yet."
+      text: "This workflow can now run in wiki-only, wiki-plus-model, or wiki-plus-web mode. Use the research model setting if you want a stronger model than the default dashboard AI model."
     });
 
     new Setting(contentEl)
@@ -5234,7 +5254,8 @@ export class AskResearchQuestionModal extends Modal {
             question: this.question,
             additionalContext: this.additionalContext,
             generateBrief: this.generateBrief,
-            generateAnswer: this.generateAnswer
+            generateAnswer: this.generateAnswer,
+            groundingMode: this.groundingMode
           });
           this.close();
         });
@@ -5640,6 +5661,21 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Research AI model")
+      .setDesc("Used by direct research-question wiki workflows. Recommended default: gpt-4.1 or another stronger model than the dashboard coaching model.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.researchAiModel)
+          .setValue(settings.researchAiModel)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              researchAiModel: value.trim() || DEFAULT_SETTINGS.researchAiModel
+            });
+          });
+      });
+
+    new Setting(containerEl)
       .setName("AI API URL")
       .setDesc("Defaults to OpenAI chat completions. Change this only if you know you need a different compatible endpoint.")
       .addText((text) => {
@@ -5650,6 +5686,21 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             await this.plugin.updateSettings({
               ...this.plugin.getSettings(),
               aiBaseUrl: value.trim() || DEFAULT_SETTINGS.aiBaseUrl
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Research web search API URL")
+      .setDesc("Used when the research grounding mode includes web search. Defaults to the OpenAI Responses API.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.researchResponsesApiUrl)
+          .setValue(settings.researchResponsesApiUrl)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              researchResponsesApiUrl: value.trim() || DEFAULT_SETTINGS.researchResponsesApiUrl
             });
           });
       });
@@ -6291,6 +6342,12 @@ function createButton(parent: HTMLElement, text: string, onClick: () => Promise<
   }
   button.createSpan({ cls: "daily-dashboard-button-label", text });
   button.type = "button";
+  button.addEventListener("mousedown", (event) => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {
+      event.preventDefault();
+    }
+  });
   button.addEventListener("click", () => {
     void onClick();
   });

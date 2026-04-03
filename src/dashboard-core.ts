@@ -85,6 +85,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiApiKeyEnvVar: settings.aiApiKeyEnvVar?.trim() || DEFAULT_SETTINGS.aiApiKeyEnvVar,
     aiModel: settings.aiModel?.trim() || DEFAULT_SETTINGS.aiModel,
     aiBaseUrl: settings.aiBaseUrl?.trim() || DEFAULT_SETTINGS.aiBaseUrl,
+    researchAiModel: settings.researchAiModel?.trim() || DEFAULT_SETTINGS.researchAiModel,
+    researchResponsesApiUrl: settings.researchResponsesApiUrl?.trim() || DEFAULT_SETTINGS.researchResponsesApiUrl,
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
     knowledgeBaseRawFolder: normalizeFolderPath(settings.knowledgeBaseRawFolder?.trim() || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
     knowledgeBaseSourcesFolder: normalizeFolderPath(settings.knowledgeBaseSourcesFolder?.trim() || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),

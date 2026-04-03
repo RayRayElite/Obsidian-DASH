@@ -88,7 +88,7 @@ Use `Initialize compiled research wiki` once to create the default folder scaffo
 
 Use `Compile active note into research source summary` to turn the active markdown note into a structured source-summary note in the compiled wiki. Use `Generate concept note from active research note` to turn the active note into a reusable concept page, and use `Generate research answer note from active note` or `Generate research brief from active note` to write reusable outputs into the knowledge-base outputs folder.
 
-Use `Ask research question and write wiki notes` when you want to start from a direct question instead of an existing source note. That workflow creates a seed note under `Knowledge Base/raw/Questions` and can generate both a concise brief and a deeper teaching-oriented answer note from the AI Workspace card or the command palette.
+Use `Ask research question and write wiki notes` when you want to start from a direct question instead of an existing source note. That workflow creates a seed note under `Knowledge Base/raw/Questions` and can generate both a concise brief and a deeper teaching-oriented answer note from the AI Workspace card or the command palette. The research modal now lets you choose `Wiki only`, `Wiki + model knowledge`, or `Wiki + web search`, and the plugin supports a separate research model setting so these longer-form answers do not need to share the cheaper dashboard coaching model.
 
 Use `Generate research Marp slide deck from active note` to create a presentation-ready markdown deck under the knowledge-base outputs slide-deck folder, and use `Promote active research output to concept note` or `Promote follow-up questions from active research note` to push useful outputs back into the wiki and its question index.
 
@@ -100,7 +100,7 @@ Use `Generate compiled research retrieval tuning note` when you want the plugin 
 
 Recommended retrieval scope for AI remains the compiled layers, not the raw inbox: source summaries, concept notes, and index notes. Keep the raw folder out of `AI indexed folders` unless you explicitly want direct raw-source retrieval noise.
 
-The direct question workflow can fall back to general model knowledge when your wiki does not yet cover the topic, but it does not perform live web search yet. If an answer matters enough to preserve confidently, capture real supporting sources afterward and compile them into the wiki.
+The direct question workflow can now optionally use live web search through the OpenAI Responses API when you choose `Wiki + web search`. If an answer matters enough to preserve confidently, you should still capture the best supporting sources afterward and compile them into the wiki so future answers are less dependent on transient web retrieval.
 
 ## Logical Day Tracking
 

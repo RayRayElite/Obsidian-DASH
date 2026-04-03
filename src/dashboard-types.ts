@@ -21,6 +21,7 @@ export type ExerciseIntensity = (typeof EXERCISE_INTENSITY_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
 export type WeightGoalMode = "lose" | "maintain" | "gain";
 export type DashboardNotificationSound = "off" | "chime" | "ping" | "alert";
+export type ResearchGroundingMode = "wiki-only" | "wiki-plus-model" | "wiki-plus-web";
 
 export interface HabitDefinition {
   id: string;
@@ -402,6 +403,8 @@ export interface DashboardSettings {
   aiApiKeyEnvVar: string;
   aiModel: string;
   aiBaseUrl: string;
+  researchAiModel: string;
+  researchResponsesApiUrl: string;
   aiOutputFolder: string;
   knowledgeBaseRawFolder: string;
   knowledgeBaseSourcesFolder: string;
@@ -904,6 +907,8 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiApiKeyEnvVar: "OPENAI_API_KEY",
   aiModel: "gpt-4o-mini",
   aiBaseUrl: "https://api.openai.com/v1/chat/completions",
+  researchAiModel: "gpt-4.1",
+  researchResponsesApiUrl: "https://api.openai.com/v1/responses",
   aiOutputFolder: "Dashboard Logs/AI",
   knowledgeBaseRawFolder: "Knowledge Base/raw",
   knowledgeBaseSourcesFolder: "Knowledge Base/wiki/sources",
