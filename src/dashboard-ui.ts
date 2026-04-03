@@ -760,7 +760,9 @@ export class DailyDashboardView extends ItemView {
       const heroHeader = hero.createDiv({ cls: "daily-dashboard-hero-header" });
       const heroCopy = heroHeader.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
-      heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
+      const heroTitle = heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title" });
+      heroTitle.createEl("span", { cls: "daily-dashboard-hero-title-line daily-dashboard-hero-title-line--brand", text: "Obsidian DASH" });
+      heroTitle.createEl("span", { cls: "daily-dashboard-hero-title-line daily-dashboard-hero-title-line--subtitle", text: "Daily Action & System Hub" });
 
       const heroHeaderControls = heroHeader.createDiv({ cls: "daily-dashboard-hero-header-controls" });
       const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });

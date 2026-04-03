@@ -95,6 +95,24 @@
   font-size: clamp(1.45rem, 2vw, 2rem);
   line-height: 1.02;
   letter-spacing: -0.04em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.daily-dashboard-hero-title-line {
+  display: block;
+}
+
+.daily-dashboard-hero-title-line--brand {
+  color: color-mix(in srgb, var(--daily-dashboard-accent) 78%, #d7ff66);
+}
+
+.daily-dashboard-hero-title-line--subtitle {
+  color: var(--text-normal);
+  font-size: clamp(0.92rem, 1.35vw, 1.18rem);
+  letter-spacing: -0.01em;
+  line-height: 1.08;
 }
 
 .daily-dashboard-hero-footer {
@@ -424,10 +442,6 @@
   --daily-dashboard-card-accent: #7ace89;
 }
 
-.daily-dashboard-card.is-tone-hobby {
-  --daily-dashboard-card-accent: #2f4f4f;
-}
-
 .daily-dashboard-card--week-at-a-glance {
   --daily-dashboard-card-accent: #58c8c8;
 }
@@ -687,11 +701,6 @@
 
 .daily-dashboard-semantic-chip.is-health {
   background: color-mix(in srgb, #79d7cb 16%, var(--background-primary));
-}
-
-.daily-dashboard-semantic-chip.is-hobby {
-  background: color-mix(in srgb, #2f4f4f 28%, var(--background-primary));
-  border-color: color-mix(in srgb, #0f1616 42%, var(--background-modifier-border));
 }
 
 .daily-dashboard-semantic-chip.is-done {
@@ -1334,16 +1343,6 @@
   border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 42%, var(--background-modifier-border));
   background: linear-gradient(135deg, color-mix(in srgb, var(--background-primary) 72%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 22%), color-mix(in srgb, var(--background-primary) 84%, transparent));
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
-}
-
-.daily-dashboard-session-button.is-hobby {
-  --daily-dashboard-card-accent: #2f4f4f;
-  border-color: color-mix(in srgb, #0f1616 34%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--background-primary) 78%, #121919 22%);
-}
-
-.daily-dashboard-session-button.is-hobby .daily-dashboard-session-button-icon {
-  background: color-mix(in srgb, #0d1313 74%, var(--background-primary));
 }
 
 .daily-dashboard-session-button-icon {
