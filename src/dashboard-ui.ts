@@ -1788,14 +1788,6 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
-      stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
-      const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
-      frictionInput.value = todayEntry.frictionLog;
-      frictionInput.placeholder = "Blockers, pain points, context switching, or anything that made the day harder.";
-      frictionInput.addEventListener("change", () => {
-        void this.plugin.updateFrictionLog(frictionInput.value);
-      });
-
       const symptomsSection = this.createCollapsibleSubsection(stateCard, "state-symptoms", "Symptoms", "Track pain, symptoms, and likely triggers before the context gets flattened later.");
       const symptomSummary = symptomsSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(symptomSummary, todayEntry.symptomLog.length > 0 ? `${todayEntry.symptomLog.length} logged` : "No symptoms", todayEntry.symptomLog.length > 0 ? "health" : "neutral");
@@ -1832,6 +1824,14 @@ export class DailyDashboardView extends ItemView {
           });
         });
       }
+
+      stateCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Friction log" });
+      const frictionInput = stateCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
+      frictionInput.value = todayEntry.frictionLog;
+      frictionInput.placeholder = "Blockers, pain points, context switching, or anything that made the day harder.";
+      frictionInput.addEventListener("change", () => {
+        void this.plugin.updateFrictionLog(frictionInput.value);
+      });
 
       const gamificationCard = createGridCard("Gamification Center", "Turn execution, health, consistency, recovery, and planning into auditable scores instead of vague impressions.", {
         icon: "trophy",
@@ -2017,7 +2017,7 @@ export class DailyDashboardView extends ItemView {
           createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
             await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
           }, false, getIntakePresetIcon(preset.kind));
-          const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button" });
+          const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button daily-dashboard-consumable-remove-button" });
           removeButton.type = "button";
           removeButton.ariaLabel = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
           removeButton.title = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
@@ -2054,7 +2054,7 @@ export class DailyDashboardView extends ItemView {
           amountInput.addEventListener("change", () => {
             void this.plugin.updateIntakeEntryAmount(index, Number(amountInput.value));
           });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
           setIcon(removeButton, "x");
           removeButton.addEventListener("click", () => {
@@ -2181,7 +2181,7 @@ export class DailyDashboardView extends ItemView {
           copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${formatMinutesAsHours(item.durationMinutes)} • ${item.intensity} • ${item.loggedAt}${item.note ? ` • ${item.note}` : ""}` });
           const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
           amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: item.linkedSessionStart ? "Timed" : "Manual" });
-          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-consumable-remove-button", attr: { "aria-label": `Remove ${item.label}`, title: `Remove ${item.label}` } });
           removeButton.type = "button";
           setIcon(removeButton, "x");
           removeButton.addEventListener("click", () => {
