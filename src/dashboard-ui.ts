@@ -2223,6 +2223,10 @@ export class DailyDashboardView extends ItemView {
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
       createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
+      createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
+      createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
+      createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
 
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
@@ -4054,7 +4058,7 @@ export class FirstRunSetupWizardModal extends Modal {
     } else {
       createButton(footer, "Save and open dashboard", async () => {
         await this.plugin.updateSettings(this.settingsValue);
-        await this.plugin.ensureBasicInformationNoteExists();
+        await this.plugin.ensureCoreSupportNotesExist();
         await this.plugin.completeFirstRunSetupWizard();
         await this.plugin.activateDashboardView();
         this.close();
@@ -4202,6 +4206,72 @@ export class FirstRunSetupWizardModal extends Modal {
         toggle.setValue(this.settingsValue.includeBasicInfoInAi).onChange((value) => {
           this.settingsValue.includeBasicInfoInAi = value;
         });
+      });
+
+    new Setting(parent)
+      .setName("AI Guardrails note path")
+      .setDesc("Operational instructions for how AI should reason, write, and prioritize when helping inside this system.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiGuardrailsNotePath)
+          .setValue(this.settingsValue.aiGuardrailsNotePath)
+          .onChange((value) => {
+            this.settingsValue.aiGuardrailsNotePath = value.trim() || DEFAULT_SETTINGS.aiGuardrailsNotePath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Include AI Guardrails in AI")
+      .setDesc("Inject the AI Guardrails note into AI requests so behavior rules stay durable and explicit.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.settingsValue.includeAiGuardrailsInAi).onChange((value) => {
+          this.settingsValue.includeAiGuardrailsInAi = value;
+        });
+      });
+
+    new Setting(parent)
+      .setName("Current Season note path")
+      .setDesc("Short-lived priorities, constraints, and review questions for the current operating season.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.currentSeasonNotePath)
+          .setValue(this.settingsValue.currentSeasonNotePath)
+          .onChange((value) => {
+            this.settingsValue.currentSeasonNotePath = value.trim() || DEFAULT_SETTINGS.currentSeasonNotePath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("Include Current Season in AI")
+      .setDesc("Inject the Current Season note into AI requests so current priorities and constraints stay in scope.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.settingsValue.includeCurrentSeasonInAi).onChange((value) => {
+          this.settingsValue.includeCurrentSeasonInAi = value;
+        });
+      });
+
+    new Setting(parent)
+      .setName("Decision Journal note path")
+      .setDesc("Lightweight running record of important choices and why they were made.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.decisionJournalNotePath)
+          .setValue(this.settingsValue.decisionJournalNotePath)
+          .onChange((value) => {
+            this.settingsValue.decisionJournalNotePath = value.trim() || DEFAULT_SETTINGS.decisionJournalNotePath;
+          });
+      });
+
+    new Setting(parent)
+      .setName("System Map note path")
+      .setDesc("High-level map of which notes hold action, context, history, and review material.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.systemMapNotePath)
+          .setValue(this.settingsValue.systemMapNotePath)
+          .onChange((value) => {
+            this.settingsValue.systemMapNotePath = value.trim() || DEFAULT_SETTINGS.systemMapNotePath;
+          });
       });
 
     new Setting(parent)
@@ -5405,6 +5475,90 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             includeBasicInfoInAi: value
           });
         });
+      });
+
+    new Setting(containerEl)
+      .setName("AI Guardrails note path")
+      .setDesc("Durable instructions for how AI should behave inside your system.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.aiGuardrailsNotePath)
+          .setValue(settings.aiGuardrailsNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              aiGuardrailsNotePath: value.trim() || DEFAULT_SETTINGS.aiGuardrailsNotePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Include AI Guardrails in AI")
+      .setDesc("Automatically inject the AI Guardrails note so workflows inherit your preferred tone and operating rules.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.includeAiGuardrailsInAi).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            includeAiGuardrailsInAi: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Current Season note path")
+      .setDesc("Temporary priorities, constraints, and active review questions for the present season.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.currentSeasonNotePath)
+          .setValue(settings.currentSeasonNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              currentSeasonNotePath: value.trim() || DEFAULT_SETTINGS.currentSeasonNotePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Include Current Season in AI")
+      .setDesc("Automatically inject the Current Season note so AI stays aligned with the current phase, not just historical context.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.includeCurrentSeasonInAi).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            includeCurrentSeasonInAi: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Decision Journal note path")
+      .setDesc("Reference note for important decisions and revisit points.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.decisionJournalNotePath)
+          .setValue(settings.decisionJournalNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              decisionJournalNotePath: value.trim() || DEFAULT_SETTINGS.decisionJournalNotePath
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("System Map note path")
+      .setDesc("Reference note that maps where action, context, and history live.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.systemMapNotePath)
+          .setValue(settings.systemMapNotePath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              systemMapNotePath: value.trim() || DEFAULT_SETTINGS.systemMapNotePath
+            });
+          });
       });
 
     new Setting(containerEl)

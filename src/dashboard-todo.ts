@@ -179,11 +179,17 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     }
 
     const staleDays = lastCompletedAt ? daysBetween(lastCompletedAt, formatDateKey(now)) : null;
+    const reviewDate = extractTrackedDate(lastReview);
+    const reviewStaleDays = reviewDate ? daysBetween(reviewDate, formatDateKey(now)) : null;
     const trend: TodoProjectSummary["trend"] = completionsThisWeek > completionsPreviousWeek ? "up" : completionsThisWeek < completionsPreviousWeek ? "down" : "flat";
     const projectState = inferProjectState(status);
     const nextAction = selectProjectNextAction({
       projectName: project.name,
       projectState,
+      lastReview,
+      reviewStaleDays,
+      waitingOn,
+      definitionOfDone,
       overdueTasks,
       dueSoonTasks,
       nowTaskDetails,
@@ -195,6 +201,11 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       projectName: project.name,
       projectState,
       staleDays,
+      lastReview,
+      reviewStaleDays,
+      waitingOn,
+      definitionOfDone,
+      projectSummary,
       overdueTasks,
       dueSoonTasks,
       blockedTasks,
@@ -209,6 +220,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       projectState,
       openCount,
       staleDays,
+      reviewStaleDays,
       completionsThisWeek,
       nowCount: nowTasks.length,
       nextCount: nextTasks.length,
@@ -216,7 +228,10 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       overdueCount: overdueTasks.length,
       blockedCount: blockedTasks.length,
       breakdownCount: breakdownTasks.length,
-      duplicateCount: duplicateTasks.size
+      duplicateCount: duplicateTasks.size,
+      hasProjectSummary: projectSummary.trim().length > 0,
+      hasDefinitionOfDone: definitionOfDone.trim().length > 0,
+      hasWaitingOn: waitingOn.trim().length > 0
     });
 
     return {
@@ -1389,6 +1404,7 @@ export function computeHealthScore(input: {
   projectState: "active" | "incubating" | "someday";
   openCount: number;
   staleDays: number | null;
+  reviewStaleDays: number | null;
   completionsThisWeek: number;
   nowCount: number;
   nextCount: number;
@@ -1397,14 +1413,20 @@ export function computeHealthScore(input: {
   blockedCount: number;
   breakdownCount: number;
   duplicateCount: number;
+  hasProjectSummary: boolean;
+  hasDefinitionOfDone: boolean;
+  hasWaitingOn: boolean;
 }): number {
   let score = input.projectState === "active" ? 100 : input.projectState === "incubating" ? 82 : 78;
   if (input.projectState === "active") {
     score -= Math.min(input.openCount * 2, 30);
     score -= Math.min((input.staleDays ?? 0), 25);
+    score -= Math.min(Math.max((input.reviewStaleDays ?? 14) - 7, 0), 18);
     score += Math.min(input.completionsThisWeek * 4, 16);
     score += Math.min(input.nowCount * 3, 9);
     score += Math.min(input.nextCount * 1, 4);
+    score += input.hasProjectSummary ? 0 : -4;
+    score += input.hasDefinitionOfDone ? 0 : -6;
   } else {
     score += Math.min(input.completionsThisWeek * 2, 8);
     score += input.nowCount > 0 ? 2 : 0;
@@ -1414,6 +1436,8 @@ export function computeHealthScore(input: {
   score -= input.dueSoonCount * 2;
   score -= input.overdueCount * 7;
   score -= input.blockedCount * 5;
+  score += input.blockedCount > 0 && input.hasWaitingOn ? 3 : 0;
+  score -= input.blockedCount > 0 && !input.hasWaitingOn ? 4 : 0;
   score -= input.breakdownCount * 5;
   score -= input.duplicateCount * 6;
   return clamp(score, 0, 100);
@@ -1522,6 +1546,10 @@ function inferProjectState(status: string): TodoProjectSummary["projectState"] {
 function selectProjectNextAction(input: {
   projectName: string;
   projectState: TodoProjectSummary["projectState"];
+  lastReview: string;
+  reviewStaleDays: number | null;
+  waitingOn: string;
+  definitionOfDone: string;
   overdueTasks: TodoTaskSummary[];
   dueSoonTasks: TodoTaskSummary[];
   nowTaskDetails: TodoTaskSummary[];
@@ -1542,6 +1570,19 @@ function selectProjectNextAction(input: {
     return actionableTask.text;
   }
 
+  if (input.waitingOn.trim().length > 0) {
+    return `Follow up on waiting on: ${input.waitingOn.trim()}`;
+  }
+
+  if (input.projectState === "active" && input.definitionOfDone.trim().length === 0) {
+    return `Define what done means for ${input.projectName}.`;
+  }
+
+  if (input.projectState === "active" && (input.reviewStaleDays ?? 999) >= 14) {
+    const reviewLabel = input.lastReview.trim().length > 0 ? input.lastReview.trim() : "not recorded";
+    return `Review ${input.projectName} and refresh Now/Next (last review: ${reviewLabel}).`;
+  }
+
   if (input.projectState === "someday") {
     return "Incubating in someday. Promote one concrete task when ready.";
   }
@@ -1557,6 +1598,11 @@ function buildProjectHealthReasons(input: {
   projectName: string;
   projectState: TodoProjectSummary["projectState"];
   staleDays: number | null;
+  lastReview: string;
+  reviewStaleDays: number | null;
+  waitingOn: string;
+  definitionOfDone: string;
+  projectSummary: string;
   overdueTasks: TodoTaskSummary[];
   dueSoonTasks: TodoTaskSummary[];
   blockedTasks: TodoTaskSummary[];
@@ -1570,6 +1616,20 @@ function buildProjectHealthReasons(input: {
   const reasons: string[] = [];
   if (input.projectState !== "active") {
     reasons.push(input.projectState === "someday" ? "Parked as someday work." : "Marked incubating until it is ready for active execution.");
+  }
+  if (input.projectState === "active" && input.projectSummary.trim().length === 0) {
+    reasons.push("Project summary is missing.");
+  }
+  if (input.projectState === "active" && input.definitionOfDone.trim().length === 0) {
+    reasons.push("Definition of done is missing.");
+  }
+  if (input.projectState === "active" && input.reviewStaleDays === null) {
+    reasons.push("No project review date recorded.");
+  } else if ((input.reviewStaleDays ?? 0) >= 14) {
+    reasons.push(`Last review was ${input.reviewStaleDays} day${input.reviewStaleDays === 1 ? "" : "s"} ago.`);
+  }
+  if (input.waitingOn.trim().length > 0) {
+    reasons.push(`Waiting on: ${input.waitingOn.trim()}.`);
   }
   if (input.overdueTasks.length > 0) {
     reasons.push(`${input.overdueTasks.length} overdue task${input.overdueTasks.length === 1 ? "" : "s"}.`);
@@ -1600,6 +1660,11 @@ function buildProjectHealthReasons(input: {
   }
   reasons.push(`Next action: ${input.nextAction}`);
   return reasons.slice(0, 6);
+}
+
+function extractTrackedDate(value: string): string | null {
+  const match = value.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
 }
 
 function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {

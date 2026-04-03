@@ -405,6 +405,12 @@ export interface DashboardSettings {
   aiOutputFolder: string;
   basicInfoNotePath: string;
   includeBasicInfoInAi: boolean;
+  aiGuardrailsNotePath: string;
+  includeAiGuardrailsInAi: boolean;
+  currentSeasonNotePath: string;
+  includeCurrentSeasonInAi: boolean;
+  decisionJournalNotePath: string;
+  systemMapNotePath: string;
   aiPromptTemplates: string;
   aiContextDays: number;
   aiRelatedNotesLimit: number;
@@ -883,6 +889,12 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   aiOutputFolder: "Dashboard Logs/AI",
   basicInfoNotePath: "Dashboard Logs/Profile/Basic Information.md",
   includeBasicInfoInAi: true,
+  aiGuardrailsNotePath: "Dashboard Logs/Profile/AI Guardrails.md",
+  includeAiGuardrailsInAi: true,
+  currentSeasonNotePath: "Dashboard Logs/Profile/Current Season.md",
+  includeCurrentSeasonInAi: true,
+  decisionJournalNotePath: "Dashboard Logs/Profile/Decision Journal.md",
+  systemMapNotePath: "Dashboard Logs/Profile/System Map.md",
   aiPromptTemplates: [
     "[morning-startup-brief]",
     "Favor direct prioritization, realistic pacing, and explicit first actions.",

@@ -284,7 +284,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private async initializeWorkspaceArtifacts(): Promise<void> {
     await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
-    await this.ensureBasicInformationNoteExists();
+    await this.ensureCoreSupportNotesExist();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
@@ -367,6 +367,38 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open basic information note",
       callback: () => {
         void this.openBasicInformationNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-ai-guardrails-note",
+      name: "Open AI Guardrails note",
+      callback: () => {
+        void this.openAiGuardrailsNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-current-season-note",
+      name: "Open Current Season note",
+      callback: () => {
+        void this.openCurrentSeasonNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-decision-journal-note",
+      name: "Open Decision Journal note",
+      callback: () => {
+        void this.openDecisionJournalNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-system-map-note",
+      name: "Open System Map note",
+      callback: () => {
+        void this.openSystemMapNote();
       }
     });
 
@@ -3125,22 +3157,66 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async openBasicInformationNote(): Promise<void> {
-    const path = normalizePath(this.data.settings.basicInfoNotePath);
-    const existing = this.app.vault.getAbstractFileByPath(path);
-    const file = existing instanceof TFile
-      ? existing
-      : await this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
+    const file = await this.ensureBasicInformationNoteExists();
     await this.openFile(file);
   }
 
   async ensureBasicInformationNoteExists(): Promise<TFile> {
-    const path = normalizePath(this.data.settings.basicInfoNotePath);
+    return this.ensureSupportNote(this.data.settings.basicInfoNotePath, () => this.renderBasicInformationTemplate());
+  }
+
+  async openAiGuardrailsNote(): Promise<void> {
+    const file = await this.ensureAiGuardrailsNoteExists();
+    await this.openFile(file);
+  }
+
+  async ensureAiGuardrailsNoteExists(): Promise<TFile> {
+    return this.ensureSupportNote(this.data.settings.aiGuardrailsNotePath, () => this.renderAiGuardrailsTemplate());
+  }
+
+  async openCurrentSeasonNote(): Promise<void> {
+    const file = await this.ensureCurrentSeasonNoteExists();
+    await this.openFile(file);
+  }
+
+  async ensureCurrentSeasonNoteExists(): Promise<TFile> {
+    return this.ensureSupportNote(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
+  }
+
+  async openDecisionJournalNote(): Promise<void> {
+    const file = await this.ensureDecisionJournalNoteExists();
+    await this.openFile(file);
+  }
+
+  async ensureDecisionJournalNoteExists(): Promise<TFile> {
+    return this.ensureSupportNote(this.data.settings.decisionJournalNotePath, () => this.renderDecisionJournalTemplate());
+  }
+
+  async openSystemMapNote(): Promise<void> {
+    const file = await this.ensureSystemMapNoteExists();
+    await this.openFile(file);
+  }
+
+  async ensureSystemMapNoteExists(): Promise<TFile> {
+    return this.ensureSupportNote(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
+  }
+
+  async ensureCoreSupportNotesExist(): Promise<void> {
+    await this.ensureBasicInformationNoteExists();
+    await this.ensureAiGuardrailsNoteExists();
+    await this.ensureCurrentSeasonNoteExists();
+    await this.ensureDecisionJournalNoteExists();
+    await this.ensureSystemMapNoteExists();
+  }
+
+  private async ensureSupportNote(pathValue: string, renderTemplate: () => string): Promise<TFile> {
+    const path = normalizePath(pathValue);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof TFile) {
       return existing;
     }
 
-    return this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
+    return this.upsertMarkdownFile(path, renderTemplate());
   }
 
   async getTodoSnapshot(): Promise<TodoSnapshot | null> {
@@ -4248,6 +4324,8 @@ export default class DailyDashboardPlugin extends Plugin {
       : "Master task hub raw content not included for this request.";
     const activeFile = includeActiveNote ? this.app.workspace.getActiveFile() : null;
     const basicInfoSection = await this.buildBasicInformationAiContext();
+    const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
+    const currentSeasonSection = await this.buildCurrentSeasonAiContext();
     const activeNoteSection = activeFile instanceof TFile
       ? `## Active Note\nPath: ${activeFile.path}\n\n${truncateText(await this.app.vault.read(activeFile), 8000)}`
       : "";
@@ -4275,6 +4353,10 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       basicInfoSection,
       "",
+      aiGuardrailsSection,
+      "",
+      currentSeasonSection,
+      "",
       ...extraContextSections.flatMap((section) => section.trim().length > 0 ? [section, ""] : []),
       activeNoteSection,
       "",
@@ -4284,18 +4366,30 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async buildBasicInformationAiContext(): Promise<string> {
-    if (!this.data.settings.includeBasicInfoInAi) {
+    return this.buildSupportNoteAiContext("Basic Information", this.data.settings.basicInfoNotePath, this.data.settings.includeBasicInfoInAi, 6000);
+  }
+
+  private async buildAiGuardrailsAiContext(): Promise<string> {
+    return this.buildSupportNoteAiContext("AI Guardrails", this.data.settings.aiGuardrailsNotePath, this.data.settings.includeAiGuardrailsInAi, 5000);
+  }
+
+  private async buildCurrentSeasonAiContext(): Promise<string> {
+    return this.buildSupportNoteAiContext("Current Season", this.data.settings.currentSeasonNotePath, this.data.settings.includeCurrentSeasonInAi, 5000);
+  }
+
+  private async buildSupportNoteAiContext(title: string, pathValue: string, enabled: boolean, charLimit: number): Promise<string> {
+    if (!enabled) {
       return "";
     }
 
-    const file = this.app.vault.getAbstractFileByPath(normalizePath(this.data.settings.basicInfoNotePath));
+    const file = this.app.vault.getAbstractFileByPath(normalizePath(pathValue));
     if (!(file instanceof TFile)) {
       return "";
     }
 
-    const content = truncateText(await this.app.vault.read(file), 6000);
+    const content = truncateText(await this.app.vault.read(file), charLimit);
     return [
-      "## Basic Information",
+      `## ${title}`,
       `Path: ${file.path}`,
       content
     ].join("\n\n");
@@ -4357,6 +4451,114 @@ export default class DailyDashboardPlugin extends Plugin {
       "- Update stable personal facts here when they change.",
       "- Use recent dashboard logs for short-term changes like weight drift, symptoms, or sleep changes.",
       ""
+    ].join("\n");
+  }
+
+  private renderAiGuardrailsTemplate(): string {
+    return [
+      "# AI Guardrails",
+      "",
+      "## Tone",
+      "- Prefer direct, practical language over motivational writing.",
+      "- Explain tradeoffs clearly when suggesting changes.",
+      "- Prioritize clarity over flourish.",
+      "",
+      "## Planning Behavior",
+      "- Optimize for operational clarity, not maximal ambition.",
+      "- Prefer the smallest viable next step when a task is vague.",
+      "- Separate evidence from inference when interpreting trends.",
+      "- Treat friction and recovery data as planning signals, not noise.",
+      "",
+      "## Avoid",
+      "- Do not overstate certainty from weak signals.",
+      "- Do not recommend unnecessary system complexity.",
+      "- Do not confuse reference material with actionable work.",
+      "- Do not turn reflection into vague commentary with no next step.",
+      "",
+      "## Recovery And Health",
+      "- Treat low energy, poor sleep, pain, or high friction as real constraints.",
+      "- When recovery signals are bad, reduce load before increasing pressure.",
+      "- Do not frame recovery issues as moral failure.",
+      "",
+      "## Review Behavior",
+      "- Surface the main win, blocker, drift, and follow-up before secondary detail.",
+      "- Prefer review by exception over exhaustive repetition.",
+      "- Preserve historical context when it affects planning quality."
+    ].join("\n");
+  }
+
+  private renderCurrentSeasonTemplate(): string {
+    return [
+      "# Current Season",
+      "",
+      "## Main Priorities",
+      "- Keep Obsidian DASH practical to use every day.",
+      "- Improve note structure so AI and reviews have cleaner context.",
+      "- Reduce system drift by making document roles explicit.",
+      "",
+      "## Current Constraints",
+      "- Avoid unnecessary workflow complexity.",
+      "- Keep generated notes readable and searchable.",
+      "- Prefer systems that are sustainable, not just clever.",
+      "",
+      "## Current Review Questions",
+      "- Which note types are still carrying too many roles at once?",
+      "- What context should be stable but still only exists in logs?",
+      "- What system friction is recurring often enough to deserve its own note?",
+      "",
+      "## What Success Looks Like This Season",
+      "- The Master Task Hub is cleaner to scan.",
+      "- Project notes hold more durable context.",
+      "- Generated notes surface the important context earlier.",
+      "- AI outputs rely less on scattered implicit context."
+    ].join("\n");
+  }
+
+  private renderDecisionJournalTemplate(): string {
+    return [
+      "# Decision Journal",
+      "",
+      `## ${formatDateKey(new Date())} - Formalize the document system`,
+      "- Decision: strengthen document structure before adding more workflow complexity.",
+      "- Why: the plugin already has enough depth that loose note structure is now a real bottleneck.",
+      "- Expected outcome: better AI context, cleaner reviews, and less long-term drift.",
+      "- Revisit when: the core documentation and note templates are in active use."
+    ].join("\n");
+  }
+
+  private renderSystemMapTemplate(): string {
+    return [
+      "# System Map",
+      "",
+      "## Core Operational Notes",
+      "- [[Master Task Hub]]: cross-project action inventory and status view.",
+      "- Project notes folder: per-project context, risks, constraints, decisions, and support material.",
+      "",
+      "## Personal Context Notes",
+      "- [[Basic Information]]: stable personal context and enduring constraints.",
+      "- [[AI Guardrails]]: instructions for how AI should behave.",
+      "- [[Current Season]]: temporary priorities and constraints for the present phase.",
+      "- [[Decision Journal]]: preserved reasoning behind important choices.",
+      "",
+      "## Generated Artifacts",
+      "- Dashboard Logs/Daily: human-readable daily history.",
+      "- Dashboard Logs/AI: AI outputs and suggested actions.",
+      "- Dashboard Logs/Cleanup Suggestions: grouped cleanup review artifacts.",
+      "- Dashboard Logs/Gamification: score breakdown reports.",
+      "- Dashboard Logs/Wins Archive: searchable success summaries.",
+      "- Weekly and monthly report folders: period-level review artifacts.",
+      "",
+      "## Review Notes",
+      "- Weekly review notes: regular reflection and planning checkpoints.",
+      "- Project review notes: focused review by exception.",
+      "- Cleanup notes: grouped stale, blocked, duplicate, and vague-work review surfaces.",
+      "",
+      "## Working Rule",
+      "- Action lives in the hub.",
+      "- Explanation lives in project notes.",
+      "- History lives in logs and reviews.",
+      "- Stable context lives in evergreen notes.",
+      "- AI behavior rules live in AI Guardrails."
     ].join("\n");
   }
 
@@ -6372,6 +6574,18 @@ export default class DailyDashboardPlugin extends Plugin {
     if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
       return "profile-note";
     }
+    if (normalizedPath === normalizePath(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
+      return "ai-guardrails";
+    }
+    if (normalizedPath === normalizePath(this.data.settings.currentSeasonNotePath).toLowerCase()) {
+      return "current-season";
+    }
+    if (normalizedPath === normalizePath(this.data.settings.decisionJournalNotePath).toLowerCase()) {
+      return "decision-journal";
+    }
+    if (normalizedPath === normalizePath(this.data.settings.systemMapNotePath).toLowerCase()) {
+      return "system-map";
+    }
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
@@ -6420,6 +6634,14 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile");
+    } else if (normalizedPath === normalizePath(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
+    } else if (normalizedPath === normalizePath(this.data.settings.currentSeasonNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/current-season");
+    } else if (normalizedPath === normalizePath(this.data.settings.decisionJournalNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
+    } else if (normalizedPath === normalizePath(this.data.settings.systemMapNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/system-map");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {

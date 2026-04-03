@@ -57,6 +57,12 @@ var DEFAULT_SETTINGS = {
   aiOutputFolder: "Dashboard Logs/AI",
   basicInfoNotePath: "Dashboard Logs/Profile/Basic Information.md",
   includeBasicInfoInAi: true,
+  aiGuardrailsNotePath: "Dashboard Logs/Profile/AI Guardrails.md",
+  includeAiGuardrailsInAi: true,
+  currentSeasonNotePath: "Dashboard Logs/Profile/Current Season.md",
+  includeCurrentSeasonInAi: true,
+  decisionJournalNotePath: "Dashboard Logs/Profile/Decision Journal.md",
+  systemMapNotePath: "Dashboard Logs/Profile/System Map.md",
   aiPromptTemplates: [
     "[morning-startup-brief]",
     "Favor direct prioritization, realistic pacing, and explicit first actions.",
@@ -125,7 +131,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -166,17 +172,23 @@ function sanitizeSettings(settings) {
     aiOutputFolder: normalizeFolderPath(((_p = settings.aiOutputFolder) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
     basicInfoNotePath: ((_q = settings.basicInfoNotePath) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
     includeBasicInfoInAi: (_r = settings.includeBasicInfoInAi) != null ? _r : DEFAULT_SETTINGS.includeBasicInfoInAi,
+    aiGuardrailsNotePath: ((_s = settings.aiGuardrailsNotePath) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
+    includeAiGuardrailsInAi: (_t = settings.includeAiGuardrailsInAi) != null ? _t : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
+    currentSeasonNotePath: ((_u = settings.currentSeasonNotePath) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
+    includeCurrentSeasonInAi: (_v = settings.includeCurrentSeasonInAi) != null ? _v : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    decisionJournalNotePath: ((_w = settings.decisionJournalNotePath) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: ((_x = settings.systemMapNotePath) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_s = settings.aiContextDays) != null ? _s : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_t = settings.aiRelatedNotesLimit) != null ? _t : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_u = settings.aiIndexEnabled) != null ? _u : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_y = settings.aiContextDays) != null ? _y : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_z = settings.aiRelatedNotesLimit) != null ? _z : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_A = settings.aiIndexEnabled) != null ? _A : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_v = settings.aiChunkCharLimit) != null ? _v : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_w = settings.aiEmbeddingsEnabled) != null ? _w : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_x = settings.aiEmbeddingModel) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_y = settings.aiEmbeddingApiUrl) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_z = settings.calendarEnabled) != null ? _z : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_A = settings.calendarDocumentPath) == null ? void 0 : _A.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_B = settings.aiChunkCharLimit) != null ? _B : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_C = settings.aiEmbeddingsEnabled) != null ? _C : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_D = settings.aiEmbeddingModel) == null ? void 0 : _D.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_E = settings.aiEmbeddingApiUrl) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_F = settings.calendarEnabled) != null ? _F : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_G = settings.calendarDocumentPath) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
@@ -187,8 +199,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath(((_B = settings.wallpaperFolder) == null ? void 0 : _B.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_C = settings.selectedWallpaper) == null ? void 0 : _C.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath(((_H = settings.wallpaperFolder) == null ? void 0 : _H.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_I = settings.selectedWallpaper) == null ? void 0 : _I.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
   };
@@ -874,7 +886,12 @@ function shouldExcludeAiContextFile(path, settings) {
     normalizeFolderPath(settings.weeklyReportFolder),
     normalizeFolderPath(settings.monthlyReportFolder)
   ].filter((prefix) => prefix.length > 0);
-  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix);
+  const excludedFiles = [
+    (0, import_obsidian.normalizePath)(settings.basicInfoNotePath),
+    (0, import_obsidian.normalizePath)(settings.aiGuardrailsNotePath),
+    (0, import_obsidian.normalizePath)(settings.currentSeasonNotePath)
+  ].filter((filePath) => filePath.length > 0);
+  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix) || excludedFiles.includes(normalizedPath);
 }
 function deriveAiNoteReason(path, settings, activeFilePath, includeActiveNote, terms) {
   const normalizedPath = (0, import_obsidian.normalizePath)(path);
@@ -2602,11 +2619,17 @@ function parseTodoSnapshot(content) {
       }
     }
     const staleDays = lastCompletedAt ? daysBetween(lastCompletedAt, formatDateKey(now)) : null;
+    const reviewDate = extractTrackedDate(lastReview);
+    const reviewStaleDays = reviewDate ? daysBetween(reviewDate, formatDateKey(now)) : null;
     const trend = completionsThisWeek > completionsPreviousWeek ? "up" : completionsThisWeek < completionsPreviousWeek ? "down" : "flat";
     const projectState = inferProjectState(status);
     const nextAction = selectProjectNextAction({
       projectName: project.name,
       projectState,
+      lastReview,
+      reviewStaleDays,
+      waitingOn,
+      definitionOfDone,
       overdueTasks: overdueTasks2,
       dueSoonTasks: dueSoonTasks2,
       nowTaskDetails,
@@ -2618,6 +2641,11 @@ function parseTodoSnapshot(content) {
       projectName: project.name,
       projectState,
       staleDays,
+      lastReview,
+      reviewStaleDays,
+      waitingOn,
+      definitionOfDone,
+      projectSummary,
       overdueTasks: overdueTasks2,
       dueSoonTasks: dueSoonTasks2,
       blockedTasks: blockedTasks2,
@@ -2632,6 +2660,7 @@ function parseTodoSnapshot(content) {
       projectState,
       openCount,
       staleDays,
+      reviewStaleDays,
       completionsThisWeek,
       nowCount: nowTasks.length,
       nextCount: nextTasks.length,
@@ -2639,7 +2668,10 @@ function parseTodoSnapshot(content) {
       overdueCount: overdueTasks2.length,
       blockedCount: blockedTasks2.length,
       breakdownCount: breakdownTasks.length,
-      duplicateCount: duplicateTasks.size
+      duplicateCount: duplicateTasks.size,
+      hasProjectSummary: projectSummary.trim().length > 0,
+      hasDefinitionOfDone: definitionOfDone.trim().length > 0,
+      hasWaitingOn: waitingOn.trim().length > 0
     });
     return {
       name: project.name,
@@ -3658,14 +3690,17 @@ function daysBetween(startDateKey, endDateKey) {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 864e5));
 }
 function computeHealthScore(input) {
-  var _a;
+  var _a, _b;
   let score = input.projectState === "active" ? 100 : input.projectState === "incubating" ? 82 : 78;
   if (input.projectState === "active") {
     score -= Math.min(input.openCount * 2, 30);
     score -= Math.min((_a = input.staleDays) != null ? _a : 0, 25);
+    score -= Math.min(Math.max(((_b = input.reviewStaleDays) != null ? _b : 14) - 7, 0), 18);
     score += Math.min(input.completionsThisWeek * 4, 16);
     score += Math.min(input.nowCount * 3, 9);
     score += Math.min(input.nextCount * 1, 4);
+    score += input.hasProjectSummary ? 0 : -4;
+    score += input.hasDefinitionOfDone ? 0 : -6;
   } else {
     score += Math.min(input.completionsThisWeek * 2, 8);
     score += input.nowCount > 0 ? 2 : 0;
@@ -3674,6 +3709,8 @@ function computeHealthScore(input) {
   score -= input.dueSoonCount * 2;
   score -= input.overdueCount * 7;
   score -= input.blockedCount * 5;
+  score += input.blockedCount > 0 && input.hasWaitingOn ? 3 : 0;
+  score -= input.blockedCount > 0 && !input.hasWaitingOn ? 4 : 0;
   score -= input.breakdownCount * 5;
   score -= input.duplicateCount * 6;
   return clamp(score, 0, 100);
@@ -3775,6 +3812,7 @@ function inferProjectState(status) {
   return "active";
 }
 function selectProjectNextAction(input) {
+  var _a;
   const actionableTask = [
     ...input.overdueTasks,
     ...input.dueSoonTasks,
@@ -3786,6 +3824,16 @@ function selectProjectNextAction(input) {
   if (actionableTask) {
     return actionableTask.text;
   }
+  if (input.waitingOn.trim().length > 0) {
+    return `Follow up on waiting on: ${input.waitingOn.trim()}`;
+  }
+  if (input.projectState === "active" && input.definitionOfDone.trim().length === 0) {
+    return `Define what done means for ${input.projectName}.`;
+  }
+  if (input.projectState === "active" && ((_a = input.reviewStaleDays) != null ? _a : 999) >= 14) {
+    const reviewLabel = input.lastReview.trim().length > 0 ? input.lastReview.trim() : "not recorded";
+    return `Review ${input.projectName} and refresh Now/Next (last review: ${reviewLabel}).`;
+  }
   if (input.projectState === "someday") {
     return "Incubating in someday. Promote one concrete task when ready.";
   }
@@ -3795,9 +3843,24 @@ function selectProjectNextAction(input) {
   return `Define the next action for ${input.projectName}.`;
 }
 function buildProjectHealthReasons(input) {
+  var _a;
   const reasons = [];
   if (input.projectState !== "active") {
     reasons.push(input.projectState === "someday" ? "Parked as someday work." : "Marked incubating until it is ready for active execution.");
+  }
+  if (input.projectState === "active" && input.projectSummary.trim().length === 0) {
+    reasons.push("Project summary is missing.");
+  }
+  if (input.projectState === "active" && input.definitionOfDone.trim().length === 0) {
+    reasons.push("Definition of done is missing.");
+  }
+  if (input.projectState === "active" && input.reviewStaleDays === null) {
+    reasons.push("No project review date recorded.");
+  } else if (((_a = input.reviewStaleDays) != null ? _a : 0) >= 14) {
+    reasons.push(`Last review was ${input.reviewStaleDays} day${input.reviewStaleDays === 1 ? "" : "s"} ago.`);
+  }
+  if (input.waitingOn.trim().length > 0) {
+    reasons.push(`Waiting on: ${input.waitingOn.trim()}.`);
   }
   if (input.overdueTasks.length > 0) {
     reasons.push(`${input.overdueTasks.length} overdue task${input.overdueTasks.length === 1 ? "" : "s"}.`);
@@ -3828,6 +3891,10 @@ function buildProjectHealthReasons(input) {
   }
   reasons.push(`Next action: ${input.nextAction}`);
   return reasons.slice(0, 6);
+}
+function extractTrackedDate(value) {
+  const match = value.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
 }
 function parseTodoTaskSummary(rawText, section, now) {
   const dueDate = extractTaskAnnotation(rawText, "due");
@@ -5889,6 +5956,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(aiActions, "Why felt off", async () => this.plugin.generateAiWhyTodayFeltOff(), false, "brain-circuit");
       createButton(aiActions, "Analyze active note", async () => this.plugin.generateAiActiveNoteAnalysis(), false, "file-search");
       createButton(aiActions, "Basic info", async () => this.plugin.openBasicInformationNote(), false, "id-card");
+      createButton(aiActions, "Guardrails", async () => this.plugin.openAiGuardrailsNote(), false, "shield");
+      createButton(aiActions, "Current season", async () => this.plugin.openCurrentSeasonNote(), false, "leaf");
+      createButton(aiActions, "Decision journal", async () => this.plugin.openDecisionJournalNote(), false, "book-open");
+      createButton(aiActions, "System map", async () => this.plugin.openSystemMapNote(), false, "map");
       const aiIndexPanel = aiOverview.createDiv({ cls: "daily-dashboard-ai-panel" });
       aiIndexPanel.createEl("strong", { text: "Retrieval Index" });
       aiIndexPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "Cached note chunks that keep answers grounded without rescanning the vault on every request." });
@@ -7451,7 +7522,7 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
     } else {
       createButton(footer, "Save and open dashboard", async () => {
         await this.plugin.updateSettings(this.settingsValue);
-        await this.plugin.ensureBasicInformationNoteExists();
+        await this.plugin.ensureCoreSupportNotesExist();
         await this.plugin.completeFirstRunSetupWizard();
         await this.plugin.activateDashboardView();
         this.close();
@@ -7526,6 +7597,36 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
     new import_obsidian3.Setting(parent).setName("Include basic information in AI").setDesc("Keep this on if you want AI workflows to automatically read the Basic Information note when it exists.").addToggle((toggle) => {
       toggle.setValue(this.settingsValue.includeBasicInfoInAi).onChange((value) => {
         this.settingsValue.includeBasicInfoInAi = value;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("AI Guardrails note path").setDesc("Operational instructions for how AI should reason, write, and prioritize when helping inside this system.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.aiGuardrailsNotePath).setValue(this.settingsValue.aiGuardrailsNotePath).onChange((value) => {
+        this.settingsValue.aiGuardrailsNotePath = value.trim() || DEFAULT_SETTINGS.aiGuardrailsNotePath;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Include AI Guardrails in AI").setDesc("Inject the AI Guardrails note into AI requests so behavior rules stay durable and explicit.").addToggle((toggle) => {
+      toggle.setValue(this.settingsValue.includeAiGuardrailsInAi).onChange((value) => {
+        this.settingsValue.includeAiGuardrailsInAi = value;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Current Season note path").setDesc("Short-lived priorities, constraints, and review questions for the current operating season.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.currentSeasonNotePath).setValue(this.settingsValue.currentSeasonNotePath).onChange((value) => {
+        this.settingsValue.currentSeasonNotePath = value.trim() || DEFAULT_SETTINGS.currentSeasonNotePath;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Include Current Season in AI").setDesc("Inject the Current Season note into AI requests so current priorities and constraints stay in scope.").addToggle((toggle) => {
+      toggle.setValue(this.settingsValue.includeCurrentSeasonInAi).onChange((value) => {
+        this.settingsValue.includeCurrentSeasonInAi = value;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("Decision Journal note path").setDesc("Lightweight running record of important choices and why they were made.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.decisionJournalNotePath).setValue(this.settingsValue.decisionJournalNotePath).onChange((value) => {
+        this.settingsValue.decisionJournalNotePath = value.trim() || DEFAULT_SETTINGS.decisionJournalNotePath;
+      });
+    });
+    new import_obsidian3.Setting(parent).setName("System Map note path").setDesc("High-level map of which notes hold action, context, history, and review material.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.systemMapNotePath).setValue(this.settingsValue.systemMapNotePath).onChange((value) => {
+        this.settingsValue.systemMapNotePath = value.trim() || DEFAULT_SETTINGS.systemMapNotePath;
       });
     });
     new import_obsidian3.Setting(parent).setName("AI output folder").setDesc("Where AI-generated markdown notes should be written.").addText((text) => {
@@ -8352,6 +8453,54 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           includeBasicInfoInAi: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("AI Guardrails note path").setDesc("Durable instructions for how AI should behave inside your system.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.aiGuardrailsNotePath).setValue(settings.aiGuardrailsNotePath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          aiGuardrailsNotePath: value.trim() || DEFAULT_SETTINGS.aiGuardrailsNotePath
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Include AI Guardrails in AI").setDesc("Automatically inject the AI Guardrails note so workflows inherit your preferred tone and operating rules.").addToggle((toggle) => {
+      toggle.setValue(settings.includeAiGuardrailsInAi).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          includeAiGuardrailsInAi: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Current Season note path").setDesc("Temporary priorities, constraints, and active review questions for the present season.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.currentSeasonNotePath).setValue(settings.currentSeasonNotePath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          currentSeasonNotePath: value.trim() || DEFAULT_SETTINGS.currentSeasonNotePath
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Include Current Season in AI").setDesc("Automatically inject the Current Season note so AI stays aligned with the current phase, not just historical context.").addToggle((toggle) => {
+      toggle.setValue(settings.includeCurrentSeasonInAi).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          includeCurrentSeasonInAi: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Decision Journal note path").setDesc("Reference note for important decisions and revisit points.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.decisionJournalNotePath).setValue(settings.decisionJournalNotePath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          decisionJournalNotePath: value.trim() || DEFAULT_SETTINGS.decisionJournalNotePath
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("System Map note path").setDesc("Reference note that maps where action, context, and history live.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.systemMapNotePath).setValue(settings.systemMapNotePath).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          systemMapNotePath: value.trim() || DEFAULT_SETTINGS.systemMapNotePath
         });
       });
     });
@@ -9360,7 +9509,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async initializeWorkspaceArtifacts() {
     await this.importCalendarEventsFromMarkdown();
     await this.ensureTodayEntry();
-    await this.ensureBasicInformationNoteExists();
+    await this.ensureCoreSupportNotesExist();
     await this.backfillDailyLogsFromEntries();
     await this.syncCalendarArtifacts();
     await this.refreshWallpaperOptions();
@@ -9431,6 +9580,34 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Open basic information note",
       callback: () => {
         void this.openBasicInformationNote();
+      }
+    });
+    this.addCommand({
+      id: "open-ai-guardrails-note",
+      name: "Open AI Guardrails note",
+      callback: () => {
+        void this.openAiGuardrailsNote();
+      }
+    });
+    this.addCommand({
+      id: "open-current-season-note",
+      name: "Open Current Season note",
+      callback: () => {
+        void this.openCurrentSeasonNote();
+      }
+    });
+    this.addCommand({
+      id: "open-decision-journal-note",
+      name: "Open Decision Journal note",
+      callback: () => {
+        void this.openDecisionJournalNote();
+      }
+    });
+    this.addCommand({
+      id: "open-system-map-note",
+      name: "Open System Map note",
+      callback: () => {
+        void this.openSystemMapNote();
       }
     });
     this.addCommand({
@@ -11720,18 +11897,54 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     new import_obsidian4.Notice(`Dashboard export generated in ${folder}.`);
   }
   async openBasicInformationNote() {
-    const path = (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath);
-    const existing = this.app.vault.getAbstractFileByPath(path);
-    const file = existing instanceof import_obsidian4.TFile ? existing : await this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
+    const file = await this.ensureBasicInformationNoteExists();
     await this.openFile(file);
   }
   async ensureBasicInformationNoteExists() {
-    const path = (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath);
+    return this.ensureSupportNote(this.data.settings.basicInfoNotePath, () => this.renderBasicInformationTemplate());
+  }
+  async openAiGuardrailsNote() {
+    const file = await this.ensureAiGuardrailsNoteExists();
+    await this.openFile(file);
+  }
+  async ensureAiGuardrailsNoteExists() {
+    return this.ensureSupportNote(this.data.settings.aiGuardrailsNotePath, () => this.renderAiGuardrailsTemplate());
+  }
+  async openCurrentSeasonNote() {
+    const file = await this.ensureCurrentSeasonNoteExists();
+    await this.openFile(file);
+  }
+  async ensureCurrentSeasonNoteExists() {
+    return this.ensureSupportNote(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
+  }
+  async openDecisionJournalNote() {
+    const file = await this.ensureDecisionJournalNoteExists();
+    await this.openFile(file);
+  }
+  async ensureDecisionJournalNoteExists() {
+    return this.ensureSupportNote(this.data.settings.decisionJournalNotePath, () => this.renderDecisionJournalTemplate());
+  }
+  async openSystemMapNote() {
+    const file = await this.ensureSystemMapNoteExists();
+    await this.openFile(file);
+  }
+  async ensureSystemMapNoteExists() {
+    return this.ensureSupportNote(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
+  }
+  async ensureCoreSupportNotesExist() {
+    await this.ensureBasicInformationNoteExists();
+    await this.ensureAiGuardrailsNoteExists();
+    await this.ensureCurrentSeasonNoteExists();
+    await this.ensureDecisionJournalNoteExists();
+    await this.ensureSystemMapNoteExists();
+  }
+  async ensureSupportNote(pathValue, renderTemplate) {
+    const path = (0, import_obsidian4.normalizePath)(pathValue);
     const existing = this.app.vault.getAbstractFileByPath(path);
     if (existing instanceof import_obsidian4.TFile) {
       return existing;
     }
-    return this.upsertMarkdownFile(path, this.renderBasicInformationTemplate());
+    return this.upsertMarkdownFile(path, renderTemplate());
   }
   async getTodoSnapshot() {
     const todoFile = this.getMasterTodoFile();
@@ -12664,6 +12877,8 @@ ${context}`);
     const masterTodoRaw = includeMasterTodoRaw && masterTodoFile ? truncateText(await this.app.vault.read(masterTodoFile), 12e3) : "Master task hub raw content not included for this request.";
     const activeFile = includeActiveNote ? this.app.workspace.getActiveFile() : null;
     const basicInfoSection = await this.buildBasicInformationAiContext();
+    const aiGuardrailsSection = await this.buildAiGuardrailsAiContext();
+    const currentSeasonSection = await this.buildCurrentSeasonAiContext();
     const activeNoteSection = activeFile instanceof import_obsidian4.TFile ? `## Active Note
 Path: ${activeFile.path}
 
@@ -12691,6 +12906,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "",
       basicInfoSection,
       "",
+      aiGuardrailsSection,
+      "",
+      currentSeasonSection,
+      "",
       ...extraContextSections.flatMap((section) => section.trim().length > 0 ? [section, ""] : []),
       activeNoteSection,
       "",
@@ -12699,16 +12918,25 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
     ].filter((section) => section.trim().length > 0).join("\n\n");
   }
   async buildBasicInformationAiContext() {
-    if (!this.data.settings.includeBasicInfoInAi) {
+    return this.buildSupportNoteAiContext("Basic Information", this.data.settings.basicInfoNotePath, this.data.settings.includeBasicInfoInAi, 6e3);
+  }
+  async buildAiGuardrailsAiContext() {
+    return this.buildSupportNoteAiContext("AI Guardrails", this.data.settings.aiGuardrailsNotePath, this.data.settings.includeAiGuardrailsInAi, 5e3);
+  }
+  async buildCurrentSeasonAiContext() {
+    return this.buildSupportNoteAiContext("Current Season", this.data.settings.currentSeasonNotePath, this.data.settings.includeCurrentSeasonInAi, 5e3);
+  }
+  async buildSupportNoteAiContext(title, pathValue, enabled, charLimit) {
+    if (!enabled) {
       return "";
     }
-    const file = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath));
+    const file = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(pathValue));
     if (!(file instanceof import_obsidian4.TFile)) {
       return "";
     }
-    const content = truncateText(await this.app.vault.read(file), 6e3);
+    const content = truncateText(await this.app.vault.read(file), charLimit);
     return [
-      "## Basic Information",
+      `## ${title}`,
       `Path: ${file.path}`,
       content
     ].join("\n\n");
@@ -12768,6 +12996,110 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- Update stable personal facts here when they change.",
       "- Use recent dashboard logs for short-term changes like weight drift, symptoms, or sleep changes.",
       ""
+    ].join("\n");
+  }
+  renderAiGuardrailsTemplate() {
+    return [
+      "# AI Guardrails",
+      "",
+      "## Tone",
+      "- Prefer direct, practical language over motivational writing.",
+      "- Explain tradeoffs clearly when suggesting changes.",
+      "- Prioritize clarity over flourish.",
+      "",
+      "## Planning Behavior",
+      "- Optimize for operational clarity, not maximal ambition.",
+      "- Prefer the smallest viable next step when a task is vague.",
+      "- Separate evidence from inference when interpreting trends.",
+      "- Treat friction and recovery data as planning signals, not noise.",
+      "",
+      "## Avoid",
+      "- Do not overstate certainty from weak signals.",
+      "- Do not recommend unnecessary system complexity.",
+      "- Do not confuse reference material with actionable work.",
+      "- Do not turn reflection into vague commentary with no next step.",
+      "",
+      "## Recovery And Health",
+      "- Treat low energy, poor sleep, pain, or high friction as real constraints.",
+      "- When recovery signals are bad, reduce load before increasing pressure.",
+      "- Do not frame recovery issues as moral failure.",
+      "",
+      "## Review Behavior",
+      "- Surface the main win, blocker, drift, and follow-up before secondary detail.",
+      "- Prefer review by exception over exhaustive repetition.",
+      "- Preserve historical context when it affects planning quality."
+    ].join("\n");
+  }
+  renderCurrentSeasonTemplate() {
+    return [
+      "# Current Season",
+      "",
+      "## Main Priorities",
+      "- Keep Obsidian DASH practical to use every day.",
+      "- Improve note structure so AI and reviews have cleaner context.",
+      "- Reduce system drift by making document roles explicit.",
+      "",
+      "## Current Constraints",
+      "- Avoid unnecessary workflow complexity.",
+      "- Keep generated notes readable and searchable.",
+      "- Prefer systems that are sustainable, not just clever.",
+      "",
+      "## Current Review Questions",
+      "- Which note types are still carrying too many roles at once?",
+      "- What context should be stable but still only exists in logs?",
+      "- What system friction is recurring often enough to deserve its own note?",
+      "",
+      "## What Success Looks Like This Season",
+      "- The Master Task Hub is cleaner to scan.",
+      "- Project notes hold more durable context.",
+      "- Generated notes surface the important context earlier.",
+      "- AI outputs rely less on scattered implicit context."
+    ].join("\n");
+  }
+  renderDecisionJournalTemplate() {
+    return [
+      "# Decision Journal",
+      "",
+      `## ${formatDateKey(/* @__PURE__ */ new Date())} - Formalize the document system`,
+      "- Decision: strengthen document structure before adding more workflow complexity.",
+      "- Why: the plugin already has enough depth that loose note structure is now a real bottleneck.",
+      "- Expected outcome: better AI context, cleaner reviews, and less long-term drift.",
+      "- Revisit when: the core documentation and note templates are in active use."
+    ].join("\n");
+  }
+  renderSystemMapTemplate() {
+    return [
+      "# System Map",
+      "",
+      "## Core Operational Notes",
+      "- [[Master Task Hub]]: cross-project action inventory and status view.",
+      "- Project notes folder: per-project context, risks, constraints, decisions, and support material.",
+      "",
+      "## Personal Context Notes",
+      "- [[Basic Information]]: stable personal context and enduring constraints.",
+      "- [[AI Guardrails]]: instructions for how AI should behave.",
+      "- [[Current Season]]: temporary priorities and constraints for the present phase.",
+      "- [[Decision Journal]]: preserved reasoning behind important choices.",
+      "",
+      "## Generated Artifacts",
+      "- Dashboard Logs/Daily: human-readable daily history.",
+      "- Dashboard Logs/AI: AI outputs and suggested actions.",
+      "- Dashboard Logs/Cleanup Suggestions: grouped cleanup review artifacts.",
+      "- Dashboard Logs/Gamification: score breakdown reports.",
+      "- Dashboard Logs/Wins Archive: searchable success summaries.",
+      "- Weekly and monthly report folders: period-level review artifacts.",
+      "",
+      "## Review Notes",
+      "- Weekly review notes: regular reflection and planning checkpoints.",
+      "- Project review notes: focused review by exception.",
+      "- Cleanup notes: grouped stale, blocked, duplicate, and vague-work review surfaces.",
+      "",
+      "## Working Rule",
+      "- Action lives in the hub.",
+      "- Explanation lives in project notes.",
+      "- History lives in logs and reviews.",
+      "- Stable context lives in evergreen notes.",
+      "- AI behavior rules live in AI Guardrails."
     ].join("\n");
   }
   getLatestRecordedBodyWeight() {
@@ -14373,6 +14705,18 @@ ${body}`;
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath).toLowerCase()) {
       return "profile-note";
     }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
+      return "ai-guardrails";
+    }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.currentSeasonNotePath).toLowerCase()) {
+      return "current-season";
+    }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.decisionJournalNotePath).toLowerCase()) {
+      return "decision-journal";
+    }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.systemMapNotePath).toLowerCase()) {
+      return "system-map";
+    }
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
@@ -14415,6 +14759,14 @@ ${body}`;
     };
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath).toLowerCase()) {
       autoTags.push("daily-dashboard/profile");
+    } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.aiGuardrailsNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/ai-guardrails");
+    } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.currentSeasonNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/current-season");
+    } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.decisionJournalNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/decision-journal");
+    } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.systemMapNotePath).toLowerCase()) {
+      autoTags.push("daily-dashboard/profile", "daily-dashboard/system-map");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {

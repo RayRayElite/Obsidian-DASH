@@ -87,6 +87,12 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     aiOutputFolder: normalizeFolderPath(settings.aiOutputFolder?.trim() || DEFAULT_SETTINGS.aiOutputFolder),
     basicInfoNotePath: settings.basicInfoNotePath?.trim() || DEFAULT_SETTINGS.basicInfoNotePath,
     includeBasicInfoInAi: settings.includeBasicInfoInAi ?? DEFAULT_SETTINGS.includeBasicInfoInAi,
+    aiGuardrailsNotePath: settings.aiGuardrailsNotePath?.trim() || DEFAULT_SETTINGS.aiGuardrailsNotePath,
+    includeAiGuardrailsInAi: settings.includeAiGuardrailsInAi ?? DEFAULT_SETTINGS.includeAiGuardrailsInAi,
+    currentSeasonNotePath: settings.currentSeasonNotePath?.trim() || DEFAULT_SETTINGS.currentSeasonNotePath,
+    includeCurrentSeasonInAi: settings.includeCurrentSeasonInAi ?? DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    decisionJournalNotePath: settings.decisionJournalNotePath?.trim() || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: settings.systemMapNotePath?.trim() || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
     aiContextDays: clamp(Number(settings.aiContextDays ?? DEFAULT_SETTINGS.aiContextDays), 3, 60),
     aiRelatedNotesLimit: clamp(Number(settings.aiRelatedNotesLimit ?? DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
@@ -970,8 +976,14 @@ export function shouldExcludeAiContextFile(path: string, settings: DashboardSett
     normalizeFolderPath(settings.weeklyReportFolder),
     normalizeFolderPath(settings.monthlyReportFolder)
   ].filter((prefix) => prefix.length > 0);
+  const excludedFiles = [
+    normalizePath(settings.basicInfoNotePath),
+    normalizePath(settings.aiGuardrailsNotePath),
+    normalizePath(settings.currentSeasonNotePath)
+  ].filter((filePath) => filePath.length > 0);
 
-  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix);
+  return excludedPrefixes.some((prefix) => normalizedPath.startsWith(`${prefix}/`) || normalizedPath === prefix)
+    || excludedFiles.includes(normalizedPath);
 }
 
 export function scoreNotePathForAi(file: TFile, terms: string[], settings: DashboardSettings, activeFilePath: string): number {
