@@ -1181,6 +1181,7 @@ function createContextLink(label, path = "") {
 }
 function buildDailySummaryBlock(entry, totalSleepMinutes, calendarEvents) {
   var _a, _b, _c, _d;
+  const openLoopSummary = buildDailyOpenLoopSummary(entry, calendarEvents);
   const completedWin = entry.completedTasks[0];
   const focusWin = (_a = entry.todayFocus.find((item) => item.status === "done")) != null ? _a : entry.todayFocus.find((item) => item.workSessions.length > 0);
   const mainWin = completedWin ? `${completedWin.project} / ${completedWin.section}: ${completedWin.text}` : focusWin ? focusWin.text : "No clear win recorded.";
@@ -1198,9 +1199,35 @@ function buildDailySummaryBlock(entry, totalSleepMinutes, calendarEvents) {
     `- Biggest drift: ${biggestDrift}`,
     `- Key health signal: ${keyHealthSignal}`,
     `- Most important follow-up: ${mostImportantFollowUp}`,
+    `- Open loops created today: ${openLoopSummary.created}`,
+    `- Open loops closed today: ${openLoopSummary.closed}`,
     `- Context links: ${contextLinks.length > 0 ? contextLinks.join(", ") : "None linked today."}`,
     ""
   ];
+}
+function buildDailyOpenLoopSummary(entry, calendarEvents) {
+  const unfinishedFocus = entry.todayFocus.filter((item) => item.status !== "done").length;
+  const completedFocus = entry.todayFocus.filter((item) => item.status === "done").length;
+  const queuedNextUp = entry.nextUpFocus.length;
+  const calendarCreated = calendarEvents.length;
+  const calendarClosed = entry.calendarFollowThroughCompleted.length;
+  const archivedTasks = entry.completedTasks.length;
+  const createdCount = unfinishedFocus + queuedNextUp + calendarCreated;
+  const closedCount = archivedTasks + completedFocus + calendarClosed;
+  const createdParts = [
+    unfinishedFocus > 0 ? `${unfinishedFocus} active focus item${unfinishedFocus === 1 ? "" : "s"}` : "",
+    queuedNextUp > 0 ? `${queuedNextUp} queued next-up item${queuedNextUp === 1 ? "" : "s"}` : "",
+    calendarCreated > 0 ? `${calendarCreated} calendar follow-through item${calendarCreated === 1 ? "" : "s"}` : ""
+  ].filter((item) => item.length > 0);
+  const closedParts = [
+    archivedTasks > 0 ? `${archivedTasks} archived task${archivedTasks === 1 ? "" : "s"}` : "",
+    completedFocus > 0 ? `${completedFocus} completed focus item${completedFocus === 1 ? "" : "s"}` : "",
+    calendarClosed > 0 ? `${calendarClosed} completed calendar follow-through item${calendarClosed === 1 ? "" : "s"}` : ""
+  ].filter((item) => item.length > 0);
+  return {
+    created: createdCount > 0 ? `${createdCount} total${createdParts.length > 0 ? ` \u2022 ${createdParts.join(", ")}` : ""}` : "0 total",
+    closed: closedCount > 0 ? `${closedCount} total${closedParts.length > 0 ? ` \u2022 ${closedParts.join(", ")}` : ""}` : "0 total"
+  };
 }
 function buildPeriodSummaryBlock(input) {
   var _a, _b, _c, _d, _e, _f, _g;
@@ -1786,6 +1813,7 @@ function renderWeeklyReview(input) {
   const missedHabits = Array.from(new Set(input.entries.flatMap((entry) => entry.missedHabits)));
   const strongestProjects = [...(_b = (_a = input.todoSnapshot) == null ? void 0 : _a.projects) != null ? _b : []].sort((left, right) => right.completionsThisWeek - left.completionsThisWeek).slice(0, 5);
   const staleProjects = (_d = (_c = input.todoSnapshot) == null ? void 0 : _c.staleProjects.slice(0, 5)) != null ? _d : [];
+  const reviewByExceptionLines = buildWeeklyReviewByExceptionLines(input.todoSnapshot, personalTrends, blockerPatterns, missedHabitPatterns);
   return [
     `# Weekly Review - ${input.label}`,
     "",
@@ -1809,6 +1837,9 @@ function renderWeeklyReview(input) {
     `- Sleep debt: ${sleepInsights.nightsTracked > 0 ? formatMinutesAsHours(sleepInsights.debtMinutes) : "No sleep data"}`,
     `- Sleep consistency: ${sleepInsights.nightsTracked > 0 ? `${sleepInsights.consistencyScore}/100 (${sleepInsights.consistencyLabel})` : "No sleep data"}`,
     `- Days captured: ${input.entries.length}`,
+    "",
+    "## Review By Exception",
+    ...reviewByExceptionLines.length > 0 ? reviewByExceptionLines : ["- No major exception pattern stood out this week."],
     "",
     "## Top Focus",
     ...focusItems.length > 0 ? focusItems.map((item) => `- ${item}`) : ["- No focus items recorded."],
@@ -1844,6 +1875,31 @@ function renderWeeklyReview(input) {
     ...input.entries.length > 0 ? input.entries.map((entry) => `- ${entry.date}: ${entry.completedTasks.length} archived, mood ${renderScore(entry.moodScore)}, energy ${renderScore(entry.energyScore)}`) : ["- No daily entries recorded."],
     ""
   ].join("\n");
+}
+function buildWeeklyReviewByExceptionLines(todoSnapshot, personalTrends, blockerPatterns, missedHabitPatterns) {
+  var _a, _b, _c, _d, _e, _f;
+  if (!todoSnapshot) {
+    return [
+      `- Personal drift exception: ${(_a = personalTrends.driftSignals[0]) != null ? _a : "No strong drift signal stood out."}`,
+      `- Repeated blocker exception: ${((_b = blockerPatterns[0]) == null ? void 0 : _b.replace(/^[-]\s*/, "")) || "No repeated blocker pattern stood out."}`,
+      `- Habit exception: ${((_c = missedHabitPatterns[0]) == null ? void 0 : _c.replace(/^[-]\s*/, "")) || "No repeated habit-miss pattern stood out."}`
+    ];
+  }
+  const blockedCount = todoSnapshot.blockedTasks.length;
+  const overdueCount = todoSnapshot.overdueTasks.length;
+  const staleCount = todoSnapshot.staleProjects.length;
+  const metadataGapProjects = todoSnapshot.projects.filter((project) => project.projectState === "active" && (project.projectSummary.trim().length === 0 || project.definitionOfDone.trim().length === 0 || project.lastReview.trim().length === 0));
+  const weakReviewProjects = todoSnapshot.projects.filter((project) => project.projectState === "active" && project.healthReasons.some((reason) => /last review was|no project review date/i.test(reason))).slice(0, 3);
+  const attentionProject = todoSnapshot.projects.filter((project) => project.projectState === "active").sort((left, right) => left.healthScore - right.healthScore)[0];
+  return [
+    blockedCount > 0 || overdueCount > 0 || staleCount > 0 ? `- Portfolio pressure: ${overdueCount} overdue, ${blockedCount} blocked, ${staleCount} stale project${staleCount === 1 ? "" : "s"}.` : "- Portfolio pressure: no overdue, blocked, or stale project pressure stood out this week.",
+    metadataGapProjects.length > 0 ? `- Metadata exception: ${metadataGapProjects.length} active project${metadataGapProjects.length === 1 ? " is" : "s are"} missing summary, done-state, or review metadata (${metadataGapProjects.slice(0, 3).map((project) => project.name).join(", ")}).` : "- Metadata exception: active projects are carrying the core summary, done-state, and review fields.",
+    weakReviewProjects.length > 0 ? `- Review hygiene exception: ${weakReviewProjects.map((project) => project.name).join(", ")} need fresher project reviews.` : "- Review hygiene exception: no active project review gaps stood out.",
+    `- Personal drift exception: ${(_d = personalTrends.driftSignals[0]) != null ? _d : "No strong drift signal stood out."}`,
+    `- Repeated blocker exception: ${((_e = blockerPatterns[0]) == null ? void 0 : _e.replace(/^[-]\s*/, "")) || "No repeated blocker pattern stood out."}`,
+    attentionProject ? `- Most important portfolio follow-up: ${attentionProject.name} (${attentionProject.healthLabel.toLowerCase()} health) \u2022 ${attentionProject.nextAction}` : "- Most important portfolio follow-up: no active project follow-up stood out.",
+    `- Habit exception: ${((_f = missedHabitPatterns[0]) == null ? void 0 : _f.replace(/^[-]\s*/, "")) || "No repeated habit-miss pattern stood out."}`
+  ];
 }
 function buildPersonalTrendSummary(entries, habits) {
   if (entries.length === 0) {

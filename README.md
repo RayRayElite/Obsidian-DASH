@@ -66,6 +66,9 @@ Supporting repo docs created from that plan:
 - `Documentation/Current Season Template.md`
 - `Documentation/Decision Journal Template.md`
 - `Documentation/System Map.md`
+- `Documentation/Reference Offload Inbox.md`
+- `Documentation/Shelf Life Guide.md`
+- `Documentation/Review By Exception Workflow.md`
 
 ## Logical Day Tracking
 
@@ -98,7 +101,7 @@ Calendar events can now carry an explicit project link instead of relying only o
 
 The command palette now also includes `Export dashboard metrics as markdown and CSV`, which writes a timestamped bundle under the configured export folder. The export currently includes `summary.md`, `daily-metrics.csv`, `habit-metrics.csv`, `completed-tasks.csv`, and `calendar-events.csv`.
 
-Weekly and monthly reports now also surface repeated blocker patterns from friction logs, accomplishments grouped by project, missed-habit pattern summaries with recent miss notes, and a richer deterministic month-end narrative instead of only raw metric tables. The dashboard also includes adaptive reflection prompts in the notes card and a `Wins archive` command that writes a searchable markdown summary under `Dashboard Logs/Wins Archive`.
+Weekly and monthly reports now also surface repeated blocker patterns from friction logs, accomplishments grouped by project, missed-habit pattern summaries with recent miss notes, review-by-exception summaries for portfolio pressure and metadata drift, and a richer deterministic month-end narrative instead of only raw metric tables. Daily logs also summarize open loops created and closed that day so carry-forward pressure is easier to spot at a glance. The dashboard also includes adaptive reflection prompts in the notes card and a `Wins archive` command that writes a searchable markdown summary under `Dashboard Logs/Wins Archive`.
 
 The dashboard now also includes a full `Timeline Search` card that searches archived tasks, tracked sessions, calendar events, and text logs from one surface instead of splitting history across separate cards. The same area can store reusable dashboard filter presets and now ships with recent heatmaps for work, sleep, and weighted habit completion.
 
