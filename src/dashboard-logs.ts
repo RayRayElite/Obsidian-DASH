@@ -19,6 +19,82 @@ import type { ActivitySessionKind, CalendarEventOccurrence, DailyEntry, Gamifica
 const DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 const CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
 
+function createContextLink(label: string, path = ""): string {
+  const safeLabel = label.trim();
+  if (!safeLabel) {
+    return "";
+  }
+
+  const safePath = path.trim().replace(/\.md$/i, "");
+  return safePath ? `[[${safePath}|${safeLabel}]]` : safeLabel;
+}
+
+function buildDailySummaryBlock(entry: DailyEntry, totalSleepMinutes: number, calendarEvents: CalendarEventOccurrence[]): string[] {
+  const completedWin = entry.completedTasks[0];
+  const focusWin = entry.todayFocus.find((item) => item.status === "done") ?? entry.todayFocus.find((item) => item.workSessions.length > 0);
+  const mainWin = completedWin
+    ? `${completedWin.project} / ${completedWin.section}: ${completedWin.text}`
+    : focusWin
+      ? focusWin.text
+      : "No clear win recorded.";
+  const mainBlocker = entry.frictionLog.trim()
+    || (entry.missedHabits[0] ? `Missed habit: ${entry.missedHabits[0]}` : "No blocker recorded.");
+  const biggestDrift = entry.hurtToday.trim()
+    || (entry.missedHabits.length > 0 ? `Missed habits: ${entry.missedHabits.slice(0, 3).join(", ")}` : "No obvious drift logged.");
+  const keyHealthSignal = entry.symptomLog[0]
+    ? `${entry.symptomLog[0].symptom} at ${entry.symptomLog[0].severity}/5`
+    : entry.wakeQualityScore > 0
+      ? `Wake quality ${entry.wakeQualityScore}/5 with ${formatMinutesAsHours(totalSleepMinutes)} tracked sleep`
+      : totalSleepMinutes > 0
+        ? `${formatMinutesAsHours(totalSleepMinutes)} tracked sleep`
+        : "No strong health signal logged.";
+  const mostImportantFollowUp = entry.nextUpFocus[0]?.text
+    || entry.todayFocus.find((item) => item.status !== "done")?.text
+    || calendarEvents[0]?.title
+    || "No follow-up queued.";
+  const contextLinks = Array.from(new Set(
+    calendarEvents
+      .filter((event) => event.projectName.trim().length > 0)
+      .map((event) => createContextLink(event.projectName, event.projectNotePath))
+      .filter((value) => value.length > 0)
+  ));
+
+  return [
+    "## Summary Block",
+    `- Main win: ${mainWin}`,
+    `- Main blocker: ${mainBlocker}`,
+    `- Biggest drift: ${biggestDrift}`,
+    `- Key health signal: ${keyHealthSignal}`,
+    `- Most important follow-up: ${mostImportantFollowUp}`,
+    `- Context links: ${contextLinks.length > 0 ? contextLinks.join(", ") : "None linked today."}`,
+    ""
+  ];
+}
+
+function buildPeriodSummaryBlock(input: {
+  accomplishmentLines: string[];
+  blockerPatterns: string[];
+  driftSignals: string[];
+  sleepInsights: SleepInsights;
+  strongestProjects?: string[];
+  staleProjects?: string[];
+}): string[] {
+  const contextProjects = [...(input.strongestProjects ?? []), ...(input.staleProjects ?? [])]
+    .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index)
+    .slice(0, 5);
+
+  return [
+    "## Summary Block",
+    `- Main win: ${input.accomplishmentLines[0]?.replace(/^-\s*/, "") || input.strongestProjects?.[0] || "No clear win stood out in this period."}`,
+    `- Main blocker: ${input.blockerPatterns[0]?.replace(/^-\s*/, "") || "No repeated blocker pattern stood out."}`,
+    `- Biggest drift: ${input.driftSignals[0] || "No major drift signal stood out."}`,
+    `- Key health signal: ${input.sleepInsights.nightsTracked > 0 ? `${formatMinutesAsHours(input.sleepInsights.averageSleepMinutes)} average sleep, recovery ${input.sleepInsights.averageRecoveryScore}/100, debt ${formatMinutesAsHours(input.sleepInsights.debtMinutes)}` : "No strong health signal stood out."}`,
+    `- Most important follow-up: ${input.staleProjects?.[0] || input.strongestProjects?.[0] || "No clear follow-up surfaced from this period."}`,
+    `- Context links: ${contextProjects.length > 0 ? contextProjects.join(", ") : "No project links stood out."}`,
+    ""
+  ];
+}
+
 export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nextEntry?: DailyEntry, calendarEvents: CalendarEventOccurrence[] = []): string {
   const payload = JSON.stringify(entry, null, 2);
   const habitLines = habits.map((habit) => {
@@ -130,6 +206,7 @@ export function renderDailyLog(entry: DailyEntry, habits: HabitDefinition[], nex
     "",
     `# Obsidian DASH Log - ${entry.date}`,
     "",
+    ...buildDailySummaryBlock(entry, totalSleepMinutes, calendarEvents),
     "## Day Flow",
     `- Day started: ${entry.dayStartedAt || "Not started"}`,
     `- Wake time: ${entry.wakeTime || "Not logged"}`,
@@ -477,6 +554,11 @@ export function renderPeriodReport(input: {
   const workLines = Array.from(workByProject.entries())
     .sort((left, right) => right[1] - left[1])
     .map(([project, count]) => `- ${project}: ${count}`);
+  const strongestProjects = workLines
+    .slice(0, 5)
+    .map((line) => line.replace(/^-\s*/, "").split(":")[0]?.trim() ?? "")
+    .filter((item) => item.length > 0);
+  const staleProjects = (input.todoSnapshot?.staleProjects ?? []).slice(0, 5).map((project) => project.name);
 
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.intakeLog.length > 0 ? `${entry.intakeLog.length} consumables` : "no consumables";
@@ -498,6 +580,14 @@ export function renderPeriodReport(input: {
     "",
     `Range: ${input.rangeLabel}`,
     "",
+    ...buildPeriodSummaryBlock({
+      accomplishmentLines,
+      blockerPatterns,
+      driftSignals: personalTrends.driftSignals,
+      sleepInsights,
+      strongestProjects,
+      staleProjects
+    }),
     "## Overview",
     `- Days captured: ${input.entries.length}`,
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
@@ -676,6 +766,14 @@ export function renderWeeklyReview(input: WeeklyReviewInput): string {
     "",
     `Range: ${formatDateKey(input.start)} to ${formatDateKey(input.end)}`,
     "",
+    ...buildPeriodSummaryBlock({
+      accomplishmentLines,
+      blockerPatterns,
+      driftSignals: personalTrends.driftSignals,
+      sleepInsights,
+      strongestProjects: strongestProjects.map((project) => project.name),
+      staleProjects: staleProjects.map((project) => project.name)
+    }),
     "## Executive Summary",
     `- Archived tasks completed: ${totalTasks}`,
     `- Average mood: ${averageMood === "n/a" ? "No data" : `${averageMood}/5`}`,

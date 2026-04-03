@@ -6328,23 +6328,77 @@ export default class DailyDashboardPlugin extends Plugin {
   private buildGeneratedMarkdownContent(path: string, content: string): string {
     const normalizedPath = normalizePath(path);
     const tags = this.getGeneratedDocumentTagsForPath(normalizedPath);
-    if (tags.length === 0) {
+    const artifactType = this.getGeneratedDocumentArtifactTypeForPath(normalizedPath);
+    const metadataLines = [
+      "source: obsidian-dash",
+      artifactType ? `artifact-type: ${artifactType}` : ""
+    ].filter((line) => line.length > 0);
+    if (tags.length === 0 && metadataLines.length === 0) {
       return content;
     }
 
     const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
     const tagBlock = ["tags:", ...tags.map((tag) => `  - ${tag}`)].join("\n");
     if (!frontmatterMatch) {
-      return `---\n${tagBlock}\n---\n\n${content.replace(/^\s+/, "")}`;
+      const frontmatterLines = [...metadataLines, ...(tags.length > 0 ? [tagBlock] : [])].join("\n");
+      return `---\n${frontmatterLines}\n---\n\n${content.replace(/^\s+/, "")}`;
     }
 
     const existingFrontmatter = frontmatterMatch[1]
+      .replace(/^source:\s*.*$/m, "")
+      .replace(/^artifact-type:\s*.*$/m, "")
       .replace(/^tags:\s*\[[^\]]*\]\s*$/m, "")
       .replace(/^tags:\s*\r?\n(?:  - .*\r?\n?)*/m, "")
       .trimEnd();
     const body = content.slice(frontmatterMatch[0].length).replace(/^\s+/, "");
-    const nextFrontmatter = [existingFrontmatter, tagBlock].filter((section) => section.trim().length > 0).join("\n");
+    const nextFrontmatter = [existingFrontmatter, ...metadataLines, ...(tags.length > 0 ? [tagBlock] : [])]
+      .filter((section) => section.trim().length > 0)
+      .join("\n");
     return `---\n${nextFrontmatter}\n---\n\n${body}`;
+  }
+
+  private getGeneratedDocumentArtifactTypeForPath(path: string): string {
+    const normalizedPath = normalizePath(path).toLowerCase();
+    const prefixMatches = (folderPath: string): boolean => {
+      const normalizedFolder = normalizePath(folderPath).toLowerCase();
+      return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+    };
+
+    if (normalizedPath === normalizePath(this.data.settings.basicInfoNotePath).toLowerCase()) {
+      return "profile-note";
+    }
+    if (prefixMatches(this.data.settings.dailyLogFolder)) {
+      return "daily-log";
+    }
+    if (prefixMatches(this.data.settings.weeklyReportFolder)) {
+      return "weekly-report";
+    }
+    if (prefixMatches(this.data.settings.monthlyReportFolder)) {
+      return "monthly-report";
+    }
+    if (prefixMatches(this.data.settings.aiOutputFolder)) {
+      return "ai-note";
+    }
+    if (prefixMatches(this.data.settings.exportFolder)) {
+      return normalizedPath.endsWith("/summary.md") ? "export-summary" : "export-note";
+    }
+    if (normalizedPath === normalizePath(this.data.settings.calendarDocumentPath).toLowerCase()) {
+      return "calendar-note";
+    }
+    if (normalizedPath.startsWith("dashboard logs/gamification/")) {
+      return "gamification-report";
+    }
+    if (normalizedPath.startsWith("dashboard logs/weekly reviews/")) {
+      return "weekly-review";
+    }
+    if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
+      return "project-review";
+    }
+    if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
+      return "cleanup-note";
+    }
+
+    return "generated-note";
   }
 
   private getGeneratedDocumentTagsForPath(path: string): string[] {

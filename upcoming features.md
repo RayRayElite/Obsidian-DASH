@@ -112,13 +112,13 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 
 - [x] Create a document-system improvement plan with a full idea list and filled starter templates.
 - [x] Expand README guidance for stronger Master Task Hub metadata and supporting-note roles.
-- [ ] Add a canonical `How This System Works` note.
-- [ ] Add a `What Goes Where` reference.
-- [ ] Standardize stronger project-note templates.
-- [ ] Add generated-note summary blocks and stronger frontmatter conventions.
-- [ ] Add examples of good and bad task wording.
-- [ ] Add an archive policy reference.
-- [ ] Add a document-freshness review checklist for evergreen notes.
+- [x] Add a canonical `How This System Works` note.
+- [x] Add a `What Goes Where` reference.
+- [x] Standardize stronger project-note templates.
+- [x] Add generated-note summary blocks and stronger frontmatter conventions.
+- [x] Add examples of good and bad task wording.
+- [x] Add an archive policy reference.
+- [x] Add a document-freshness review checklist for evergreen notes.
 
 ## View Modes, Layout, And UX
 

@@ -55,6 +55,18 @@ Recommended supporting notes:
 
 The filled starter versions of those notes, plus a stronger Master Task Hub and project-note template, are documented in `Document System Improvement Plan.md`.
 
+Supporting repo docs created from that plan:
+
+- `How This System Works.md`
+- `What Goes Where.md`
+- `Task Wording Guide.md`
+- `Archive Policy.md`
+- `Document Freshness Checklist.md`
+- `AI Guardrails Template.md`
+- `Current Season Template.md`
+- `Decision Journal Template.md`
+- `System Map.md`
+
 ## Logical Day Tracking
 
 The dashboard now separates your real day from the calendar date.

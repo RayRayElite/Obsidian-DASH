@@ -1154,6 +1154,51 @@ function normalizeHabitAutomation(input, index, definitions) {
 // src/dashboard-logs.ts
 var DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 var CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
+function createContextLink(label, path = "") {
+  const safeLabel = label.trim();
+  if (!safeLabel) {
+    return "";
+  }
+  const safePath = path.trim().replace(/\.md$/i, "");
+  return safePath ? `[[${safePath}|${safeLabel}]]` : safeLabel;
+}
+function buildDailySummaryBlock(entry, totalSleepMinutes, calendarEvents) {
+  var _a, _b, _c, _d;
+  const completedWin = entry.completedTasks[0];
+  const focusWin = (_a = entry.todayFocus.find((item) => item.status === "done")) != null ? _a : entry.todayFocus.find((item) => item.workSessions.length > 0);
+  const mainWin = completedWin ? `${completedWin.project} / ${completedWin.section}: ${completedWin.text}` : focusWin ? focusWin.text : "No clear win recorded.";
+  const mainBlocker = entry.frictionLog.trim() || (entry.missedHabits[0] ? `Missed habit: ${entry.missedHabits[0]}` : "No blocker recorded.");
+  const biggestDrift = entry.hurtToday.trim() || (entry.missedHabits.length > 0 ? `Missed habits: ${entry.missedHabits.slice(0, 3).join(", ")}` : "No obvious drift logged.");
+  const keyHealthSignal = entry.symptomLog[0] ? `${entry.symptomLog[0].symptom} at ${entry.symptomLog[0].severity}/5` : entry.wakeQualityScore > 0 ? `Wake quality ${entry.wakeQualityScore}/5 with ${formatMinutesAsHours(totalSleepMinutes)} tracked sleep` : totalSleepMinutes > 0 ? `${formatMinutesAsHours(totalSleepMinutes)} tracked sleep` : "No strong health signal logged.";
+  const mostImportantFollowUp = ((_b = entry.nextUpFocus[0]) == null ? void 0 : _b.text) || ((_c = entry.todayFocus.find((item) => item.status !== "done")) == null ? void 0 : _c.text) || ((_d = calendarEvents[0]) == null ? void 0 : _d.title) || "No follow-up queued.";
+  const contextLinks = Array.from(new Set(
+    calendarEvents.filter((event) => event.projectName.trim().length > 0).map((event) => createContextLink(event.projectName, event.projectNotePath)).filter((value) => value.length > 0)
+  ));
+  return [
+    "## Summary Block",
+    `- Main win: ${mainWin}`,
+    `- Main blocker: ${mainBlocker}`,
+    `- Biggest drift: ${biggestDrift}`,
+    `- Key health signal: ${keyHealthSignal}`,
+    `- Most important follow-up: ${mostImportantFollowUp}`,
+    `- Context links: ${contextLinks.length > 0 ? contextLinks.join(", ") : "None linked today."}`,
+    ""
+  ];
+}
+function buildPeriodSummaryBlock(input) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  const contextProjects = [...(_a = input.strongestProjects) != null ? _a : [], ...(_b = input.staleProjects) != null ? _b : []].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index).slice(0, 5);
+  return [
+    "## Summary Block",
+    `- Main win: ${((_c = input.accomplishmentLines[0]) == null ? void 0 : _c.replace(/^-\s*/, "")) || ((_d = input.strongestProjects) == null ? void 0 : _d[0]) || "No clear win stood out in this period."}`,
+    `- Main blocker: ${((_e = input.blockerPatterns[0]) == null ? void 0 : _e.replace(/^-\s*/, "")) || "No repeated blocker pattern stood out."}`,
+    `- Biggest drift: ${input.driftSignals[0] || "No major drift signal stood out."}`,
+    `- Key health signal: ${input.sleepInsights.nightsTracked > 0 ? `${formatMinutesAsHours(input.sleepInsights.averageSleepMinutes)} average sleep, recovery ${input.sleepInsights.averageRecoveryScore}/100, debt ${formatMinutesAsHours(input.sleepInsights.debtMinutes)}` : "No strong health signal stood out."}`,
+    `- Most important follow-up: ${((_f = input.staleProjects) == null ? void 0 : _f[0]) || ((_g = input.strongestProjects) == null ? void 0 : _g[0]) || "No clear follow-up surfaced from this period."}`,
+    `- Context links: ${contextProjects.length > 0 ? contextProjects.join(", ") : "No project links stood out."}`,
+    ""
+  ];
+}
 function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
   var _a, _b, _c, _d, _e, _f;
   const payload = JSON.stringify(entry, null, 2);
@@ -1240,6 +1285,7 @@ function renderDailyLog(entry, habits, nextEntry, calendarEvents = []) {
     "",
     `# Obsidian DASH Log - ${entry.date}`,
     "",
+    ...buildDailySummaryBlock(entry, totalSleepMinutes, calendarEvents),
     "## Day Flow",
     `- Day started: ${entry.dayStartedAt || "Not started"}`,
     `- Wake time: ${entry.wakeTime || "Not logged"}`,
@@ -1466,7 +1512,7 @@ function parseDailyLogEntry(content, fallbackDate, habits) {
   };
 }
 function renderPeriodReport(input) {
-  var _a, _b;
+  var _a, _b, _c, _d;
   const sleepInsights = buildSleepInsights(input.entries, void 0, input.habitDefinitions);
   const personalTrends = buildPersonalTrendSummary(input.entries, input.habitDefinitions);
   const gamification = buildGamificationSummary(input.entries, input.habitDefinitions, (_a = input.todoSnapshot) != null ? _a : null);
@@ -1543,6 +1589,11 @@ function renderPeriodReport(input) {
     return `| ${habit.label} | ${completed}/${target} | ${percentage}% |`;
   });
   const workLines = Array.from(workByProject.entries()).sort((left, right) => right[1] - left[1]).map(([project, count]) => `- ${project}: ${count}`);
+  const strongestProjects = workLines.slice(0, 5).map((line) => {
+    var _a2, _b2;
+    return (_b2 = (_a2 = line.replace(/^-\s*/, "").split(":")[0]) == null ? void 0 : _a2.trim()) != null ? _b2 : "";
+  }).filter((item) => item.length > 0);
+  const staleProjects = ((_d = (_c = input.todoSnapshot) == null ? void 0 : _c.staleProjects) != null ? _d : []).slice(0, 5).map((project) => project.name);
   const dayLines = input.entries.map((entry) => {
     const foodSummary = entry.intakeLog.length > 0 ? `${entry.intakeLog.length} consumables` : "no consumables";
     const trackedNapMinutesForEntry = getTrackedNapMinutes(entry);
@@ -1560,6 +1611,14 @@ function renderPeriodReport(input) {
     "",
     `Range: ${input.rangeLabel}`,
     "",
+    ...buildPeriodSummaryBlock({
+      accomplishmentLines,
+      blockerPatterns,
+      driftSignals: personalTrends.driftSignals,
+      sleepInsights,
+      strongestProjects,
+      staleProjects
+    }),
     "## Overview",
     `- Days captured: ${input.entries.length}`,
     `- Archived tasks completed: ${input.entries.reduce((sum, entry) => sum + entry.completedTasks.length, 0)}`,
@@ -1715,6 +1774,14 @@ function renderWeeklyReview(input) {
     "",
     `Range: ${formatDateKey(input.start)} to ${formatDateKey(input.end)}`,
     "",
+    ...buildPeriodSummaryBlock({
+      accomplishmentLines,
+      blockerPatterns,
+      driftSignals: personalTrends.driftSignals,
+      sleepInsights,
+      strongestProjects: strongestProjects.map((project) => project.name),
+      staleProjects: staleProjects.map((project) => project.name)
+    }),
     "## Executive Summary",
     `- Archived tasks completed: ${totalTasks}`,
     `- Average mood: ${averageMood === "n/a" ? "No data" : `${averageMood}/5`}`,
@@ -2922,6 +2989,7 @@ function trimLeadingBlankLines(lines) {
   return output;
 }
 function renderTodoProjectBlock(input) {
+  const today = formatDateKey(/* @__PURE__ */ new Date());
   const addTasks = input.addTasks.length > 0 ? input.addTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
   const fixTasks = input.fixTasks.length > 0 ? input.fixTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
   return [
@@ -2929,6 +2997,12 @@ function renderTodoProjectBlock(input) {
     `Project Note:: ${input.projectNoteLink}`,
     `Status:: ${input.status}`,
     `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.`,
+    "Why It Matters:: Define why this project deserves attention right now.",
+    "Definition Of Done:: Describe what meaningful progress or completion looks like.",
+    `Last Review:: ${today}`,
+    "Waiting On:: None",
+    "Relationships::",
     "",
     "### Add",
     ...addTasks,
@@ -2945,25 +3019,43 @@ function renderTodoProjectBlock(input) {
     "### Later",
     "- [ ]",
     "",
+    "### Parking Lot",
+    "- Idea:",
+    "",
     "### Repeating",
-    "- [ ]",
+    "- [ ] Weekly review [repeat: weekly fri]",
     "",
-    "Relationships::",
+    "### Risks",
+    "- Capture risks, drift patterns, and failure modes here.",
     "",
-    "### Completed Archive",
+    "### Constraints",
+    "- Capture hard limits, dependencies, or health constraints here.",
     "",
-    "### Reference"
+    "### Decisions",
+    "- Capture important decisions and tradeoffs here.",
+    "",
+    "### Reference",
+    "- Add durable support material here.",
+    "",
+    "### Completed Archive"
   ].join("\n");
 }
 function renderProjectNoteTemplate(input, masterTodoPath) {
+  const today = formatDateKey(/* @__PURE__ */ new Date());
   return [
     `# ${input.projectName}`,
     "",
-    "## Snapshot",
-    `- Status: ${input.status || "Planning"}`,
-    `- Category: ${input.categoryName}`,
-    `- Focus: ${input.focus || "Define the current focus for this project."}`,
-    `- Master Task Hub: [[${stripMarkdownExtension(masterTodoPath)}|Master Task Hub]]`,
+    `Status:: ${input.status || "Planning"}`,
+    `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.`,
+    "Why It Matters:: Define why this project deserves attention right now.",
+    "Definition Of Done:: Describe what meaningful progress or completion looks like.",
+    `Last Review:: ${today}`,
+    "Waiting On:: None",
+    `Relationships:: [[${stripMarkdownExtension(masterTodoPath)}|Master Task Hub]]`,
+    "",
+    "## Current Bottleneck",
+    "- Capture the main constraint, ambiguity, or drag factor here.",
     "",
     "## Current Focus",
     input.focus || "Add the current objective here.",
@@ -2981,11 +3073,20 @@ function renderProjectNoteTemplate(input, masterTodoPath) {
     "### Later",
     "- [ ]",
     "",
+    "### Parking Lot",
+    "- Idea:",
+    "",
+    "## Risks",
+    "- Capture the major failure modes, drift risks, or watch-outs here.",
+    "",
+    "## Constraints",
+    "- Capture time, energy, dependency, or scope constraints here.",
+    "",
     "## Relationships",
     "- Related projects, dependencies, and blockers.",
     "",
-    "## Active Notes",
-    "- Add project-specific notes here.",
+    "## Review History",
+    `- ${today}: Project note created from the DASH project template.`,
     "",
     "## Decisions",
     "- Capture important decisions and tradeoffs here.",
@@ -2996,17 +3097,23 @@ function renderProjectNoteTemplate(input, masterTodoPath) {
   ].join("\n");
 }
 function renderExistingProjectNoteTemplate(project, masterTodoPath) {
+  const today = formatDateKey(/* @__PURE__ */ new Date());
   const addLines = project.addTasks.length > 0 ? project.addTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
   const fixLines = project.fixTasks.length > 0 ? project.fixTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
   return [
     `# ${project.projectName}`,
     "",
-    "## Snapshot",
-    `- Status: ${project.status || "Planning"}`,
-    `- Category: ${project.categoryName}`,
-    `- Focus: ${project.focus || "Define the current focus for this project."}`,
-    `- Master Task Hub: [[${stripMarkdownExtension(masterTodoPath)}|Master Task Hub]]`,
-    `- Project Entry: [[${project.noteLinkPath}|${project.projectName}]]`,
+    `Status:: ${project.status || "Planning"}`,
+    `Focus:: ${project.focus || "Define the current focus for this project."}`,
+    `Project Summary:: ${project.projectName} is an active project inside Obsidian DASH.`,
+    "Why It Matters:: Define why this project deserves attention right now.",
+    "Definition Of Done:: Describe what meaningful progress or completion looks like.",
+    `Last Review:: ${today}`,
+    "Waiting On:: None",
+    `Relationships:: [[${stripMarkdownExtension(masterTodoPath)}|Master Task Hub]], [[${project.noteLinkPath}|${project.projectName}]]`,
+    "",
+    "## Current Bottleneck",
+    "- Capture the main constraint, ambiguity, or drag factor here.",
     "",
     "## Add Queue",
     ...addLines,
@@ -3027,8 +3134,20 @@ function renderExistingProjectNoteTemplate(project, masterTodoPath) {
     "### Later",
     "- [ ]",
     "",
-    "## Notes",
-    "- Add working notes, ideas, and decisions here.",
+    "### Parking Lot",
+    "- Idea:",
+    "",
+    "## Risks",
+    "- Capture the major failure modes, drift risks, or watch-outs here.",
+    "",
+    "## Constraints",
+    "- Capture time, energy, dependency, or scope constraints here.",
+    "",
+    "## Decisions",
+    "- Capture important decisions and tradeoffs here.",
+    "",
+    "## Review History",
+    `- ${today}: Existing project note template generated from the Master Task Hub.`,
     "",
     "## References",
     "- Move or summarize project-specific references here over time.",
@@ -14167,26 +14286,73 @@ No entries available.`;
   buildGeneratedMarkdownContent(path, content) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(path);
     const tags = this.getGeneratedDocumentTagsForPath(normalizedPath);
-    if (tags.length === 0) {
+    const artifactType = this.getGeneratedDocumentArtifactTypeForPath(normalizedPath);
+    const metadataLines = [
+      "source: obsidian-dash",
+      artifactType ? `artifact-type: ${artifactType}` : ""
+    ].filter((line) => line.length > 0);
+    if (tags.length === 0 && metadataLines.length === 0) {
       return content;
     }
     const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
     const tagBlock = ["tags:", ...tags.map((tag) => `  - ${tag}`)].join("\n");
     if (!frontmatterMatch) {
+      const frontmatterLines = [...metadataLines, ...tags.length > 0 ? [tagBlock] : []].join("\n");
       return `---
-${tagBlock}
+${frontmatterLines}
 ---
 
 ${content.replace(/^\s+/, "")}`;
     }
-    const existingFrontmatter = frontmatterMatch[1].replace(/^tags:\s*\[[^\]]*\]\s*$/m, "").replace(/^tags:\s*\r?\n(?:  - .*\r?\n?)*/m, "").trimEnd();
+    const existingFrontmatter = frontmatterMatch[1].replace(/^source:\s*.*$/m, "").replace(/^artifact-type:\s*.*$/m, "").replace(/^tags:\s*\[[^\]]*\]\s*$/m, "").replace(/^tags:\s*\r?\n(?:  - .*\r?\n?)*/m, "").trimEnd();
     const body = content.slice(frontmatterMatch[0].length).replace(/^\s+/, "");
-    const nextFrontmatter = [existingFrontmatter, tagBlock].filter((section) => section.trim().length > 0).join("\n");
+    const nextFrontmatter = [existingFrontmatter, ...metadataLines, ...tags.length > 0 ? [tagBlock] : []].filter((section) => section.trim().length > 0).join("\n");
     return `---
 ${nextFrontmatter}
 ---
 
 ${body}`;
+  }
+  getGeneratedDocumentArtifactTypeForPath(path) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path).toLowerCase();
+    const prefixMatches = (folderPath) => {
+      const normalizedFolder = (0, import_obsidian4.normalizePath)(folderPath).toLowerCase();
+      return normalizedPath === normalizedFolder || normalizedPath.startsWith(`${normalizedFolder}/`);
+    };
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.basicInfoNotePath).toLowerCase()) {
+      return "profile-note";
+    }
+    if (prefixMatches(this.data.settings.dailyLogFolder)) {
+      return "daily-log";
+    }
+    if (prefixMatches(this.data.settings.weeklyReportFolder)) {
+      return "weekly-report";
+    }
+    if (prefixMatches(this.data.settings.monthlyReportFolder)) {
+      return "monthly-report";
+    }
+    if (prefixMatches(this.data.settings.aiOutputFolder)) {
+      return "ai-note";
+    }
+    if (prefixMatches(this.data.settings.exportFolder)) {
+      return normalizedPath.endsWith("/summary.md") ? "export-summary" : "export-note";
+    }
+    if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath).toLowerCase()) {
+      return "calendar-note";
+    }
+    if (normalizedPath.startsWith("dashboard logs/gamification/")) {
+      return "gamification-report";
+    }
+    if (normalizedPath.startsWith("dashboard logs/weekly reviews/")) {
+      return "weekly-review";
+    }
+    if (normalizedPath.startsWith("dashboard logs/project reviews/")) {
+      return "project-review";
+    }
+    if (normalizedPath.startsWith("dashboard logs/cleanup suggestions/")) {
+      return "cleanup-note";
+    }
+    return "generated-note";
   }
   getGeneratedDocumentTagsForPath(path) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(path).toLowerCase();

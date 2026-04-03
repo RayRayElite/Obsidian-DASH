@@ -29,7 +29,7 @@ It is intentionally split into two parts:
 
 ### Project Notes
 
-- [ ] Standardize a stronger project-note header.
+- [x] Standardize a stronger project-note header.
 - [ ] Add `### Risks`.
 - [ ] Add `### Constraints`.
 - [ ] Add `### Decisions`.
@@ -51,19 +51,19 @@ It is intentionally split into two parts:
 - [ ] Add a compact summary block at the top of daily logs.
 - [ ] Add `Context Links` to daily logs so relevant project notes are easier to revisit.
 - [ ] Add `Open Loops Created Today` and `Open Loops Closed Today` lines.
-- [ ] Add stronger frontmatter conventions to generated notes.
-- [ ] Standardize section order across generated markdown artifacts.
+- [x] Add stronger frontmatter conventions to generated notes.
+- [x] Standardize section order across generated markdown artifacts.
 - [ ] Add review-by-exception summaries to weekly review outputs.
 
 ### System Documentation
 
-- [ ] Add one canonical `How This System Works` note.
-- [ ] Add a `What Goes Where` reference.
-- [ ] Add examples of good task wording.
-- [ ] Add examples of bad task wording.
-- [ ] Add an archive policy reference.
-- [ ] Add a `System Map` note listing the major notes, folders, and their roles.
-- [ ] Add a `Document Freshness` review checklist for evergreen notes.
+- [x] Add one canonical `How This System Works` note.
+- [x] Add a `What Goes Where` reference.
+- [x] Add examples of good task wording.
+- [x] Add examples of bad task wording.
+- [x] Add an archive policy reference.
+- [x] Add a `System Map` note listing the major notes, folders, and their roles.
+- [x] Add a `Document Freshness` review checklist for evergreen notes.
 - [ ] Add a `Reference Offload Inbox` pattern.
 
 ### Longer-Term Workflow Improvements
