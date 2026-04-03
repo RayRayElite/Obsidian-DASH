@@ -1211,16 +1211,19 @@
   background: color-mix(in srgb, #f0b66b 10%, var(--background-primary));
 }
 
-.daily-dashboard-focus-row.is-draggable {
+.daily-dashboard-focus-row.is-draggable,
+.daily-dashboard-habit-row.is-draggable {
   cursor: grab;
 }
 
-.daily-dashboard-focus-row.is-dragging {
+.daily-dashboard-focus-row.is-dragging,
+.daily-dashboard-habit-row.is-dragging {
   opacity: 0.6;
   transform: scale(0.99);
 }
 
-.daily-dashboard-focus-row.is-drop-target {
+.daily-dashboard-focus-row.is-drop-target,
+.daily-dashboard-habit-row.is-drop-target {
   border-color: color-mix(in srgb, var(--daily-dashboard-accent) 40%, var(--background-modifier-border));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--daily-dashboard-accent) 26%, transparent);
 }

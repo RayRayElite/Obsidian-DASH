@@ -2222,6 +2222,21 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  async reorderHabitDefinitions(fromIndex: number, toIndex: number): Promise<boolean> {
+    const definitions = [...this.getHabitDefinitions()];
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= definitions.length || toIndex >= definitions.length || fromIndex === toIndex) {
+      return false;
+    }
+
+    const [movedHabit] = definitions.splice(fromIndex, 1);
+    definitions.splice(toIndex, 0, movedHabit);
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: definitions
+    });
+    return true;
+  }
+
   async addFoodEntry(value: string, amount = 1): Promise<void> {
     await this.addIntakeEntry("food", value, amount, amount === 1 ? "serving" : "servings");
   }

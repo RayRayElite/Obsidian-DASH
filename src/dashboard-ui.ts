@@ -102,6 +102,7 @@ export class DailyDashboardView extends ItemView {
   };
   private autoRefreshHandle: number | null = null;
   private lastRenderAt = 0;
+  private draggedHabitIndex: number | null = null;
   private quickAddState: QuickAddState = {
     projectName: "",
     sectionName: "Add",
@@ -1102,7 +1103,7 @@ export class DailyDashboardView extends ItemView {
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
 
-      const focusCard = createGridCard("Execution Hub", "Run today from one place: queued work, reminders, routine cues, suggestions, and calendar context.", {
+      const focusCard = createGridCard("Action Queue", "Triage queued work, reminders, routines, and calendar context from one place.", {
         icon: "target",
         eyebrow: "Execution",
         tone: "focus",
@@ -1197,7 +1198,7 @@ export class DailyDashboardView extends ItemView {
           }, false, "calendar-plus");
         });
       }
-      const reminderSection = this.createCollapsibleSubsection(focusCard, "focus-reminders", "Reminders", "Keep upcoming calendar reminders visible without bringing back the full Top 3 block.");
+      const reminderSection = this.createCollapsibleSubsection(focusCard, "focus-reminders", "Reminders", "Review upcoming calendar pressure and queue what actually deserves follow-through.");
       if (reminderItems.length === 0) {
         const emptyState = reminderSection.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact" });
         emptyState.createEl("span", { text: "No upcoming reminder items right now." });
@@ -1260,9 +1261,6 @@ export class DailyDashboardView extends ItemView {
           }, false, "calendar-days");
         });
       }
-      const focusUtilityActions = focusCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(focusUtilityActions, "Pause all -> break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause-circle");
-      const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
       const nextUpItems = this.plugin.getNextUpFocusItems(todayEntry.date);
       const nextUpSection = this.createCollapsibleSubsection(focusCard, "focus-next-up", "Next Up", "Keep overflow queued and ready to pull when you actually need it.");
       if (nextUpItems.length === 0) {
@@ -1346,6 +1344,7 @@ export class DailyDashboardView extends ItemView {
           }
         }).open();
       }, false, "list-plus");
+      const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making the action queue too tall.");
       this.renderMonthlyCalendar(focusCalendarSection, todayEntry.date, settings.calendarEnabled);
 
       const stateCard = createGridCard("Vitals", "Log mood, energy, symptoms, and friction while the day is still readable.", {
@@ -1491,6 +1490,36 @@ export class DailyDashboardView extends ItemView {
         });
       }
 
+      const bowelSection = this.createCollapsibleSubsection(stateCard, "state-bowel", "Bowel tracking", "Keep bowel sessions, duration, and quality tags with the rest of the body-state logging.");
+      const bowelSummary = bowelSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(bowelSummary, `${trackedPoopCount} session${trackedPoopCount === 1 ? "" : "s"}`, trackedPoopCount > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, `Tracked ${formatMinutesAsHours(trackedPoopMinutes)}`, trackedPoopMinutes > 0 ? "alert" : "neutral");
+      createSemanticChip(bowelSummary, activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : "No live session", activePoopSession ? "alert" : "neutral");
+      if (todayEntry.poopSessions.length === 0) {
+        bowelSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No bowel sessions tracked for this logical day yet." });
+      } else {
+        const bowelQualityList = bowelSection.createDiv({ cls: "daily-dashboard-project-list" });
+        todayEntry.poopSessions.slice().reverse().slice(0, 5).forEach((session) => {
+          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
+          row.createEl("span", {
+            cls: "daily-dashboard-row-meta",
+            text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} • Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
+          });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
+            const button = controls.createEl("button", {
+              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+              text: quality
+            });
+            button.type = "button";
+            button.addEventListener("click", () => {
+              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
+            });
+          });
+        });
+      }
+
       const symptomsSection = this.createCollapsibleSubsection(stateCard, "state-symptoms", "Symptoms", "Track pain, symptoms, and likely triggers before the context gets flattened later.");
       const symptomSummary = symptomsSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(symptomSummary, todayEntry.symptomLog.length > 0 ? `${todayEntry.symptomLog.length} logged` : "No symptoms", todayEntry.symptomLog.length > 0 ? "health" : "neutral");
@@ -1524,36 +1553,6 @@ export class DailyDashboardView extends ItemView {
               async () => this.plugin.removeSymptomEntry(index),
               async () => this.plugin.restoreSymptomEntry(removedItem, index)
             );
-          });
-        });
-      }
-
-      const bowelSection = this.createCollapsibleSubsection(stateCard, "state-bowel", "Bowel tracking", "Keep bowel sessions, duration, and quality tags with the rest of the body-state logging.");
-      const bowelSummary = bowelSection.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(bowelSummary, `${trackedPoopCount} session${trackedPoopCount === 1 ? "" : "s"}`, trackedPoopCount > 0 ? "alert" : "neutral");
-      createSemanticChip(bowelSummary, `Tracked ${formatMinutesAsHours(trackedPoopMinutes)}`, trackedPoopMinutes > 0 ? "alert" : "neutral");
-      createSemanticChip(bowelSummary, activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : "No live session", activePoopSession ? "alert" : "neutral");
-      if (todayEntry.poopSessions.length === 0) {
-        bowelSection.createDiv({ cls: "daily-dashboard-row-meta", text: "No bowel sessions tracked for this logical day yet." });
-      } else {
-        const bowelQualityList = bowelSection.createDiv({ cls: "daily-dashboard-project-list" });
-        todayEntry.poopSessions.slice().reverse().slice(0, 5).forEach((session) => {
-          const row = bowelQualityList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("strong", { text: `Bowel session ${session.start.slice(11, 16)}${session.end ? `-${session.end.slice(11, 16)}` : ""}` });
-          row.createEl("span", {
-            cls: "daily-dashboard-row-meta",
-            text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} • Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
-          });
-          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
-          ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
-            const button = controls.createEl("button", {
-              cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
-              text: quality
-            });
-            button.type = "button";
-            button.addEventListener("click", () => {
-              void this.plugin.updatePoopQuality(session.start, todayEntry.poopQualityByStart[session.start] === quality ? "" : quality);
-            });
           });
         });
       }
@@ -1603,12 +1602,54 @@ export class DailyDashboardView extends ItemView {
       const habitSummaryChips = habitsCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(habitSummaryChips, `${habitSummary.percentage}% weighted completion`, habitSummary.percentage >= 80 ? "done" : habitSummary.percentage >= 55 ? "state" : "alert");
       createSemanticChip(habitSummaryChips, `${todayEntry.missedHabits.length} misses`, todayEntry.missedHabits.length === 0 ? "done" : "alert");
+      habitsCard.createEl("span", { cls: "daily-dashboard-row-meta", text: "Drag habit rows to reorder the stack." });
       const habitList = habitsCard.createDiv({ cls: "daily-dashboard-habit-list" });
       this.plugin.getHabitDefinitions().forEach((habit, habitIndex) => {
         const currentValue = todayEntry.habits[habit.id] ?? 0;
         const habitEvents = todayEntry.habitEvents[habit.id] ?? [];
         const inWindowCount = countHabitEventsInWindow(habitEvents, habit.completionWindow);
         const row = habitList.createDiv({ cls: "daily-dashboard-habit-row" });
+        row.draggable = true;
+        row.addClass("is-draggable");
+        row.addEventListener("dragstart", (event) => {
+          this.draggedHabitIndex = habitIndex;
+          row.addClass("is-dragging");
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", `${habitIndex}`);
+          }
+        });
+        row.addEventListener("dragover", (event) => {
+          if (this.draggedHabitIndex === null || this.draggedHabitIndex === habitIndex) {
+            return;
+          }
+
+          event.preventDefault();
+          row.addClass("is-drop-target");
+        });
+        row.addEventListener("dragleave", () => {
+          row.removeClass("is-drop-target");
+        });
+        row.addEventListener("drop", (event) => {
+          event.preventDefault();
+          row.removeClass("is-drop-target");
+          const draggedIndex = this.draggedHabitIndex;
+          this.draggedHabitIndex = null;
+          if (draggedIndex === null || draggedIndex === habitIndex) {
+            return;
+          }
+
+          void this.plugin.reorderHabitDefinitions(draggedIndex, habitIndex).then(async (changed) => {
+            if (changed) {
+              await this.render();
+            }
+          });
+        });
+        row.addEventListener("dragend", () => {
+          this.draggedHabitIndex = null;
+          row.removeClass("is-dragging");
+          row.removeClass("is-drop-target");
+        });
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         copy.createEl("strong", { text: habit.label });
         copy.createEl("span", {
@@ -5627,7 +5668,7 @@ const DASHBOARD_TEXTAREA_HEIGHTS_STORAGE_KEY = "daily-dashboard-textarea-heights
 const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "week-at-a-glance", title: "Week At A Glance", order: 0, hidden: false, pinned: false, width: "full" },
   { key: "weekly-agenda", title: "Weekly Agenda", order: 1, hidden: false, pinned: false, width: "full" },
-  { key: "top-3-for-today", title: "Execution Hub", order: 2, hidden: false, pinned: false, width: "default" },
+  { key: "top-3-for-today", title: "Action Queue", order: 2, hidden: false, pinned: false, width: "default" },
   { key: "state-and-friction", title: "Vitals", order: 3, hidden: false, pinned: false, width: "default" },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false, width: "default" },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false, width: "default" },
@@ -6564,7 +6605,7 @@ function getClockMinutes(value: string | Date): number {
 
 function getDashboardCardLayoutKey(title: string): string {
   const normalized = toClassSlug(title);
-  if (normalized === "execution-hub") {
+  if (normalized === "execution-hub" || normalized === "action-queue") {
     return "top-3-for-today";
   }
   if (normalized === "consumables") {

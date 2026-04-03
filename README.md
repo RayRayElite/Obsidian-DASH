@@ -56,7 +56,7 @@ The recovery block now adds a wake-quality score, a rolling sleep debt summary, 
 
 The logical day repair flow still includes a manual timeline editor for work, nap, relax, break, and bowel sessions, but the always-on live timeline strip was removed from the dashboard because it was adding more chrome than operational value.
 
-Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live inside the `Execution Hub` card and as real notifications instead of taking over a separate Day Flow section.
+Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live inside the `Action Queue` card and as real notifications instead of taking over a separate Day Flow section.
 
 The planning layer now also includes a `Weekly Agenda` card plus suggested Top 3 candidates that blend near-term calendar items, overdue or due-soon tasks, repeating work, and stale projects. Top 3 rows, Next Up rows, and suggestion rows can all create a quick work block directly in the calendar using the estimate on the item when one exists.
 
