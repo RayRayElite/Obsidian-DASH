@@ -384,7 +384,9 @@ function createEmptyEntry(date, habits) {
     foodLog: [],
     intakeLog: [],
     symptomLog: [],
+    moodCheckIns: [],
     energyCheckIns: [],
+    anxietyCheckIns: [],
     dietInsight: "",
     sleepLog: "",
     dreamLog: "",
@@ -3464,8 +3466,30 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.calendarCursorDate = /* @__PURE__ */ new Date();
     this.selectedCalendarDate = formatDateKey(/* @__PURE__ */ new Date());
     this.pendingUndoActions = [];
+    this.notificationPanelOpen = false;
+    this.handleDocumentPointerDown = (event) => {
+      if (!this.notificationPanelOpen || !this.contentEl.isConnected) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      const shell = this.contentEl.querySelector(".daily-dashboard-notification-shell");
+      if (shell == null ? void 0 : shell.contains(target)) {
+        return;
+      }
+      this.notificationPanelOpen = false;
+      void this.render();
+    };
     this.handleDashboardKeydown = (event) => {
       if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
+        return;
+      }
+      if (event.key === "Escape" && this.notificationPanelOpen) {
+        event.preventDefault();
+        this.notificationPanelOpen = false;
+        void this.render();
         return;
       }
       if (!this.contentEl.contains(event.target) && event.target !== this.contentEl) {
@@ -3496,10 +3520,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     await this.render();
     this.attachDeferredRefreshListeners();
     this.attachKeyboardShortcutListener();
+    document.addEventListener("mousedown", this.handleDocumentPointerDown, true);
     this.startAutoRefresh();
   }
   async onClose() {
     this.detachKeyboardShortcutListener();
+    document.removeEventListener("mousedown", this.handleDocumentPointerDown, true);
     this.stopAutoRefresh();
     this.pendingRefresh = false;
   }
@@ -3627,7 +3653,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   openShortcutHelpFlow() {
     new DashboardShortcutHelpModal(this.app).open();
   }
+  async toggleNotificationPanel() {
+    this.notificationPanelOpen = !this.notificationPanelOpen;
+    await this.render();
+  }
   async handleNotificationAction(notification) {
+    this.notificationPanelOpen = false;
     const action = notification.action;
     if (!action) {
       return;
@@ -3653,6 +3684,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     }
   }
   async dismissNotification(notificationId) {
+    this.notificationPanelOpen = false;
     await this.plugin.dismissDashboardNotification(notificationId);
   }
   async runDestructiveAction(label, action, undo) {
@@ -3808,7 +3840,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.editingFocusText = "";
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -3838,6 +3870,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const staleProjectCount = staleProjects.length;
       const viewMode = this.getViewMode();
       const viewModeMeta = this.getViewModeMeta(viewMode);
+      const latestMoodCheckIn = (_h = todayEntry.moodCheckIns[0]) != null ? _h : null;
+      const latestEnergyCheckIn = (_i = todayEntry.energyCheckIns[0]) != null ? _i : null;
+      const latestAnxietyCheckIn = (_j = todayEntry.anxietyCheckIns[0]) != null ? _j : null;
+      const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
+      const moodCheckInAverage = todayEntry.moodCheckIns.length > 0 ? (todayEntry.moodCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.moodCheckIns.length).toFixed(1) : "";
+      const anxietyCheckInAverage = todayEntry.anxietyCheckIns.length > 0 ? (todayEntry.anxietyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.anxietyCheckIns.length).toFixed(1) : "";
       if (!this.selectedCalendarDate) {
         this.selectedCalendarDate = todayEntry.date;
       }
@@ -3858,7 +3896,57 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const heroCopy = heroHeader.createDiv({ cls: "daily-dashboard-hero-copy" });
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
-      const actions = heroHeader.createDiv({ cls: "daily-dashboard-actions" });
+      const heroHeaderControls = heroHeader.createDiv({ cls: "daily-dashboard-hero-header-controls" });
+      const notificationShell = heroHeaderControls.createDiv({ cls: "daily-dashboard-notification-shell" });
+      const notificationTrigger = notificationShell.createEl("button", { cls: "daily-dashboard-notification-trigger" });
+      notificationTrigger.type = "button";
+      notificationTrigger.ariaLabel = dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active notifications` : "No active notifications";
+      notificationTrigger.ariaExpanded = this.notificationPanelOpen ? "true" : "false";
+      notificationTrigger.toggleClass("is-alert", dashboardNotifications.some((item) => item.tone === "alert"));
+      notificationTrigger.toggleClass("is-active", this.notificationPanelOpen);
+      const notificationIcon = notificationTrigger.createSpan({ cls: "daily-dashboard-button-icon" });
+      (0, import_obsidian3.setIcon)(notificationIcon, "bell-ring");
+      notificationTrigger.createSpan({ cls: "daily-dashboard-notification-label", text: "Notifications" });
+      notificationTrigger.createSpan({ cls: "daily-dashboard-notification-badge", text: `${dashboardNotifications.length}` });
+      notificationTrigger.addEventListener("click", () => {
+        void this.toggleNotificationPanel();
+      });
+      if (this.notificationPanelOpen) {
+        const notificationPopover = notificationShell.createDiv({ cls: "daily-dashboard-notification-popover" });
+        const popoverHeader = notificationPopover.createDiv({ cls: "daily-dashboard-notification-popover-header" });
+        const popoverCopy = popoverHeader.createDiv({ cls: "daily-dashboard-stack" });
+        popoverCopy.createEl("strong", { text: "Notifications" });
+        popoverCopy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active items` : "Everything is clear right now."
+        });
+        const popoverSummary = notificationPopover.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(popoverSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
+        createSemanticChip(popoverSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
+        createSemanticChip(popoverSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
+        const notificationList = notificationPopover.createDiv({ cls: "daily-dashboard-project-list daily-dashboard-notification-popover-list" });
+        if (dashboardNotifications.length === 0) {
+          notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
+        } else {
+          dashboardNotifications.slice(0, 10).forEach((notification) => {
+            const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
+            row.addClass(`is-${notification.tone}`);
+            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
+            copy.createEl("strong", { text: notification.title });
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
+            const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+            if (notification.action) {
+              createButton(actions2, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
+            }
+            if (notification.dismissible) {
+              createButton(actions2, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
+            }
+          });
+        }
+      }
+      const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });
       createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
       createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
       createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
@@ -3870,12 +3958,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       archivedPill.addClass("is-compact");
       const stalePill = createStatPill(heroMeta, `${staleProjectCount} stale`, "triangle-alert", staleProjectCount > 0 ? "alert" : "neutral");
       stalePill.addClass("is-compact");
-      const statePill = createStatPill(heroMeta, `Mood ${renderScore(todayEntry.moodScore)} \u2022 Energy ${renderScore(todayEntry.energyScore)}`, "activity", "state");
+      const statePill = createStatPill(
+        heroMeta,
+        `Mood ${latestMoodCheckIn ? `${latestMoodCheckIn.score}/5${latestMoodCheckIn.feeling ? ` ${latestMoodCheckIn.feeling}` : ""}` : renderScore(todayEntry.moodScore)} \u2022 Energy ${latestEnergyCheckIn ? `${latestEnergyCheckIn.score}/5` : renderScore(todayEntry.energyScore)}`,
+        "activity",
+        "state"
+      );
       statePill.addClass("is-compact");
-      if (dashboardNotifications.length > 0) {
-        const noticePill = createStatPill(heroMeta, `${dashboardNotifications.length} alerts`, "bell-ring", dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : "focus");
-        noticePill.addClass("is-compact");
-      }
       if (hiddenLayoutCardCount > 0) {
         const hiddenPill = createStatPill(heroMeta, `${hiddenLayoutCardCount} hidden`, "layout-dashboard", "log");
         hiddenPill.addClass("is-compact");
@@ -3894,7 +3983,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "medal", "Wins archive", async () => this.plugin.generateWinsArchive());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      const latestUndoAction = (_h = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _h : null;
+      const latestUndoAction = (_k = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _k : null;
       if (latestUndoAction) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
         const undoCopy = undoBanner.createDiv({ cls: "daily-dashboard-stack" });
@@ -3988,37 +4077,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           new CalendarEventModal(this.app, this.plugin, day.date).open();
         }, false, "plus-circle");
       });
-      const notificationCenterCard = createGridCard("Notification Center", "See reminders, system notices, and task pressure in one triage lane instead of hunting across cards.", {
-        icon: "bell-ring",
-        eyebrow: "Triage",
-        tone: dashboardNotifications.some((item) => item.tone === "alert") ? "alert" : dashboardNotifications.length > 0 ? "focus" : "neutral",
-        tag: dashboardNotifications.length > 0 ? `${dashboardNotifications.length} active` : "Clear"
-      });
-      const notificationSummary = notificationCenterCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "calendar").length} reminders`, dashboardNotifications.some((item) => item.source === "calendar") ? "focus" : "neutral");
-      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "system").length} system`, dashboardNotifications.some((item) => item.source === "system") ? "state" : "neutral");
-      createSemanticChip(notificationSummary, `${dashboardNotifications.filter((item) => item.source === "tasks").length} task`, dashboardNotifications.some((item) => item.source === "tasks") ? "alert" : "neutral");
-      const notificationList = notificationCenterCard.createDiv({ cls: "daily-dashboard-project-list" });
-      if (dashboardNotifications.length === 0) {
-        notificationList.createDiv({ cls: "daily-dashboard-empty-state", text: "No active reminders or system notices right now." });
-      } else {
-        dashboardNotifications.slice(0, 8).forEach((notification) => {
-          const row = notificationList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-notification-row" });
-          row.addClass(`is-${notification.tone}`);
-          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
-          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, notification.source === "logical-day" ? "Day flow" : notification.source, notification.tone);
-          copy.createEl("strong", { text: notification.title });
-          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: notification.description });
-          const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-          if (notification.action) {
-            createButton(actions2, notification.action.label, async () => this.handleNotificationAction(notification), false, "arrow-right-circle");
-          }
-          if (notification.dismissible) {
-            createButton(actions2, "Dismiss", async () => this.dismissNotification(notification.id), false, "x");
-          }
-        });
-      }
       const dayState = this.plugin.getDayState();
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
@@ -4031,13 +4089,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const trackedBreakMinutes = this.plugin.getTrackedBreakMinutes(todayEntry);
       const trackedPoopMinutes = this.plugin.getTrackedPoopMinutes(todayEntry);
       const trackedPoopCount = this.plugin.getTrackedPoopCount(todayEntry);
-      const activeWorkSession = (_i = todayEntry.workSessions.find((session) => session.end === null)) != null ? _i : null;
-      const activeNapSession = (_j = todayEntry.napSessions.find((session) => session.end === null)) != null ? _j : null;
-      const activeRelaxSession = (_k = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _k : null;
-      const activeBreakSession = (_l = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _l : null;
-      const activePoopSession = (_m = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _m : null;
+      const activeWorkSession = (_l = todayEntry.workSessions.find((session) => session.end === null)) != null ? _l : null;
+      const activeNapSession = (_m = todayEntry.napSessions.find((session) => session.end === null)) != null ? _m : null;
+      const activeRelaxSession = (_n = todayEntry.relaxSessions.find((session) => session.end === null)) != null ? _n : null;
+      const activeBreakSession = (_o = todayEntry.breakSessions.find((session) => session.end === null)) != null ? _o : null;
+      const activePoopSession = (_p = todayEntry.poopSessions.find((session) => session.end === null)) != null ? _p : null;
       const activeSessionTag = (activeWorkSession == null ? void 0 : activeWorkSession.tag) || (activeNapSession == null ? void 0 : activeNapSession.tag) || (activeRelaxSession == null ? void 0 : activeRelaxSession.tag) || (activeBreakSession == null ? void 0 : activeBreakSession.tag) || (activePoopSession == null ? void 0 : activePoopSession.tag) || "";
-      const energyCheckInAverage = todayEntry.energyCheckIns.length > 0 ? (todayEntry.energyCheckIns.reduce((sum, item) => sum + item.score, 0) / todayEntry.energyCheckIns.length).toFixed(1) : "";
       const tagSummary = this.getSessionTagSummary([
         ...todayEntry.workSessions,
         ...todayEntry.napSessions,
@@ -4129,7 +4186,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const timeAllocationSection = this.createCollapsibleSubsection(dayFlowCard, "day-flow-allocation", "Time allocation", "See where today is accounted for, what is still untracked, and why the unknown bucket is large when it is.");
       const allocationChips = timeAllocationSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(allocationChips, `Unknown ${formatMinutesAsHours(timeAllocationInsights.fullDayUnknownMinutes)}`, timeAllocationInsights.fullDayUnknownMinutes >= 360 ? "alert" : "neutral");
-      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_n = timeAllocationInsights.awakeUnknownMinutes) != null ? _n : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
+      createSemanticChip(allocationChips, timeAllocationInsights.awakeUnknownMinutes !== null ? `Untracked awake ${formatMinutesAsHours(timeAllocationInsights.awakeUnknownMinutes)}` : "Awake window unknown", ((_q = timeAllocationInsights.awakeUnknownMinutes) != null ? _q : 0) >= 180 ? "alert" : timeAllocationInsights.awakeUnknownMinutes !== null ? "neutral" : "log");
       createSemanticChip(allocationChips, `Tracked awake ${formatMinutesAsHours(timeAllocationInsights.trackedAwakeMinutes)}`, "capture");
       const allocationGrid = timeAllocationSection.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--allocation" });
       this.renderDayMetric(allocationGrid, "Awake window", timeAllocationInsights.awakeWindowMinutes !== null ? formatMinutesAsHours(timeAllocationInsights.awakeWindowMinutes) : "Not enough timestamps");
@@ -4597,13 +4654,58 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tone: "state",
         tag: "Context"
       });
-      this.renderScoreControl(stateCard, "Mood", todayEntry.moodScore, (value) => this.plugin.updateMoodScore(value));
-      this.renderScoreControl(stateCard, "Energy", todayEntry.energyScore, (value) => this.plugin.updateEnergyScore(value));
-      this.renderScoreControl(stateCard, "Anxiety", todayEntry.anxietyScore, (value) => this.plugin.updateAnxietyScore(value));
+      const moodTimelineSection = this.createCollapsibleSubsection(stateCard, "state-mood-timeline", "Mood timeline", "Track mood as it changes through the day and label the feeling instead of relying on one final score.");
+      const moodSummary = moodTimelineSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(moodSummary, todayEntry.moodCheckIns.length > 0 ? `${todayEntry.moodCheckIns.length} check-ins` : "No check-ins", todayEntry.moodCheckIns.length > 0 ? "state" : "neutral");
+      createSemanticChip(moodSummary, moodCheckInAverage ? `Avg ${moodCheckInAverage}/5` : "No average yet", moodCheckInAverage ? "health" : "neutral");
+      createSemanticChip(moodSummary, (latestMoodCheckIn == null ? void 0 : latestMoodCheckIn.feeling) ? latestMoodCheckIn.feeling : "No feeling logged", (latestMoodCheckIn == null ? void 0 : latestMoodCheckIn.feeling) ? "focus" : "neutral");
+      const moodInputRow = moodTimelineSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--state-checkin" });
+      const moodFeelingInput = moodInputRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Feeling label, e.g. calm, flat, wired" }
+      });
+      const moodNoteInput = moodInputRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Optional note for this mood check-in" }
+      });
+      const moodButtons = moodTimelineSection.createDiv({ cls: "daily-dashboard-habit-controls" });
+      for (let score = 1; score <= 5; score += 1) {
+        const button = moodButtons.createEl("button", { cls: "daily-dashboard-step", text: `${score}` });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          void this.plugin.addMoodCheckIn(score, moodFeelingInput.value, moodNoteInput.value).then(async () => {
+            moodFeelingInput.value = "";
+            moodNoteInput.value = "";
+            await this.render();
+          });
+        });
+      }
+      if (todayEntry.moodCheckIns.length === 0) {
+        moodTimelineSection.createDiv({ cls: "daily-dashboard-row-meta", text: todayEntry.moodScore > 0 ? `Legacy mood summary: ${todayEntry.moodScore}/5. Start timeline check-ins to replace single-score tracking.` : "No mood timeline yet. Use a feeling label and a 1-5 score to log how the day actually felt." });
+      } else {
+        const moodList = moodTimelineSection.createDiv({ cls: "daily-dashboard-food-list" });
+        todayEntry.moodCheckIns.slice(0, 6).forEach((item, index) => {
+          const row = moodList.createDiv({ cls: "daily-dashboard-food-row daily-dashboard-food-row--energy" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: `${item.score}/5 mood${item.feeling ? ` \u2022 ${item.feeling}` : ""}` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          if (item.note) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.note });
+          }
+          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
+          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: renderScore(item.score) });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeMoodCheckIn(index);
+          });
+        });
+      }
       const energyTimelineSection = this.createCollapsibleSubsection(stateCard, "state-energy-timeline", "Energy timeline", "Drop quick energy check-ins through the day instead of relying on one end-of-day memory.");
       const energySummary = energyTimelineSection.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(energySummary, todayEntry.energyCheckIns.length > 0 ? `${todayEntry.energyCheckIns.length} check-ins` : "No check-ins", todayEntry.energyCheckIns.length > 0 ? "state" : "neutral");
       createSemanticChip(energySummary, energyCheckInAverage ? `Avg ${energyCheckInAverage}/5` : "No average yet", energyCheckInAverage ? "health" : "neutral");
+      createSemanticChip(energySummary, latestEnergyCheckIn ? `Latest ${latestEnergyCheckIn.score}/5` : "No latest yet", latestEnergyCheckIn ? "focus" : "neutral");
       const energyInputRow = energyTimelineSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--energy" });
       const energyNoteInput = energyInputRow.createEl("input", {
         cls: "daily-dashboard-input",
@@ -4641,6 +4743,48 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           removeButton.type = "button";
           removeButton.addEventListener("click", () => {
             void this.plugin.removeEnergyCheckIn(index);
+          });
+        });
+      }
+      const anxietyTimelineSection = this.createCollapsibleSubsection(stateCard, "state-anxiety-timeline", "Anxiety timeline", "Log anxiety spikes or calm resets as they happen instead of compressing the whole day into one number.");
+      const anxietySummary = anxietyTimelineSection.createDiv({ cls: "daily-dashboard-chip-row" });
+      createSemanticChip(anxietySummary, todayEntry.anxietyCheckIns.length > 0 ? `${todayEntry.anxietyCheckIns.length} check-ins` : "No check-ins", todayEntry.anxietyCheckIns.length > 0 ? "state" : "neutral");
+      createSemanticChip(anxietySummary, anxietyCheckInAverage ? `Avg ${anxietyCheckInAverage}/5` : "No average yet", anxietyCheckInAverage ? "alert" : "neutral");
+      createSemanticChip(anxietySummary, latestAnxietyCheckIn ? `Latest ${latestAnxietyCheckIn.score}/5` : "No latest yet", latestAnxietyCheckIn ? "alert" : "neutral");
+      const anxietyInputRow = anxietyTimelineSection.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--energy" });
+      const anxietyNoteInput = anxietyInputRow.createEl("input", {
+        cls: "daily-dashboard-input",
+        attr: { type: "text", placeholder: "Optional note about what is driving this level" }
+      });
+      const anxietyButtons = anxietyTimelineSection.createDiv({ cls: "daily-dashboard-habit-controls" });
+      for (let score = 1; score <= 5; score += 1) {
+        const button = anxietyButtons.createEl("button", { cls: "daily-dashboard-step", text: `${score}` });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          void this.plugin.addAnxietyCheckIn(score, anxietyNoteInput.value).then(async () => {
+            anxietyNoteInput.value = "";
+            await this.render();
+          });
+        });
+      }
+      if (todayEntry.anxietyCheckIns.length === 0) {
+        anxietyTimelineSection.createDiv({ cls: "daily-dashboard-row-meta", text: todayEntry.anxietyScore > 0 ? `Legacy anxiety summary: ${todayEntry.anxietyScore}/5. Start timeline check-ins to replace single-score tracking.` : "No anxiety timeline yet. Use the 1-5 buttons with an optional note when anxiety changes." });
+      } else {
+        const anxietyList = anxietyTimelineSection.createDiv({ cls: "daily-dashboard-food-list" });
+        todayEntry.anxietyCheckIns.slice(0, 6).forEach((item, index) => {
+          const row = anxietyList.createDiv({ cls: "daily-dashboard-food-row daily-dashboard-food-row--energy" });
+          const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
+          copy.createEl("strong", { text: `${item.score}/5 anxiety` });
+          copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.loggedAt || "Time unknown" });
+          if (item.note) {
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.note });
+          }
+          const amountSlot = row.createDiv({ cls: "daily-dashboard-food-amount-slot" });
+          amountSlot.createEl("span", { cls: "daily-dashboard-habit-meta", text: renderScore(item.score) });
+          const removeButton = row.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", () => {
+            void this.plugin.removeAnxietyCheckIn(index);
           });
         });
       }
@@ -5879,6 +6023,48 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
       this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
       this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
+      entry.moodCheckIns.forEach((item, index) => {
+        results.push({
+          id: `mood-${entry.date}-${index}-${item.loggedAt}`,
+          date: entry.date,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
+          kind: "log",
+          title: `Mood \u2022 ${item.feeling || `${item.score}/5`}`,
+          summary: `Mood ${item.score}/5`,
+          detail: item.note.trim(),
+          tone: item.score >= 4 ? "done" : item.score >= 3 ? "state" : "alert",
+          project: "",
+          tag: ""
+        });
+      });
+      entry.energyCheckIns.forEach((item, index) => {
+        results.push({
+          id: `energy-${entry.date}-${index}-${item.loggedAt}`,
+          date: entry.date,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
+          kind: "log",
+          title: `Energy \u2022 ${item.score}/5`,
+          summary: "Energy check-in",
+          detail: item.note.trim(),
+          tone: item.score >= 4 ? "done" : item.score >= 3 ? "state" : "alert",
+          project: "",
+          tag: ""
+        });
+      });
+      entry.anxietyCheckIns.forEach((item, index) => {
+        results.push({
+          id: `anxiety-${entry.date}-${index}-${item.loggedAt}`,
+          date: entry.date,
+          sortKey: item.loggedAt || `${entry.date} 23:59`,
+          kind: "log",
+          title: `Anxiety \u2022 ${item.score}/5`,
+          summary: "Anxiety check-in",
+          detail: item.note.trim(),
+          tone: item.score >= 4 ? "alert" : "state",
+          project: "",
+          tag: ""
+        });
+      });
       this.pushTimelineLogResult(results, entry.date, "friction", "Friction log", entry.frictionLog, "alert");
       this.pushTimelineLogResult(results, entry.date, "sleep", "Sleep log", entry.sleepLog, "health");
       this.pushTimelineLogResult(results, entry.date, "dream", "Dream log", entry.dreamLog, "log");
@@ -7662,23 +7848,22 @@ var DASHBOARD_SELECTED_FILTER_STORAGE_KEY = "daily-dashboard-selected-filter";
 var DASHBOARD_CARD_LAYOUT_STORAGE_KEY = "daily-dashboard-card-layout";
 var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "weekly-agenda", title: "Weekly Agenda", order: 0, hidden: false, pinned: false },
-  { key: "notification-center", title: "Notification Center", order: 1, hidden: false, pinned: false },
-  { key: "day-flow", title: "Day Flow", order: 2, hidden: false, pinned: true },
-  { key: "top-3-for-today", title: "Top 3 For Today", order: 3, hidden: false, pinned: false },
-  { key: "state-and-friction", title: "State And Friction", order: 4, hidden: false, pinned: false },
-  { key: "gamification-center", title: "Gamification Center", order: 5, hidden: false, pinned: false },
-  { key: "habits", title: "Habits", order: 6, hidden: false, pinned: false },
-  { key: "quick-add-to-project", title: "Quick Add To Project", order: 7, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 8, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 9, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 10, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 11, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 12, hidden: false, pinned: false },
-  { key: "searchable-work-log", title: "Searchable Work Log", order: 13, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 14, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 15, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 16, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 17, hidden: false, pinned: false }
+  { key: "day-flow", title: "Day Flow", order: 1, hidden: false, pinned: true },
+  { key: "top-3-for-today", title: "Top 3 For Today", order: 2, hidden: false, pinned: false },
+  { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
+  { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
+  { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
+  { key: "quick-add-to-project", title: "Quick Add To Project", order: 6, hidden: false, pinned: false },
+  { key: "food-log", title: "Food Log", order: 7, hidden: false, pinned: false },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 8, hidden: false, pinned: false },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
+  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
+  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
+  { key: "searchable-work-log", title: "Searchable Work Log", order: 12, hidden: false, pinned: false },
+  { key: "ai-workspace", title: "AI Workspace", order: 13, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 14, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 15, hidden: false, pinned: false },
+  { key: "completed-today", title: "Completed Today", order: 16, hidden: false, pinned: false }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -9738,6 +9923,23 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     entry.anxietyScore = clamp(value, 0, 5);
     await this.persistEntry(entry);
   }
+  async addMoodCheckIn(score, feeling = "", note = "") {
+    const entry = this.getTodayEntry();
+    entry.moodCheckIns = [{
+      loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
+      score: clamp(Math.round(score), 1, 5),
+      feeling: feeling.trim(),
+      note: note.trim()
+    }, ...entry.moodCheckIns].slice(0, 24);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+  async removeMoodCheckIn(index) {
+    const entry = this.getTodayEntry();
+    entry.moodCheckIns = entry.moodCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
   async updateHabitValue(habitId, value) {
     var _a;
     const definitions = this.getHabitDefinitions();
@@ -9913,11 +10115,29 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       },
       ...entry.energyCheckIns
     ].slice(0, 24);
+    this.syncStateRollups(entry);
     await this.persistEntry(entry);
   }
   async removeEnergyCheckIn(index) {
     const entry = this.getTodayEntry();
     entry.energyCheckIns = entry.energyCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+  async addAnxietyCheckIn(score, note = "") {
+    const entry = this.getTodayEntry();
+    entry.anxietyCheckIns = [{
+      loggedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
+      score: clamp(Math.round(score), 1, 5),
+      note: note.trim()
+    }, ...entry.anxietyCheckIns].slice(0, 24);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+  async removeAnxietyCheckIn(index) {
+    const entry = this.getTodayEntry();
+    entry.anxietyCheckIns = entry.anxietyCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
     await this.persistEntry(entry);
   }
   async updateSleepLog(value) {
@@ -11823,7 +12043,7 @@ No entries available.`;
     await this.cleanupStaleTrackedMinuteOverrides();
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
     const baseEntry = createEmptyEntry(date, settings.habitDefinitions);
     if (!entry) {
       return baseEntry;
@@ -11831,12 +12051,37 @@ No entries available.`;
     const normalizedHabits = {};
     const normalizedHabitEvents = {};
     settings.habitDefinitions.forEach((habit) => {
-      var _a2, _b2, _c2, _d2, _e, _f;
+      var _a2, _b2, _c2, _d2, _e2, _f2;
       const rawEvents = Array.isArray((_a2 = entry.habitEvents) == null ? void 0 : _a2[habit.id]) ? (_d2 = (_c2 = (_b2 = entry.habitEvents) == null ? void 0 : _b2[habit.id]) == null ? void 0 : _c2.filter((item) => typeof item === "string" && item.trim().length > 0)) != null ? _d2 : [] : [];
-      const normalizedCount = clamp(Number((_f = (_e = entry.habits) == null ? void 0 : _e[habit.id]) != null ? _f : rawEvents.length), 0, habit.target);
+      const normalizedCount = clamp(Number((_f2 = (_e2 = entry.habits) == null ? void 0 : _e2[habit.id]) != null ? _f2 : rawEvents.length), 0, habit.target);
       normalizedHabits[habit.id] = normalizedCount;
       normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
     });
+    const normalizedMoodCheckIns = Array.isArray(entry.moodCheckIns) ? entry.moodCheckIns.filter((item) => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string")).map((item) => {
+      var _a2;
+      return {
+        loggedAt: item.loggedAt,
+        score: clamp(Number((_a2 = item.score) != null ? _a2 : 0), 1, 5),
+        feeling: typeof item.feeling === "string" ? item.feeling.trim() : "",
+        note: typeof item.note === "string" ? item.note.trim() : ""
+      };
+    }) : [];
+    const normalizedEnergyCheckIns = Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.filter((item) => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string")).map((item) => {
+      var _a2;
+      return {
+        loggedAt: item.loggedAt,
+        score: clamp(Number((_a2 = item.score) != null ? _a2 : 0), 1, 5),
+        note: typeof item.note === "string" ? item.note.trim() : ""
+      };
+    }) : [];
+    const normalizedAnxietyCheckIns = Array.isArray(entry.anxietyCheckIns) ? entry.anxietyCheckIns.filter((item) => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string")).map((item) => {
+      var _a2;
+      return {
+        loggedAt: item.loggedAt,
+        score: clamp(Number((_a2 = item.score) != null ? _a2 : 0), 1, 5),
+        note: typeof item.note === "string" ? item.note.trim() : ""
+      };
+    }) : [];
     return {
       date,
       lastEditedAt: getEntryRecencyKey(entry),
@@ -11848,9 +12093,9 @@ No entries available.`;
       sleepMinutesOverride: Number.isFinite(Number(entry.sleepMinutesOverride)) ? clamp(Number(entry.sleepMinutesOverride), 0, 1440) : null,
       habits: normalizedHabits,
       habitEvents: normalizedHabitEvents,
-      moodScore: clamp(Number((_b = entry.moodScore) != null ? _b : 0), 0, 5),
-      energyScore: clamp(Number((_c = entry.energyScore) != null ? _c : 0), 0, 5),
-      anxietyScore: clamp(Number((_d = entry.anxietyScore) != null ? _d : 0), 0, 5),
+      moodScore: (_d = (_b = normalizedMoodCheckIns[0]) == null ? void 0 : _b.score) != null ? _d : clamp(Number((_c = entry.moodScore) != null ? _c : 0), 0, 5),
+      energyScore: (_g = (_e = normalizedEnergyCheckIns[0]) == null ? void 0 : _e.score) != null ? _g : clamp(Number((_f = entry.energyScore) != null ? _f : 0), 0, 5),
+      anxietyScore: (_j = (_h = normalizedAnxietyCheckIns[0]) == null ? void 0 : _h.score) != null ? _j : clamp(Number((_i = entry.anxietyScore) != null ? _i : 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
       calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted) ? entry.calendarFollowThroughCompleted.filter((item) => typeof item === "string" && item.trim().length > 0) : [],
@@ -11860,14 +12105,9 @@ No entries available.`;
       foodLog: Array.isArray(entry.foodLog) ? entry.foodLog.map((item) => normalizeFoodEntry(item)).filter((item) => item !== null) : [],
       intakeLog: Array.isArray(entry.intakeLog) ? entry.intakeLog.map((item) => normalizeIntakeEntry(item)).filter((item) => item !== null) : [],
       symptomLog: Array.isArray(entry.symptomLog) ? entry.symptomLog.map((item) => normalizeSymptomEntry(item)).filter((item) => item !== null) : [],
-      energyCheckIns: Array.isArray(entry.energyCheckIns) ? entry.energyCheckIns.filter((item) => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string")).map((item) => {
-        var _a2;
-        return {
-          loggedAt: item.loggedAt,
-          score: clamp(Number((_a2 = item.score) != null ? _a2 : 0), 1, 5),
-          note: typeof item.note === "string" ? item.note.trim() : ""
-        };
-      }) : [],
+      moodCheckIns: normalizedMoodCheckIns,
+      energyCheckIns: normalizedEnergyCheckIns,
+      anxietyCheckIns: normalizedAnxietyCheckIns,
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
@@ -11996,7 +12236,15 @@ No entries available.`;
         var _a2;
         return (_a2 = item.loggedAt) != null ? _a2 : "";
       }),
+      ...entry.moodCheckIns.map((item) => {
+        var _a2;
+        return (_a2 = item.loggedAt) != null ? _a2 : "";
+      }),
       ...entry.energyCheckIns.map((item) => {
+        var _a2;
+        return (_a2 = item.loggedAt) != null ? _a2 : "";
+      }),
+      ...entry.anxietyCheckIns.map((item) => {
         var _a2;
         return (_a2 = item.loggedAt) != null ? _a2 : "";
       }),
@@ -12026,6 +12274,12 @@ No entries available.`;
         tag: session.tag
       };
     });
+  }
+  syncStateRollups(entry) {
+    var _a, _b, _c, _d, _e, _f;
+    entry.moodScore = (_b = (_a = entry.moodCheckIns[0]) == null ? void 0 : _a.score) != null ? _b : 0;
+    entry.energyScore = (_d = (_c = entry.energyCheckIns[0]) == null ? void 0 : _c.score) != null ? _d : 0;
+    entry.anxietyScore = (_f = (_e = entry.anxietyCheckIns[0]) == null ? void 0 : _e.score) != null ? _f : 0;
   }
   normalizeRepairTimelineSessions(sessions, date) {
     const normalized = [];

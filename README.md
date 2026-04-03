@@ -16,7 +16,7 @@ Daily Dashboard is an Obsidian plugin that opens as its own dashboard tab instea
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
-- includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a notification center for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
+- includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a hero-bar notification popover for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
 Task lines in the master hub can now include lightweight annotations such as `[due: 2026-04-05]`, `[blocked: waiting on API key]`, and `[unblock: 2026-04-08]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, and blocked work in project health, cleanup alerts, promotion flows, and AI context.
@@ -52,7 +52,7 @@ The `Day Flow` card now also watches for long stretches of inactivity and shows 
 
 The dashboard records wake time, sleep time, day start/end, tracked work sessions, and tracked naps into the daily log note and period reports.
 
-The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card also supports timestamped energy check-ins with optional notes during the day.
+The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card now uses timestamped mood, energy, and anxiety check-ins during the day, and mood entries can capture a named feeling alongside the score.
 
 The Day Flow card now also includes a grouped time-allocation summary for the current logical day, plus unknown-time diagnostics that call out missing timestamps, active days, and likely timer gaps. That makes the old generic "unknown" bucket actionable instead of just vague leftover time.
 
@@ -82,7 +82,7 @@ The same hero control cluster now exposes a shortcut help button, and the dashbo
 
 Destructive dashboard actions now also get a visible in-view undo rail. When you remove a Top 3 item, Next Up item, habit definition, food entry, intake entry, or symptom entry from the dashboard, a temporary undo banner appears near the top of the view so the last removal can be restored without digging into plugin data or rebuilding the row by hand.
 
-The dashboard now also includes a `Notification Center` card that consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into one triage lane. Most entries can be dismissed, and actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard.
+The dashboard now surfaces notifications from a hero-bar popover instead of a full grid card. It consolidates upcoming reminder events, logical-day rollover or inactivity prompts, project-hub pressure such as overdue or blocked work, and setup-oriented system notices into a compact triage window. Most entries can be dismissed, and actionable items can jump straight into the hub, cleanup note flow, day-end flow, or setup wizard.
 
 New installs now open a guided first-run setup wizard automatically until the core configuration is confirmed. The wizard walks through dashboard identity, project-hub paths, reporting and calendar folders, and AI defaults, and it can be reopened later from the command palette or the plugin settings tab.
 

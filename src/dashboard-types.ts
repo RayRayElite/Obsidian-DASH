@@ -181,6 +181,19 @@ export interface EnergyCheckIn {
   note: string;
 }
 
+export interface MoodCheckIn {
+  loggedAt: string;
+  score: number;
+  feeling: string;
+  note: string;
+}
+
+export interface AnxietyCheckIn {
+  loggedAt: string;
+  score: number;
+  note: string;
+}
+
 export interface DailyEntry {
   date: string;
   lastEditedAt: string;
@@ -204,7 +217,9 @@ export interface DailyEntry {
   foodLog: FoodEntry[];
   intakeLog: IntakeEntry[];
   symptomLog: SymptomEntry[];
+  moodCheckIns: MoodCheckIn[];
   energyCheckIns: EnergyCheckIn[];
+  anxietyCheckIns: AnxietyCheckIn[];
   dietInsight: string;
   sleepLog: string;
   dreamLog: string;

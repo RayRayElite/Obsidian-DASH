@@ -122,6 +122,7 @@ import {
   type DashboardSettings,
   type DayLifecycleState,
   type DashboardUiState,
+  type AnxietyCheckIn,
   type EnergyCheckIn,
   type FoodEntry,
   type GamificationSummary,
@@ -145,6 +146,7 @@ import {
   type TodayFocusItem,
   type WeeklyAgendaDay,
   type WallpaperOption,
+  type MoodCheckIn,
   type WorkSession
 } from "./src/dashboard-types";
 
@@ -1918,6 +1920,25 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.persistEntry(entry);
   }
 
+  async addMoodCheckIn(score: number, feeling = "", note = ""): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.moodCheckIns = [{
+      loggedAt: formatDateTimeKey(new Date()),
+      score: clamp(Math.round(score), 1, 5),
+      feeling: feeling.trim(),
+      note: note.trim()
+    }, ...entry.moodCheckIns].slice(0, 24);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+
+  async removeMoodCheckIn(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.moodCheckIns = entry.moodCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+
   async updateHabitValue(habitId: string, value: number): Promise<void> {
     const definitions = this.getHabitDefinitions();
     const definition = definitions.find((candidate) => candidate.id === habitId);
@@ -2120,12 +2141,32 @@ export default class DailyDashboardPlugin extends Plugin {
       },
       ...entry.energyCheckIns
     ].slice(0, 24);
+    this.syncStateRollups(entry);
     await this.persistEntry(entry);
   }
 
   async removeEnergyCheckIn(index: number): Promise<void> {
     const entry = this.getTodayEntry();
     entry.energyCheckIns = entry.energyCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+
+  async addAnxietyCheckIn(score: number, note = ""): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.anxietyCheckIns = [{
+      loggedAt: formatDateTimeKey(new Date()),
+      score: clamp(Math.round(score), 1, 5),
+      note: note.trim()
+    }, ...entry.anxietyCheckIns].slice(0, 24);
+    this.syncStateRollups(entry);
+    await this.persistEntry(entry);
+  }
+
+  async removeAnxietyCheckIn(index: number): Promise<void> {
+    const entry = this.getTodayEntry();
+    entry.anxietyCheckIns = entry.anxietyCheckIns.filter((_, candidateIndex) => candidateIndex !== index);
+    this.syncStateRollups(entry);
     await this.persistEntry(entry);
   }
 
@@ -4382,6 +4423,35 @@ export default class DailyDashboardPlugin extends Plugin {
       normalizedHabitEvents[habit.id] = rawEvents.slice(0, normalizedCount);
     });
 
+    const normalizedMoodCheckIns = Array.isArray(entry.moodCheckIns)
+      ? entry.moodCheckIns
+          .filter((item): item is MoodCheckIn => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string"))
+          .map((item) => ({
+            loggedAt: item.loggedAt,
+            score: clamp(Number(item.score ?? 0), 1, 5),
+            feeling: typeof item.feeling === "string" ? item.feeling.trim() : "",
+            note: typeof item.note === "string" ? item.note.trim() : ""
+          }))
+      : [];
+    const normalizedEnergyCheckIns = Array.isArray(entry.energyCheckIns)
+      ? entry.energyCheckIns
+          .filter((item): item is EnergyCheckIn => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string"))
+          .map((item) => ({
+            loggedAt: item.loggedAt,
+            score: clamp(Number(item.score ?? 0), 1, 5),
+            note: typeof item.note === "string" ? item.note.trim() : ""
+          }))
+      : [];
+    const normalizedAnxietyCheckIns = Array.isArray(entry.anxietyCheckIns)
+      ? entry.anxietyCheckIns
+          .filter((item): item is AnxietyCheckIn => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string"))
+          .map((item) => ({
+            loggedAt: item.loggedAt,
+            score: clamp(Number(item.score ?? 0), 1, 5),
+            note: typeof item.note === "string" ? item.note.trim() : ""
+          }))
+      : [];
+
     return {
       date,
       lastEditedAt: getEntryRecencyKey(entry),
@@ -4393,9 +4463,9 @@ export default class DailyDashboardPlugin extends Plugin {
       sleepMinutesOverride: Number.isFinite(Number(entry.sleepMinutesOverride)) ? clamp(Number(entry.sleepMinutesOverride), 0, 1440) : null,
       habits: normalizedHabits,
       habitEvents: normalizedHabitEvents,
-      moodScore: clamp(Number(entry.moodScore ?? 0), 0, 5),
-      energyScore: clamp(Number(entry.energyScore ?? 0), 0, 5),
-      anxietyScore: clamp(Number(entry.anxietyScore ?? 0), 0, 5),
+      moodScore: normalizedMoodCheckIns[0]?.score ?? clamp(Number(entry.moodScore ?? 0), 0, 5),
+      energyScore: normalizedEnergyCheckIns[0]?.score ?? clamp(Number(entry.energyScore ?? 0), 0, 5),
+      anxietyScore: normalizedAnxietyCheckIns[0]?.score ?? clamp(Number(entry.anxietyScore ?? 0), 0, 5),
       todayFocus: normalizeTodayFocusItems(entry.todayFocus),
       nextUpFocus: normalizeNextUpFocusItems(entry.nextUpFocus),
       calendarFollowThroughCompleted: Array.isArray(entry.calendarFollowThroughCompleted)
@@ -4421,15 +4491,9 @@ export default class DailyDashboardPlugin extends Plugin {
             .map((item) => normalizeSymptomEntry(item))
             .filter((item): item is SymptomEntry => item !== null)
         : [],
-      energyCheckIns: Array.isArray(entry.energyCheckIns)
-        ? entry.energyCheckIns
-            .filter((item): item is EnergyCheckIn => Boolean(item && typeof item === "object" && typeof item.loggedAt === "string"))
-            .map((item) => ({
-              loggedAt: item.loggedAt,
-              score: clamp(Number(item.score ?? 0), 1, 5),
-              note: typeof item.note === "string" ? item.note.trim() : ""
-            }))
-        : [],
+      moodCheckIns: normalizedMoodCheckIns,
+      energyCheckIns: normalizedEnergyCheckIns,
+      anxietyCheckIns: normalizedAnxietyCheckIns,
       dietInsight: typeof entry.dietInsight === "string" ? entry.dietInsight : "",
       sleepLog: typeof entry.sleepLog === "string" ? entry.sleepLog : "",
       dreamLog: typeof entry.dreamLog === "string" ? entry.dreamLog : "",
@@ -4595,7 +4659,9 @@ export default class DailyDashboardPlugin extends Plugin {
       ...entry.poopSessions.map((session) => session.start),
       ...entry.todayFocus.flatMap((item) => item.workSessions.map((session) => session.start)),
       ...entry.foodLog.map((item) => item.loggedAt ?? ""),
+      ...entry.moodCheckIns.map((item) => item.loggedAt ?? ""),
       ...entry.energyCheckIns.map((item) => item.loggedAt ?? ""),
+      ...entry.anxietyCheckIns.map((item) => item.loggedAt ?? ""),
       ...Object.values(entry.habitEvents).flat(),
       entry.dayEndedAt,
       entry.sleepTime
@@ -4622,6 +4688,12 @@ export default class DailyDashboardPlugin extends Plugin {
       end: session.end ?? "",
       tag: session.tag
     }));
+  }
+
+  private syncStateRollups(entry: DailyEntry): void {
+    entry.moodScore = entry.moodCheckIns[0]?.score ?? 0;
+    entry.energyScore = entry.energyCheckIns[0]?.score ?? 0;
+    entry.anxietyScore = entry.anxietyCheckIns[0]?.score ?? 0;
   }
 
   private normalizeRepairTimelineSessions(sessions: RepairTimelineSession[], date: string): RepairTimelineSession[] | null {
