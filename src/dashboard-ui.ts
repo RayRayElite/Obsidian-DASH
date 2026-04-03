@@ -1228,6 +1228,17 @@ export class DailyDashboardView extends ItemView {
       sessionDeckDropPreview.detach();
       let sessionDeckDropTarget: { trackerId: string; position: "before" | "after" } | null = null;
       let suppressNextSessionDeckClick = false;
+      const commitSessionDeckDrop = (): void => {
+        const dropTarget = sessionDeckDropTarget;
+        clearSessionDeckPreview();
+        const draggedTrackerId = this.draggedSessionDeckTrackerId;
+        this.draggedSessionDeckTrackerId = null;
+        if (!draggedTrackerId || !dropTarget || draggedTrackerId === dropTarget.trackerId) {
+          return;
+        }
+
+        void this.reorderSessionDeckTrackers(draggedTrackerId, dropTarget.trackerId, dropTarget.position);
+      };
       const clearSessionDeckPreview = (): void => {
         sessionDeckDropTarget = null;
         sessionDeckDropPreview.detach();
@@ -1276,16 +1287,8 @@ export class DailyDashboardView extends ItemView {
         });
         button.addEventListener("drop", (event) => {
           event.preventDefault();
-          const dropTarget = sessionDeckDropTarget;
-          clearSessionDeckPreview();
-          const draggedTrackerId = this.draggedSessionDeckTrackerId;
-          this.draggedSessionDeckTrackerId = null;
           button.removeClass("is-dragging");
-          if (!draggedTrackerId || !dropTarget || draggedTrackerId === dropTarget.trackerId) {
-            return;
-          }
-
-          void this.reorderSessionDeckTrackers(draggedTrackerId, dropTarget.trackerId, dropTarget.position);
+          commitSessionDeckDrop();
         });
         button.addEventListener("dragend", () => {
           this.draggedSessionDeckTrackerId = null;
@@ -1318,6 +1321,14 @@ export class DailyDashboardView extends ItemView {
           sessionDeckDropTarget = { trackerId: lastTracker.id, position: "after" };
           sessionDeckGrid.appendChild(sessionDeckDropPreview);
         }
+      });
+      sessionDeckGrid.addEventListener("drop", (event) => {
+        if (!this.draggedSessionDeckTrackerId) {
+          return;
+        }
+
+        event.preventDefault();
+        commitSessionDeckDrop();
       });
       sessionDeckGrid.addEventListener("dragleave", (event) => {
         if (event.target === sessionDeckGrid && !sessionDeckGrid.contains(event.relatedTarget as Node | null)) {
