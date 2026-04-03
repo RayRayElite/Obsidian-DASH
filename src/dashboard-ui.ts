@@ -107,12 +107,8 @@ export class DailyDashboardView extends ItemView {
     sectionName: "Add",
     taskText: ""
   };
-  private editingFocusIndex: number | null = null;
-  private editingFocusText = "";
-  private draggedFocusIndex: number | null = null;
   private draggedLayoutCardKey: string | null = null;
   private suppressNextCardToggle = false;
-  private selectedFocusProjectName = "";
   private selectedSessionProjectName = "";
   private selectedSavedFilterName = getDashboardSelectedFilterName();
   private calendarCursorDate = new Date();
@@ -679,16 +675,6 @@ export class DailyDashboardView extends ItemView {
     return section.createDiv({ cls: "daily-dashboard-subsection-body" });
   }
 
-  private startEditingFocusItem(index: number, value: string): void {
-    this.editingFocusIndex = index;
-    this.editingFocusText = value;
-  }
-
-  private stopEditingFocusItem(): void {
-    this.editingFocusIndex = null;
-    this.editingFocusText = "";
-  }
-
   async render(): Promise<void> {
     try {
       const { contentEl } = this;
@@ -737,9 +723,6 @@ export class DailyDashboardView extends ItemView {
       if (!this.quickAddState.projectName && projects.length > 0) {
         this.quickAddState.projectName = projects[0].name;
       }
-      if (!projects.some((project) => project.name === this.selectedFocusProjectName)) {
-        this.selectedFocusProjectName = "";
-      }
       if (!this.selectedSessionProjectName && projects.length > 0) {
         this.selectedSessionProjectName = projects[0].name;
       }
@@ -759,7 +742,6 @@ export class DailyDashboardView extends ItemView {
 
       const heroHeader = hero.createDiv({ cls: "daily-dashboard-hero-header" });
       const heroCopy = heroHeader.createDiv({ cls: "daily-dashboard-hero-copy" });
-      heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       const heroTitle = heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title" });
       heroTitle.createEl("span", { cls: "daily-dashboard-hero-title-line daily-dashboard-hero-title-line--brand", text: "Obsidian DASH" });
       heroTitle.createEl("span", { cls: "daily-dashboard-hero-title-line daily-dashboard-hero-title-line--subtitle", text: "Daily Action & System Hub" });
@@ -1120,7 +1102,7 @@ export class DailyDashboardView extends ItemView {
         createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
       });
 
-      const focusCard = createGridCard("Execution Hub", "Run today from one place: active focus, queued work, routine cues, suggestions, and calendar context.", {
+      const focusCard = createGridCard("Execution Hub", "Run today from one place: queued work, reminders, routine cues, suggestions, and calendar context.", {
         icon: "target",
         eyebrow: "Execution",
         tone: "focus",
@@ -1161,23 +1143,25 @@ export class DailyDashboardView extends ItemView {
         });
       }
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
-      const focusDisplayItems = this.plugin.getFocusDisplayItems(calendarSnapshot)
-        .filter((item) => item.kind !== "reminder" || !dismissedReminderIds.has(item.id));
-      const activeFocusCount = todayEntry.todayFocus.filter((item) => item.status !== "done").length;
+      const reminderItems = (calendarSnapshot?.reminders ?? [])
+        .map((reminder) => ({
+          reminder,
+          id: `reminder-${reminder.id}-${reminder.start}`
+        }))
+        .filter(({ id }) => !dismissedReminderIds.has(id));
       if (suggestedTop3.length > 0) {
-        const suggestedSection = this.createCollapsibleSubsection(focusCard, "focus-suggestions", "Suggested Top 3", "Generate today from calendar commitments, stale projects, and due work instead of staring at a blank list.");
+        const suggestedSection = this.createCollapsibleSubsection(focusCard, "focus-suggestions", "Suggested focus", "Generate a short queue from calendar commitments, stale projects, and due work instead of staring at a blank list.");
         const suggestionActions = suggestedSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(suggestionActions, "Use best fit", async () => {
-          const openSlots = Math.max(0, 3 - activeFocusCount);
-          for (const candidate of suggestedTop3.slice(0, openSlots)) {
-            await this.plugin.addTodayFocusItemWithDetails({
+        createButton(suggestionActions, "Queue best fit", async () => {
+          for (const candidate of suggestedTop3.slice(0, 3)) {
+            await this.plugin.addNextUpFocusItem({
               text: candidate.text,
               notes: candidate.notes,
               estimateMinutes: candidate.estimateMinutes
             });
           }
           await this.render();
-        }, activeFocusCount >= 3, "sparkles");
+        }, false, "sparkles");
 
         const suggestionList = suggestedSection.createDiv({ cls: "daily-dashboard-project-list" });
         suggestedTop3.forEach((candidate) => {
@@ -1194,14 +1178,6 @@ export class DailyDashboardView extends ItemView {
             copy.createEl("span", { cls: "daily-dashboard-row-meta", text: candidate.notes });
           }
           const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-          createButton(controls, "Top 3", async () => {
-            await this.plugin.addTodayFocusItemWithDetails({
-              text: candidate.text,
-              notes: candidate.notes,
-              estimateMinutes: candidate.estimateMinutes
-            });
-            await this.render();
-          }, activeFocusCount >= 3, "plus-circle");
           createButton(controls, "Next Up", async () => {
             await this.plugin.addNextUpFocusItem({
               text: candidate.text,
@@ -1221,250 +1197,74 @@ export class DailyDashboardView extends ItemView {
           }, false, "calendar-plus");
         });
       }
-      const focusList = focusCard.createDiv({ cls: "daily-dashboard-focus-list" });
-      focusCard.createEl("span", { cls: "daily-dashboard-row-meta", text: "Drag Top 3 rows to reprioritize them without deleting and recreating items." });
-      if (focusDisplayItems.length === 0) {
-        const emptyState = focusList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
-        emptyState.createEl("span", { text: "No focus items yet. Pull one from a project or let AI draft your starting plan." });
-        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "AI morning brief", async () => this.plugin.generateAiMorningStartupBrief(), false, "sparkles");
+      const reminderSection = this.createCollapsibleSubsection(focusCard, "focus-reminders", "Reminders", "Keep upcoming calendar reminders visible without bringing back the full Top 3 block.");
+      if (reminderItems.length === 0) {
+        const emptyState = reminderSection.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact" });
+        emptyState.createEl("span", { text: "No upcoming reminder items right now." });
       } else {
-        focusDisplayItems.forEach((item) => {
-          const row = focusList.createDiv({ cls: `daily-dashboard-focus-row is-${item.status}` });
-          if (item.kind === "reminder") {
-            row.addClass("is-reminder");
-            if (item.warningLevel) {
-              row.addClass(`is-${item.warningLevel}`);
-            }
-          }
+        const reminderList = reminderSection.createDiv({ cls: "daily-dashboard-focus-list" });
+        reminderItems.forEach(({ reminder, id }) => {
+          const row = reminderList.createDiv({ cls: `daily-dashboard-focus-row is-reminder is-${reminder.warningLevel}` });
           const copy = row.createDiv({ cls: "daily-dashboard-focus-copy" });
-          const isEditingFocus = item.kind === "focus" && this.editingFocusIndex === todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
-          if (isEditingFocus) {
-            const editInput = copy.createEl("input", {
-              cls: "daily-dashboard-input",
-              attr: { type: "text", placeholder: "Edit focus item" }
-            });
-            editInput.value = this.editingFocusText;
-            editInput.addEventListener("input", () => {
-              this.editingFocusText = editInput.value;
-            });
-            editInput.addEventListener("keydown", (event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
-                if (focusIndex >= 0) {
-                  void this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText).then((saved) => {
-                    if (!saved) {
-                      return;
-                    }
-
-                    this.stopEditingFocusItem();
-                    void this.render();
-                  });
-                }
-              }
-            });
-            window.setTimeout(() => editInput.focus(), 0);
-          } else {
-            copy.createEl("strong", { text: item.text });
+          copy.createEl("strong", { text: reminder.title });
+          copy.createEl("span", {
+            cls: "daily-dashboard-habit-meta",
+            text: this.getFocusDisplayMeta({
+              kind: "reminder",
+              id,
+              sourceEventId: reminder.id,
+              text: reminder.title,
+              status: "reminder",
+              workSessions: [],
+              completedAt: null,
+              trackedMinutes: 0,
+              isActive: false,
+              calendarDate: reminder.date,
+              calendarStart: reminder.start,
+              calendarEnd: reminder.end,
+              calendarLeadSummary: reminder.leadSummary,
+              allDay: reminder.allDay,
+              calendarNotes: [this.plugin.renderCalendarProjectLink(reminder.projectName, reminder.projectNotePath), reminder.notes]
+                .filter((value) => value.trim().length > 0)
+                .join(" • "),
+              repeatCadence: reminder.repeatCadence,
+              warningLevel: reminder.warningLevel
+            })
+          });
+          const reminderNotes = [this.plugin.renderCalendarProjectLink(reminder.projectName, reminder.projectNotePath), reminder.notes]
+            .filter((value) => value.trim().length > 0)
+            .join(" • ");
+          if (reminderNotes) {
             copy.createEl("span", {
-              cls: "daily-dashboard-habit-meta",
-              text: this.getFocusDisplayMeta(item)
+              cls: "daily-dashboard-row-meta",
+              text: reminderNotes
             });
-            if (item.notes) {
-              copy.createEl("span", {
-                cls: "daily-dashboard-row-meta",
-                text: item.notes
-              });
-            }
           }
 
           const controls = row.createDiv({ cls: "daily-dashboard-focus-controls" });
-          if (item.kind === "focus") {
-            const focusIndex = todayEntry.todayFocus.findIndex((candidate) => candidate.text === item.text);
-            if (focusIndex < 0) {
-              return;
-            }
-            if (!isEditingFocus) {
-              row.draggable = true;
-              row.addClass("is-draggable");
-              row.addEventListener("dragstart", (event) => {
-                this.draggedFocusIndex = focusIndex;
-                row.addClass("is-dragging");
-                if (event.dataTransfer) {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", `${focusIndex}`);
-                }
-              });
-              row.addEventListener("dragover", (event) => {
-                if (this.draggedFocusIndex === null || this.draggedFocusIndex === focusIndex) {
-                  return;
-                }
-
-                event.preventDefault();
-                row.addClass("is-drop-target");
-              });
-              row.addEventListener("dragleave", () => {
-                row.removeClass("is-drop-target");
-              });
-              row.addEventListener("drop", (event) => {
-                event.preventDefault();
-                row.removeClass("is-drop-target");
-                const draggedIndex = this.draggedFocusIndex;
-                this.draggedFocusIndex = null;
-                if (draggedIndex === null || draggedIndex === focusIndex) {
-                  return;
-                }
-
-                void this.plugin.reorderTodayFocusItems(draggedIndex, focusIndex).then(async (changed) => {
-                  if (changed) {
-                    await this.render();
-                  }
-                });
-              });
-              row.addEventListener("dragend", () => {
-                this.draggedFocusIndex = null;
-                row.removeClass("is-dragging");
-                row.removeClass("is-drop-target");
-              });
-            }
-            if (isEditingFocus) {
-              createButton(controls, "Save", async () => {
-                const saved = await this.plugin.updateTodayFocusItem(focusIndex, this.editingFocusText);
-                if (!saved) {
-                  return;
-                }
-
-                this.stopEditingFocusItem();
-                await this.render();
-              }, true, "check");
-              createButton(controls, "Cancel", async () => {
-                this.stopEditingFocusItem();
-                await this.render();
-              }, false, "x");
-            } else if (item.status === "done") {
-              createButton(controls, "Reopen", async () => this.plugin.reopenTodayFocusItem(focusIndex), false, "rotate-ccw");
-            } else if (item.isActive) {
-              createButton(controls, "Pause", async () => this.plugin.stopTodayFocusItem(focusIndex), false, "pause");
-            } else {
-              const relatedProjectName = item.projectName || this.selectedSessionProjectName;
-              createButton(controls, `Start${relatedProjectName ? ` • ${relatedProjectName}` : ""}`, async () => this.plugin.startTodayFocusItem(focusIndex, "", relatedProjectName), false, "play");
-            }
-            if (!isEditingFocus) {
-              createButton(controls, "Details", async () => {
-                new FocusCaptureModal(this.app, {
-                  mode: "edit",
-                  todayHasTop3Capacity: true,
-                  availableProjectNames: projects.map((project) => project.name),
-                  initialText: item.text,
-                  initialProjectName: item.projectName,
-                  initialNotes: item.notes ?? "",
-                  initialEstimateMinutes: item.estimateMinutes ?? null,
-                  initialDestination: "top3",
-                  onSubmit: async (payload) => {
-                    const saved = await this.plugin.updateTodayFocusDetails(focusIndex, payload);
-                    if (saved) {
-                      await this.render();
-                    }
-                  }
-                }).open();
-              }, false, "notebook-pen");
-              createButton(controls, "Block", async () => {
-                await this.plugin.addFocusBlockToCalendar({
-                  text: item.text,
-                  notes: item.notes,
-                  estimateMinutes: item.estimateMinutes,
-                  date: todayEntry.date
-                });
-                await this.render();
-              }, item.status === "done", "calendar-plus");
-              createButton(controls, "Edit", async () => {
-                this.startEditingFocusItem(focusIndex, item.text);
-                await this.render();
-              }, false, "pencil");
-              createButton(controls, "Done", async () => this.plugin.completeTodayFocusItem(focusIndex), item.status === "done", "check");
-              const removeButton = controls.createEl("button", { cls: "daily-dashboard-remove-button" });
-              removeButton.type = "button";
-              removeButton.ariaLabel = `Remove focus item ${item.text}`;
-              removeButton.title = `Remove ${item.text}`;
-              setIcon(removeButton, "x");
-              removeButton.addEventListener("click", () => {
-                const removedItem = cloneTodayFocusItem(item);
-                void this.runDestructiveAction(
-                  `Removed Top 3 item \"${item.text}\".`,
-                  async () => this.plugin.removeTodayFocusItem(focusIndex),
-                  async () => this.plugin.restoreTodayFocusItem(removedItem, focusIndex)
-                );
-              });
-            }
-          } else {
-            createButton(controls, "Accept", async () => {
-                await this.plugin.addTodayFocusItem(item.text);
-                clearDismissedReminder(todayEntry.date, item.id);
-                await this.render();
-            }, true, "plus-circle");
-            createButton(controls, "Dismiss", async () => {
-                setDismissedReminder(todayEntry.date, item.id);
-                await this.render();
-            }, false, "bell-off");
-            createButton(controls, "Calendar", async () => {
-              new CalendarEventModal(this.app, this.plugin, item.calendarDate ?? todayEntry.date, item.sourceEventId ?? null).open();
-            }, false, "calendar-days");
-          }
+          createButton(controls, "Queue", async () => {
+            await this.plugin.addNextUpFocusItem({
+              text: reminder.title,
+              notes: reminder.notes,
+              estimateMinutes: this.plugin.getCalendarReminderEstimateMinutes(reminder.start, reminder.end, reminder.allDay)
+            });
+            clearDismissedReminder(todayEntry.date, id);
+            await this.render();
+          }, true, "list-plus");
+          createButton(controls, "Dismiss", async () => {
+            setDismissedReminder(todayEntry.date, id);
+            await this.render();
+          }, false, "bell-off");
+          createButton(controls, "Calendar", async () => {
+            new CalendarEventModal(this.app, this.plugin, reminder.date ?? todayEntry.date, reminder.id ?? null).open();
+          }, false, "calendar-days");
         });
       }
-      const focusAddRow = focusCard.createDiv({ cls: "daily-dashboard-inline-form" });
-      const focusInput = focusAddRow.createEl("input", {
-        cls: "daily-dashboard-input",
-        attr: { type: "text", placeholder: "Add a focus item" }
-      });
-      const focusProjectSelect = focusAddRow.createEl("select", { cls: "daily-dashboard-input" });
-      const focusNoProjectOption = focusProjectSelect.createEl("option", { text: "No project" });
-      focusNoProjectOption.value = "";
-      projects.forEach((project) => {
-        const option = focusProjectSelect.createEl("option", { text: project.name });
-        option.value = project.name;
-      });
-      focusProjectSelect.value = this.selectedFocusProjectName;
-      focusProjectSelect.addEventListener("change", () => {
-        this.selectedFocusProjectName = focusProjectSelect.value;
-      });
-      const focusButton = focusAddRow.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add" });
-      focusButton.type = "button";
-      const submitFocus = async (): Promise<void> => {
-        const value = focusInput.value.trim();
-        if (!value) {
-          return;
-        }
-        await this.plugin.addTodayFocusItemWithDetails({ text: value, projectName: this.selectedFocusProjectName });
-        focusInput.value = "";
-      };
-      focusInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          void submitFocus();
-        }
-      });
-      focusButton.addEventListener("click", () => {
-        void submitFocus();
-      });
       const focusUtilityActions = focusCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(focusUtilityActions, "Quick capture", async () => this.plugin.openQuickCaptureFocusFlow(), false, "rocket");
       createButton(focusUtilityActions, "Pause all -> break", async () => this.plugin.pauseAllAndStartBreak(), false, "pause-circle");
       const focusCalendarSection = this.createCollapsibleSubsection(focusCard, "focus-calendar", "Calendar", "Keep the monthly planner nearby without making Execution too tall.");
-        const carryForwardCandidates = this.plugin.getCarryForwardFocusCandidates(todayEntry.date);
-        if (carryForwardCandidates.length > 0) {
-          const carryForwardSection = this.createCollapsibleSubsection(focusCard, "focus-carry-forward", "Carry forward", "Bring unfinished Top 3 items from the previous logical day into today only when you want them.");
-          const carryForwardMeta = carryForwardSection.createDiv({ cls: "daily-dashboard-row-meta" });
-          carryForwardMeta.setText(carryForwardCandidates.join(" • "));
-          const carryForwardActions = carryForwardSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-          createButton(carryForwardActions, "Carry unfinished", async () => {
-            await this.plugin.carryForwardUnfinishedFocusItems();
-            await this.render();
-          }, false, "arrow-down-to-line");
-        }
       const nextUpItems = this.plugin.getNextUpFocusItems(todayEntry.date);
-      const nextUpSection = this.createCollapsibleSubsection(focusCard, "focus-next-up", "Next Up", "Keep overflow queued without overfilling the Top 3.");
+      const nextUpSection = this.createCollapsibleSubsection(focusCard, "focus-next-up", "Next Up", "Keep overflow queued and ready to pull when you actually need it.");
       if (nextUpItems.length === 0) {
         nextUpSection.createDiv({
           cls: "daily-dashboard-empty-state daily-dashboard-empty-state--compact",
@@ -2177,15 +1977,6 @@ export class DailyDashboardView extends ItemView {
       notesInput.addEventListener("change", () => {
         void this.plugin.updateDailyNotes(notesInput.value);
       });
-      const adaptivePrompts = this.plugin.getAdaptiveReflectionPrompts(todayEntry.date);
-      if (adaptivePrompts.length > 0) {
-        notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "Adaptive reflection prompts" });
-        const promptList = notesCard.createDiv({ cls: "daily-dashboard-ai-suggestions" });
-        adaptivePrompts.forEach((prompt) => {
-          const row = promptList.createDiv({ cls: "daily-dashboard-project-row" });
-          row.createEl("span", { text: prompt });
-        });
-      }
       notesCard.createEl("label", { cls: "daily-dashboard-field-label", text: "What helped today?" });
       const helpedInput = notesCard.createEl("textarea", { cls: "daily-dashboard-textarea" });
       helpedInput.value = todayEntry.helpedToday;
@@ -2202,6 +1993,15 @@ export class DailyDashboardView extends ItemView {
       hurtInput.addEventListener("change", () => {
         void this.plugin.updateReflection("hurt", hurtInput.value);
       });
+      const adaptivePrompts = this.plugin.getAdaptiveReflectionPrompts(todayEntry.date);
+      if (adaptivePrompts.length > 0) {
+        const reflectionSection = this.createCollapsibleSubsection(notesCard, "sleep-notes-adaptive-reflections", "Adaptive reflection prompts", "Review the day with prompts based on the actual sleep, notes, habit, friction, and energy context already logged.");
+        const promptList = reflectionSection.createDiv({ cls: "daily-dashboard-ai-suggestions" });
+        adaptivePrompts.forEach((prompt) => {
+          const row = promptList.createDiv({ cls: "daily-dashboard-project-row" });
+          row.createEl("span", { text: prompt });
+        });
+      }
 
       const timelineCard = createGridCard("Timeline Search", "Search across tasks, sessions, logs, and calendar events from one place instead of hopping between cards.", {
         icon: "scan-search",
