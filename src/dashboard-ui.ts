@@ -690,6 +690,22 @@ export class DailyDashboardView extends ItemView {
     return `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 68%, black))`;
   }
 
+  private getGamificationState(score: number, tone: DashboardTone): { label: string; tone: DashboardTone } {
+    if (tone === "done" || score >= 80) {
+      return { label: "Winning", tone: "done" };
+    }
+    if (tone === "focus" || tone === "capture" || score >= 60) {
+      return { label: "Strong", tone: "focus" };
+    }
+    if (tone === "alert" || score < 35) {
+      return { label: "Attention", tone: "alert" };
+    }
+    if (tone === "log" || score < 50) {
+      return { label: "Watch", tone: "state" };
+    }
+    return { label: "Stable", tone: "neutral" };
+  }
+
   private getSessionTagSummary(sessions: WorkSession[]): Array<{ tag: string; minutes: number }> {
     const nowKey = formatDateTimeKey(new Date());
     const totals = new Map<string, number>();
@@ -1711,10 +1727,11 @@ export class DailyDashboardView extends ItemView {
         { key: "month", label: "Monthly", snapshot: gamificationSummary.month }
       ] as const).forEach((item) => {
         const button = gamificationTabs.createEl("button", {
-          cls: this.selectedGamificationWindow === item.key ? "daily-dashboard-step is-active" : "daily-dashboard-step",
-          text: `${item.label} ${item.snapshot.score}`
+          cls: this.selectedGamificationWindow === item.key ? "daily-dashboard-gamification-tab is-active" : "daily-dashboard-gamification-tab"
         });
         button.type = "button";
+        button.createEl("span", { text: item.label });
+        button.createEl("strong", { text: `${item.snapshot.score}` });
         button.addEventListener("click", () => {
           this.selectedGamificationWindow = item.key;
           void this.render();
@@ -1725,41 +1742,30 @@ export class DailyDashboardView extends ItemView {
         : this.selectedGamificationWindow === "month"
           ? gamificationSummary.month
           : gamificationSummary.today;
+      const overallGamificationState = this.getGamificationState(activeSnapshot.score, activeSnapshot.score >= gamificationSummary.lowScoreThreshold ? "focus" : "alert");
       const gamificationStage = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-stage" });
       const gamificationHero = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-hero" });
       const gamificationHeroCopy = gamificationHero.createDiv({ cls: "daily-dashboard-stack" });
       gamificationHeroCopy.createEl("strong", { text: activeSnapshot.label });
       gamificationHeroCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: activeSnapshot.comparisonText });
-      const heroBadge = gamificationHero.createDiv({ cls: "daily-dashboard-gamification-badge" });
-      heroBadge.createEl("span", { cls: "daily-dashboard-row-meta", text: "Rank" });
-      heroBadge.createEl("strong", { text: activeSnapshot.grade });
-      heroBadge.createEl("span", { text: `${activeSnapshot.score}/100` });
+      const heroState = gamificationHero.createDiv({ cls: "daily-dashboard-gamification-state-block" });
+      heroState.createEl("span", { cls: `daily-dashboard-semantic-chip is-${overallGamificationState.tone}`, text: overallGamificationState.label });
+      const heroBadge = gamificationHero.createDiv({ cls: "daily-dashboard-gamification-score-block" });
+      heroBadge.createEl("span", { cls: "daily-dashboard-row-meta", text: activeSnapshot.grade });
+      heroBadge.createEl("strong", { text: `${activeSnapshot.score}/100` });
       const gamificationStats = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
       this.renderDayMetric(gamificationStats, "Top category", [...activeSnapshot.categories].sort((left, right) => right.score - left.score)[0]?.label ?? "None");
       this.renderDayMetric(gamificationStats, "Weakest category", [...activeSnapshot.categories].sort((left, right) => left.score - right.score)[0]?.label ?? "None");
       this.renderDayMetric(gamificationStats, "Recovery run", `${gamificationSummary.recoveryFromLowScoreDays} days`);
       this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
-      const gamificationInsights = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-insights" });
-      const winsPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
-      winsPanel.createEl("strong", { text: "Wins" });
-      if (activeSnapshot.highlights.length === 0) {
-        winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No clear wins yet for this window." });
-      } else {
-        activeSnapshot.highlights.slice(0, 4).forEach((item) => winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
-      }
-      const cautionPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
-      cautionPanel.createEl("strong", { text: "Needs attention" });
-      if (activeSnapshot.cautions.length === 0) {
-        cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No major cautions in this window." });
-      } else {
-        activeSnapshot.cautions.slice(0, 4).forEach((item) => cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
-      }
       const categoryList = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-category-grid" });
       activeSnapshot.categories.forEach((category) => {
+        const categoryState = this.getGamificationState(category.maxScore > 0 ? Math.round((category.score / category.maxScore) * 100) : 0, category.tone === "done" ? "done" : category.tone === "alert" ? "alert" : category.tone === "log" ? "state" : "focus");
         const row = categoryList.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-gamification-category-card" });
-        const rowHeader = row.createDiv({ cls: "daily-dashboard-score-header" });
+        const rowHeader = row.createDiv({ cls: "daily-dashboard-gamification-category-header" });
         rowHeader.createEl("strong", { text: category.label });
-        rowHeader.createEl("span", { cls: "daily-dashboard-row-meta", text: `${category.score}/${category.maxScore}` });
+        rowHeader.createEl("span", { cls: `daily-dashboard-semantic-chip is-${categoryState.tone}`, text: categoryState.label });
+        rowHeader.createEl("span", { cls: "daily-dashboard-row-meta daily-dashboard-gamification-category-score", text: `${category.score}/${category.maxScore}` });
         row.createEl("span", { cls: "daily-dashboard-row-meta", text: category.summary });
         const track = row.createDiv({ cls: "daily-dashboard-momentum-track" });
         const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
