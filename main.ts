@@ -153,6 +153,7 @@ import {
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
   type ResearchGroundingMode,
+  type SessionTrackerDefinition,
   type RetrievalIndexStatus,
   type RoutineTemplateDefinition,
   type SleepInsights,
@@ -990,6 +991,19 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.getTodayEntry().breakSessions.some((session) => session.end === null);
   }
 
+  getSessionTrackers(): SessionTrackerDefinition[] {
+    return this.getSettings().sessionTrackers;
+  }
+
+  getVisibleSessionTrackers(): SessionTrackerDefinition[] {
+    return this.getSessionTrackers().filter((tracker) => tracker.visible);
+  }
+
+  getSessionTracker(id: string): SessionTrackerDefinition | null {
+    const normalizedId = id.trim().toLowerCase();
+    return this.getSessionTrackers().find((tracker) => tracker.id === normalizedId) ?? null;
+  }
+
   getActiveActivitySession(kind?: ActivitySessionKind, entry: DailyEntry = this.getTodayEntry()): ActivitySession | null {
     return [...entry.activitySessions]
       .reverse()
@@ -1022,6 +1036,13 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getTrackedActivityMinutes(entry: DailyEntry = this.getTodayEntry(), kind?: ActivitySessionKind): number {
     return getTrackedActivityMinutes(this.getEffectiveTrackedEntry(entry), kind);
+  }
+
+  async updateSessionTrackers(trackers: SessionTrackerDefinition[]): Promise<void> {
+    await this.updateSettings({
+      ...this.getSettings(),
+      sessionTrackers: trackers
+    });
   }
 
   getTrackedSleepMinutes(entry: DailyEntry = this.getTodayEntry()): number {
@@ -2388,6 +2409,47 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  async updateHabitDefinition(habitId: string, updates: {
+    label: string;
+    target: number;
+    completionWindow: string;
+    difficultyWeight: number;
+    cadence: string;
+  }): Promise<void> {
+    const normalizedLabel = updates.label.trim();
+    if (!normalizedLabel) {
+      new Notice("Habit name is required.");
+      return;
+    }
+
+    const definitions = [...this.getHabitDefinitions()];
+    const index = definitions.findIndex((habit) => habit.id === habitId);
+    if (index < 0) {
+      return;
+    }
+
+    if (definitions.some((habit, habitIndex) => habitIndex !== index && habit.label.trim().toLowerCase() === normalizedLabel.toLowerCase())) {
+      new Notice(`A habit named ${normalizedLabel} already exists.`);
+      return;
+    }
+
+    definitions[index] = {
+      ...definitions[index],
+      label: normalizedLabel,
+      target: clamp(Math.round(updates.target), 1, 12),
+      completionWindow: updates.completionWindow === "morning" || updates.completionWindow === "afternoon" || updates.completionWindow === "evening" || updates.completionWindow === "before-bed"
+        ? updates.completionWindow
+        : "anytime",
+      cadence: updates.cadence === "every-other-day" || updates.cadence === "weekly" ? updates.cadence : "daily",
+      difficultyWeight: clamp(Math.round(updates.difficultyWeight), 1, 3)
+    };
+
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: definitions
+    });
+  }
+
   async removeHabitDefinition(habitId: string): Promise<void> {
     if (this.getHabitDefinitions().length <= 1) {
       new Notice("Keep at least one habit defined.");
@@ -3093,7 +3155,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const entry = this.getTodayEntry();
-    const label = formatActivitySessionLabel(kind);
+    const label = this.getSessionTracker(kind)?.label || formatActivitySessionLabel(kind);
     if (entry.activitySessions.some((session) => session.end === null && session.kind === kind)) {
       new Notice(`A ${label.toLowerCase()} session is already active.`);
       return;
@@ -4831,6 +4893,15 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async openAddHabitFlow(): Promise<void> {
     new AddHabitModal(this.app, this).open();
+  }
+
+  async openEditHabitFlow(habitId: string): Promise<void> {
+    const habit = this.getHabitDefinitions().find((candidate) => candidate.id === habitId);
+    if (!habit) {
+      return;
+    }
+
+    new AddHabitModal(this.app, this, habit).open();
   }
 
   async createProjectAndNote(input: CreateProjectInput): Promise<void> {

@@ -160,7 +160,19 @@ var DEFAULT_SETTINGS = {
     { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", cadence: "daily", anchorDate: "", difficultyWeight: 1 },
     { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", cadence: "daily", anchorDate: "", difficultyWeight: 2 }
   ],
-  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
+  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30",
+  sessionTrackers: [
+    { id: "exercise", label: "Exercise", color: "#d84f60", visible: true },
+    { id: "reading", label: "Reading", color: "#e55d93", visible: true },
+    { id: "gaming", label: "Gaming", color: "#d9d0c2", visible: true },
+    { id: "hobbies", label: "Hobbies", color: "#353c41", visible: true },
+    { id: "hygiene", label: "Hygiene", color: "#39c99c", visible: true },
+    { id: "cooking", label: "Cooking", color: "#e2703d", visible: true },
+    { id: "errand", label: "Errand", color: "#b39233", visible: true },
+    { id: "commute", label: "Commute", color: "#6e829d", visible: true },
+    { id: "social", label: "Social", color: "#5f1814", visible: true },
+    { id: "chores", label: "Chores", color: "#6fb149", visible: true }
+  ]
 };
 
 // src/dashboard-core.ts
@@ -188,6 +200,7 @@ function sanitizeSettings(settings) {
   const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets) ? settings.intakeQuickPresets.map((preset, index) => normalizeIntakeQuickPreset(preset, index)).filter((preset) => preset !== null) : getDefaultIntakeQuickPresets(measurementSystem);
   const habitAutomations = Array.isArray(settings.habitAutomations) ? settings.habitAutomations.map((automation, index) => normalizeHabitAutomation(automation, index, parsedHabitDefinitions)).filter((automation) => automation !== null) : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = (_d = settings.showUndoNotifications) != null ? _d : DEFAULT_SETTINGS.showUndoNotifications;
+  const sessionTrackers = Array.isArray(settings.sessionTrackers) ? settings.sessionTrackers.map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index)).filter((tracker) => tracker !== null) : DEFAULT_SETTINGS.sessionTrackers;
   const notificationSound = settings.notificationSound === "off" || settings.notificationSound === "ping" || settings.notificationSound === "alert" ? settings.notificationSound : DEFAULT_SETTINGS.notificationSound;
   return {
     dashboardTitle: ((_e = settings.dashboardTitle) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.dashboardTitle,
@@ -246,8 +259,37 @@ function sanitizeSettings(settings) {
     wallpaperFolder: normalizeFolderPath2(((_R = settings.wallpaperFolder) == null ? void 0 : _R.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_S = settings.selectedWallpaper) == null ? void 0 : _S.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
-    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
+    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
+    sessionTrackers: sessionTrackers.length > 0 ? sessionTrackers : DEFAULT_SETTINGS.sessionTrackers
   };
+}
+function normalizeSessionTrackerDefinition(input, index) {
+  var _a;
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const id = typeof candidate.id === "string" && candidate.id.trim().length > 0 ? normalizeTrackerId(candidate.id) : normalizeTrackerId(label || `tracker-${index + 1}`);
+  if (!id) {
+    return null;
+  }
+  return {
+    id,
+    label: label || titleCaseTrackerId(id),
+    color: normalizeTrackerColor(candidate.color),
+    visible: (_a = candidate.visible) != null ? _a : true
+  };
+}
+function normalizeTrackerId(value) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function normalizeTrackerColor(value) {
+  const color = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#6e829d";
+}
+function titleCaseTrackerId(value) {
+  return value.split(/[-_\s]+/).filter((part) => part.length > 0).map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`).join(" ");
 }
 function normalizeFolderPath2(value) {
   const normalized = (0, import_obsidian.normalizePath)(value.trim());
@@ -525,7 +567,7 @@ function formatActivitySessionLabel(kind) {
     case "hobbies":
       return "Hobbies";
     default:
-      return "Activity";
+      return titleCaseTrackerId(kind) || "Activity";
   }
 }
 function normalizeWeightGoalMode(value) {
@@ -543,7 +585,7 @@ function normalizeActivitySession(input) {
     return null;
   }
   const legacyKind = candidate.kind === "study" ? "reading" : candidate.kind;
-  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(legacyKind) ? legacyKind : candidate.kind === "admin" ? "chores" : "chores";
+  const kind = legacyKind === "admin" ? "chores" : typeof legacyKind === "string" && legacyKind.trim().length > 0 ? normalizeTrackerId(legacyKind) : "chores";
   const rawLabel = typeof candidate.label === "string" ? candidate.label.trim() : "";
   return {
     kind,
@@ -4363,18 +4405,18 @@ function appendLinesToSection(content, sectionName, linesToAppend) {
 
 // src/dashboard-ui.ts
 var import_obsidian3 = require("obsidian");
-var DASHBOARD_ACTIVITY_TRACKERS = [
-  { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
-  { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
-  { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
-  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "neutral" },
-  { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
-  { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
-  { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
-  { kind: "commute", label: "Commute", icon: "car-front", tone: "neutral" },
-  { kind: "social", label: "Social", icon: "users", tone: "focus" },
-  { kind: "chores", label: "Chores", icon: "house", tone: "log" }
-];
+var DASHBOARD_ACTIVITY_TRACKER_ICON_MAP = {
+  exercise: "dumbbell",
+  reading: "book-open",
+  gaming: "gamepad-2",
+  hobbies: "shapes",
+  hygiene: "shower-head",
+  cooking: "chef-hat",
+  errand: "shopping-bag",
+  commute: "car-front",
+  social: "users",
+  chores: "house"
+};
 var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "sleep", label: "Sleep" },
   { kind: "work", label: "Work" },
@@ -4382,7 +4424,6 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "relax", label: "Relax" },
   { kind: "break", label: "Break" },
   { kind: "poop", label: "Poop" },
-  ...DASHBOARD_ACTIVITY_TRACKERS,
   { kind: "unknown", label: "Unknown" }
 ];
 var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.ItemView {
@@ -4419,6 +4460,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.quickAddPanelOpen = false;
     this.aiQuestionDraft = "";
     this.expandedHabitMissNotes = /* @__PURE__ */ new Set();
+    this.selectedGamificationWindow = "today";
     this.handleDocumentPointerDown = (event) => {
       if (!this.notificationPanelOpen && !this.quickAddPanelOpen || !this.contentEl.isConnected) {
         return;
@@ -4845,6 +4887,42 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
     ].filter((value) => value.length > 0).join(" \u2022 ");
   }
+  getSessionTrackers() {
+    return this.plugin.getSessionTrackers();
+  }
+  getVisibleSessionTrackers() {
+    return this.plugin.getVisibleSessionTrackers();
+  }
+  getSessionTrackerTone(trackerId) {
+    const normalized = trackerId.trim().toLowerCase();
+    if (normalized === "exercise" || normalized === "hygiene") {
+      return "health";
+    }
+    if (normalized === "reading" || normalized === "social" || normalized === "gaming") {
+      return "focus";
+    }
+    if (normalized === "cooking" || normalized === "errand") {
+      return "alert";
+    }
+    if (normalized === "chores" || normalized === "commute") {
+      return "log";
+    }
+    return "neutral";
+  }
+  getSessionTrackerIcon(trackerId) {
+    return DASHBOARD_ACTIVITY_TRACKER_ICON_MAP[trackerId.trim().toLowerCase()] || "circle";
+  }
+  getSessionTrackerLabel(trackerId) {
+    var _a;
+    return ((_a = this.plugin.getSessionTracker(trackerId)) == null ? void 0 : _a.label) || formatActivitySessionLabel(trackerId);
+  }
+  getSessionTrackerColor(trackerId) {
+    var _a;
+    return ((_a = this.plugin.getSessionTracker(trackerId)) == null ? void 0 : _a.color) || "#6e829d";
+  }
+  buildGradientFromColor(color) {
+    return `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 68%, black))`;
+  }
   getSessionTagSummary(sessions) {
     const nowKey = formatDateTimeKey(/* @__PURE__ */ new Date());
     const totals = /* @__PURE__ */ new Map();
@@ -4897,7 +4975,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     return section.createDiv({ cls: "daily-dashboard-subsection-body" });
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
@@ -5137,6 +5215,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tone: "health",
         tag: "Visual"
       });
+      const weekBoardSegments = [
+        ...WEEK_AT_A_GLANCE_SEGMENTS.slice(0, -1),
+        ...visibleSessionTrackers.map((tracker) => ({ kind: tracker.id, label: tracker.label })),
+        WEEK_AT_A_GLANCE_SEGMENTS[WEEK_AT_A_GLANCE_SEGMENTS.length - 1]
+      ];
       const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
       const weekStage = weekBoard.createDiv({ cls: "daily-dashboard-week-stage" });
       weekStage.createDiv({ cls: "daily-dashboard-week-platform" });
@@ -5151,9 +5234,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           column.createDiv({ cls: "daily-dashboard-week-active-indicator", text: "Active" });
         }
         const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
-        WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
-          var _a2;
-          this.renderWeekBarSegment(cylinder, segment.kind, (_a2 = day.minutesByKind[segment.kind]) != null ? _a2 : 0);
+        weekBoardSegments.forEach((segment) => {
+          var _a2, _b2;
+          this.renderWeekBarSegment(cylinder, segment.kind, (_a2 = day.minutesByKind[segment.kind]) != null ? _a2 : 0, (_b2 = visibleSessionTrackers.find((tracker) => tracker.id === segment.kind)) == null ? void 0 : _b2.color);
         });
         cylinder.createDiv({ cls: "daily-dashboard-week-cylinder-overlay" });
         const labels = column.createDiv({ cls: "daily-dashboard-week-labels" });
@@ -5161,8 +5244,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         labels.createEl("span", { text: `${Number.parseInt(day.date.slice(-2), 10)}` });
       });
       const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-week-legend" });
-      WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
-        this.renderWeekLegendItem(weekLegend, segment.label, segment.kind);
+      weekBoardSegments.forEach((segment) => {
+        var _a2;
+        this.renderWeekLegendItem(weekLegend, segment.label, segment.kind, (_a2 = visibleSessionTrackers.find((tracker) => tracker.id === segment.kind)) == null ? void 0 : _a2.color);
       });
       const weeklyAgendaCard = createGridCard("Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
         icon: "calendar-days",
@@ -5203,6 +5287,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
       const aiStatus = this.plugin.getAiStatus();
+      const visibleSessionTrackers = this.getVisibleSessionTrackers();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
@@ -5229,7 +5314,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       });
       const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
-      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? (_q = (_p = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)) == null ? void 0 : _p.tone) != null ? _q : "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? this.getSessionTrackerTone(activeActivitySession.kind) : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
       createSemanticChip(sessionDeckSummary, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(sessionDeckSummary, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
       createSemanticChip(
@@ -5271,11 +5356,15 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         }
       }
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
-      const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick) => {
+      const createSessionDeckButton = (label, detail, icon, tone, isActive, onClick, accentColor) => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
         button.type = "button";
         button.toggleClass("is-active", isActive);
         button.addClass(`is-${tone}`);
+        if (accentColor) {
+          button.style.setProperty("--daily-dashboard-session-accent", accentColor);
+          button.addClass("has-custom-accent");
+        }
         const iconEl = button.createSpan({ cls: "daily-dashboard-session-button-icon" });
         (0, import_obsidian3.setIcon)(iconEl, icon);
         const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
@@ -5290,9 +5379,18 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
       createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
       createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${trackedPoopCount}x \u2022 ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.kind ? activeActivitySession : null;
-        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
+      const customizeSessionDeckButton = sessionDeckActions.createEl("button", { cls: "daily-dashboard-icon-button" });
+      customizeSessionDeckButton.type = "button";
+      customizeSessionDeckButton.ariaLabel = "Customize Session Deck";
+      customizeSessionDeckButton.title = "Customize Session Deck";
+      const customizeSessionDeckIcon = customizeSessionDeckButton.createSpan({ cls: "daily-dashboard-button-icon" });
+      (0, import_obsidian3.setIcon)(customizeSessionDeckIcon, "sliders-horizontal");
+      customizeSessionDeckButton.addEventListener("click", () => {
+        new SessionDeckCustomizationModal(this.app, this.plugin).open();
+      });
+      visibleSessionTrackers.forEach((tracker) => {
+        const activeTrackerSession = (activeActivitySession == null ? void 0 : activeActivitySession.kind) === tracker.id ? activeActivitySession : null;
+        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(/* @__PURE__ */ new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.id))} today`, activeTrackerSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.id) : this.plugin.startActivitySession(tracker.id), tracker.color);
       });
       const focusCard = createGridCard("Action Queue", "Triage queued work, reminders, routines, and calendar context from one place.", {
         icon: "target",
@@ -5332,7 +5430,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
       }
       const dismissedReminderIds = getDismissedReminderState(todayEntry.date);
-      const reminderItems = ((_r = calendarSnapshot == null ? void 0 : calendarSnapshot.reminders) != null ? _r : []).map((reminder) => ({
+      const reminderItems = ((_p = calendarSnapshot == null ? void 0 : calendarSnapshot.reminders) != null ? _p : []).map((reminder) => ({
         reminder,
         id: `reminder-${reminder.id}-${reminder.start}`
       })).filter(({ id }) => !dismissedReminderIds.has(id));
@@ -5742,20 +5840,71 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored"
       });
       const gamificationSummaryRow = gamificationCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(gamificationSummaryRow, `Today ${gamificationSummary.today.score}/100 ${gamificationSummary.today.grade}`, gamificationSummary.today.score >= 80 ? "done" : gamificationSummary.today.score >= 60 ? "state" : "alert");
-      createSemanticChip(gamificationSummaryRow, `Week ${gamificationSummary.week.score}/100 ${gamificationSummary.week.grade}`, gamificationSummary.week.score >= 80 ? "done" : gamificationSummary.week.score >= 60 ? "state" : "alert");
-      createSemanticChip(gamificationSummaryRow, `Month ${gamificationSummary.month.score}/100 ${gamificationSummary.month.grade}`, gamificationSummary.month.score >= 80 ? "done" : gamificationSummary.month.score >= 60 ? "state" : "alert");
       createSemanticChip(gamificationSummaryRow, `Streak ${gamificationSummary.currentStreak}`, gamificationSummary.currentStreak >= 3 ? "focus" : "neutral");
       createSemanticChip(gamificationSummaryRow, `Best ${gamificationSummary.bestStreak}`, gamificationSummary.bestStreak >= 5 ? "done" : "neutral");
-      const gamificationStats = gamificationCard.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
-      this.renderDayMetric(gamificationStats, "Personal best", `${gamificationSummary.personalBestDayScore}/100`);
-      this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
+      createSemanticChip(gamificationSummaryRow, `Personal best ${gamificationSummary.personalBestDayScore}/100`, gamificationSummary.personalBestDayScore >= 85 ? "done" : "focus");
+      createSemanticChip(gamificationSummaryRow, `Low-score line ${gamificationSummary.lowScoreThreshold}/100`, "alert");
+      const gamificationTabs = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
+      [
+        { key: "today", label: "Daily", snapshot: gamificationSummary.today },
+        { key: "week", label: "Weekly", snapshot: gamificationSummary.week },
+        { key: "month", label: "Monthly", snapshot: gamificationSummary.month }
+      ].forEach((item) => {
+        const button = gamificationTabs.createEl("button", {
+          cls: this.selectedGamificationWindow === item.key ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+          text: `${item.label} ${item.snapshot.score}`
+        });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          this.selectedGamificationWindow = item.key;
+          void this.render();
+        });
+      });
+      const activeSnapshot = this.selectedGamificationWindow === "week" ? gamificationSummary.week : this.selectedGamificationWindow === "month" ? gamificationSummary.month : gamificationSummary.today;
+      const gamificationStage = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-stage" });
+      const gamificationHero = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-hero" });
+      const gamificationHeroCopy = gamificationHero.createDiv({ cls: "daily-dashboard-stack" });
+      gamificationHeroCopy.createEl("strong", { text: activeSnapshot.label });
+      gamificationHeroCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: activeSnapshot.comparisonText });
+      const heroBadge = gamificationHero.createDiv({ cls: "daily-dashboard-gamification-badge" });
+      heroBadge.createEl("span", { cls: "daily-dashboard-row-meta", text: "Rank" });
+      heroBadge.createEl("strong", { text: activeSnapshot.grade });
+      heroBadge.createEl("span", { text: `${activeSnapshot.score}/100` });
+      const gamificationStats = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+      this.renderDayMetric(gamificationStats, "Top category", (_r = (_q = [...activeSnapshot.categories].sort((left, right) => right.score - left.score)[0]) == null ? void 0 : _q.label) != null ? _r : "None");
+      this.renderDayMetric(gamificationStats, "Weakest category", (_t = (_s = [...activeSnapshot.categories].sort((left, right) => left.score - right.score)[0]) == null ? void 0 : _s.label) != null ? _t : "None");
       this.renderDayMetric(gamificationStats, "Recovery run", `${gamificationSummary.recoveryFromLowScoreDays} days`);
-      this.renderDayMetric(gamificationStats, "Low-score line", `${gamificationSummary.lowScoreThreshold}/100`);
-      const gamificationSnapshots = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-snapshots" });
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.today);
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.week);
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.month);
+      this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
+      const gamificationInsights = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-insights" });
+      const winsPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
+      winsPanel.createEl("strong", { text: "Wins" });
+      if (activeSnapshot.highlights.length === 0) {
+        winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No clear wins yet for this window." });
+      } else {
+        activeSnapshot.highlights.slice(0, 4).forEach((item) => winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
+      }
+      const cautionPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
+      cautionPanel.createEl("strong", { text: "Needs attention" });
+      if (activeSnapshot.cautions.length === 0) {
+        cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No major cautions in this window." });
+      } else {
+        activeSnapshot.cautions.slice(0, 4).forEach((item) => cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
+      }
+      const categoryList = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-category-grid" });
+      activeSnapshot.categories.forEach((category) => {
+        const row = categoryList.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-gamification-category-card" });
+        const rowHeader = row.createDiv({ cls: "daily-dashboard-score-header" });
+        rowHeader.createEl("strong", { text: category.label });
+        rowHeader.createEl("span", { cls: "daily-dashboard-row-meta", text: `${category.score}/${category.maxScore}` });
+        row.createEl("span", { cls: "daily-dashboard-row-meta", text: category.summary });
+        const track = row.createDiv({ cls: "daily-dashboard-momentum-track" });
+        const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
+        fill.addClass(`is-${category.tone === "done" ? "done" : category.tone === "alert" ? "alert" : category.tone === "log" ? "log" : "focus"}`);
+        fill.style.width = `${Math.max(category.score / category.maxScore * 100, category.score > 0 ? 10 : 0)}%`;
+        if (category.details.length > 0) {
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: category.details.slice(0, 2).join(" \u2022 ") });
+        }
+      });
       const gamificationActions = gamificationCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
       createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
@@ -5821,20 +5970,39 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         const habitMissNoteValue = (_c2 = todayEntry.habitMissNotes[habit.id]) != null ? _c2 : "";
         const habitMissExpanded = this.expandedHabitMissNotes.has(habit.id);
+        copy.addClass("is-clickable");
+        copy.role = "button";
+        copy.tabIndex = 0;
+        copy.addEventListener("click", () => {
+          void this.plugin.openEditHabitFlow(habit.id);
+        });
+        copy.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            void this.plugin.openEditHabitFlow(habit.id);
+          }
+        });
         copy.createEl("strong", { text: habit.label });
+        const metaChips = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(metaChips, `${currentValue}/${habit.target}`, currentValue >= habit.target ? "done" : "neutral");
+        createSemanticChip(metaChips, formatHabitCadenceLabel(habit.cadence), "neutral");
+        createSemanticChip(metaChips, formatHabitWindowLabel(habit.completionWindow), "neutral");
+        if (!isHabitDueOnDate(habit, todayEntry.date)) {
+          createSemanticChip(metaChips, "Not due", "log");
+        }
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done \u2022 ${this.plugin.getHabitStreak(habit.id)} due-day streak \u2022 best ${this.plugin.getHabitBestStreak(habit.id)} \u2022 ${formatHabitCadenceLabel(habit.cadence)} \u2022 ${formatHabitWindowLabel(habit.completionWindow)} \u2022 difficulty ${habit.difficultyWeight}/3${isHabitDueOnDate(habit, todayEntry.date) ? "" : " \u2022 not due today"}`
+          text: `${this.plugin.getHabitStreak(habit.id)} streak \u2022 best ${this.plugin.getHabitBestStreak(habit.id)} \u2022 weight ${habit.difficultyWeight}/3`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")} \u2022 in-window ${inWindowCount}/${habitEvents.length}`
+            text: `Today ${habitEvents.map((item) => item.slice(11)).join(", ")} \u2022 in window ${inWindowCount}/${habitEvents.length}`
           });
         } else {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `${formatHabitCadenceLabel(habit.cadence)} \u2022 Window ${formatHabitWindowLabel(habit.completionWindow)} \u2022 no completions yet${isHabitDueOnDate(habit, todayEntry.date) ? "" : " \u2022 not due today"}`
+            text: isHabitDueOnDate(habit, todayEntry.date) ? "No completions logged yet today." : "Not due today."
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
@@ -6032,7 +6200,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const weightHistory = this.plugin.getAllEntries().filter((entry) => typeof entry.bodyWeight === "number");
       const latestLoggedWeight = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].bodyWeight : null;
       const earliestWeightForTrend = weightHistory.length > 1 ? weightHistory[Math.max(0, weightHistory.length - 7)].bodyWeight : null;
-      const currentWeight = (_s = todayEntry.bodyWeight) != null ? _s : latestLoggedWeight;
+      const currentWeight = (_u = todayEntry.bodyWeight) != null ? _u : latestLoggedWeight;
       const targetWeight = settings.weightGoalTarget > 0 ? settings.weightGoalTarget : null;
       const weightDelta = currentWeight !== null && targetWeight !== null ? Number((targetWeight - currentWeight).toFixed(1)) : null;
       const weightTrendDelta = currentWeight !== null && earliestWeightForTrend !== null ? Number((currentWeight - earliestWeightForTrend).toFixed(1)) : null;
@@ -6998,7 +7166,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       { kind: "relax", label: "Relax", tone: "health" },
       { kind: "break", label: "Break", tone: "alert" },
       { kind: "poop", label: "Poop", tone: "log" },
-      ...DASHBOARD_ACTIVITY_TRACKERS
+      ...this.getVisibleSessionTrackers().map((tracker) => ({ kind: tracker.id, label: tracker.label, tone: this.getSessionTrackerTone(tracker.id) }))
     ].forEach((item) => {
       if (parsedSessions.some((session) => session.kind === item.kind)) {
         createSemanticChip(legend, item.label, item.tone);
@@ -7007,6 +7175,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
     parsedSessions.forEach((session) => {
       const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
+      if (!["work", "nap", "relax", "break", "poop"].includes(session.kind)) {
+        segment.style.background = this.getSessionTrackerColor(session.kind);
+      }
       const left = (session.startDate.getTime() - startBoundary.getTime()) / totalSpan * 100;
       const width = (session.endDate.getTime() - session.startDate.getTime()) / totalSpan * 100;
       segment.style.left = `${Math.max(0, left)}%`;
@@ -7052,8 +7223,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
       this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
       this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        this.pushTimelineSessionResults(results, entry.date, tracker.kind, entry.activitySessions.filter((session) => session.kind === tracker.kind));
+      this.getSessionTrackers().forEach((tracker) => {
+        this.pushTimelineSessionResults(results, entry.date, tracker.id, entry.activitySessions.filter((session) => session.kind === tracker.id));
       });
       entry.moodCheckIns.forEach((item, index) => {
         results.push({
@@ -7166,13 +7337,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   pushTimelineSessionResults(results, date, kind, sessions) {
     sessions.forEach((session, index) => {
-      var _a, _b, _c;
+      var _a, _b;
       const start = session.start.slice(11, 16);
       const endRaw = (_a = session.end) != null ? _a : formatDateTimeKey(/* @__PURE__ */ new Date());
       const end = endRaw.slice(11, 16);
       const minutes = Math.max(0, getMinutesBetween(session.start, endRaw));
-      const trackerMeta = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === kind);
-      const label = (_b = trackerMeta == null ? void 0 : trackerMeta.label) != null ? _b : `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
+      const tracker = this.plugin.getSessionTracker(kind);
+      const label = (_b = tracker == null ? void 0 : tracker.label) != null ? _b : `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
       results.push({
         id: `${kind}-${date}-${index}-${session.start}`,
         date,
@@ -7181,7 +7352,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         title: `${label} session`,
         summary: `${start}-${end} \u2022 ${formatMinutesAsHours(minutes)}`,
         detail: session.tag.trim() ? `Tag ${session.tag.trim()}` : "",
-        tone: (_c = trackerMeta == null ? void 0 : trackerMeta.tone) != null ? _c : kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health",
+        tone: tracker ? this.getSessionTrackerTone(tracker.id) : kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health",
         project: "",
         tag: session.tag.trim()
       });
@@ -7389,8 +7560,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         poop: entry ? this.plugin.getTrackedPoopMinutes(entry) : 0,
         unknown: entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes)
       };
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        minutesByKind[tracker.kind] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.kind) : 0;
+      this.getSessionTrackers().forEach((tracker) => {
+        minutesByKind[tracker.id] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.id) : 0;
       });
       return {
         label,
@@ -7401,11 +7572,14 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       };
     });
   }
-  renderWeekBarSegment(parent, tone, minutes) {
+  renderWeekBarSegment(parent, tone, minutes, color) {
     if (minutes <= 0) {
       return;
     }
     const segment = parent.createDiv({ cls: `daily-dashboard-week-segment is-${tone}` });
+    if (color) {
+      segment.style.background = this.buildGradientFromColor(color);
+    }
     segment.style.height = `${minutes / 1440 * 100}%`;
     segment.ariaLabel = `${tone} ${this.formatWeekBarValue(minutes)}`;
     const label = segment.createEl("span", { text: this.formatWeekBarValue(minutes) });
@@ -7413,9 +7587,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       label.addClass("is-compact");
     }
   }
-  renderWeekLegendItem(parent, label, tone) {
+  renderWeekLegendItem(parent, label, tone, color) {
     const item = parent.createDiv({ cls: "daily-dashboard-week-legend-item" });
-    item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    const dot = item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    if (color) {
+      dot.style.background = color;
+    }
     item.createEl("span", { text: label });
   }
   formatWeekBarValue(minutes) {
@@ -7896,6 +8073,137 @@ var DashboardLayoutModal = class extends import_obsidian3.Modal {
   }
   toggleHidden(cardKey) {
     this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, hidden: !card.hidden } : card);
+  }
+};
+var SessionDeckCustomizationModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.draggedTrackerId = null;
+    this.plugin = plugin;
+    this.trackers = plugin.getSessionTrackers().map((tracker) => ({ ...tracker }));
+  }
+  onOpen() {
+    this.modalEl.addClass("daily-dashboard-layout-modal");
+    this.setTitle("Customize Session Deck");
+    this.renderContent();
+  }
+  onClose() {
+    this.modalEl.removeClass("daily-dashboard-layout-modal");
+    this.contentEl.empty();
+  }
+  renderContent() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Choose which session buttons appear, reorder them, rename them, and assign colors that flow into the week view. Hidden trackers still preserve historical data."
+    });
+    const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
+    this.trackers.forEach((tracker, index) => {
+      const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
+      row.draggable = true;
+      if (!tracker.visible) {
+        row.addClass("is-hidden");
+      }
+      row.addEventListener("dragstart", (event) => {
+        var _a;
+        this.draggedTrackerId = tracker.id;
+        row.addClass("is-dragging");
+        (_a = event.dataTransfer) == null ? void 0 : _a.setData("text/plain", tracker.id);
+      });
+      row.addEventListener("dragover", (event) => {
+        if (!this.draggedTrackerId || this.draggedTrackerId === tracker.id) {
+          return;
+        }
+        event.preventDefault();
+        row.addClass("is-drop-target");
+      });
+      row.addEventListener("dragleave", () => {
+        row.removeClass("is-drop-target");
+      });
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.removeClass("is-drop-target");
+        if (!this.draggedTrackerId || this.draggedTrackerId === tracker.id) {
+          return;
+        }
+        this.moveTrackerToIndex(this.draggedTrackerId, index);
+        this.draggedTrackerId = null;
+        this.renderContent();
+      });
+      row.addEventListener("dragend", () => {
+        this.draggedTrackerId = null;
+        row.removeClass("is-dragging");
+        row.removeClass("is-drop-target");
+      });
+      const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+      copy.createEl("strong", { text: `${index + 1}. ${tracker.label}` });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${tracker.visible ? "Visible" : "Hidden"} \u2022 ${tracker.id}` });
+      const editor = copy.createDiv({ cls: "daily-dashboard-session-tracker-editor" });
+      const labelInput = editor.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Tracker label" } });
+      labelInput.value = tracker.label;
+      labelInput.addEventListener("change", () => {
+        var _a;
+        tracker.label = labelInput.value.trim() || tracker.label;
+        (_a = copy.querySelector("strong")) == null ? void 0 : _a.setText(`${index + 1}. ${tracker.label}`);
+      });
+      const colorInput = editor.createEl("input", { cls: "daily-dashboard-color-input", attr: { type: "color" } });
+      colorInput.value = tracker.color;
+      colorInput.addEventListener("input", () => {
+        tracker.color = colorInput.value;
+      });
+      const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(controls, tracker.visible ? "Hide" : "Show", async () => {
+        tracker.visible = !tracker.visible;
+        this.renderContent();
+      }, false, tracker.visible ? "eye-off" : "eye");
+      const canDelete = !ACTIVITY_SESSION_KIND_OPTIONS.includes(tracker.id);
+      if (canDelete) {
+        createButton(controls, "Delete", async () => {
+          this.trackers = this.trackers.filter((candidate) => candidate.id !== tracker.id);
+          this.renderContent();
+        }, false, "trash-2");
+      }
+    });
+    const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(footer, "Add custom", async () => {
+      const nextId = this.createCustomTrackerId("custom-session");
+      this.trackers.push({ id: nextId, label: "Custom session", color: "#7d9df5", visible: true });
+      this.renderContent();
+    }, false, "plus-circle");
+    createButton(footer, "Reset defaults", async () => {
+      this.trackers = DEFAULT_SETTINGS.sessionTrackers.map((tracker) => ({ ...tracker }));
+      this.renderContent();
+    }, false, "rotate-ccw");
+    createButton(footer, "Apply", async () => {
+      await this.plugin.updateSessionTrackers(this.trackers.map((tracker) => ({
+        ...tracker,
+        id: this.normalizeTrackerId(tracker.id || tracker.label),
+        label: tracker.label.trim() || "Custom session"
+      })));
+      this.close();
+    }, true, "check");
+  }
+  moveTrackerToIndex(trackerId, targetIndex) {
+    const index = this.trackers.findIndex((tracker2) => tracker2.id === trackerId);
+    if (index < 0 || targetIndex < 0 || targetIndex >= this.trackers.length) {
+      return;
+    }
+    const [tracker] = this.trackers.splice(index, 1);
+    this.trackers.splice(targetIndex, 0, tracker);
+  }
+  createCustomTrackerId(baseLabel) {
+    const baseId = this.normalizeTrackerId(baseLabel);
+    let nextId = baseId;
+    let suffix = 2;
+    while (this.trackers.some((tracker) => tracker.id === nextId)) {
+      nextId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+    return nextId;
+  }
+  normalizeTrackerId(value) {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-session";
   }
 };
 var DashboardShortcutHelpModal = class extends import_obsidian3.Modal {
@@ -9491,32 +9799,6 @@ function createStatPill(parent, text, iconName, tone) {
   pill.createSpan({ cls: "daily-dashboard-pill-label", text });
   return pill;
 }
-function renderGamificationSnapshotCard(parent, snapshot) {
-  const card = parent.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-gamification-card" });
-  const header = card.createDiv({ cls: "daily-dashboard-score-header" });
-  header.createEl("strong", { text: `${snapshot.label} \u2022 ${snapshot.score}/100 ${snapshot.grade}` });
-  header.createEl("span", { cls: "daily-dashboard-row-meta", text: snapshot.comparisonText });
-  const chipRow = card.createDiv({ cls: "daily-dashboard-chip-row" });
-  snapshot.highlights.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "done"));
-  snapshot.cautions.slice(0, 3).forEach((item) => createSemanticChip(chipRow, item, "alert"));
-  const categoryList = card.createDiv({ cls: "daily-dashboard-momentum" });
-  snapshot.categories.forEach((category) => {
-    const row = categoryList.createDiv({ cls: "daily-dashboard-gamification-row" });
-    const copy = row.createDiv({ cls: "daily-dashboard-stack" });
-    copy.createEl("strong", { text: `${category.label} \u2022 ${category.score}/100` });
-    copy.createEl("span", { cls: "daily-dashboard-row-meta", text: category.summary });
-    if (category.details.length > 0) {
-      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: category.details.join(" \u2022 ") });
-    }
-    const trackRow = row.createDiv({ cls: "daily-dashboard-momentum-row" });
-    trackRow.createSpan({ cls: "daily-dashboard-momentum-label", text: "Score" });
-    const track = trackRow.createDiv({ cls: "daily-dashboard-momentum-track" });
-    const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
-    fill.addClass(`is-${category.tone === "done" ? "done" : category.tone === "alert" ? "alert" : category.tone === "log" ? "log" : "focus"}`);
-    fill.style.width = `${Math.max(category.score / category.maxScore * 100, category.score > 0 ? 10 : 0)}%`;
-    trackRow.createSpan({ cls: "daily-dashboard-momentum-value", text: `${category.score}` });
-  });
-}
 function renderProjectMomentum(parent, project) {
   const maxValue = Math.max(project.completionsPreviousWeek, project.completionsThisWeek, project.completionsThisMonth, 1);
   const wrap = parent.createDiv({ cls: "daily-dashboard-momentum" });
@@ -9907,7 +10189,7 @@ var FocusCaptureModal = class extends import_obsidian3.Modal {
   }
 };
 var AddHabitModal = class extends import_obsidian3.Modal {
-  constructor(app, plugin) {
+  constructor(app, plugin, habit) {
     super(app);
     this.habitName = "";
     this.targetCount = "1";
@@ -9915,13 +10197,21 @@ var AddHabitModal = class extends import_obsidian3.Modal {
     this.cadence = "daily";
     this.difficultyWeight = "1";
     this.plugin = plugin;
+    this.existingHabit = habit != null ? habit : null;
+    if (habit) {
+      this.habitName = habit.label;
+      this.targetCount = `${habit.target}`;
+      this.completionWindow = habit.completionWindow;
+      this.cadence = habit.cadence;
+      this.difficultyWeight = `${habit.difficultyWeight}`;
+    }
   }
   onOpen() {
-    this.setTitle("Add Habit");
+    this.setTitle(this.existingHabit ? "Edit Habit" : "Add Habit");
     const { contentEl } = this;
     contentEl.empty();
     new import_obsidian3.Setting(contentEl).setName("Habit name").setDesc("Shown in the dashboard and saved in habit definitions.").addText((text) => {
-      text.setPlaceholder("Drink water").onChange((value) => {
+      text.setPlaceholder("Drink water").setValue(this.habitName).onChange((value) => {
         this.habitName = value;
       });
       window.setTimeout(() => text.inputEl.focus(), 0);
@@ -9958,9 +10248,20 @@ var AddHabitModal = class extends import_obsidian3.Modal {
     });
     new import_obsidian3.Setting(contentEl).addButton((button) => {
       button.setButtonText("Add habit").setCta().onClick(async () => {
-        await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight), this.cadence);
+        if (this.existingHabit) {
+          await this.plugin.updateHabitDefinition(this.existingHabit.id, {
+            label: this.habitName,
+            target: Number(this.targetCount),
+            completionWindow: this.completionWindow,
+            difficultyWeight: Number(this.difficultyWeight),
+            cadence: this.cadence
+          });
+        } else {
+          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight), this.cadence);
+        }
         this.close();
       });
+      button.setButtonText(this.existingHabit ? "Save habit" : "Add habit");
     }).addExtraButton((button) => {
       button.setIcon("x").setTooltip("Cancel").onClick(() => {
         this.close();
@@ -10787,6 +11088,17 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   isBreakSessionActive() {
     return this.getTodayEntry().breakSessions.some((session) => session.end === null);
   }
+  getSessionTrackers() {
+    return this.getSettings().sessionTrackers;
+  }
+  getVisibleSessionTrackers() {
+    return this.getSessionTrackers().filter((tracker) => tracker.visible);
+  }
+  getSessionTracker(id) {
+    var _a;
+    const normalizedId = id.trim().toLowerCase();
+    return (_a = this.getSessionTrackers().find((tracker) => tracker.id === normalizedId)) != null ? _a : null;
+  }
   getActiveActivitySession(kind, entry = this.getTodayEntry()) {
     var _a;
     return (_a = [...entry.activitySessions].reverse().find((session) => session.end === null && (!kind || session.kind === kind))) != null ? _a : null;
@@ -10811,6 +11123,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getTrackedActivityMinutes(entry = this.getTodayEntry(), kind) {
     return getTrackedActivityMinutes(this.getEffectiveTrackedEntry(entry), kind);
+  }
+  async updateSessionTrackers(trackers) {
+    await this.updateSettings({
+      ...this.getSettings(),
+      sessionTrackers: trackers
+    });
   }
   getTrackedSleepMinutes(entry = this.getTodayEntry()) {
     return getSleepMinutesForDay(entry, this.getNextEntry(entry.date));
@@ -11917,6 +12235,34 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ]
     });
   }
+  async updateHabitDefinition(habitId, updates) {
+    const normalizedLabel = updates.label.trim();
+    if (!normalizedLabel) {
+      new import_obsidian4.Notice("Habit name is required.");
+      return;
+    }
+    const definitions = [...this.getHabitDefinitions()];
+    const index = definitions.findIndex((habit) => habit.id === habitId);
+    if (index < 0) {
+      return;
+    }
+    if (definitions.some((habit, habitIndex) => habitIndex !== index && habit.label.trim().toLowerCase() === normalizedLabel.toLowerCase())) {
+      new import_obsidian4.Notice(`A habit named ${normalizedLabel} already exists.`);
+      return;
+    }
+    definitions[index] = {
+      ...definitions[index],
+      label: normalizedLabel,
+      target: clamp(Math.round(updates.target), 1, 12),
+      completionWindow: updates.completionWindow === "morning" || updates.completionWindow === "afternoon" || updates.completionWindow === "evening" || updates.completionWindow === "before-bed" ? updates.completionWindow : "anytime",
+      cadence: updates.cadence === "every-other-day" || updates.cadence === "weekly" ? updates.cadence : "daily",
+      difficultyWeight: clamp(Math.round(updates.difficultyWeight), 1, 3)
+    };
+    await this.updateSettings({
+      ...this.getSettings(),
+      habitDefinitions: definitions
+    });
+  }
   async removeHabitDefinition(habitId) {
     if (this.getHabitDefinitions().length <= 1) {
       new import_obsidian4.Notice("Keep at least one habit defined.");
@@ -12519,12 +12865,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     new import_obsidian4.Notice("Bowel movement tracking stopped.");
   }
   async startActivitySession(kind, tag = "") {
+    var _a;
     if (this.data.dayState.status !== "in-progress") {
       new import_obsidian4.Notice("Begin your logical day before starting another activity timer.");
       return;
     }
     const entry = this.getTodayEntry();
-    const label = formatActivitySessionLabel(kind);
+    const label = ((_a = this.getSessionTracker(kind)) == null ? void 0 : _a.label) || formatActivitySessionLabel(kind);
     if (entry.activitySessions.some((session) => session.end === null && session.kind === kind)) {
       new import_obsidian4.Notice(`A ${label.toLowerCase()} session is already active.`);
       return;
@@ -13958,6 +14305,13 @@ ${context}`, resolvedModel);
   }
   async openAddHabitFlow() {
     new AddHabitModal(this.app, this).open();
+  }
+  async openEditHabitFlow(habitId) {
+    const habit = this.getHabitDefinitions().find((candidate) => candidate.id === habitId);
+    if (!habit) {
+      return;
+    }
+    new AddHabitModal(this.app, this, habit).open();
   }
   async createProjectAndNote(input) {
     const todoFile = this.getMasterTodoFile();

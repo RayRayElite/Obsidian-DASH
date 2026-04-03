@@ -1108,6 +1108,72 @@
   min-width: 0;
 }
 
+.daily-dashboard-gamification-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.daily-dashboard-gamification-stage {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--background-primary) 88%, var(--daily-dashboard-accent) 7%), color-mix(in srgb, var(--background-primary) 94%, transparent));
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-modifier-border));
+}
+
+.daily-dashboard-gamification-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.daily-dashboard-gamification-badge {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  min-width: 92px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary)), color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)));
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 24%, var(--background-modifier-border));
+}
+
+.daily-dashboard-gamification-badge strong {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.daily-dashboard-gamification-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.daily-dashboard-gamification-insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.daily-dashboard-gamification-insights .daily-dashboard-ai-panel {
+  margin: 0;
+}
+
+.daily-dashboard-gamification-category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.daily-dashboard-gamification-category-card {
+  gap: 10px;
+}
+
 .daily-dashboard-gamification-row {
   display: grid;
   gap: 8px;
@@ -1182,6 +1248,20 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.daily-dashboard-habit-copy.is-clickable {
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: 10px;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+
+.daily-dashboard-habit-copy.is-clickable:hover,
+.daily-dashboard-habit-copy.is-clickable:focus-visible {
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+  outline: none;
 }
 
 .daily-dashboard-focus-copy {
@@ -1359,6 +1439,11 @@
   transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
 }
 
+.daily-dashboard-session-button.has-custom-accent {
+  border-color: color-mix(in srgb, var(--daily-dashboard-session-accent) 26%, var(--background-modifier-border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--background-primary) 82%, var(--daily-dashboard-session-accent) 14%), color-mix(in srgb, var(--background-primary) 94%, transparent));
+}
+
 .daily-dashboard-session-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.16);
@@ -1368,6 +1453,11 @@
   border-color: color-mix(in srgb, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 42%, var(--background-modifier-border));
   background: linear-gradient(135deg, color-mix(in srgb, var(--background-primary) 72%, var(--daily-dashboard-card-accent, var(--daily-dashboard-accent)) 22%), color-mix(in srgb, var(--background-primary) 84%, transparent));
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.daily-dashboard-session-button.has-custom-accent.is-active {
+  border-color: color-mix(in srgb, var(--daily-dashboard-session-accent) 44%, var(--background-modifier-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--background-primary) 70%, var(--daily-dashboard-session-accent) 28%), color-mix(in srgb, var(--background-primary) 86%, transparent));
 }
 
 .daily-dashboard-session-button-icon {
@@ -1392,8 +1482,39 @@
   display: block;
 }
 
+.daily-dashboard-session-tracker-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.daily-dashboard-color-input {
+  width: 46px;
+  min-width: 46px;
+  height: 38px;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+}
+
 @media (max-width: 900px) {
   .daily-dashboard-session-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .daily-dashboard-gamification-hero {
+    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+  }
+
+  .daily-dashboard-gamification-badge {
+    justify-self: start;
+  }
+
+  .daily-dashboard-session-tracker-editor {
     grid-template-columns: minmax(0, 1fr);
   }
 }

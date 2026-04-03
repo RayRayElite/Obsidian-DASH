@@ -24,6 +24,7 @@ import {
   type NoteIndexCache,
   type NoteIndexChunk,
   type NoteIndexEntry,
+  type SessionTrackerDefinition,
   type SymptomEntry,
   type TodayFocusItem,
   type TodayFocusStatus,
@@ -65,6 +66,11 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .filter((automation): automation is HabitAutomation => automation !== null)
     : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
+  const sessionTrackers = Array.isArray(settings.sessionTrackers)
+    ? settings.sessionTrackers
+        .map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index))
+        .filter((tracker): tracker is SessionTrackerDefinition => tracker !== null)
+    : DEFAULT_SETTINGS.sessionTrackers;
   const notificationSound = settings.notificationSound === "off"
     || settings.notificationSound === "ping"
     || settings.notificationSound === "alert"
@@ -128,8 +134,52 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
-    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates
+    routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
+    sessionTrackers: sessionTrackers.length > 0 ? sessionTrackers : DEFAULT_SETTINGS.sessionTrackers
   };
+}
+
+function normalizeSessionTrackerDefinition(input: unknown, index: number): SessionTrackerDefinition | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<SessionTrackerDefinition>;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const id = typeof candidate.id === "string" && candidate.id.trim().length > 0
+    ? normalizeTrackerId(candidate.id)
+    : normalizeTrackerId(label || `tracker-${index + 1}`);
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    label: label || titleCaseTrackerId(id),
+    color: normalizeTrackerColor(candidate.color),
+    visible: candidate.visible ?? true
+  };
+}
+
+function normalizeTrackerId(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeTrackerColor(value: unknown): string {
+  const color = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color : "#6e829d";
+}
+
+function titleCaseTrackerId(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 export function normalizeFolderPath(value: string): string {
@@ -468,7 +518,7 @@ export function formatActivitySessionLabel(kind: ActivitySessionKind): string {
     case "hobbies":
       return "Hobbies";
     default:
-      return "Activity";
+      return titleCaseTrackerId(kind) || "Activity";
   }
 }
 
@@ -493,10 +543,10 @@ export function normalizeActivitySession(input: unknown): ActivitySession | null
   const legacyKind = candidate.kind === "study"
     ? "reading"
     : candidate.kind;
-  const kind = ACTIVITY_SESSION_KIND_OPTIONS.includes(legacyKind as ActivitySessionKind)
-    ? legacyKind as ActivitySessionKind
-    : candidate.kind === "admin"
-      ? "chores"
+  const kind = legacyKind === "admin"
+    ? "chores"
+    : typeof legacyKind === "string" && legacyKind.trim().length > 0
+      ? normalizeTrackerId(legacyKind)
       : "chores";
   const rawLabel = typeof candidate.label === "string" ? candidate.label.trim() : "";
 

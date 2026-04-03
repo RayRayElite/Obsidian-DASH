@@ -16,7 +16,7 @@ export const EXERCISE_INTENSITY_OPTIONS = ["easy", "moderate", "hard"] as const;
 export type HabitCompletionWindow = (typeof HABIT_WINDOW_OPTIONS)[number];
 export type HabitCadence = (typeof HABIT_CADENCE_OPTIONS)[number];
 export type IntakeKind = (typeof INTAKE_KIND_OPTIONS)[number];
-export type ActivitySessionKind = (typeof ACTIVITY_SESSION_KIND_OPTIONS)[number];
+export type ActivitySessionKind = string;
 export type ExerciseIntensity = (typeof EXERCISE_INTENSITY_OPTIONS)[number];
 export type MeasurementSystem = "imperial" | "metric";
 export type WeightGoalMode = "lose" | "maintain" | "gain";
@@ -58,6 +58,13 @@ export interface WorkSession {
 export interface ActivitySession extends WorkSession {
   kind: ActivitySessionKind;
   label: string;
+}
+
+export interface SessionTrackerDefinition {
+  id: string;
+  label: string;
+  color: string;
+  visible: boolean;
 }
 
 export interface ExerciseEntry {
@@ -447,6 +454,7 @@ export interface DashboardSettings {
   selectedWallpaper: string;
   habitDefinitions: HabitDefinition[];
   routineTemplates: string;
+  sessionTrackers: SessionTrackerDefinition[];
 }
 
 export interface CalendarReminderItem {
@@ -1013,5 +1021,17 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
     { id: "shower", label: "Shower", target: 1, completionWindow: "anytime", cadence: "daily", anchorDate: "", difficultyWeight: 1 },
     { id: "sleep-log", label: "Log sleep", target: 1, completionWindow: "before-bed", cadence: "daily", anchorDate: "", difficultyWeight: 2 }
   ],
-  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30"
+  routineTemplates: "Morning meds|06:00|09:00\nLunch reset|12:00|14:00\nEvening shutdown|20:00|22:30",
+  sessionTrackers: [
+    { id: "exercise", label: "Exercise", color: "#d84f60", visible: true },
+    { id: "reading", label: "Reading", color: "#e55d93", visible: true },
+    { id: "gaming", label: "Gaming", color: "#d9d0c2", visible: true },
+    { id: "hobbies", label: "Hobbies", color: "#353c41", visible: true },
+    { id: "hygiene", label: "Hygiene", color: "#39c99c", visible: true },
+    { id: "cooking", label: "Cooking", color: "#e2703d", visible: true },
+    { id: "errand", label: "Errand", color: "#b39233", visible: true },
+    { id: "commute", label: "Commute", color: "#6e829d", visible: true },
+    { id: "social", label: "Social", color: "#5f1814", visible: true },
+    { id: "chores", label: "Chores", color: "#6fb149", visible: true }
+  ]
 };

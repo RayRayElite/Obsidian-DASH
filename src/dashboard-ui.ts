@@ -49,6 +49,7 @@ import {
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
   type SavedDashboardFilter,
+  type SessionTrackerDefinition,
   type SuggestedTop3Candidate,
   type SymptomEntry,
   type TodoTaskSummary,
@@ -61,18 +62,18 @@ import {
   type WorkSession
 } from "./dashboard-types";
 
-const DASHBOARD_ACTIVITY_TRACKERS = [
-  { kind: "exercise", label: "Exercise", icon: "dumbbell", tone: "health" },
-  { kind: "reading", label: "Reading", icon: "book-open", tone: "focus" },
-  { kind: "gaming", label: "Gaming", icon: "gamepad-2", tone: "focus" },
-  { kind: "hobbies", label: "Hobbies", icon: "shapes", tone: "neutral" },
-  { kind: "hygiene", label: "Hygiene", icon: "shower-head", tone: "health" },
-  { kind: "cooking", label: "Cooking", icon: "chef-hat", tone: "alert" },
-  { kind: "errand", label: "Errand", icon: "shopping-bag", tone: "alert" },
-  { kind: "commute", label: "Commute", icon: "car-front", tone: "neutral" },
-  { kind: "social", label: "Social", icon: "users", tone: "focus" },
-  { kind: "chores", label: "Chores", icon: "house", tone: "log" }
-] satisfies Array<{ kind: ActivitySessionKind; label: string; icon: string; tone: DashboardTone }>;
+const DASHBOARD_ACTIVITY_TRACKER_ICON_MAP: Record<string, string> = {
+  exercise: "dumbbell",
+  reading: "book-open",
+  gaming: "gamepad-2",
+  hobbies: "shapes",
+  hygiene: "shower-head",
+  cooking: "chef-hat",
+  errand: "shopping-bag",
+  commute: "car-front",
+  social: "users",
+  chores: "house"
+};
 
 const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "sleep", label: "Sleep" },
@@ -81,7 +82,6 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "relax", label: "Relax" },
   { kind: "break", label: "Break" },
   { kind: "poop", label: "Poop" },
-  ...DASHBOARD_ACTIVITY_TRACKERS,
   { kind: "unknown", label: "Unknown" }
 ] as const;
 
@@ -120,6 +120,7 @@ export class DailyDashboardView extends ItemView {
   private quickAddPanelOpen = false;
   private aiQuestionDraft = "";
   private expandedHabitMissNotes = new Set<string>();
+  private selectedGamificationWindow: "today" | "week" | "month" = "today";
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
     if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
       return;
@@ -626,6 +627,47 @@ export class DailyDashboardView extends ItemView {
     ].filter((value) => value.length > 0).join(" • ");
   }
 
+  private getSessionTrackers(): SessionTrackerDefinition[] {
+    return this.plugin.getSessionTrackers();
+  }
+
+  private getVisibleSessionTrackers(): SessionTrackerDefinition[] {
+    return this.plugin.getVisibleSessionTrackers();
+  }
+
+  private getSessionTrackerTone(trackerId: string): DashboardTone {
+    const normalized = trackerId.trim().toLowerCase();
+    if (normalized === "exercise" || normalized === "hygiene") {
+      return "health";
+    }
+    if (normalized === "reading" || normalized === "social" || normalized === "gaming") {
+      return "focus";
+    }
+    if (normalized === "cooking" || normalized === "errand") {
+      return "alert";
+    }
+    if (normalized === "chores" || normalized === "commute") {
+      return "log";
+    }
+    return "neutral";
+  }
+
+  private getSessionTrackerIcon(trackerId: string): string {
+    return DASHBOARD_ACTIVITY_TRACKER_ICON_MAP[trackerId.trim().toLowerCase()] || "circle";
+  }
+
+  private getSessionTrackerLabel(trackerId: string): string {
+    return this.plugin.getSessionTracker(trackerId)?.label || formatActivitySessionLabel(trackerId);
+  }
+
+  private getSessionTrackerColor(trackerId: string): string {
+    return this.plugin.getSessionTracker(trackerId)?.color || "#6e829d";
+  }
+
+  private buildGradientFromColor(color: string): string {
+    return `linear-gradient(180deg, ${color}, color-mix(in srgb, ${color} 68%, black))`;
+  }
+
   private getSessionTagSummary(sessions: WorkSession[]): Array<{ tag: string; minutes: number }> {
     const nowKey = formatDateTimeKey(new Date());
     const totals = new Map<string, number>();
@@ -947,6 +989,11 @@ export class DailyDashboardView extends ItemView {
         tone: "health",
         tag: "Visual"
       });
+      const weekBoardSegments = [
+        ...WEEK_AT_A_GLANCE_SEGMENTS.slice(0, -1),
+        ...visibleSessionTrackers.map((tracker) => ({ kind: tracker.id, label: tracker.label })),
+        WEEK_AT_A_GLANCE_SEGMENTS[WEEK_AT_A_GLANCE_SEGMENTS.length - 1]
+      ];
       const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
       const weekStage = weekBoard.createDiv({ cls: "daily-dashboard-week-stage" });
       weekStage.createDiv({ cls: "daily-dashboard-week-platform" });
@@ -962,8 +1009,8 @@ export class DailyDashboardView extends ItemView {
         }
 
         const cylinder = column.createDiv({ cls: "daily-dashboard-week-cylinder" });
-        WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
-          this.renderWeekBarSegment(cylinder, segment.kind, day.minutesByKind[segment.kind] ?? 0);
+        weekBoardSegments.forEach((segment) => {
+          this.renderWeekBarSegment(cylinder, segment.kind, day.minutesByKind[segment.kind] ?? 0, visibleSessionTrackers.find((tracker) => tracker.id === segment.kind)?.color);
         });
         cylinder.createDiv({ cls: "daily-dashboard-week-cylinder-overlay" });
 
@@ -973,8 +1020,8 @@ export class DailyDashboardView extends ItemView {
       });
 
       const weekLegend = weekBoardCard.createDiv({ cls: "daily-dashboard-week-legend" });
-      WEEK_AT_A_GLANCE_SEGMENTS.forEach((segment) => {
-        this.renderWeekLegendItem(weekLegend, segment.label, segment.kind);
+      weekBoardSegments.forEach((segment) => {
+        this.renderWeekLegendItem(weekLegend, segment.label, segment.kind, visibleSessionTrackers.find((tracker) => tracker.id === segment.kind)?.color);
       });
 
       const weeklyAgendaCard = createGridCard("Weekly Agenda", "See the actual week load instead of guessing from one day at a time.", {
@@ -1018,6 +1065,7 @@ export class DailyDashboardView extends ItemView {
       const logicalDayInsights = this.plugin.getLogicalDayInsights();
       const sleepInsights = this.plugin.getSleepInsights();
       const aiStatus = this.plugin.getAiStatus();
+      const visibleSessionTrackers = this.getVisibleSessionTrackers();
       const trackedWorkMinutes = this.plugin.getTrackedWorkMinutes(todayEntry);
       const trackedNapMinutes = this.plugin.getTrackedNapMinutes(todayEntry);
       const trackedRelaxMinutes = this.plugin.getTrackedRelaxMinutes(todayEntry);
@@ -1061,7 +1109,7 @@ export class DailyDashboardView extends ItemView {
       });
       const sessionDeckSummary = sessionDeckCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(sessionDeckSummary, dayState.status === "in-progress" ? "Day active" : dayState.status === "ended" ? "Day ended" : "Day not started", dayState.status === "in-progress" ? "focus" : dayState.status === "ended" ? "done" : "neutral");
-      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === activeActivitySession.kind)?.tone ?? "neutral" : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
+      createSemanticChip(sessionDeckSummary, activeModeLabel, activeActivitySession ? this.getSessionTrackerTone(activeActivitySession.kind) : activePoopSession ? "log" : activeBreakSession ? "alert" : activeWorkSession ? "capture" : activeNapSession ? "alert" : activeRelaxSession ? "health" : "neutral");
       createSemanticChip(sessionDeckSummary, `Logical date ${todayEntry.date}`, "neutral");
       createSemanticChip(sessionDeckSummary, logicalDayInsights.isRollover ? "Past midnight" : "Same calendar day", logicalDayInsights.isRollover ? "alert" : "neutral");
       createSemanticChip(
@@ -1111,11 +1159,15 @@ export class DailyDashboardView extends ItemView {
         }
       }
       const sessionDeckGrid = sessionDeckCard.createDiv({ cls: "daily-dashboard-session-deck-grid" });
-      const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>): void => {
+      const createSessionDeckButton = (label: string, detail: string, icon: string, tone: DashboardTone, isActive: boolean, onClick: () => Promise<void>, accentColor?: string): void => {
         const button = sessionDeckGrid.createEl("button", { cls: "daily-dashboard-session-button" });
         button.type = "button";
         button.toggleClass("is-active", isActive);
         button.addClass(`is-${tone}`);
+        if (accentColor) {
+          button.style.setProperty("--daily-dashboard-session-accent", accentColor);
+          button.addClass("has-custom-accent");
+        }
         const iconEl = button.createSpan({ cls: "daily-dashboard-session-button-icon" });
         setIcon(iconEl, icon);
         const copy = button.createSpan({ cls: "daily-dashboard-session-button-copy" });
@@ -1130,9 +1182,18 @@ export class DailyDashboardView extends ItemView {
       createSessionDeckButton(activeRelaxSession ? "Stop Relax" : "Start Relax", activeRelaxSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeRelaxSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedRelaxMinutes)} today`, activeRelaxSession ? "square" : "coffee", "health", Boolean(activeRelaxSession), async () => activeRelaxSession ? this.plugin.stopRelaxSession() : this.plugin.startRelaxSession(""));
       createSessionDeckButton(activeBreakSession ? "Stop Break" : "Start Break", activeBreakSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeBreakSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(trackedBreakMinutes)} today`, activeBreakSession ? "square" : "pause", "alert", Boolean(activeBreakSession), async () => activeBreakSession ? this.plugin.stopBreakSession() : this.plugin.startBreakSession(""));
       createSessionDeckButton(activePoopSession ? "Stop Poop" : "Start Poop", activePoopSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activePoopSession.start, formatDateTimeKey(new Date())))}` : `${trackedPoopCount}x • ${formatMinutesAsHours(trackedPoopMinutes)}`, activePoopSession ? "square" : "bath", "log", Boolean(activePoopSession), async () => activePoopSession ? this.plugin.stopPoopSession() : this.plugin.startPoopSession(""));
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        const activeTrackerSession = activeActivitySession?.kind === tracker.kind ? activeActivitySession : null;
-        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.kind))} today`, activeTrackerSession ? "square" : tracker.icon, tracker.tone, Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.kind) : this.plugin.startActivitySession(tracker.kind));
+      const customizeSessionDeckButton = sessionDeckActions.createEl("button", { cls: "daily-dashboard-icon-button" });
+      customizeSessionDeckButton.type = "button";
+      customizeSessionDeckButton.ariaLabel = "Customize Session Deck";
+      customizeSessionDeckButton.title = "Customize Session Deck";
+      const customizeSessionDeckIcon = customizeSessionDeckButton.createSpan({ cls: "daily-dashboard-button-icon" });
+      setIcon(customizeSessionDeckIcon, "sliders-horizontal");
+      customizeSessionDeckButton.addEventListener("click", () => {
+        new SessionDeckCustomizationModal(this.app, this.plugin).open();
+      });
+      visibleSessionTrackers.forEach((tracker) => {
+        const activeTrackerSession = activeActivitySession?.kind === tracker.id ? activeActivitySession : null;
+        createSessionDeckButton(activeTrackerSession ? `Stop ${tracker.label}` : `Start ${tracker.label}`, activeTrackerSession ? `Live ${formatMinutesAsHours(getMinutesBetween(activeTrackerSession.start, formatDateTimeKey(new Date())))}` : `${formatMinutesAsHours(this.plugin.getTrackedActivityMinutes(todayEntry, tracker.id))} today`, activeTrackerSession ? "square" : this.getSessionTrackerIcon(tracker.id), this.getSessionTrackerTone(tracker.id), Boolean(activeTrackerSession), async () => activeTrackerSession ? this.plugin.stopActivitySession(tracker.id) : this.plugin.startActivitySession(tracker.id), tracker.color);
       });
 
       const focusCard = createGridCard("Action Queue", "Triage queued work, reminders, routines, and calendar context from one place.", {
@@ -1600,20 +1661,75 @@ export class DailyDashboardView extends ItemView {
         tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored"
       });
       const gamificationSummaryRow = gamificationCard.createDiv({ cls: "daily-dashboard-chip-row" });
-      createSemanticChip(gamificationSummaryRow, `Today ${gamificationSummary.today.score}/100 ${gamificationSummary.today.grade}`, gamificationSummary.today.score >= 80 ? "done" : gamificationSummary.today.score >= 60 ? "state" : "alert");
-      createSemanticChip(gamificationSummaryRow, `Week ${gamificationSummary.week.score}/100 ${gamificationSummary.week.grade}`, gamificationSummary.week.score >= 80 ? "done" : gamificationSummary.week.score >= 60 ? "state" : "alert");
-      createSemanticChip(gamificationSummaryRow, `Month ${gamificationSummary.month.score}/100 ${gamificationSummary.month.grade}`, gamificationSummary.month.score >= 80 ? "done" : gamificationSummary.month.score >= 60 ? "state" : "alert");
       createSemanticChip(gamificationSummaryRow, `Streak ${gamificationSummary.currentStreak}`, gamificationSummary.currentStreak >= 3 ? "focus" : "neutral");
       createSemanticChip(gamificationSummaryRow, `Best ${gamificationSummary.bestStreak}`, gamificationSummary.bestStreak >= 5 ? "done" : "neutral");
-      const gamificationStats = gamificationCard.createDiv({ cls: "daily-dashboard-dayflow-grid daily-dashboard-dayflow-grid--recovery" });
-      this.renderDayMetric(gamificationStats, "Personal best", `${gamificationSummary.personalBestDayScore}/100`);
-      this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
+      createSemanticChip(gamificationSummaryRow, `Personal best ${gamificationSummary.personalBestDayScore}/100`, gamificationSummary.personalBestDayScore >= 85 ? "done" : "focus");
+      createSemanticChip(gamificationSummaryRow, `Low-score line ${gamificationSummary.lowScoreThreshold}/100`, "alert");
+      const gamificationTabs = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
+      ([
+        { key: "today", label: "Daily", snapshot: gamificationSummary.today },
+        { key: "week", label: "Weekly", snapshot: gamificationSummary.week },
+        { key: "month", label: "Monthly", snapshot: gamificationSummary.month }
+      ] as const).forEach((item) => {
+        const button = gamificationTabs.createEl("button", {
+          cls: this.selectedGamificationWindow === item.key ? "daily-dashboard-step is-active" : "daily-dashboard-step",
+          text: `${item.label} ${item.snapshot.score}`
+        });
+        button.type = "button";
+        button.addEventListener("click", () => {
+          this.selectedGamificationWindow = item.key;
+          void this.render();
+        });
+      });
+      const activeSnapshot = this.selectedGamificationWindow === "week"
+        ? gamificationSummary.week
+        : this.selectedGamificationWindow === "month"
+          ? gamificationSummary.month
+          : gamificationSummary.today;
+      const gamificationStage = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-stage" });
+      const gamificationHero = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-hero" });
+      const gamificationHeroCopy = gamificationHero.createDiv({ cls: "daily-dashboard-stack" });
+      gamificationHeroCopy.createEl("strong", { text: activeSnapshot.label });
+      gamificationHeroCopy.createEl("span", { cls: "daily-dashboard-row-meta", text: activeSnapshot.comparisonText });
+      const heroBadge = gamificationHero.createDiv({ cls: "daily-dashboard-gamification-badge" });
+      heroBadge.createEl("span", { cls: "daily-dashboard-row-meta", text: "Rank" });
+      heroBadge.createEl("strong", { text: activeSnapshot.grade });
+      heroBadge.createEl("span", { text: `${activeSnapshot.score}/100` });
+      const gamificationStats = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+      this.renderDayMetric(gamificationStats, "Top category", [...activeSnapshot.categories].sort((left, right) => right.score - left.score)[0]?.label ?? "None");
+      this.renderDayMetric(gamificationStats, "Weakest category", [...activeSnapshot.categories].sort((left, right) => left.score - right.score)[0]?.label ?? "None");
       this.renderDayMetric(gamificationStats, "Recovery run", `${gamificationSummary.recoveryFromLowScoreDays} days`);
-      this.renderDayMetric(gamificationStats, "Low-score line", `${gamificationSummary.lowScoreThreshold}/100`);
-      const gamificationSnapshots = gamificationCard.createDiv({ cls: "daily-dashboard-gamification-snapshots" });
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.today);
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.week);
-      renderGamificationSnapshotCard(gamificationSnapshots, gamificationSummary.month);
+      this.renderDayMetric(gamificationStats, "Best day", gamificationSummary.personalBestDayLabel);
+      const gamificationInsights = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-insights" });
+      const winsPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
+      winsPanel.createEl("strong", { text: "Wins" });
+      if (activeSnapshot.highlights.length === 0) {
+        winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No clear wins yet for this window." });
+      } else {
+        activeSnapshot.highlights.slice(0, 4).forEach((item) => winsPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
+      }
+      const cautionPanel = gamificationInsights.createDiv({ cls: "daily-dashboard-ai-panel" });
+      cautionPanel.createEl("strong", { text: "Needs attention" });
+      if (activeSnapshot.cautions.length === 0) {
+        cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: "No major cautions in this window." });
+      } else {
+        activeSnapshot.cautions.slice(0, 4).forEach((item) => cautionPanel.createEl("span", { cls: "daily-dashboard-row-meta", text: item }));
+      }
+      const categoryList = gamificationStage.createDiv({ cls: "daily-dashboard-gamification-category-grid" });
+      activeSnapshot.categories.forEach((category) => {
+        const row = categoryList.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-gamification-category-card" });
+        const rowHeader = row.createDiv({ cls: "daily-dashboard-score-header" });
+        rowHeader.createEl("strong", { text: category.label });
+        rowHeader.createEl("span", { cls: "daily-dashboard-row-meta", text: `${category.score}/${category.maxScore}` });
+        row.createEl("span", { cls: "daily-dashboard-row-meta", text: category.summary });
+        const track = row.createDiv({ cls: "daily-dashboard-momentum-track" });
+        const fill = track.createDiv({ cls: "daily-dashboard-momentum-fill" });
+        fill.addClass(`is-${category.tone === "done" ? "done" : category.tone === "alert" ? "alert" : category.tone === "log" ? "log" : "focus"}`);
+        fill.style.width = `${Math.max((category.score / category.maxScore) * 100, category.score > 0 ? 10 : 0)}%`;
+        if (category.details.length > 0) {
+          row.createEl("span", { cls: "daily-dashboard-row-meta", text: category.details.slice(0, 2).join(" • ") });
+        }
+      });
       const gamificationActions = gamificationCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
       createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
@@ -1681,20 +1797,39 @@ export class DailyDashboardView extends ItemView {
         const copy = row.createDiv({ cls: "daily-dashboard-habit-copy" });
         const habitMissNoteValue = todayEntry.habitMissNotes[habit.id] ?? "";
         const habitMissExpanded = this.expandedHabitMissNotes.has(habit.id);
+        copy.addClass("is-clickable");
+        copy.role = "button";
+        copy.tabIndex = 0;
+        copy.addEventListener("click", () => {
+          void this.plugin.openEditHabitFlow(habit.id);
+        });
+        copy.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            void this.plugin.openEditHabitFlow(habit.id);
+          }
+        });
         copy.createEl("strong", { text: habit.label });
+        const metaChips = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(metaChips, `${currentValue}/${habit.target}`, currentValue >= habit.target ? "done" : "neutral");
+        createSemanticChip(metaChips, formatHabitCadenceLabel(habit.cadence), "neutral");
+        createSemanticChip(metaChips, formatHabitWindowLabel(habit.completionWindow), "neutral");
+        if (!isHabitDueOnDate(habit, todayEntry.date)) {
+          createSemanticChip(metaChips, "Not due", "log");
+        }
         copy.createEl("span", {
           cls: "daily-dashboard-habit-meta",
-          text: `${currentValue}/${habit.target} done • ${this.plugin.getHabitStreak(habit.id)} due-day streak • best ${this.plugin.getHabitBestStreak(habit.id)} • ${formatHabitCadenceLabel(habit.cadence)} • ${formatHabitWindowLabel(habit.completionWindow)} • difficulty ${habit.difficultyWeight}/3${isHabitDueOnDate(habit, todayEntry.date) ? "" : " • not due today"}`
+          text: `${this.plugin.getHabitStreak(habit.id)} streak • best ${this.plugin.getHabitBestStreak(habit.id)} • weight ${habit.difficultyWeight}/3`
         });
         if (habitEvents.length > 0) {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `Today at ${habitEvents.map((item) => item.slice(11)).join(", ")} • in-window ${inWindowCount}/${habitEvents.length}`
+            text: `Today ${habitEvents.map((item) => item.slice(11)).join(", ")} • in window ${inWindowCount}/${habitEvents.length}`
           });
         } else {
           copy.createEl("span", {
             cls: "daily-dashboard-row-meta",
-            text: `${formatHabitCadenceLabel(habit.cadence)} • Window ${formatHabitWindowLabel(habit.completionWindow)} • no completions yet${isHabitDueOnDate(habit, todayEntry.date) ? "" : " • not due today"}`
+            text: isHabitDueOnDate(habit, todayEntry.date) ? "No completions logged yet today." : "Not due today."
           });
         }
         const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
@@ -2924,7 +3059,7 @@ export class DailyDashboardView extends ItemView {
       { kind: "relax", label: "Relax", tone: "health" },
       { kind: "break", label: "Break", tone: "alert" },
       { kind: "poop", label: "Poop", tone: "log" },
-      ...DASHBOARD_ACTIVITY_TRACKERS
+      ...this.getVisibleSessionTrackers().map((tracker) => ({ kind: tracker.id, label: tracker.label, tone: this.getSessionTrackerTone(tracker.id) }))
     ].forEach((item) => {
       if (parsedSessions.some((session) => session.kind === item.kind)) {
         createSemanticChip(legend, item.label, item.tone as DashboardTone);
@@ -2934,6 +3069,9 @@ export class DailyDashboardView extends ItemView {
     const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
     parsedSessions.forEach((session) => {
       const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
+      if (!["work", "nap", "relax", "break", "poop"].includes(session.kind)) {
+        segment.style.background = this.getSessionTrackerColor(session.kind);
+      }
       const left = ((session.startDate.getTime() - startBoundary.getTime()) / totalSpan) * 100;
       const width = ((session.endDate.getTime() - session.startDate.getTime()) / totalSpan) * 100;
       segment.style.left = `${Math.max(0, left)}%`;
@@ -2984,8 +3122,8 @@ export class DailyDashboardView extends ItemView {
         this.pushTimelineSessionResults(results, entry.date, "relax", entry.relaxSessions);
         this.pushTimelineSessionResults(results, entry.date, "break", entry.breakSessions);
         this.pushTimelineSessionResults(results, entry.date, "poop", entry.poopSessions);
-        DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-          this.pushTimelineSessionResults(results, entry.date, tracker.kind, entry.activitySessions.filter((session) => session.kind === tracker.kind));
+        this.getSessionTrackers().forEach((tracker) => {
+          this.pushTimelineSessionResults(results, entry.date, tracker.id, entry.activitySessions.filter((session) => session.kind === tracker.id));
         });
 
         entry.moodCheckIns.forEach((item, index) => {
@@ -3118,8 +3256,8 @@ export class DailyDashboardView extends ItemView {
       const endRaw = session.end ?? formatDateTimeKey(new Date());
       const end = endRaw.slice(11, 16);
       const minutes = Math.max(0, getMinutesBetween(session.start, endRaw));
-      const trackerMeta = DASHBOARD_ACTIVITY_TRACKERS.find((item) => item.kind === kind);
-      const label = trackerMeta?.label ?? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
+      const tracker = this.plugin.getSessionTracker(kind);
+      const label = tracker?.label ?? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`;
       results.push({
         id: `${kind}-${date}-${index}-${session.start}`,
         date,
@@ -3128,7 +3266,7 @@ export class DailyDashboardView extends ItemView {
         title: `${label} session`,
         summary: `${start}-${end} • ${formatMinutesAsHours(minutes)}`,
         detail: session.tag.trim() ? `Tag ${session.tag.trim()}` : "",
-        tone: trackerMeta?.tone ?? (kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health"),
+        tone: tracker ? this.getSessionTrackerTone(tracker.id) : (kind === "work" ? "capture" : kind === "poop" ? "log" : kind === "break" ? "alert" : "health"),
         project: "",
         tag: session.tag.trim()
       });
@@ -3368,8 +3506,8 @@ export class DailyDashboardView extends ItemView {
         poop: entry ? this.plugin.getTrackedPoopMinutes(entry) : 0,
         unknown: entry ? this.plugin.getTimeAllocationInsights(entry.date).fullDayUnknownMinutes : Math.max(0, 1440 - sleepMinutes)
       };
-      DASHBOARD_ACTIVITY_TRACKERS.forEach((tracker) => {
-        minutesByKind[tracker.kind] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.kind) : 0;
+      this.getSessionTrackers().forEach((tracker) => {
+        minutesByKind[tracker.id] = entry ? this.plugin.getTrackedActivityMinutes(entry, tracker.id) : 0;
       });
 
       return {
@@ -3382,12 +3520,15 @@ export class DailyDashboardView extends ItemView {
     });
   }
 
-  private renderWeekBarSegment(parent: HTMLElement, tone: string, minutes: number): void {
+  private renderWeekBarSegment(parent: HTMLElement, tone: string, minutes: number, color?: string): void {
     if (minutes <= 0) {
       return;
     }
 
     const segment = parent.createDiv({ cls: `daily-dashboard-week-segment is-${tone}` });
+    if (color) {
+      segment.style.background = this.buildGradientFromColor(color);
+    }
     segment.style.height = `${(minutes / 1440) * 100}%`;
     segment.ariaLabel = `${tone} ${this.formatWeekBarValue(minutes)}`;
 
@@ -3397,9 +3538,12 @@ export class DailyDashboardView extends ItemView {
     }
   }
 
-  private renderWeekLegendItem(parent: HTMLElement, label: string, tone: string): void {
+  private renderWeekLegendItem(parent: HTMLElement, label: string, tone: string, color?: string): void {
     const item = parent.createDiv({ cls: "daily-dashboard-week-legend-item" });
-    item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    const dot = item.createDiv({ cls: `daily-dashboard-week-legend-dot is-${tone}` });
+    if (color) {
+      dot.style.background = color;
+    }
     item.createEl("span", { text: label });
   }
 
@@ -4017,6 +4161,152 @@ export class DashboardLayoutModal extends Modal {
 
   private toggleHidden(cardKey: string): void {
     this.cards = this.cards.map((card) => card.key === cardKey ? { ...card, hidden: !card.hidden } : card);
+  }
+}
+
+export class SessionDeckCustomizationModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private trackers: SessionTrackerDefinition[];
+  private draggedTrackerId: string | null = null;
+
+  constructor(app: App, plugin: DailyDashboardPlugin) {
+    super(app);
+    this.plugin = plugin;
+    this.trackers = plugin.getSessionTrackers().map((tracker) => ({ ...tracker }));
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-layout-modal");
+    this.setTitle("Customize Session Deck");
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-layout-modal");
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Choose which session buttons appear, reorder them, rename them, and assign colors that flow into the week view. Hidden trackers still preserve historical data."
+    });
+
+    const list = contentEl.createDiv({ cls: "daily-dashboard-layout-list" });
+    this.trackers.forEach((tracker, index) => {
+      const row = list.createDiv({ cls: "daily-dashboard-layout-row" });
+      row.draggable = true;
+      if (!tracker.visible) {
+        row.addClass("is-hidden");
+      }
+      row.addEventListener("dragstart", (event) => {
+        this.draggedTrackerId = tracker.id;
+        row.addClass("is-dragging");
+        event.dataTransfer?.setData("text/plain", tracker.id);
+      });
+      row.addEventListener("dragover", (event) => {
+        if (!this.draggedTrackerId || this.draggedTrackerId === tracker.id) {
+          return;
+        }
+
+        event.preventDefault();
+        row.addClass("is-drop-target");
+      });
+      row.addEventListener("dragleave", () => {
+        row.removeClass("is-drop-target");
+      });
+      row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        row.removeClass("is-drop-target");
+        if (!this.draggedTrackerId || this.draggedTrackerId === tracker.id) {
+          return;
+        }
+
+        this.moveTrackerToIndex(this.draggedTrackerId, index);
+        this.draggedTrackerId = null;
+        this.renderContent();
+      });
+      row.addEventListener("dragend", () => {
+        this.draggedTrackerId = null;
+        row.removeClass("is-dragging");
+        row.removeClass("is-drop-target");
+      });
+
+      const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+      copy.createEl("strong", { text: `${index + 1}. ${tracker.label}` });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `${tracker.visible ? "Visible" : "Hidden"} • ${tracker.id}` });
+      const editor = copy.createDiv({ cls: "daily-dashboard-session-tracker-editor" });
+      const labelInput = editor.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Tracker label" } });
+      labelInput.value = tracker.label;
+      labelInput.addEventListener("change", () => {
+        tracker.label = labelInput.value.trim() || tracker.label;
+        copy.querySelector("strong")?.setText(`${index + 1}. ${tracker.label}`);
+      });
+      const colorInput = editor.createEl("input", { cls: "daily-dashboard-color-input", attr: { type: "color" } });
+      colorInput.value = tracker.color;
+      colorInput.addEventListener("input", () => {
+        tracker.color = colorInput.value;
+      });
+
+      const controls = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(controls, tracker.visible ? "Hide" : "Show", async () => {
+        tracker.visible = !tracker.visible;
+        this.renderContent();
+      }, false, tracker.visible ? "eye-off" : "eye");
+      const canDelete = !ACTIVITY_SESSION_KIND_OPTIONS.includes(tracker.id as (typeof ACTIVITY_SESSION_KIND_OPTIONS)[number]);
+      if (canDelete) {
+        createButton(controls, "Delete", async () => {
+          this.trackers = this.trackers.filter((candidate) => candidate.id !== tracker.id);
+          this.renderContent();
+        }, false, "trash-2");
+      }
+    });
+
+    const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(footer, "Add custom", async () => {
+      const nextId = this.createCustomTrackerId("custom-session");
+      this.trackers.push({ id: nextId, label: "Custom session", color: "#7d9df5", visible: true });
+      this.renderContent();
+    }, false, "plus-circle");
+    createButton(footer, "Reset defaults", async () => {
+      this.trackers = DEFAULT_SETTINGS.sessionTrackers.map((tracker) => ({ ...tracker }));
+      this.renderContent();
+    }, false, "rotate-ccw");
+    createButton(footer, "Apply", async () => {
+      await this.plugin.updateSessionTrackers(this.trackers.map((tracker) => ({
+        ...tracker,
+        id: this.normalizeTrackerId(tracker.id || tracker.label),
+        label: tracker.label.trim() || "Custom session"
+      })));
+      this.close();
+    }, true, "check");
+  }
+
+  private moveTrackerToIndex(trackerId: string, targetIndex: number): void {
+    const index = this.trackers.findIndex((tracker) => tracker.id === trackerId);
+    if (index < 0 || targetIndex < 0 || targetIndex >= this.trackers.length) {
+      return;
+    }
+
+    const [tracker] = this.trackers.splice(index, 1);
+    this.trackers.splice(targetIndex, 0, tracker);
+  }
+
+  private createCustomTrackerId(baseLabel: string): string {
+    const baseId = this.normalizeTrackerId(baseLabel);
+    let nextId = baseId;
+    let suffix = 2;
+    while (this.trackers.some((tracker) => tracker.id === nextId)) {
+      nextId = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+    return nextId;
+  }
+
+  private normalizeTrackerId(value: string): string {
+    return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-session";
   }
 }
 
@@ -7041,19 +7331,28 @@ export class FocusCaptureModal extends Modal {
 
 export class AddHabitModal extends Modal {
   private plugin: DailyDashboardPlugin;
+  private existingHabit: HabitDefinition | null;
   private habitName = "";
   private targetCount = "1";
   private completionWindow = "anytime";
   private cadence = "daily";
   private difficultyWeight = "1";
 
-  constructor(app: App, plugin: DailyDashboardPlugin) {
+  constructor(app: App, plugin: DailyDashboardPlugin, habit?: HabitDefinition) {
     super(app);
     this.plugin = plugin;
+    this.existingHabit = habit ?? null;
+    if (habit) {
+      this.habitName = habit.label;
+      this.targetCount = `${habit.target}`;
+      this.completionWindow = habit.completionWindow;
+      this.cadence = habit.cadence;
+      this.difficultyWeight = `${habit.difficultyWeight}`;
+    }
   }
 
   onOpen(): void {
-    this.setTitle("Add Habit");
+    this.setTitle(this.existingHabit ? "Edit Habit" : "Add Habit");
     const { contentEl } = this;
     contentEl.empty();
 
@@ -7063,6 +7362,7 @@ export class AddHabitModal extends Modal {
       .addText((text) => {
         text
           .setPlaceholder("Drink water")
+          .setValue(this.habitName)
           .onChange((value) => {
             this.habitName = value;
           });
@@ -7124,9 +7424,20 @@ export class AddHabitModal extends Modal {
     new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Add habit").setCta().onClick(async () => {
-          await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight), this.cadence);
+          if (this.existingHabit) {
+            await this.plugin.updateHabitDefinition(this.existingHabit.id, {
+              label: this.habitName,
+              target: Number(this.targetCount),
+              completionWindow: this.completionWindow,
+              difficultyWeight: Number(this.difficultyWeight),
+              cadence: this.cadence
+            });
+          } else {
+            await this.plugin.addHabitDefinition(this.habitName, Number(this.targetCount), this.completionWindow, Number(this.difficultyWeight), this.cadence);
+          }
           this.close();
         });
+        button.setButtonText(this.existingHabit ? "Save habit" : "Add habit");
       })
       .addExtraButton((button) => {
         button.setIcon("x").setTooltip("Cancel").onClick(() => {
