@@ -2347,6 +2347,21 @@ export class DailyDashboardView extends ItemView {
             if (projectsExpanded && project.focus) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Focus: ${project.focus}` });
             }
+            if (projectsExpanded && project.projectSummary) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
+            }
+            if (projectsExpanded && project.whyItMatters) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why it matters: ${project.whyItMatters}` });
+            }
+            if (projectsExpanded && project.definitionOfDone) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Definition of done: ${project.definitionOfDone}` });
+            }
+            if (projectsExpanded && project.lastReview) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last review: ${project.lastReview}` });
+            }
+            if (projectsExpanded && project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
+            }
             if (projectsExpanded && project.relationships.length > 0) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Relationships: ${project.relationships.join(", ")}` });
             }
@@ -2401,6 +2416,12 @@ export class DailyDashboardView extends ItemView {
             createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
             row.createEl("strong", { text: project.name });
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+            if (project.projectSummary) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
+            }
+            if (project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
+            }
             if (project.staleDays !== null) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
             }

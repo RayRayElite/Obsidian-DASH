@@ -42,6 +42,11 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     let currentSection = "General";
     let focus = "";
     let status = "";
+    let projectSummary = "";
+    let whyItMatters = "";
+    let definitionOfDone = "";
+    let lastReview = "";
+    let waitingOn = "";
     let categoryName = "Projects";
     let lastCompletedAt: string | null = null;
     let completionsThisWeek = 0;
@@ -79,6 +84,21 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
         }
         if (meta.key === "status") {
           status = meta.value;
+        }
+        if (meta.key === "project summary") {
+          projectSummary = meta.value;
+        }
+        if (meta.key === "why it matters") {
+          whyItMatters = meta.value;
+        }
+        if (meta.key === "definition of done") {
+          definitionOfDone = meta.value;
+        }
+        if (meta.key === "last review") {
+          lastReview = meta.value;
+        }
+        if (meta.key === "waiting on") {
+          waitingOn = meta.value;
         }
         if (meta.key === "relationships") {
           meta.value.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => relationships.add(item));
@@ -208,6 +228,11 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       archivedCount,
       completionRate: openCount + archivedCount > 0 ? Math.round((archivedCount / (openCount + archivedCount)) * 100) : 0,
       focus,
+      projectSummary,
+      whyItMatters,
+      definitionOfDone,
+      lastReview,
+      waitingOn,
       noteLinks: Array.from(noteLinks),
       nowTasks,
       nextTasks,

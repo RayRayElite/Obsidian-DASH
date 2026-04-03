@@ -560,6 +560,11 @@ export interface TodoProjectSummary {
   archivedCount: number;
   completionRate: number;
   focus: string;
+  projectSummary: string;
+  whyItMatters: string;
+  definitionOfDone: string;
+  lastReview: string;
+  waitingOn: string;
   noteLinks: string[];
   nowTasks: string[];
   nextTasks: string[];

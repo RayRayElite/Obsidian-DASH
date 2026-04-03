@@ -2474,6 +2474,11 @@ function parseTodoSnapshot(content) {
     let currentSection = "General";
     let focus = "";
     let status = "";
+    let projectSummary = "";
+    let whyItMatters = "";
+    let definitionOfDone = "";
+    let lastReview = "";
+    let waitingOn = "";
     let categoryName = "Projects";
     let lastCompletedAt = null;
     let completionsThisWeek = 0;
@@ -2509,6 +2514,21 @@ function parseTodoSnapshot(content) {
         }
         if (meta.key === "status") {
           status = meta.value;
+        }
+        if (meta.key === "project summary") {
+          projectSummary = meta.value;
+        }
+        if (meta.key === "why it matters") {
+          whyItMatters = meta.value;
+        }
+        if (meta.key === "definition of done") {
+          definitionOfDone = meta.value;
+        }
+        if (meta.key === "last review") {
+          lastReview = meta.value;
+        }
+        if (meta.key === "waiting on") {
+          waitingOn = meta.value;
         }
         if (meta.key === "relationships") {
           meta.value.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => relationships.add(item));
@@ -2630,6 +2650,11 @@ function parseTodoSnapshot(content) {
       archivedCount,
       completionRate: openCount + archivedCount > 0 ? Math.round(archivedCount / (openCount + archivedCount) * 100) : 0,
       focus,
+      projectSummary,
+      whyItMatters,
+      definitionOfDone,
+      lastReview,
+      waitingOn,
       noteLinks: Array.from(noteLinks),
       nowTasks,
       nextTasks,
@@ -5978,6 +6003,21 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           if (projectsExpanded && project.focus) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Focus: ${project.focus}` });
           }
+          if (projectsExpanded && project.projectSummary) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
+          }
+          if (projectsExpanded && project.whyItMatters) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Why it matters: ${project.whyItMatters}` });
+          }
+          if (projectsExpanded && project.definitionOfDone) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Definition of done: ${project.definitionOfDone}` });
+          }
+          if (projectsExpanded && project.lastReview) {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Last review: ${project.lastReview}` });
+          }
+          if (projectsExpanded && project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
+            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
+          }
           if (projectsExpanded && project.relationships.length > 0) {
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Relationships: ${project.relationships.join(", ")}` });
           }
@@ -6027,6 +6067,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
             row.createEl("strong", { text: project.name });
             row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+            if (project.projectSummary) {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
+            }
+            if (project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
+              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
+            }
             if (project.staleDays !== null) {
               row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
             }
@@ -12312,6 +12358,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         `## ${project.name}`,
         `- Health: ${project.healthLabel} (${project.healthScore})`,
         `- Next action: ${project.nextAction}`,
+        project.projectSummary ? `- Summary: ${project.projectSummary}` : "",
+        project.whyItMatters ? `- Why it matters: ${project.whyItMatters}` : "",
+        project.definitionOfDone ? `- Definition of done: ${project.definitionOfDone}` : "",
+        project.lastReview ? `- Last review: ${project.lastReview}` : "",
+        project.waitingOn && project.waitingOn.toLowerCase() !== "none" ? `- Waiting on: ${project.waitingOn}` : "",
         project.staleDays !== null ? `- Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"}` : "",
         project.duplicateTasks.length > 0 ? `- Duplicates: ${project.duplicateTasks.slice(0, 5).join(", ")}` : "",
         project.emptySections.length > 0 ? `- Empty sections: ${project.emptySections.join(", ")}` : "",

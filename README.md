@@ -25,7 +25,7 @@ Task lines in the master hub can now include lightweight annotations such as `[d
 
 Point the plugin at your `Master Task Hub.md` note in settings. The note works best when each project uses a `##` heading and includes optional metadata such as `Project Note:: [[Note Name]]`, `Status::`, `Focus::`, `Project Summary::`, `Why It Matters::`, `Definition Of Done::`, `Last Review::`, `Waiting On::`, and `Relationships::`.
 
-The stronger recommended document structure now lives in `Document System Improvement Plan.md` in this repo, including a filled master-hub example, project-note template, AI support-note structure, and generated-note standards.
+The stronger recommended document structure now lives in `Documentation/Document System Improvement Plan.md` in this repo, including a filled master-hub example, project-note template, AI support-note structure, and generated-note standards.
 
 1. keep active work as unchecked checklist items in non-reference sections
 2. mark a task complete with `- [x]`
@@ -53,19 +53,19 @@ Recommended supporting notes:
 - `Decision Journal`: preserved reasoning behind meaningful choices.
 - `System Map`: one-page explanation of what each major note and folder is for.
 
-The filled starter versions of those notes, plus a stronger Master Task Hub and project-note template, are documented in `Document System Improvement Plan.md`.
+The filled starter versions of those notes, plus a stronger Master Task Hub and project-note template, are documented in `Documentation/Document System Improvement Plan.md`.
 
 Supporting repo docs created from that plan:
 
-- `How This System Works.md`
-- `What Goes Where.md`
-- `Task Wording Guide.md`
-- `Archive Policy.md`
-- `Document Freshness Checklist.md`
-- `AI Guardrails Template.md`
-- `Current Season Template.md`
-- `Decision Journal Template.md`
-- `System Map.md`
+- `Documentation/How This System Works.md`
+- `Documentation/What Goes Where.md`
+- `Documentation/Task Wording Guide.md`
+- `Documentation/Archive Policy.md`
+- `Documentation/Document Freshness Checklist.md`
+- `Documentation/AI Guardrails Template.md`
+- `Documentation/Current Season Template.md`
+- `Documentation/Decision Journal Template.md`
+- `Documentation/System Map.md`
 
 ## Logical Day Tracking
 
