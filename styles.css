@@ -1033,7 +1033,7 @@
 
 .daily-dashboard-habit-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: start;
 }
 
@@ -1061,6 +1061,11 @@
 .daily-dashboard-project-row,
 .daily-dashboard-completed-row {
   min-width: 0;
+}
+
+.daily-dashboard-habit-copy {
+  width: 100%;
+  justify-self: stretch;
 }
 
 .daily-dashboard-row-meta {
@@ -1371,8 +1376,10 @@
 }
 
 .daily-dashboard-habit-controls {
-  align-items: center;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  min-width: max-content;
 }
 
 .daily-dashboard-habit-step-group,
@@ -2122,9 +2129,7 @@ input.daily-dashboard-input {
 .daily-dashboard-calendar-panel-header strong,
 .daily-dashboard-calendar-toolbar-copy strong,
 .daily-dashboard-calendar-detail-header strong {
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: flex-start;
+  display: block;
 }
 
 .daily-dashboard-habit-top-controls,
@@ -2133,7 +2138,7 @@ input.daily-dashboard-input {
   align-items: center;
   gap: 8px;
   justify-content: flex-end;
-  width: 100%;
+  width: auto;
 }
 
 .daily-dashboard-habit-bottom-controls {
