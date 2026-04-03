@@ -5471,23 +5471,32 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const intakeMeta = intakeForm.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
       const intakeAmount = intakeMeta.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0.1", step: "0.1", value: "1" } });
       const intakeUnit = intakeMeta.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "mL, can, slice, pill, serving" } });
-      intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+      const syncDefaultIntakeUnit = () => {
+        const defaultUnit = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+        intakeUnit.value = defaultUnit;
+        intakeUnit.dataset.defaultUnit = defaultUnit;
+      };
+      const getResolvedIntakeUnit = () => {
+        return resolveIntakeUnitValue(intakeUnit.value || intakeUnit.dataset.defaultUnit || "", intakeKind.value, measurementSystem);
+      };
+      syncDefaultIntakeUnit();
       intakeKind.addEventListener("change", () => {
-        intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+        syncDefaultIntakeUnit();
       });
       const intakeNote = intakeForm.createEl("input", { cls: "daily-dashboard-input", attr: { type: "text", placeholder: "Optional note" } });
       const intakeButtons = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
       createButton(intakeButtons, "Add entry", async () => {
-        const resolvedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
+        const resolvedUnit = getResolvedIntakeUnit();
         await this.plugin.addIntakeEntry(intakeKind.value, intakeLabel.value, Number(intakeAmount.value), resolvedUnit, intakeNote.value);
         intakeLabel.value = "";
         intakeAmount.value = "1";
-        intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
+        syncDefaultIntakeUnit();
         intakeNote.value = "";
       }, false, "plus-circle");
+      createButton(intakeButtons, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       createButton(intakeButtons, "Save preset", async () => {
         const trimmedLabel = intakeLabel.value.trim();
-        const trimmedUnit = resolveIntakeUnitValue(intakeUnit.value, intakeKind.value, measurementSystem);
+        const trimmedUnit = getResolvedIntakeUnit();
         if (!trimmedLabel || !trimmedUnit) {
           return;
         }
@@ -5504,16 +5513,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
         await this.render();
       }, false, "bookmark-plus");
-      const foodInsight = foodCard.createDiv({ cls: "daily-dashboard-score-block daily-dashboard-food-insight" });
-      foodInsight.createEl("strong", { text: "Diet insight" });
-      foodInsight.createEl("span", {
-        cls: "daily-dashboard-habit-meta",
-        text: todayEntry.dietInsight || "Run a quick AI pass to estimate calories and flag the biggest nutrition signals for today."
-      });
-      const foodInsightActions = foodInsight.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
+      const foodInsight = foodCard.createDiv({ cls: "daily-dashboard-row-meta" });
+      foodInsight.setText(todayEntry.dietInsight || "Run Analyze diet when you want a quick AI pass on calories and nutrition signals for today.");
       if (settings.intakeQuickPresets.length > 0) {
-        const intakePresetRow = foodCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
+        const intakePresetSection = this.createCollapsibleSubsection(foodCard, "consumables-presets", "Presets", "Keep one-tap consumables nearby without leaving them expanded all the time.");
+        const intakePresetRow = intakePresetSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
         settings.intakeQuickPresets.forEach((preset) => {
           const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
           createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
@@ -5532,7 +5536,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         });
       }
-      const intakeList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
+      const intakeLogSection = this.createCollapsibleSubsection(foodCard, "consumables-entry-log", "Entry log", "Review, edit, and remove the consumables already logged for today.");
+      const intakeList = intakeLogSection.createDiv({ cls: "daily-dashboard-food-list" });
       if (intakeEntries.length === 0) {
         const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No consumables logged yet today. Use one flow for drinks, food, meds, and supplements so totals stay analyzable." });
@@ -5907,7 +5912,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
       const heatmapCard = createGridCard("Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
         icon: "layout-grid",
-        eyebrow: "Heatmaps",
+        eyebrow: "Patterns",
         tone: "capture",
         tag: "84 days"
       });

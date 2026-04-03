@@ -882,6 +882,13 @@
   height: 28px;
   min-width: 28px;
 }
+
+.daily-dashboard-inline-remove-button .svg-icon,
+.daily-dashboard-inline-remove-button svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.6;
+}
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-dayflow-grid {
   grid-template-columns: repeat(8, minmax(0, 1fr));
 }
@@ -2095,15 +2102,15 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-segment.is-nap {
-  background: linear-gradient(180deg, rgba(115, 221, 214, 0.94), rgba(66, 160, 154, 0.88));
+  background: linear-gradient(180deg, rgba(92, 214, 233, 0.94), rgba(38, 136, 191, 0.88));
 }
 
 .daily-dashboard-week-segment.is-relax {
-  background: linear-gradient(180deg, rgba(91, 128, 231, 0.94), rgba(53, 86, 191, 0.88));
+  background: linear-gradient(180deg, rgba(101, 120, 242, 0.94), rgba(63, 66, 194, 0.88));
 }
 
 .daily-dashboard-week-segment.is-break {
-  background: linear-gradient(180deg, rgba(239, 182, 107, 0.94), rgba(195, 130, 53, 0.9));
+  background: linear-gradient(180deg, rgba(255, 210, 94, 0.94), rgba(214, 152, 28, 0.9));
 }
 
 .daily-dashboard-week-segment.is-poop {
@@ -2111,39 +2118,39 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-segment.is-exercise {
-  background: linear-gradient(180deg, rgba(107, 214, 143, 0.94), rgba(54, 151, 86, 0.9));
+  background: linear-gradient(180deg, rgba(232, 95, 108, 0.94), rgba(179, 48, 62, 0.9));
 }
 
 .daily-dashboard-week-segment.is-study {
-  background: linear-gradient(180deg, rgba(225, 199, 108, 0.94), rgba(171, 141, 43, 0.9));
+  background: linear-gradient(180deg, rgba(165, 119, 244, 0.94), rgba(112, 62, 196, 0.9));
 }
 
 .daily-dashboard-week-segment.is-gaming {
-  background: linear-gradient(180deg, rgba(141, 137, 255, 0.94), rgba(90, 78, 204, 0.9));
+  background: linear-gradient(180deg, rgba(241, 94, 206, 0.94), rgba(173, 44, 144, 0.9));
 }
 
 .daily-dashboard-week-segment.is-hygiene {
-  background: linear-gradient(180deg, rgba(120, 220, 214, 0.94), rgba(61, 164, 157, 0.9));
+  background: linear-gradient(180deg, rgba(88, 236, 191, 0.94), rgba(33, 167, 127, 0.9));
 }
 
 .daily-dashboard-week-segment.is-cooking {
-  background: linear-gradient(180deg, rgba(243, 173, 102, 0.94), rgba(198, 118, 42, 0.9));
+  background: linear-gradient(180deg, rgba(255, 139, 92, 0.94), rgba(210, 91, 43, 0.9));
 }
 
 .daily-dashboard-week-segment.is-errand {
-  background: linear-gradient(180deg, rgba(244, 188, 108, 0.94), rgba(194, 132, 47, 0.9));
+  background: linear-gradient(180deg, rgba(194, 166, 79, 0.94), rgba(140, 112, 26, 0.9));
 }
 
 .daily-dashboard-week-segment.is-commute {
-  background: linear-gradient(180deg, rgba(174, 184, 201, 0.94), rgba(113, 122, 140, 0.9));
+  background: linear-gradient(180deg, rgba(143, 157, 178, 0.94), rgba(86, 101, 124, 0.9));
 }
 
 .daily-dashboard-week-segment.is-social {
-  background: linear-gradient(180deg, rgba(215, 193, 110, 0.94), rgba(168, 145, 57, 0.9));
+  background: linear-gradient(180deg, rgba(120, 92, 230, 0.94), rgba(74, 46, 176, 0.9));
 }
 
 .daily-dashboard-week-segment.is-chores {
-  background: linear-gradient(180deg, rgba(143, 168, 245, 0.94), rgba(84, 111, 196, 0.9));
+  background: linear-gradient(180deg, rgba(126, 212, 92, 0.94), rgba(67, 152, 38, 0.9));
 }
 
 .daily-dashboard-week-segment.is-unknown {
@@ -2203,15 +2210,15 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-legend-dot.is-nap {
-  background: #5fc8c0;
+  background: #3aa4da;
 }
 
 .daily-dashboard-week-legend-dot.is-relax {
-  background: #4a70df;
+  background: #5b63e6;
 }
 
 .daily-dashboard-week-legend-dot.is-break {
-  background: #d99546;
+  background: #d6a227;
 }
 
 .daily-dashboard-week-legend-dot.is-poop {
@@ -2219,39 +2226,39 @@ input.daily-dashboard-input {
 }
 
 .daily-dashboard-week-legend-dot.is-exercise {
-  background: #46b468;
+  background: #d84f60;
 }
 
 .daily-dashboard-week-legend-dot.is-study {
-  background: #c5a53e;
+  background: #8d63d9;
 }
 
 .daily-dashboard-week-legend-dot.is-gaming {
-  background: #7568f0;
+  background: #dd5bbd;
 }
 
 .daily-dashboard-week-legend-dot.is-hygiene {
-  background: #56c8c1;
+  background: #39c99c;
 }
 
 .daily-dashboard-week-legend-dot.is-cooking {
-  background: #df8e3a;
+  background: #e2703d;
 }
 
 .daily-dashboard-week-legend-dot.is-errand {
-  background: #d9a14b;
+  background: #b39233;
 }
 
 .daily-dashboard-week-legend-dot.is-commute {
-  background: #8c97ab;
+  background: #6e829d;
 }
 
 .daily-dashboard-week-legend-dot.is-social {
-  background: #bba44f;
+  background: #6743d3;
 }
 
 .daily-dashboard-week-legend-dot.is-chores {
-  background: #6d8fe3;
+  background: #67b63c;
 }
 
 .daily-dashboard-week-legend-dot.is-unknown {
