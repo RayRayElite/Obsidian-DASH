@@ -11,6 +11,7 @@ import {
   type HabitDefinition,
   type HabitCompletionWindow,
   type IntakeEntry,
+  type IntakeQuickPreset,
   type NextUpFocusItem,
   type NoteIndexCache,
   type NoteIndexChunk,
@@ -38,6 +39,11 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
   const calendarLookaheadHours = clamp(Number(settings.calendarLookaheadHours ?? DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number(settings.calendarWarningHours ?? DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
+  const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets)
+    ? settings.intakeQuickPresets
+        .map((preset, index) => normalizeIntakeQuickPreset(preset, index))
+        .filter((preset): preset is IntakeQuickPreset => preset !== null)
+    : getDefaultIntakeQuickPresets(measurementSystem);
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
 
   return {
@@ -68,6 +74,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
+    intakeQuickPresets,
     showUndoNotifications,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,
@@ -978,4 +985,45 @@ export function parseAiPromptTemplates(value: string): Record<string, string> {
 
   flush();
   return templates;
+}
+
+export function getDefaultIntakeQuickPresets(measurementSystem: DashboardSettings["measurementSystem"]): IntakeQuickPreset[] {
+  if (measurementSystem === "metric") {
+    return [
+      { id: "water-250-ml", kind: "water", label: "Water", amount: 250, unit: "mL" },
+      { id: "coffee-250-ml", kind: "caffeine", label: "Coffee", amount: 250, unit: "mL" }
+    ];
+  }
+
+  return [
+    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+  ];
+}
+
+function normalizeIntakeQuickPreset(input: unknown, index: number): IntakeQuickPreset | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const candidate = input as Partial<IntakeQuickPreset>;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
+  if (!label || !unit) {
+    return null;
+  }
+
+  const kind = candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water";
+  const amount = clamp(Math.round(Number(candidate.amount ?? 1)), 1, 64);
+  const baseId = typeof candidate.id === "string" && candidate.id.trim().length > 0
+    ? candidate.id.trim()
+    : `${kind}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${amount}-${unit.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index}`;
+
+  return {
+    id: baseId,
+    kind,
+    label,
+    amount,
+    unit
+  };
 }

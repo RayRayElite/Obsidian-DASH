@@ -168,24 +168,27 @@
   justify-content: flex-end;
   align-items: flex-start;
   gap: 6px;
-  max-width: 420px;
+  max-width: none;
   margin-left: auto;
 }
 
 .daily-dashboard-hero-header-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 10px;
   margin-left: auto;
   min-width: 0;
 }
 
+.daily-dashboard-quick-add-shell,
 .daily-dashboard-notification-shell {
   position: relative;
   z-index: 5;
   flex: 0 0 auto;
 }
 
+.daily-dashboard-hero-popover-trigger,
 .daily-dashboard-notification-trigger {
   display: inline-flex;
   align-items: center;
@@ -201,6 +204,8 @@
   transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
 }
 
+.daily-dashboard-hero-popover-trigger:hover,
+.daily-dashboard-hero-popover-trigger.is-active,
 .daily-dashboard-notification-trigger:hover,
 .daily-dashboard-notification-trigger.is-active {
   transform: translateY(-1px);
@@ -230,6 +235,7 @@
   font-weight: 700;
 }
 
+.daily-dashboard-hero-popover,
 .daily-dashboard-notification-popover {
   position: absolute;
   top: calc(100% + 10px);
@@ -245,6 +251,10 @@
   background: color-mix(in srgb, var(--daily-dashboard-panel-strong) 96%, rgba(7, 10, 15, 0.92));
   box-shadow: var(--daily-dashboard-shadow-strong);
   backdrop-filter: blur(16px);
+}
+
+.daily-dashboard-quick-add-popover {
+  width: min(360px, calc(100vw - 56px));
 }
 
 .daily-dashboard-notification-popover-header {
@@ -426,8 +436,6 @@
 .daily-dashboard-card--sleep-and-notes,
 .daily-dashboard-card--timeline-search,
 .daily-dashboard-card--heatmaps,
-.daily-dashboard-card--quick-add-to-project,
-.daily-dashboard-card--completed-today,
 .daily-dashboard-card--searchable-work-log,
 .daily-dashboard-card--project-health,
 .daily-dashboard-card--stale-work-and-cleanup {
@@ -489,29 +497,21 @@
   order: 7;
 }
 
-.daily-dashboard-card--quick-add-to-project {
-  order: 8;
-}
-
-.daily-dashboard-card--completed-today {
-  order: 9;
-}
-
 .daily-dashboard-card--searchable-work-log {
-  order: 10;
+  order: 8;
 }
 
 .daily-dashboard-card--ai-workspace {
   grid-column: 1 / -1;
-  order: 11;
+  order: 9;
 }
 
 .daily-dashboard-card--project-health {
-  order: 12;
+  order: 10;
 }
 
 .daily-dashboard-card--stale-work-and-cleanup {
-  order: 13;
+  order: 11;
 }
 
 .daily-dashboard-card-header {
@@ -780,6 +780,7 @@
   margin-left: 0;
 }
 
+.daily-dashboard-view.is-view-mobile .daily-dashboard-hero-popover,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-notification-popover {
   position: static;
   width: 100%;
@@ -793,8 +794,6 @@
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--habits,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--food-log,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--sleep-and-notes,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--quick-add-to-project,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--completed-today,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--searchable-work-log,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--project-health,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--stale-work-and-cleanup,
@@ -840,12 +839,22 @@
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--food-log,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--symptoms-and-pain,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--sleep-and-notes,
-.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--quick-add-to-project,
-.daily-dashboard-view.is-view-widescreen .daily-dashboard-card--completed-today,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--searchable-work-log,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--project-health,
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-card--stale-work-and-cleanup {
   grid-column: span 6;
+}
+
+.daily-dashboard-inline-action-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.daily-dashboard-inline-remove-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
 }
 .daily-dashboard-view.is-view-widescreen .daily-dashboard-dayflow-grid {
   grid-template-columns: repeat(8, minmax(0, 1fr));

@@ -169,6 +169,14 @@ export interface IntakeEntry {
   loggedAt: string;
 }
 
+export interface IntakeQuickPreset {
+  id: string;
+  kind: IntakeKind;
+  label: string;
+  amount: number;
+  unit: string;
+}
+
 export interface SymptomEntry {
   symptom: string;
   severity: number;
@@ -365,6 +373,7 @@ export interface DashboardSettings {
   calendarLookaheadHours: number;
   calendarWarningHours: number;
   measurementSystem: MeasurementSystem;
+  intakeQuickPresets: IntakeQuickPreset[];
   showUndoNotifications: boolean;
   wallpaperFolder: string;
   selectedWallpaper: string;
@@ -859,6 +868,10 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   measurementSystem: "imperial",
+  intakeQuickPresets: [
+    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+  ],
   showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",

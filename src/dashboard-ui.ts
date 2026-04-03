@@ -34,6 +34,7 @@ import {
   type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
+  type IntakeQuickPreset,
   type NextUpFocusItem,
   type ProjectReviewOption,
   type QuickAddState,
@@ -84,8 +85,9 @@ export class DailyDashboardView extends ItemView {
   private selectedCalendarDate = formatDateKey(new Date());
   private pendingUndoActions: DashboardUndoAction[] = [];
   private notificationPanelOpen = false;
+  private quickAddPanelOpen = false;
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
-    if (!this.notificationPanelOpen || !this.contentEl.isConnected) {
+    if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
       return;
     }
 
@@ -94,12 +96,14 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    const shell = this.contentEl.querySelector<HTMLElement>(".daily-dashboard-notification-shell");
-    if (shell?.contains(target)) {
+    const notificationShell = this.contentEl.querySelector<HTMLElement>(".daily-dashboard-notification-shell");
+    const quickAddShell = this.contentEl.querySelector<HTMLElement>(".daily-dashboard-quick-add-shell");
+    if (notificationShell?.contains(target) || quickAddShell?.contains(target)) {
       return;
     }
 
     this.notificationPanelOpen = false;
+    this.quickAddPanelOpen = false;
     void this.render();
   };
   private readonly handleDashboardKeydown = (event: KeyboardEvent): void => {
@@ -107,9 +111,10 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    if (event.key === "Escape" && this.notificationPanelOpen) {
+    if (event.key === "Escape" && (this.notificationPanelOpen || this.quickAddPanelOpen)) {
       event.preventDefault();
       this.notificationPanelOpen = false;
+      this.quickAddPanelOpen = false;
       void this.render();
       return;
     }
@@ -322,6 +327,29 @@ export class DailyDashboardView extends ItemView {
 
   private async toggleNotificationPanel(): Promise<void> {
     this.notificationPanelOpen = !this.notificationPanelOpen;
+    if (this.notificationPanelOpen) {
+      this.quickAddPanelOpen = false;
+    }
+    await this.render();
+  }
+
+  private async toggleQuickAddPanel(): Promise<void> {
+    this.quickAddPanelOpen = !this.quickAddPanelOpen;
+    if (this.quickAddPanelOpen) {
+      this.notificationPanelOpen = false;
+    }
+    await this.render();
+  }
+
+  private async submitQuickAddTask(): Promise<void> {
+    const text = this.quickAddState.taskText.trim();
+    if (!text || !this.quickAddState.projectName) {
+      return;
+    }
+
+    await this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
+    this.quickAddState.taskText = "";
+    this.quickAddPanelOpen = false;
     await this.render();
   }
 
@@ -620,6 +648,75 @@ export class DailyDashboardView extends ItemView {
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
 
       const heroHeaderControls = heroHeader.createDiv({ cls: "daily-dashboard-hero-header-controls" });
+      const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });
+      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
+      const quickAddShell = actions.createDiv({ cls: "daily-dashboard-quick-add-shell" });
+      const quickAddTrigger = quickAddShell.createEl("button", { cls: "daily-dashboard-hero-popover-trigger" });
+      quickAddTrigger.type = "button";
+      quickAddTrigger.ariaLabel = "Add a task to a project";
+      quickAddTrigger.ariaExpanded = this.quickAddPanelOpen ? "true" : "false";
+      quickAddTrigger.toggleClass("is-active", this.quickAddPanelOpen);
+      const quickAddIcon = quickAddTrigger.createSpan({ cls: "daily-dashboard-button-icon" });
+      setIcon(quickAddIcon, "plus-circle");
+      quickAddTrigger.createSpan({ cls: "daily-dashboard-button-label", text: "Add to project" });
+      quickAddTrigger.addEventListener("click", () => {
+        void this.toggleQuickAddPanel();
+      });
+      if (this.quickAddPanelOpen) {
+        const quickAddPopover = quickAddShell.createDiv({ cls: "daily-dashboard-hero-popover daily-dashboard-quick-add-popover" });
+        const popoverHeader = quickAddPopover.createDiv({ cls: "daily-dashboard-notification-popover-header" });
+        const popoverCopy = popoverHeader.createDiv({ cls: "daily-dashboard-stack" });
+        popoverCopy.createEl("strong", { text: "Add to project" });
+        popoverCopy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: projects.length > 0 ? "Capture a task straight into Add, Fix, Now, Next, or Later." : "Create a project first so there is somewhere to send the task."
+        });
+        if (projects.length === 0) {
+          const emptyState = quickAddPopover.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+          emptyState.createEl("span", { text: "No projects are available yet." });
+          const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(emptyActions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
+        } else {
+          const quickAddForm = quickAddPopover.createDiv({ cls: "daily-dashboard-stacked-form" });
+          const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+          projects.forEach((project) => {
+            const option = projectSelect.createEl("option", { text: project.name });
+            option.value = project.name;
+            option.selected = project.name === this.quickAddState.projectName;
+          });
+          projectSelect.addEventListener("change", () => {
+            this.quickAddState.projectName = projectSelect.value;
+          });
+          const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+          ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
+            const option = sectionSelect.createEl("option", { text: section });
+            option.value = section;
+            option.selected = section === this.quickAddState.sectionName;
+          });
+          sectionSelect.addEventListener("change", () => {
+            this.quickAddState.sectionName = sectionSelect.value;
+          });
+          const taskInput = quickAddForm.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: "Add a task to the selected project" }
+          });
+          taskInput.value = this.quickAddState.taskText;
+          taskInput.addEventListener("input", () => {
+            this.quickAddState.taskText = taskInput.value;
+          });
+          taskInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void this.submitQuickAddTask();
+            }
+          });
+          const quickAddActions = quickAddPopover.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(quickAddActions, "Add task", async () => this.submitQuickAddTask(), true, "plus-circle");
+          createButton(quickAddActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
+        }
+      }
+      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
+      createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const notificationShell = heroHeaderControls.createDiv({ cls: "daily-dashboard-notification-shell" });
       const notificationTrigger = notificationShell.createEl("button", { cls: "daily-dashboard-notification-trigger" });
       notificationTrigger.type = "button";
@@ -671,11 +768,6 @@ export class DailyDashboardView extends ItemView {
           });
         }
       }
-
-      const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });
-      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
-      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
-      createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
 
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
@@ -1682,50 +1774,6 @@ export class DailyDashboardView extends ItemView {
         }
       });
 
-      const quickAddCard = createGridCard("Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
-        icon: "plus-circle",
-        eyebrow: "Capture",
-        tone: "capture",
-        tag: "Input"
-      });
-      const quickAddForm = quickAddCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-      projects.forEach((project) => {
-        const option = projectSelect.createEl("option", { text: project.name });
-        option.value = project.name;
-        option.selected = project.name === this.quickAddState.projectName;
-      });
-      projectSelect.addEventListener("change", () => {
-        this.quickAddState.projectName = projectSelect.value;
-      });
-      const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-      ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
-        const option = sectionSelect.createEl("option", { text: section });
-        option.value = section;
-        option.selected = section === this.quickAddState.sectionName;
-      });
-      sectionSelect.addEventListener("change", () => {
-        this.quickAddState.sectionName = sectionSelect.value;
-      });
-      const taskInput = quickAddForm.createEl("input", {
-        cls: "daily-dashboard-input",
-        attr: { type: "text", placeholder: "Add a task to the selected project" }
-      });
-      taskInput.value = this.quickAddState.taskText;
-      taskInput.addEventListener("input", () => {
-        this.quickAddState.taskText = taskInput.value;
-      });
-      const quickAddButton = quickAddForm.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add task" });
-      quickAddButton.type = "button";
-      quickAddButton.addEventListener("click", () => {
-        const text = taskInput.value.trim();
-        if (!text || !this.quickAddState.projectName) {
-          return;
-        }
-        this.quickAddState.taskText = "";
-        void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
-      });
-
       const foodCard = createGridCard("Food Log", "Quick meal capture so routine and energy stay analyzable.", {
         icon: "utensils-crossed",
         eyebrow: "Body",
@@ -1771,8 +1819,6 @@ export class DailyDashboardView extends ItemView {
       createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       const measurementSystem = settings.measurementSystem;
-      const waterQuickPreset = getQuickIntakePreset("water", measurementSystem);
-      const coffeeQuickPreset = getQuickIntakePreset("caffeine", measurementSystem);
       if (todayEntry.foodLog.length === 0) {
         const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
@@ -1807,6 +1853,7 @@ export class DailyDashboardView extends ItemView {
         });
       }
       const intakeSection = this.createCollapsibleSubsection(foodCard, "body-intake", "Water, caffeine, meds", "Track hydration, stimulants, supplements, and medication without burying them in notes.");
+      const intakePresets = settings.intakeQuickPresets;
       const intakeForm = intakeSection.createDiv({ cls: "daily-dashboard-stacked-form" });
       const intakeKind = intakeForm.createEl("select", { cls: "daily-dashboard-input" });
       [
@@ -1836,8 +1883,46 @@ export class DailyDashboardView extends ItemView {
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
         intakeNote.value = "";
       }, false, "droplets");
-      createButton(intakeButtons, waterQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("water", waterQuickPreset.label, waterQuickPreset.amount, waterQuickPreset.unit), false, "glass-water");
-      createButton(intakeButtons, coffeeQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("caffeine", coffeeQuickPreset.label, coffeeQuickPreset.amount, coffeeQuickPreset.unit), false, "coffee");
+      createButton(intakeButtons, "Save preset", async () => {
+        const trimmedLabel = intakeLabel.value.trim();
+        const trimmedUnit = intakeUnit.value.trim();
+        if (!trimmedLabel || !trimmedUnit) {
+          return;
+        }
+
+        const nextPreset = buildIntakeQuickPreset({
+          kind: intakeKind.value,
+          label: trimmedLabel,
+          amount: Number(intakeAmount.value),
+          unit: trimmedUnit
+        });
+        const nextPresets = [...settings.intakeQuickPresets.filter((preset) => preset.id !== nextPreset.id), nextPreset];
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          intakeQuickPresets: nextPresets
+        });
+        await this.render();
+      }, false, "bookmark-plus");
+      if (intakePresets.length > 0) {
+        const intakePresetRow = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
+        intakePresets.forEach((preset) => {
+          const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
+          createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
+            await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
+          }, false, getIntakePresetIcon(preset.kind));
+          const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button" });
+          removeButton.type = "button";
+          removeButton.ariaLabel = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
+          removeButton.title = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
+          setIcon(removeButton, "x");
+          removeButton.addEventListener("click", () => {
+            void this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              intakeQuickPresets: this.plugin.getSettings().intakeQuickPresets.filter((item) => item.id !== preset.id)
+            }).then(async () => this.render());
+          });
+        });
+      }
       const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
       if (todayEntry.intakeLog.length === 0) {
         intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
@@ -2367,29 +2452,6 @@ export class DailyDashboardView extends ItemView {
       }
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
-
-      const completedCard = createGridCard("Completed Today", "Keep today's completed work visible for review and reinforcement.", {
-        icon: "badge-check",
-        eyebrow: "Done",
-        tone: "done",
-        tag: "Wins"
-      });
-      const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
-      if (todayEntry.completedTasks.length === 0) {
-        const emptyState = completedList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
-        emptyState.createEl("span", { text: "No archived tasks yet today. Pull something into today or open the hub to finish a concrete item." });
-        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
-      } else {
-        todayEntry.completedTasks.slice(0, 10).forEach((task) => {
-          const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
-          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, task.section, "neutral");
-          row.createEl("strong", { text: task.project });
-          row.createEl("span", { text: `${task.section}: ${task.text}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-        });
-      }
 
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
 
@@ -5451,16 +5513,14 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
-  { key: "quick-add-to-project", title: "Quick Add To Project", order: 6, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 7, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 8, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 15, hidden: false, pinned: false }
+  { key: "food-log", title: "Food Log", order: 6, hidden: false, pinned: false },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false },
+  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
@@ -5915,16 +5975,36 @@ function getDefaultIntakeUnit(kind: string, measurementSystem: "imperial" | "met
   return kind === "medication" ? "pill" : "serving";
 }
 
-function getQuickIntakePreset(kind: "water" | "caffeine", measurementSystem: "imperial" | "metric"): { amount: number; unit: string; label: string; buttonLabel: string } {
-  if (kind === "water") {
-    return measurementSystem === "metric"
-      ? { amount: 250, unit: "mL", label: "Water", buttonLabel: "Water 250 mL" }
-      : { amount: 8, unit: "oz", label: "Water", buttonLabel: "Water 8 oz" };
-  }
+function buildIntakeQuickPreset(input: { kind: string; label: string; amount: number; unit: string }): IntakeQuickPreset {
+  const label = input.label.trim();
+  const unit = input.unit.trim();
+  const amount = Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 64);
+  const kind = input.kind === "caffeine" || input.kind === "supplement" || input.kind === "medication" ? input.kind : "water";
+  const slug = `${kind}-${label.toLowerCase()}-${amount}-${unit.toLowerCase()}`
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-  return measurementSystem === "metric"
-    ? { amount: 250, unit: "mL", label: "Coffee", buttonLabel: "Coffee 250 mL" }
-    : { amount: 1, unit: "cup", label: "Coffee", buttonLabel: "Coffee" };
+  return {
+    id: slug,
+    kind,
+    label,
+    amount,
+    unit
+  };
+}
+
+function formatIntakeQuickPresetButtonLabel(preset: IntakeQuickPreset): string {
+  return `${preset.label} ${preset.amount} ${preset.unit}`;
+}
+
+function getIntakePresetIcon(kind: IntakeQuickPreset["kind"]): string {
+  if (kind === "caffeine") {
+    return "coffee";
+  }
+  if (kind === "supplement" || kind === "medication") {
+    return "pill";
+  }
+  return "glass-water";
 }
 
 function sortDashboardLayoutCards(cards: DashboardLayoutCardState[]): DashboardLayoutCardState[] {

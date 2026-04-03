@@ -96,6 +96,10 @@ var DEFAULT_SETTINGS = {
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
   measurementSystem: "imperial",
+  intakeQuickPresets: [
+    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+  ],
   showUndoNotifications: true,
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
@@ -126,6 +130,7 @@ function sanitizeSettings(settings) {
   const calendarLookaheadHours = clamp(Number((_a = settings.calendarLookaheadHours) != null ? _a : DEFAULT_SETTINGS.calendarLookaheadHours), 1, 336);
   const calendarWarningHours = clamp(Number((_b = settings.calendarWarningHours) != null ? _b : DEFAULT_SETTINGS.calendarWarningHours), 1, calendarLookaheadHours);
   const measurementSystem = settings.measurementSystem === "metric" ? "metric" : DEFAULT_SETTINGS.measurementSystem;
+  const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets) ? settings.intakeQuickPresets.map((preset, index) => normalizeIntakeQuickPreset(preset, index)).filter((preset) => preset !== null) : getDefaultIntakeQuickPresets(measurementSystem);
   const showUndoNotifications = (_c = settings.showUndoNotifications) != null ? _c : DEFAULT_SETTINGS.showUndoNotifications;
   return {
     dashboardTitle: ((_d = settings.dashboardTitle) == null ? void 0 : _d.trim()) || DEFAULT_SETTINGS.dashboardTitle,
@@ -155,6 +160,7 @@ function sanitizeSettings(settings) {
     calendarLookaheadHours,
     calendarWarningHours,
     measurementSystem,
+    intakeQuickPresets,
     showUndoNotifications,
     wallpaperFolder: normalizeFolderPath(((_y = settings.wallpaperFolder) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: ((_z = settings.selectedWallpaper) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
@@ -897,6 +903,40 @@ function parseAiPromptTemplates(value) {
   });
   flush();
   return templates;
+}
+function getDefaultIntakeQuickPresets(measurementSystem) {
+  if (measurementSystem === "metric") {
+    return [
+      { id: "water-250-ml", kind: "water", label: "Water", amount: 250, unit: "mL" },
+      { id: "coffee-250-ml", kind: "caffeine", label: "Coffee", amount: 250, unit: "mL" }
+    ];
+  }
+  return [
+    { id: "water-8-oz", kind: "water", label: "Water", amount: 8, unit: "oz" },
+    { id: "coffee-1-cup", kind: "caffeine", label: "Coffee", amount: 1, unit: "cup" }
+  ];
+}
+function normalizeIntakeQuickPreset(input, index) {
+  var _a;
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const candidate = input;
+  const label = typeof candidate.label === "string" ? candidate.label.trim() : "";
+  const unit = typeof candidate.unit === "string" ? candidate.unit.trim() : "";
+  if (!label || !unit) {
+    return null;
+  }
+  const kind = candidate.kind === "caffeine" || candidate.kind === "supplement" || candidate.kind === "medication" ? candidate.kind : "water";
+  const amount = clamp(Math.round(Number((_a = candidate.amount) != null ? _a : 1)), 1, 64);
+  const baseId = typeof candidate.id === "string" && candidate.id.trim().length > 0 ? candidate.id.trim() : `${kind}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${amount}-${unit.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index}`;
+  return {
+    id: baseId,
+    kind,
+    label,
+    amount,
+    unit
+  };
 }
 
 // src/dashboard-logs.ts
@@ -3519,28 +3559,32 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.selectedCalendarDate = formatDateKey(/* @__PURE__ */ new Date());
     this.pendingUndoActions = [];
     this.notificationPanelOpen = false;
+    this.quickAddPanelOpen = false;
     this.handleDocumentPointerDown = (event) => {
-      if (!this.notificationPanelOpen || !this.contentEl.isConnected) {
+      if (!this.notificationPanelOpen && !this.quickAddPanelOpen || !this.contentEl.isConnected) {
         return;
       }
       const target = event.target;
       if (!(target instanceof Node)) {
         return;
       }
-      const shell = this.contentEl.querySelector(".daily-dashboard-notification-shell");
-      if (shell == null ? void 0 : shell.contains(target)) {
+      const notificationShell = this.contentEl.querySelector(".daily-dashboard-notification-shell");
+      const quickAddShell = this.contentEl.querySelector(".daily-dashboard-quick-add-shell");
+      if ((notificationShell == null ? void 0 : notificationShell.contains(target)) || (quickAddShell == null ? void 0 : quickAddShell.contains(target))) {
         return;
       }
       this.notificationPanelOpen = false;
+      this.quickAddPanelOpen = false;
       void this.render();
     };
     this.handleDashboardKeydown = (event) => {
       if (!this.contentEl.isConnected || !this.hasKeyboardShortcutListener) {
         return;
       }
-      if (event.key === "Escape" && this.notificationPanelOpen) {
+      if (event.key === "Escape" && (this.notificationPanelOpen || this.quickAddPanelOpen)) {
         event.preventDefault();
         this.notificationPanelOpen = false;
+        this.quickAddPanelOpen = false;
         void this.render();
         return;
       }
@@ -3709,6 +3753,26 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
   }
   async toggleNotificationPanel() {
     this.notificationPanelOpen = !this.notificationPanelOpen;
+    if (this.notificationPanelOpen) {
+      this.quickAddPanelOpen = false;
+    }
+    await this.render();
+  }
+  async toggleQuickAddPanel() {
+    this.quickAddPanelOpen = !this.quickAddPanelOpen;
+    if (this.quickAddPanelOpen) {
+      this.notificationPanelOpen = false;
+    }
+    await this.render();
+  }
+  async submitQuickAddTask() {
+    const text = this.quickAddState.taskText.trim();
+    if (!text || !this.quickAddState.projectName) {
+      return;
+    }
+    await this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
+    this.quickAddState.taskText = "";
+    this.quickAddPanelOpen = false;
     await this.render();
   }
   async handleNotificationAction(notification) {
@@ -3957,6 +4021,75 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       heroCopy.createEl("span", { cls: "daily-dashboard-kicker", text: "Daily operating dashboard" });
       heroCopy.createEl("h1", { cls: "daily-dashboard-hero-title", text: settings.dashboardTitle });
       const heroHeaderControls = heroHeader.createDiv({ cls: "daily-dashboard-hero-header-controls" });
+      const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });
+      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
+      const quickAddShell = actions.createDiv({ cls: "daily-dashboard-quick-add-shell" });
+      const quickAddTrigger = quickAddShell.createEl("button", { cls: "daily-dashboard-hero-popover-trigger" });
+      quickAddTrigger.type = "button";
+      quickAddTrigger.ariaLabel = "Add a task to a project";
+      quickAddTrigger.ariaExpanded = this.quickAddPanelOpen ? "true" : "false";
+      quickAddTrigger.toggleClass("is-active", this.quickAddPanelOpen);
+      const quickAddIcon = quickAddTrigger.createSpan({ cls: "daily-dashboard-button-icon" });
+      (0, import_obsidian3.setIcon)(quickAddIcon, "plus-circle");
+      quickAddTrigger.createSpan({ cls: "daily-dashboard-button-label", text: "Add to project" });
+      quickAddTrigger.addEventListener("click", () => {
+        void this.toggleQuickAddPanel();
+      });
+      if (this.quickAddPanelOpen) {
+        const quickAddPopover = quickAddShell.createDiv({ cls: "daily-dashboard-hero-popover daily-dashboard-quick-add-popover" });
+        const popoverHeader = quickAddPopover.createDiv({ cls: "daily-dashboard-notification-popover-header" });
+        const popoverCopy = popoverHeader.createDiv({ cls: "daily-dashboard-stack" });
+        popoverCopy.createEl("strong", { text: "Add to project" });
+        popoverCopy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: projects.length > 0 ? "Capture a task straight into Add, Fix, Now, Next, or Later." : "Create a project first so there is somewhere to send the task."
+        });
+        if (projects.length === 0) {
+          const emptyState = quickAddPopover.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
+          emptyState.createEl("span", { text: "No projects are available yet." });
+          const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(emptyActions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
+        } else {
+          const quickAddForm = quickAddPopover.createDiv({ cls: "daily-dashboard-stacked-form" });
+          const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+          projects.forEach((project) => {
+            const option = projectSelect.createEl("option", { text: project.name });
+            option.value = project.name;
+            option.selected = project.name === this.quickAddState.projectName;
+          });
+          projectSelect.addEventListener("change", () => {
+            this.quickAddState.projectName = projectSelect.value;
+          });
+          const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
+          ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
+            const option = sectionSelect.createEl("option", { text: section });
+            option.value = section;
+            option.selected = section === this.quickAddState.sectionName;
+          });
+          sectionSelect.addEventListener("change", () => {
+            this.quickAddState.sectionName = sectionSelect.value;
+          });
+          const taskInput = quickAddForm.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: "Add a task to the selected project" }
+          });
+          taskInput.value = this.quickAddState.taskText;
+          taskInput.addEventListener("input", () => {
+            this.quickAddState.taskText = taskInput.value;
+          });
+          taskInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void this.submitQuickAddTask();
+            }
+          });
+          const quickAddActions = quickAddPopover.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(quickAddActions, "Add task", async () => this.submitQuickAddTask(), true, "plus-circle");
+          createButton(quickAddActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
+        }
+      }
+      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
+      createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const notificationShell = heroHeaderControls.createDiv({ cls: "daily-dashboard-notification-shell" });
       const notificationTrigger = notificationShell.createEl("button", { cls: "daily-dashboard-notification-trigger" });
       notificationTrigger.type = "button";
@@ -4006,10 +4139,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         }
       }
-      const actions = heroHeaderControls.createDiv({ cls: "daily-dashboard-actions" });
-      createButton(actions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
-      createButton(actions, "Review mode", async () => this.plugin.openProjectReviewModeFlow(), false, "panel-right-open");
-      createButton(actions, "Repair day", async () => this.plugin.openLogicalDayRepairFlow(), false, "wrench");
       const heroFooter = hero.createDiv({ cls: "daily-dashboard-hero-footer" });
       const heroMeta = heroFooter.createDiv({ cls: "daily-dashboard-hero-status-row" });
       const datePill = createStatPill(heroMeta, todayEntry.date, "calendar-days", "date");
@@ -4962,49 +5091,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         }
       });
-      const quickAddCard = createGridCard("Quick Add To Project", "Capture work into Add, Fix, Now, Next, or Later.", {
-        icon: "plus-circle",
-        eyebrow: "Capture",
-        tone: "capture",
-        tag: "Input"
-      });
-      const quickAddForm = quickAddCard.createDiv({ cls: "daily-dashboard-stacked-form" });
-      const projectSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-      projects.forEach((project) => {
-        const option = projectSelect.createEl("option", { text: project.name });
-        option.value = project.name;
-        option.selected = project.name === this.quickAddState.projectName;
-      });
-      projectSelect.addEventListener("change", () => {
-        this.quickAddState.projectName = projectSelect.value;
-      });
-      const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-      ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
-        const option = sectionSelect.createEl("option", { text: section });
-        option.value = section;
-        option.selected = section === this.quickAddState.sectionName;
-      });
-      sectionSelect.addEventListener("change", () => {
-        this.quickAddState.sectionName = sectionSelect.value;
-      });
-      const taskInput = quickAddForm.createEl("input", {
-        cls: "daily-dashboard-input",
-        attr: { type: "text", placeholder: "Add a task to the selected project" }
-      });
-      taskInput.value = this.quickAddState.taskText;
-      taskInput.addEventListener("input", () => {
-        this.quickAddState.taskText = taskInput.value;
-      });
-      const quickAddButton = quickAddForm.createEl("button", { cls: "daily-dashboard-primary-button", text: "Add task" });
-      quickAddButton.type = "button";
-      quickAddButton.addEventListener("click", () => {
-        const text = taskInput.value.trim();
-        if (!text || !this.quickAddState.projectName) {
-          return;
-        }
-        this.quickAddState.taskText = "";
-        void this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
-      });
       const foodCard = createGridCard("Food Log", "Quick meal capture so routine and energy stay analyzable.", {
         icon: "utensils-crossed",
         eyebrow: "Body",
@@ -5050,8 +5136,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(foodInsightActions, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       const foodList = foodCard.createDiv({ cls: "daily-dashboard-food-list" });
       const measurementSystem = settings.measurementSystem;
-      const waterQuickPreset = getQuickIntakePreset("water", measurementSystem);
-      const coffeeQuickPreset = getQuickIntakePreset("caffeine", measurementSystem);
       if (todayEntry.foodLog.length === 0) {
         const emptyState = foodList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No food entries yet today. Use a quick meal tag instead of leaving the day blank." });
@@ -5086,6 +5170,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
       }
       const intakeSection = this.createCollapsibleSubsection(foodCard, "body-intake", "Water, caffeine, meds", "Track hydration, stimulants, supplements, and medication without burying them in notes.");
+      const intakePresets = settings.intakeQuickPresets;
       const intakeForm = intakeSection.createDiv({ cls: "daily-dashboard-stacked-form" });
       const intakeKind = intakeForm.createEl("select", { cls: "daily-dashboard-input" });
       [
@@ -5115,8 +5200,45 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         intakeUnit.value = getDefaultIntakeUnit(intakeKind.value, measurementSystem);
         intakeNote.value = "";
       }, false, "droplets");
-      createButton(intakeButtons, waterQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("water", waterQuickPreset.label, waterQuickPreset.amount, waterQuickPreset.unit), false, "glass-water");
-      createButton(intakeButtons, coffeeQuickPreset.buttonLabel, async () => this.plugin.addIntakeEntry("caffeine", coffeeQuickPreset.label, coffeeQuickPreset.amount, coffeeQuickPreset.unit), false, "coffee");
+      createButton(intakeButtons, "Save preset", async () => {
+        const trimmedLabel = intakeLabel.value.trim();
+        const trimmedUnit = intakeUnit.value.trim();
+        if (!trimmedLabel || !trimmedUnit) {
+          return;
+        }
+        const nextPreset = buildIntakeQuickPreset({
+          kind: intakeKind.value,
+          label: trimmedLabel,
+          amount: Number(intakeAmount.value),
+          unit: trimmedUnit
+        });
+        const nextPresets = [...settings.intakeQuickPresets.filter((preset) => preset.id !== nextPreset.id), nextPreset];
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          intakeQuickPresets: nextPresets
+        });
+        await this.render();
+      }, false, "bookmark-plus");
+      if (intakePresets.length > 0) {
+        const intakePresetRow = intakeSection.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact daily-dashboard-intake-presets" });
+        intakePresets.forEach((preset) => {
+          const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
+          createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
+            await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
+          }, false, getIntakePresetIcon(preset.kind));
+          const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button" });
+          removeButton.type = "button";
+          removeButton.ariaLabel = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
+          removeButton.title = `Remove preset ${formatIntakeQuickPresetButtonLabel(preset)}`;
+          (0, import_obsidian3.setIcon)(removeButton, "x");
+          removeButton.addEventListener("click", () => {
+            void this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              intakeQuickPresets: this.plugin.getSettings().intakeQuickPresets.filter((item) => item.id !== preset.id)
+            }).then(async () => this.render());
+          });
+        });
+      }
       const intakeList = intakeSection.createDiv({ cls: "daily-dashboard-project-list" });
       if (todayEntry.intakeLog.length === 0) {
         intakeList.createDiv({ cls: "daily-dashboard-empty-state", text: "No hydration, caffeine, supplement, or medication entries yet." });
@@ -5623,28 +5745,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       }
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
-      const completedCard = createGridCard("Completed Today", "Keep today's completed work visible for review and reinforcement.", {
-        icon: "badge-check",
-        eyebrow: "Done",
-        tone: "done",
-        tag: "Wins"
-      });
-      const completedList = completedCard.createDiv({ cls: "daily-dashboard-completed-list" });
-      if (todayEntry.completedTasks.length === 0) {
-        const emptyState = completedList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
-        emptyState.createEl("span", { text: "No archived tasks yet today. Pull something into today or open the hub to finish a concrete item." });
-        const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
-      } else {
-        todayEntry.completedTasks.slice(0, 10).forEach((task) => {
-          const row = completedList.createDiv({ cls: "daily-dashboard-completed-row" });
-          const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, task.section, "neutral");
-          row.createEl("strong", { text: task.project });
-          row.createEl("span", { text: `${task.section}: ${task.text}` });
-          row.createEl("span", { cls: "daily-dashboard-row-meta", text: task.archivedAt });
-        });
-      }
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
       this.lastRenderAt = Date.now();
     } catch (error) {
@@ -7928,16 +8028,14 @@ var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "state-and-friction", title: "State And Friction", order: 3, hidden: false, pinned: false },
   { key: "gamification-center", title: "Gamification Center", order: 4, hidden: false, pinned: false },
   { key: "habits", title: "Habits", order: 5, hidden: false, pinned: false },
-  { key: "quick-add-to-project", title: "Quick Add To Project", order: 6, hidden: false, pinned: false },
-  { key: "food-log", title: "Food Log", order: 7, hidden: false, pinned: false },
-  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 8, hidden: false, pinned: false },
-  { key: "sleep-and-notes", title: "Sleep And Notes", order: 9, hidden: false, pinned: false },
-  { key: "timeline-search", title: "Timeline Search", order: 10, hidden: false, pinned: false },
-  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false },
-  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false },
-  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false },
-  { key: "completed-today", title: "Completed Today", order: 15, hidden: false, pinned: false }
+  { key: "food-log", title: "Food Log", order: 6, hidden: false, pinned: false },
+  { key: "symptoms-and-pain", title: "Symptoms And Pain", order: 7, hidden: false, pinned: false },
+  { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false },
+  { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false },
+  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false },
+  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false },
+  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -8325,11 +8423,31 @@ function getDefaultIntakeUnit(kind, measurementSystem) {
   }
   return kind === "medication" ? "pill" : "serving";
 }
-function getQuickIntakePreset(kind, measurementSystem) {
-  if (kind === "water") {
-    return measurementSystem === "metric" ? { amount: 250, unit: "mL", label: "Water", buttonLabel: "Water 250 mL" } : { amount: 8, unit: "oz", label: "Water", buttonLabel: "Water 8 oz" };
+function buildIntakeQuickPreset(input) {
+  const label = input.label.trim();
+  const unit = input.unit.trim();
+  const amount = Math.min(Math.max(Math.round(Number(input.amount) || 1), 1), 64);
+  const kind = input.kind === "caffeine" || input.kind === "supplement" || input.kind === "medication" ? input.kind : "water";
+  const slug = `${kind}-${label.toLowerCase()}-${amount}-${unit.toLowerCase()}`.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return {
+    id: slug,
+    kind,
+    label,
+    amount,
+    unit
+  };
+}
+function formatIntakeQuickPresetButtonLabel(preset) {
+  return `${preset.label} ${preset.amount} ${preset.unit}`;
+}
+function getIntakePresetIcon(kind) {
+  if (kind === "caffeine") {
+    return "coffee";
   }
-  return measurementSystem === "metric" ? { amount: 250, unit: "mL", label: "Coffee", buttonLabel: "Coffee 250 mL" } : { amount: 1, unit: "cup", label: "Coffee", buttonLabel: "Coffee" };
+  if (kind === "supplement" || kind === "medication") {
+    return "pill";
+  }
+  return "glass-water";
 }
 function sortDashboardLayoutCards(cards) {
   return [...cards].sort((left, right) => {
