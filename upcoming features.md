@@ -123,6 +123,7 @@ Mark items complete as they ship so this stays the live roadmap instead of a sta
 - [x] Add a recurring friction-patterns note generated from dashboard logs and review signals.
 - [x] Add a weekly project-review archive folder with one note per review cycle for active projects.
 - [x] Expand project-note templates with change log, known terms, and useful-links sections.
+- [x] Add a managed portfolio snapshot section at the top of the master task hub.
 
 ## View Modes, Layout, And UX
 

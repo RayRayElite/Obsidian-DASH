@@ -27,6 +27,8 @@ Point the plugin at your `Master Task Hub.md` note in settings. The note works b
 
 The stronger recommended document structure now lives in `Documentation/Document System Improvement Plan.md` in this repo, including a filled master-hub example, project-note template, AI support-note structure, and generated-note standards.
 
+The command palette now also includes `Refresh master task hub portfolio snapshot`, which writes or updates a compact `## Portfolio Snapshot` section near the top of the hub with portfolio pressure, external blockers, and momentum highlights. Plugin-driven hub changes such as project creation, archive sweeps, repeating-task sync, and reference offload also refresh that section automatically.
+
 1. keep active work as unchecked checklist items in non-reference sections
 2. mark a task complete with `- [x]`
 3. the plugin automatically moves it into that project's `Completed Archive` section and records it in that day's dashboard log

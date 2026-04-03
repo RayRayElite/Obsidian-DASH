@@ -2591,6 +2591,7 @@ function renderCalendarProjectLabel(projectName, projectNotePath) {
 
 // src/dashboard-todo.ts
 var import_obsidian2 = require("obsidian");
+var NON_PROJECT_HUB_HEADINGS = /* @__PURE__ */ new Set(["portfolio snapshot"]);
 function parseTodoSnapshot(content) {
   const lines = content.split(/\r?\n/);
   const categories = findTodoCategoryRanges(lines);
@@ -3033,7 +3034,8 @@ function getProjectHeaderName(lines, index) {
     return null;
   }
   if (/^##\s+/.test(line) && !/^###\s+/.test(line)) {
-    return line.replace(/^##\s+/, "").trim();
+    const headingName = line.replace(/^##\s+/, "").trim();
+    return NON_PROJECT_HUB_HEADINGS.has(headingName.toLowerCase()) ? null : headingName;
   }
   if (line.startsWith("#")) {
     return null;
@@ -9831,6 +9833,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "refresh-master-hub-portfolio-snapshot",
+      name: "Refresh master task hub portfolio snapshot",
+      callback: () => {
+        void this.refreshMasterHubPortfolioSnapshot(true);
+      }
+    });
+    this.addCommand({
       id: "promote-project-task-to-today",
       name: "Promote project task to today",
       callback: () => {
@@ -11984,6 +11993,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     try {
       if (archiveResult.content !== content) {
         await this.app.vault.modify(todoFile, archiveResult.content);
+        await this.refreshMasterHubPortfolioSnapshot(false);
       }
     } finally {
       window.setTimeout(() => {
@@ -12411,6 +12421,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
     const updatedContent = insertProjectIntoTodo(todoContent, categoryName, projectBlock);
     await this.app.vault.modify(todoFile, updatedContent);
+    await this.refreshMasterHubPortfolioSnapshot(false);
     await this.openFile(projectNote);
     this.refreshDashboardViews();
     new import_obsidian4.Notice(`Created ${projectName} in the master todo and generated its project note.`);
@@ -12749,6 +12760,138 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   getRecurringFrictionPatternsNotePath() {
     return "Dashboard Logs/Profile/Recurring Friction Patterns.md";
   }
+  async refreshMasterHubPortfolioSnapshot(showNotice) {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return;
+    }
+    const content = await this.app.vault.read(todoFile);
+    const snapshot = parseTodoSnapshot(content);
+    const updatedContent = this.upsertMasterHubPortfolioSnapshot(content, snapshot, /* @__PURE__ */ new Date());
+    if (updatedContent === content) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub portfolio snapshot is already up to date.");
+      }
+      return;
+    }
+    await this.app.vault.modify(todoFile, updatedContent);
+    this.refreshDashboardViews();
+    if (showNotice) {
+      new import_obsidian4.Notice("Master task hub portfolio snapshot refreshed.");
+    }
+  }
+  upsertMasterHubPortfolioSnapshot(content, snapshot, refreshedAt) {
+    var _a, _b, _c, _d;
+    const lines = content.split(/\r?\n/);
+    const sectionLines = this.renderMasterHubPortfolioSnapshotSection(snapshot, refreshedAt).split("\n");
+    const existingSectionRange = this.findHubSectionRange(lines, "Portfolio Snapshot");
+    if (existingSectionRange) {
+      const before2 = trimTrailingBlankLines(lines.slice(0, existingSectionRange.start));
+      const after2 = trimLeadingBlankLines(lines.slice(existingSectionRange.end + 1));
+      const result2 = [];
+      if (before2.length > 0) {
+        result2.push(...before2, "");
+      }
+      result2.push(...sectionLines);
+      if (after2.length > 0) {
+        result2.push("", ...after2);
+      }
+      return result2.join("\n");
+    }
+    const categories = findTodoCategoryRanges(lines);
+    const projects = findProjectRanges(lines);
+    const insertIndex = (_d = (_c = (_a = categories[0]) == null ? void 0 : _a.start) != null ? _c : (_b = projects[0]) == null ? void 0 : _b.start) != null ? _d : this.getMasterHubInsertIndex(lines);
+    const before = trimTrailingBlankLines(lines.slice(0, insertIndex));
+    const after = trimLeadingBlankLines(lines.slice(insertIndex));
+    const result = [];
+    if (before.length > 0) {
+      result.push(...before, "");
+    }
+    result.push(...sectionLines);
+    if (after.length > 0) {
+      result.push("", ...after);
+    }
+    return result.join("\n");
+  }
+  renderMasterHubPortfolioSnapshotSection(snapshot, refreshedAt) {
+    const activeProjects = snapshot.projects.filter((project) => project.projectState === "active");
+    const incubatingProjects = snapshot.projects.filter((project) => project.projectState === "incubating");
+    const somedayProjects = snapshot.projects.filter((project) => project.projectState === "someday");
+    const waitingProjects = activeProjects.filter((project) => project.waitingOn.trim().length > 0 && project.waitingOn.trim().toLowerCase() !== "none").slice(0, 4);
+    const attentionProjects = activeProjects.slice().sort((left, right) => {
+      var _a, _b;
+      if (left.healthScore !== right.healthScore) {
+        return left.healthScore - right.healthScore;
+      }
+      const leftPressure = left.overdueTasks.length + left.blockedTasks.length;
+      const rightPressure = right.overdueTasks.length + right.blockedTasks.length;
+      if (leftPressure !== rightPressure) {
+        return rightPressure - leftPressure;
+      }
+      return ((_a = right.staleDays) != null ? _a : 0) - ((_b = left.staleDays) != null ? _b : 0);
+    }).slice(0, 4);
+    const momentumProjects = activeProjects.filter((project) => project.completionsThisWeek > 0).slice().sort((left, right) => right.completionsThisWeek - left.completionsThisWeek).slice(0, 3);
+    return [
+      "## Portfolio Snapshot",
+      `> Auto-generated by Obsidian DASH on ${formatDateTimeKey(refreshedAt)}. Refresh this section after major hub changes if you want a current portfolio view.`,
+      "",
+      `- Projects: ${activeProjects.length} active, ${incubatingProjects.length} incubating, ${somedayProjects.length} someday`,
+      `- Tasks: ${snapshot.totalOpen} open, ${snapshot.totalArchived} archived`,
+      `- Pressure: ${snapshot.overdueTasks.length} overdue, ${snapshot.blockedTasks.length} blocked, ${snapshot.staleProjects.length} stale project${snapshot.staleProjects.length === 1 ? "" : "s"}`,
+      waitingProjects.length > 0 ? `- Waiting On: ${waitingProjects.length} active project${waitingProjects.length === 1 ? "" : "s"} currently depend on outside input` : "- Waiting On: no active project currently has an external blocker recorded",
+      "",
+      "### Needs Attention",
+      ...attentionProjects.length > 0 ? attentionProjects.map((project) => `- ${project.name}: ${project.nextAction}${project.staleDays !== null && project.staleDays >= 7 ? ` | ${project.staleDays} stale days` : ""}${project.overdueTasks.length > 0 ? ` | ${project.overdueTasks.length} overdue` : ""}${project.blockedTasks.length > 0 ? ` | ${project.blockedTasks.length} blocked` : ""}`) : ["- No active projects currently stand out as portfolio risks."],
+      "",
+      "### Waiting On",
+      ...waitingProjects.length > 0 ? waitingProjects.map((project) => `- ${project.name}: ${project.waitingOn}`) : ["- No active projects currently list an external dependency."],
+      "",
+      "### Momentum",
+      ...momentumProjects.length > 0 ? momentumProjects.map((project) => `- ${project.name}: ${project.completionsThisWeek} completed this week${project.focus ? ` | Focus: ${project.focus}` : ""}`) : ["- No active project has recorded completed work this week yet."]
+    ].join("\n");
+  }
+  findHubSectionRange(lines, heading) {
+    const normalizedHeading = `## ${heading}`.toLowerCase();
+    const start = lines.findIndex((line) => line.trim().toLowerCase() === normalizedHeading);
+    if (start < 0) {
+      return null;
+    }
+    let end = lines.length - 1;
+    for (let index = start + 1; index < lines.length; index += 1) {
+      const trimmed = lines[index].trim();
+      if (/^##\s+/.test(trimmed) && !/^###\s+/.test(trimmed) || /^#\s+/.test(trimmed) && !/^##\s+/.test(trimmed)) {
+        end = index - 1;
+        break;
+      }
+    }
+    return { start, end };
+  }
+  getMasterHubInsertIndex(lines) {
+    var _a;
+    let index = 0;
+    if (((_a = lines[index]) == null ? void 0 : _a.trim()) === "---") {
+      index += 1;
+      while (index < lines.length && lines[index].trim() !== "---") {
+        index += 1;
+      }
+      if (index < lines.length) {
+        index += 1;
+      }
+    }
+    while (index < lines.length && lines[index].trim() === "") {
+      index += 1;
+    }
+    if (index < lines.length && /^#\s+/.test(lines[index].trim()) && !/^##\s+/.test(lines[index].trim())) {
+      index += 1;
+    }
+    while (index < lines.length && lines[index].trim() === "") {
+      index += 1;
+    }
+    return index;
+  }
   async syncRepeatingProjectTasks(showNotice) {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -12779,6 +12922,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     if (updatedContent !== content) {
       await this.app.vault.modify(todoFile, updatedContent);
+      await this.refreshMasterHubPortfolioSnapshot(false);
     }
     if (showNotice) {
       new import_obsidian4.Notice(insertedCount > 0 ? `Added ${insertedCount} repeating task${insertedCount === 1 ? "" : "s"}.` : "No repeating tasks were due.");
@@ -12796,6 +12940,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const result = await offloadReferencesFromMasterHub(content, this.app.vault, this.data.settings.masterTodoPath);
     if (result.updatedContent !== content) {
       await this.app.vault.modify(todoFile, result.updatedContent);
+      await this.refreshMasterHubPortfolioSnapshot(false);
     }
     if (showNotice) {
       new import_obsidian4.Notice(result.offloadedProjects.length > 0 ? `Offloaded references for ${result.offloadedProjects.length} project${result.offloadedProjects.length === 1 ? "" : "s"}.` : "No project references needed offloading.");

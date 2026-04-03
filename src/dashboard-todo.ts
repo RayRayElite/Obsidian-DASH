@@ -25,6 +25,8 @@ import {
   type WeeklyReviewInput
 } from "./dashboard-types";
 
+const NON_PROJECT_HUB_HEADINGS = new Set(["portfolio snapshot"]);
+
 export function parseTodoSnapshot(content: string): TodoSnapshot {
   const lines = content.split(/\r?\n/);
   const categories = findTodoCategoryRanges(lines);
@@ -525,7 +527,8 @@ export function getProjectHeaderName(lines: string[], index: number): string | n
   }
 
   if (/^##\s+/.test(line) && !/^###\s+/.test(line)) {
-    return line.replace(/^##\s+/, "").trim();
+    const headingName = line.replace(/^##\s+/, "").trim();
+    return NON_PROJECT_HUB_HEADINGS.has(headingName.toLowerCase()) ? null : headingName;
   }
 
   if (line.startsWith("#")) {
