@@ -1672,7 +1672,7 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  private getClockMinutes(value: string): number {
+  private getClockMinutes(value: string | Date): number {
     if (value instanceof Date) {
       return (value.getHours() * 60) + value.getMinutes();
     }
