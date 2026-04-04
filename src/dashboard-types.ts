@@ -23,6 +23,8 @@ export type MeasurementSystem = "imperial" | "metric";
 export type WeightGoalMode = "lose" | "maintain" | "gain";
 export type DashboardNotificationSound = "off" | "chime" | "ping" | "alert";
 export type ResearchGroundingMode = "vault-only" | "vault-plus-model" | "vault-plus-web";
+export type FinanceSubscriptionStatus = "active" | "trial" | "paused" | "canceled" | "archived";
+export type FinanceSubscriptionKind = "recurring" | "one-time";
 
 export interface HabitDefinition {
   id: string;
@@ -84,6 +86,18 @@ export const DEFAULT_SESSION_TRACKERS: SessionTrackerDefinition[] = [
   { id: "commute", label: "Commute", color: "#6e829d", visible: true },
   { id: "social", label: "Social", color: "#5f1814", visible: true },
   { id: "chores", label: "Chores", color: "#6fb149", visible: true }
+];
+
+export const DEFAULT_BUDGET_CATEGORIES: BudgetCategory[] = [
+  { id: "housing", label: "Housing", monthlyTarget: 0, color: "#d19a66" },
+  { id: "utilities", label: "Utilities", monthlyTarget: 0, color: "#61afef" },
+  { id: "food", label: "Food", monthlyTarget: 0, color: "#98c379" },
+  { id: "health", label: "Health", monthlyTarget: 0, color: "#e06c75" },
+  { id: "transport", label: "Transport", monthlyTarget: 0, color: "#e5c07b" },
+  { id: "software", label: "Software", monthlyTarget: 0, color: "#56b6c2" },
+  { id: "entertainment", label: "Entertainment", monthlyTarget: 0, color: "#c678dd" },
+  { id: "savings", label: "Savings", monthlyTarget: 0, color: "#7fd1b9" },
+  { id: "other", label: "Other", monthlyTarget: 0, color: "#abb2bf" }
 ];
 
 export interface ExerciseEntry {
@@ -248,6 +262,34 @@ export interface SymptomEntry {
   severity: number;
   note: string;
   loggedAt: string;
+}
+
+export interface BudgetCategory {
+  id: string;
+  label: string;
+  monthlyTarget: number;
+  color: string;
+}
+
+export interface FinanceSubscriptionEntry {
+  id: string;
+  name: string;
+  cost: number;
+  currency: string;
+  intervalMonths: number;
+  paymentMethod: string;
+  startedOn: string;
+  renewalDate: string;
+  status: FinanceSubscriptionStatus;
+  kind: FinanceSubscriptionKind;
+  categoryId: string;
+  notes: string;
+  cancelUrl: string;
+}
+
+export interface FinanceData {
+  budgetCategories: BudgetCategory[];
+  subscriptions: FinanceSubscriptionEntry[];
 }
 
 export interface EnergyCheckIn {
@@ -461,6 +503,8 @@ export interface DashboardSettings {
   calendarDocumentPath: string;
   calendarLookaheadHours: number;
   calendarWarningHours: number;
+  budgetingEnabled: boolean;
+  subscriptionsTrackerEnabled: boolean;
   measurementSystem: MeasurementSystem;
   weightGoalTarget: number;
   weightGoalMode: WeightGoalMode;
@@ -554,6 +598,7 @@ export interface DashboardPluginData {
   settings: DashboardSettings;
   entries: Record<string, DailyEntry>;
   calendarEvents: CalendarEventEntry[];
+  financeData: FinanceData;
   dayState: DayLifecycleState;
   noteIndex: NoteIndexCache;
   uiState: DashboardUiState;
@@ -1020,6 +1065,8 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
+  budgetingEnabled: false,
+  subscriptionsTrackerEnabled: true,
   measurementSystem: "imperial",
   weightGoalTarget: 0,
   weightGoalMode: "maintain",

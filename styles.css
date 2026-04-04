@@ -509,6 +509,7 @@
 .daily-dashboard-card--weekly-agenda,
 .daily-dashboard-card--top-3-for-today,
 .daily-dashboard-card--state-and-friction,
+.daily-dashboard-card--budgeting,
 .daily-dashboard-card--gamification-center,
 .daily-dashboard-card--habits,
 .daily-dashboard-card--food-log,
@@ -562,6 +563,10 @@
 }
 
 .daily-dashboard-card--state-and-friction {
+  order: 4;
+}
+
+.daily-dashboard-card--budgeting {
   order: 4;
 }
 
@@ -1361,6 +1366,20 @@
 .daily-dashboard-habit-row.is-drop-target {
   border-color: color-mix(in srgb, var(--daily-dashboard-accent) 40%, var(--background-modifier-border));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--daily-dashboard-accent) 26%, transparent);
+}
+.daily-dashboard-budget-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.daily-dashboard-budget-category-row {
+  align-items: center;
+}
+.daily-dashboard-budget-category-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .daily-dashboard-habit-meta {

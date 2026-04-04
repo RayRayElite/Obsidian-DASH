@@ -125,6 +125,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarDocumentPath: settings.calendarDocumentPath?.trim() || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
+    budgetingEnabled: settings.budgetingEnabled ?? DEFAULT_SETTINGS.budgetingEnabled,
+    subscriptionsTrackerEnabled: settings.subscriptionsTrackerEnabled ?? DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
     measurementSystem,
     weightGoalTarget,
     weightGoalMode,

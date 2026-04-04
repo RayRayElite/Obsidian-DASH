@@ -111,6 +111,7 @@ import {
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
   CORE_SESSION_TRACKER_OPTIONS,
+  DEFAULT_BUDGET_CATEGORIES,
   DEFAULT_SETTINGS,
   IMAGE_EXTENSIONS,
   VIEW_TYPE_DAILY_DASHBOARD,
@@ -143,6 +144,8 @@ import {
   type AnxietyCheckIn,
   type EnergyCheckIn,
   type ExerciseEntry,
+  type FinanceData,
+  type FinanceSubscriptionEntry,
   type FoodEntry,
   type GamificationSummary,
   type HabitDefinition,
@@ -155,6 +158,7 @@ import {
   type RepairTimelineSession,
   type RepairTimelineSessionKind,
   type ResearchGroundingMode,
+  type BudgetCategory,
   type SessionTrackerDefinition,
   type RetrievalIndexStatus,
   type RoutineTemplateDefinition,
@@ -179,6 +183,10 @@ export default class DailyDashboardPlugin extends Plugin {
     settings: { ...DEFAULT_SETTINGS },
     entries: {},
     calendarEvents: [],
+    financeData: {
+      budgetCategories: DEFAULT_BUDGET_CATEGORIES.map((category) => ({ ...category })),
+      subscriptions: []
+    },
     dayState: {
       activeDate: formatDateKey(new Date()),
       status: "not-started",
@@ -927,6 +935,110 @@ export default class DailyDashboardPlugin extends Plugin {
 
   getSettings(): DashboardSettings {
     return this.data.settings;
+  }
+
+  getFinanceData(): FinanceData {
+    return this.data.financeData;
+  }
+
+  async addBudgetCategory(label: string): Promise<boolean> {
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      return false;
+    }
+
+    const existing = this.data.financeData.budgetCategories.find((category) => category.label.toLowerCase() === trimmedLabel.toLowerCase());
+    if (existing) {
+      new Notice("That budget category already exists.");
+      return false;
+    }
+
+    const nextCategory: BudgetCategory = {
+      id: this.normalizeFinanceId(trimmedLabel, `budget-category-${Date.now()}`),
+      label: trimmedLabel,
+      monthlyTarget: 0,
+      color: DEFAULT_BUDGET_CATEGORIES[this.data.financeData.budgetCategories.length % DEFAULT_BUDGET_CATEGORIES.length]?.color ?? "#abb2bf"
+    };
+    this.data.financeData.budgetCategories = [...this.data.financeData.budgetCategories, nextCategory];
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async saveBudgetCategory(category: BudgetCategory): Promise<void> {
+    const normalized = this.normalizeBudgetCategory(category, this.data.financeData.budgetCategories.length);
+    if (!normalized) {
+      new Notice("Budget category label is required.");
+      return;
+    }
+
+    const nextCategories = this.data.financeData.budgetCategories.filter((item) => item.id !== normalized.id);
+    nextCategories.push(normalized);
+    this.data.financeData.budgetCategories = nextCategories.sort((left, right) => left.label.localeCompare(right.label));
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async updateBudgetCategoryTarget(categoryId: string, monthlyTarget: number): Promise<void> {
+    this.data.financeData.budgetCategories = this.data.financeData.budgetCategories.map((category) => category.id === categoryId
+      ? { ...category, monthlyTarget: clamp(Number(monthlyTarget) || 0, 0, 1_000_000) }
+      : category);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async removeBudgetCategory(categoryId: string): Promise<void> {
+    if (this.data.financeData.budgetCategories.length <= 1) {
+      new Notice("Keep at least one budget category available.");
+      return;
+    }
+
+    const fallbackCategoryId = this.data.financeData.budgetCategories.find((category) => category.id !== categoryId)?.id;
+    if (!fallbackCategoryId) {
+      return;
+    }
+
+    this.data.financeData.budgetCategories = this.data.financeData.budgetCategories.filter((category) => category.id !== categoryId);
+    this.data.financeData.subscriptions = this.data.financeData.subscriptions.map((subscription) => subscription.categoryId === categoryId
+      ? { ...subscription, categoryId: fallbackCategoryId }
+      : subscription);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async saveFinanceSubscription(subscription: FinanceSubscriptionEntry): Promise<void> {
+    const rawSubscription = subscription.id.trim().length > 0
+      ? subscription
+      : {
+          ...subscription,
+          id: `subscription-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        };
+    const normalized = this.normalizeFinanceSubscription(
+      rawSubscription,
+      0,
+      new Set(this.data.financeData.budgetCategories.map((category) => category.id)),
+      this.data.financeData.budgetCategories[0]?.id ?? "other"
+    );
+    if (!normalized) {
+      new Notice("Subscription name is required.");
+      return;
+    }
+
+    const nextSubscriptions = this.data.financeData.subscriptions.filter((item) => item.id !== normalized.id);
+    nextSubscriptions.push(normalized);
+    this.data.financeData.subscriptions = nextSubscriptions.sort((left, right) => {
+      const leftKey = left.renewalDate || "9999-99-99";
+      const rightKey = right.renewalDate || "9999-99-99";
+      return leftKey.localeCompare(rightKey) || left.name.localeCompare(right.name);
+    });
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async removeFinanceSubscription(subscriptionId: string): Promise<void> {
+    this.data.financeData.subscriptions = this.data.financeData.subscriptions.filter((subscription) => subscription.id !== subscriptionId);
+    await this.savePluginData();
+    this.refreshDashboardViews();
   }
 
   getHabitDefinitions(): HabitDefinition[] {
@@ -7199,6 +7311,7 @@ export default class DailyDashboardPlugin extends Plugin {
       settings,
       entries,
       calendarEvents,
+      financeData: this.normalizeFinanceData(loaded?.financeData),
       dayState,
       noteIndex: normalizeNoteIndexCache(loaded?.noteIndex),
       uiState: this.normalizeUiState(loaded?.uiState)
@@ -7216,6 +7329,110 @@ export default class DailyDashboardPlugin extends Plugin {
         ? state.dismissedCleanupSuggestionIds.filter((item): item is string => typeof item === "string" && item.trim().length > 0).slice(0, 200)
         : []
     };
+  }
+
+  private normalizeFinanceData(finance: Partial<FinanceData> | null | undefined): FinanceData {
+    const categories = Array.isArray(finance?.budgetCategories)
+      ? finance.budgetCategories
+          .map((category, index) => this.normalizeBudgetCategory(category, index))
+          .filter((category): category is BudgetCategory => category !== null)
+      : [];
+    const normalizedCategories = categories.length > 0
+      ? categories
+      : DEFAULT_BUDGET_CATEGORIES.map((category) => ({ ...category }));
+    const categoryIds = new Set(normalizedCategories.map((category) => category.id));
+    const defaultCategoryId = normalizedCategories[0]?.id ?? "other";
+    const subscriptions = Array.isArray(finance?.subscriptions)
+      ? finance.subscriptions
+          .map((subscription, index) => this.normalizeFinanceSubscription(subscription, index, categoryIds, defaultCategoryId))
+          .filter((subscription): subscription is FinanceSubscriptionEntry => subscription !== null)
+          .sort((left, right) => {
+            const leftKey = left.renewalDate || "9999-99-99";
+            const rightKey = right.renewalDate || "9999-99-99";
+            return leftKey.localeCompare(rightKey) || left.name.localeCompare(right.name);
+          })
+      : [];
+
+    return {
+      budgetCategories: normalizedCategories,
+      subscriptions
+    };
+  }
+
+  private normalizeBudgetCategory(category: Partial<BudgetCategory> | undefined, index: number): BudgetCategory | null {
+    if (!category || typeof category !== "object") {
+      return null;
+    }
+
+    const label = typeof category.label === "string" ? category.label.trim() : "";
+    if (!label) {
+      return null;
+    }
+
+    const id = this.normalizeFinanceId(typeof category.id === "string" ? category.id : label, `budget-category-${index + 1}`);
+    const monthlyTarget = Number.isFinite(Number(category.monthlyTarget)) ? clamp(Number(category.monthlyTarget), 0, 1_000_000) : 0;
+    const color = typeof category.color === "string" && /^#[0-9a-fA-F]{6}$/.test(category.color.trim())
+      ? category.color.trim()
+      : DEFAULT_BUDGET_CATEGORIES[index % DEFAULT_BUDGET_CATEGORIES.length]?.color ?? "#abb2bf";
+
+    return {
+      id,
+      label,
+      monthlyTarget,
+      color
+    };
+  }
+
+  private normalizeFinanceSubscription(
+    subscription: Partial<FinanceSubscriptionEntry> | undefined,
+    index: number,
+    categoryIds: Set<string>,
+    defaultCategoryId: string
+  ): FinanceSubscriptionEntry | null {
+    if (!subscription || typeof subscription !== "object") {
+      return null;
+    }
+
+    const name = typeof subscription.name === "string" ? subscription.name.trim() : "";
+    if (!name) {
+      return null;
+    }
+
+    const status = subscription.status === "trial"
+      || subscription.status === "paused"
+      || subscription.status === "canceled"
+      || subscription.status === "archived"
+      ? subscription.status
+      : "active";
+    const kind = subscription.kind === "one-time" ? "one-time" : "recurring";
+    const categoryId = typeof subscription.categoryId === "string" && categoryIds.has(subscription.categoryId)
+      ? subscription.categoryId
+      : defaultCategoryId;
+
+    return {
+      id: this.normalizeFinanceId(typeof subscription.id === "string" ? subscription.id : name, `subscription-${index + 1}`),
+      name,
+      cost: Number.isFinite(Number(subscription.cost)) ? clamp(Number(subscription.cost), 0, 1_000_000) : 0,
+      currency: typeof subscription.currency === "string" && subscription.currency.trim().length > 0 ? subscription.currency.trim().toUpperCase().slice(0, 8) : "USD",
+      intervalMonths: Number.isFinite(Number(subscription.intervalMonths)) ? clamp(Number(subscription.intervalMonths), 1, 120) : 1,
+      paymentMethod: typeof subscription.paymentMethod === "string" ? subscription.paymentMethod.trim() : "",
+      startedOn: typeof subscription.startedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(subscription.startedOn.trim()) ? subscription.startedOn.trim() : "",
+      renewalDate: typeof subscription.renewalDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(subscription.renewalDate.trim()) ? subscription.renewalDate.trim() : "",
+      status,
+      kind,
+      categoryId,
+      notes: typeof subscription.notes === "string" ? subscription.notes.trim() : "",
+      cancelUrl: typeof subscription.cancelUrl === "string" ? subscription.cancelUrl.trim() : ""
+    };
+  }
+
+  private normalizeFinanceId(value: string, fallback: string): string {
+    const normalized = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return normalized || fallback;
   }
 
   private async loadPluginData(): Promise<void> {
@@ -8139,6 +8356,7 @@ export default class DailyDashboardPlugin extends Plugin {
       settings: this.data.settings,
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
+      financeData: this.data.financeData,
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex,
       uiState: this.data.uiState

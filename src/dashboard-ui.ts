@@ -40,6 +40,7 @@ import {
   type DashboardTone,
   type DashboardViewMode,
   type ExerciseIntensity,
+  type FinanceSubscriptionEntry,
   type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
@@ -51,6 +52,7 @@ import {
   type RepairTimelineSessionKind,
   type SavedDashboardFilter,
   type SessionTrackerDefinition,
+  type BudgetCategory,
   type SuggestedTop3Candidate,
   type SymptomEntry,
   type TodoTaskSummary,
@@ -91,6 +93,69 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "unknown", label: "Unknown" }
 ] as const;
 
+function getSubscriptionMonthlyEquivalent(subscription: FinanceSubscriptionEntry): number {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+
+  return subscription.cost / Math.max(subscription.intervalMonths, 1);
+}
+
+function getSubscriptionAnnualizedCost(subscription: FinanceSubscriptionEntry): number {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+
+  return getSubscriptionMonthlyEquivalent(subscription) * 12;
+}
+
+function formatFinanceAmount(amount: number, currency: string): string {
+  const normalizedCurrency = currency.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(normalizedCurrency)) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: normalizedCurrency,
+        maximumFractionDigits: amount >= 100 ? 0 : 2
+      }).format(amount);
+    } catch {
+      // Fall through to plain formatting below.
+    }
+  }
+
+  return `${normalizedCurrency || "$"} ${amount.toFixed(amount >= 100 ? 0 : 2)}`;
+}
+
+function formatSubscriptionCycle(subscription: FinanceSubscriptionEntry): string {
+  if (subscription.kind === "one-time") {
+    return "One-time";
+  }
+
+  if (subscription.intervalMonths === 1) {
+    return "Monthly";
+  }
+
+  if (subscription.intervalMonths === 12) {
+    return "Yearly";
+  }
+
+  return `Every ${subscription.intervalMonths} months`;
+}
+
+function getDaysUntilDate(dateText: string, referenceDate: Date = new Date()): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText.trim())) {
+    return null;
+  }
+
+  const target = new Date(`${dateText}T00:00:00`);
+  const reference = new Date(`${formatDateKey(referenceDate)}T00:00:00`);
+  if (Number.isNaN(target.getTime()) || Number.isNaN(reference.getTime())) {
+    return null;
+  }
+
+  return Math.round((target.getTime() - reference.getTime()) / 86_400_000);
+}
+
 export class DailyDashboardView extends ItemView {
   private static readonly AUTO_REFRESH_MS = 30 * 60 * 1000;
 
@@ -127,6 +192,8 @@ export class DailyDashboardView extends ItemView {
   private aiQuestionDraft = "";
   private expandedHabitMissNotes = new Set<string>();
   private selectedGamificationWindow: "today" | "week" | "month" = "today";
+  private selectedBudgetingTab: "overview" | "subscriptions" | "budget" = "overview";
+  private budgetCategoryDraft = "";
   private draggedSessionDeckTrackerId: string | null = null;
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
     if ((!this.notificationPanelOpen && !this.quickAddPanelOpen) || !this.contentEl.isConnected) {
@@ -791,6 +858,7 @@ export class DailyDashboardView extends ItemView {
       const todayEntry = this.plugin.getTodayEntry();
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
+      const financeData = this.plugin.getFinanceData();
       const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
       const dashboardNotifications = this.plugin.getDashboardNotifications(todoSnapshot, calendarSnapshot);
       const weeklyAgenda = this.plugin.getWeeklyAgenda(todayEntry.date);
@@ -1904,6 +1972,243 @@ export class DailyDashboardView extends ItemView {
       const gamificationActions = gamificationCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
       createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+
+      if (settings.budgetingEnabled) {
+        const categoryById = new Map(financeData.budgetCategories.map((category) => [category.id, category]));
+        const visibleSubscriptions = financeData.subscriptions.filter((subscription) => subscription.status !== "archived");
+        const recurringSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "recurring" && subscription.status !== "canceled");
+        const otherSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "one-time" || subscription.status === "canceled");
+        const activeSubscriptions = visibleSubscriptions.filter((subscription) => subscription.status === "active" || subscription.status === "trial" || subscription.status === "paused");
+        const dueSoonSubscriptions = visibleSubscriptions.filter((subscription) => {
+          const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+          return daysUntilRenewal !== null && daysUntilRenewal >= 0 && daysUntilRenewal <= 30;
+        });
+        const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
+        const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost(subscription), 0);
+        const costliestSubscription = [...recurringSubscriptions].sort((left, right) => getSubscriptionMonthlyEquivalent(right) - getSubscriptionMonthlyEquivalent(left))[0] ?? null;
+        const paymentMethodCounts = activeSubscriptions.reduce((counts, subscription) => {
+          const key = subscription.paymentMethod.trim() || "Unknown";
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+          return counts;
+        }, new Map<string, number>());
+        const currencyCounts = visibleSubscriptions.reduce((counts, subscription) => {
+          const key = subscription.currency.trim() || "USD";
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+          return counts;
+        }, new Map<string, number>());
+        const totalBudgetTarget = financeData.budgetCategories.reduce((sum, category) => sum + category.monthlyTarget, 0);
+        const committedByCategory = financeData.budgetCategories.reduce((totals, category) => {
+          totals.set(category.id, recurringSubscriptions
+            .filter((subscription) => subscription.categoryId === category.id)
+            .reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0));
+          return totals;
+        }, new Map<string, number>());
+        const budgetingCard = createGridCard("Budgeting", "Keep recurring costs, practical monthly targets, and renewal pressure visible without turning the dashboard into a full accounting app.", {
+          icon: "wallet-cards",
+          eyebrow: "Money",
+          tone: "focus",
+          tag: activeSubscriptions.length > 0 ? "Live" : "Optional"
+        });
+        const budgetingSummary = budgetingCard.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(budgetingSummary, `${activeSubscriptions.length} active`, activeSubscriptions.length > 0 ? "focus" : "neutral");
+        createSemanticChip(budgetingSummary, `${dueSoonSubscriptions.length} due soon`, dueSoonSubscriptions.length > 0 ? "alert" : "neutral");
+        createSemanticChip(budgetingSummary, formatFinanceAmount(monthlyRecurringTotal, "USD"), monthlyRecurringTotal > 0 ? "capture" : "neutral");
+
+        const budgetingTabs = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
+        const availableBudgetingTabs = [
+          { key: "overview", label: "Overview", metric: `${activeSubscriptions.length}` },
+          ...(settings.subscriptionsTrackerEnabled ? [{ key: "subscriptions", label: "Subscriptions", metric: `${visibleSubscriptions.length}` }] : []),
+          { key: "budget", label: "Budget", metric: `${financeData.budgetCategories.length}` }
+        ] as Array<{ key: "overview" | "subscriptions" | "budget"; label: string; metric: string }>;
+        if (!availableBudgetingTabs.some((tab) => tab.key === this.selectedBudgetingTab)) {
+          this.selectedBudgetingTab = availableBudgetingTabs[0]?.key ?? "overview";
+        }
+        availableBudgetingTabs.forEach((tab) => {
+          const button = budgetingTabs.createEl("button", {
+            cls: this.selectedBudgetingTab === tab.key ? "daily-dashboard-gamification-tab is-active" : "daily-dashboard-gamification-tab"
+          });
+          button.type = "button";
+          button.createEl("span", { text: tab.label });
+          button.createEl("strong", { text: tab.metric });
+          button.addEventListener("click", () => {
+            this.selectedBudgetingTab = tab.key;
+            void this.render();
+          });
+        });
+
+        if (this.selectedBudgetingTab === "overview") {
+          const overviewGrid = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+          this.renderDayMetric(overviewGrid, "Monthly recurring", formatFinanceAmount(monthlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Yearly recurring", formatFinanceAmount(yearlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Costliest", costliestSubscription ? `${costliestSubscription.name} • ${formatFinanceAmount(getSubscriptionMonthlyEquivalent(costliestSubscription), "USD")}` : "None");
+          this.renderDayMetric(overviewGrid, "Budget target", formatFinanceAmount(totalBudgetTarget, "USD"));
+
+          const overviewLists = budgetingCard.createDiv({ cls: "daily-dashboard-budget-overview-grid" });
+          const recurringBlock = overviewLists.createDiv({ cls: "daily-dashboard-score-block" });
+          const recurringHeader = recurringBlock.createDiv({ cls: "daily-dashboard-score-header" });
+          recurringHeader.createEl("strong", { text: "Recurring pressure" });
+          createSemanticChip(recurringHeader, `${recurringSubscriptions.length} tracked`, recurringSubscriptions.length > 0 ? "capture" : "neutral");
+          if (recurringSubscriptions.length === 0) {
+            recurringBlock.createDiv({ cls: "daily-dashboard-empty-state", text: "No recurring subscriptions yet. Add a few and the overview will start surfacing monthly pressure, renewals, and cost concentration." });
+          } else {
+            const list = recurringBlock.createDiv({ cls: "daily-dashboard-project-list" });
+            recurringSubscriptions.slice(0, 6).forEach((subscription) => {
+              const row = list.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              row.createEl("strong", { text: subscription.name });
+              const renewalMeta = getDaysUntilDate(subscription.renewalDate);
+              row.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatSubscriptionCycle(subscription)} • ${formatFinanceAmount(subscription.cost, subscription.currency)}${renewalMeta !== null ? ` • renews in ${renewalMeta}d` : ""}`
+              });
+            });
+          }
+
+          const methodsBlock = overviewLists.createDiv({ cls: "daily-dashboard-score-block" });
+          const methodsHeader = methodsBlock.createDiv({ cls: "daily-dashboard-score-header" });
+          methodsHeader.createEl("strong", { text: "Methods and currencies" });
+          createSemanticChip(methodsHeader, `${paymentMethodCounts.size} methods`, paymentMethodCounts.size > 0 ? "state" : "neutral");
+          const methodChips = methodsBlock.createDiv({ cls: "daily-dashboard-chip-row" });
+          if (paymentMethodCounts.size === 0) {
+            createSemanticChip(methodChips, "No payment methods yet", "neutral");
+          } else {
+            [...paymentMethodCounts.entries()].sort((left, right) => right[1] - left[1]).forEach(([method, count]) => {
+              createSemanticChip(methodChips, `${method} ${count}`, "state");
+            });
+          }
+          const currencyChips = methodsBlock.createDiv({ cls: "daily-dashboard-chip-row" });
+          if (currencyCounts.size === 0) {
+            createSemanticChip(currencyChips, "No currencies yet", "neutral");
+          } else {
+            [...currencyCounts.entries()].sort((left, right) => right[1] - left[1]).forEach(([currency, count]) => {
+              createSemanticChip(currencyChips, `${currency} ${count}`, "capture");
+            });
+          }
+        }
+
+        if (this.selectedBudgetingTab === "subscriptions") {
+          const subscriptionActions = budgetingCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(subscriptionActions, "Add subscription", async () => {
+            new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories).open();
+          }, true, "plus-circle");
+          createButton(subscriptionActions, "Add one-time", async () => {
+            new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories, undefined, "one-time").open();
+          }, false, "receipt-text");
+
+          const recurringSection = budgetingCard.createDiv({ cls: "daily-dashboard-score-block" });
+          const recurringHeader = recurringSection.createDiv({ cls: "daily-dashboard-score-header" });
+          recurringHeader.createEl("strong", { text: "Recurring" });
+          createSemanticChip(recurringHeader, `${recurringSubscriptions.length} tracked`, recurringSubscriptions.length > 0 ? "capture" : "neutral");
+          const recurringList = recurringSection.createDiv({ cls: "daily-dashboard-project-list" });
+          if (recurringSubscriptions.length === 0) {
+            recurringList.createDiv({ cls: "daily-dashboard-empty-state", text: "No recurring subscriptions yet." });
+          } else {
+            recurringSubscriptions.forEach((subscription) => {
+              const row = recurringList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+              copy.createEl("strong", { text: subscription.name });
+              const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} • ${formatSubscriptionCycle(subscription)} • ${subscription.paymentMethod || "Method unknown"}`
+              });
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${categoryById.get(subscription.categoryId)?.label ?? "Other"} • ${subscription.status}${daysUntilRenewal !== null ? ` • renews in ${daysUntilRenewal}d` : ""}`
+              });
+              const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+              createButton(actions, "Edit", async () => {
+                new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories, subscription).open();
+              }, false, "pencil");
+              createButton(actions, "Remove", async () => {
+                await this.runDestructiveAction(
+                  `Removed subscription \"${subscription.name}\".`,
+                  async () => this.plugin.removeFinanceSubscription(subscription.id),
+                  async () => this.plugin.saveFinanceSubscription(subscription)
+                );
+              }, false, "trash-2");
+            });
+          }
+
+          const otherSection = budgetingCard.createDiv({ cls: "daily-dashboard-score-block" });
+          const otherHeader = otherSection.createDiv({ cls: "daily-dashboard-score-header" });
+          otherHeader.createEl("strong", { text: "One-time and canceled" });
+          createSemanticChip(otherHeader, `${otherSubscriptions.length} tracked`, otherSubscriptions.length > 0 ? "state" : "neutral");
+          const otherList = otherSection.createDiv({ cls: "daily-dashboard-project-list" });
+          if (otherSubscriptions.length === 0) {
+            otherList.createDiv({ cls: "daily-dashboard-empty-state", text: "No one-time or canceled entries yet." });
+          } else {
+            otherSubscriptions.forEach((subscription) => {
+              const row = otherList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              row.createEl("strong", { text: subscription.name });
+              row.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} • ${subscription.kind === "one-time" ? "One-time" : subscription.status} • ${subscription.paymentMethod || "Method unknown"}`
+              });
+            });
+          }
+        }
+
+        if (this.selectedBudgetingTab === "budget") {
+          const budgetGrid = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+          const committedRecurring = financeData.budgetCategories.reduce((sum, category) => sum + (committedByCategory.get(category.id) ?? 0), 0);
+          this.renderDayMetric(budgetGrid, "Target total", formatFinanceAmount(totalBudgetTarget, "USD"));
+          this.renderDayMetric(budgetGrid, "Committed recurring", formatFinanceAmount(committedRecurring, "USD"));
+          this.renderDayMetric(budgetGrid, "Headroom", formatFinanceAmount(Math.max(totalBudgetTarget - committedRecurring, 0), "USD"));
+          this.renderDayMetric(budgetGrid, "Categories", `${financeData.budgetCategories.length}`);
+
+          const categoryAddRow = budgetingCard.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+          const categoryInput = categoryAddRow.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: "Add a budget category" }
+          });
+          categoryInput.value = this.budgetCategoryDraft;
+          categoryInput.addEventListener("input", () => {
+            this.budgetCategoryDraft = categoryInput.value;
+          });
+          categoryInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void this.plugin.addBudgetCategory(this.budgetCategoryDraft).then((added) => {
+                if (added) {
+                  this.budgetCategoryDraft = "";
+                }
+              });
+            }
+          });
+          createButton(categoryAddRow, "Add category", async () => {
+            const added = await this.plugin.addBudgetCategory(this.budgetCategoryDraft);
+            if (added) {
+              this.budgetCategoryDraft = "";
+            }
+          }, false, "plus");
+
+          const budgetList = budgetingCard.createDiv({ cls: "daily-dashboard-project-list" });
+          financeData.budgetCategories.forEach((category) => {
+            const committed = committedByCategory.get(category.id) ?? 0;
+            const row = budgetList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-budget-category-row" });
+            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, category.label, "focus");
+            createSemanticChip(chipRow, `${financeData.subscriptions.filter((subscription) => subscription.categoryId === category.id && subscription.kind === "recurring" && subscription.status !== "canceled").length} linked`, committed > 0 ? "capture" : "neutral");
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `Committed recurring ${formatFinanceAmount(committed, "USD")}` });
+            const controls = row.createDiv({ cls: "daily-dashboard-budget-category-controls" });
+            const targetInput = controls.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0", step: "1" } });
+            targetInput.value = `${category.monthlyTarget}`;
+            targetInput.addEventListener("change", () => {
+              void this.plugin.updateBudgetCategoryTarget(category.id, Number(targetInput.value));
+            });
+            const removeButton = controls.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+            removeButton.type = "button";
+            removeButton.addEventListener("click", () => {
+              void this.runDestructiveAction(
+                `Removed budget category \"${category.label}\".`,
+                async () => this.plugin.removeBudgetCategory(category.id),
+                async () => this.plugin.saveBudgetCategory(category)
+              );
+            });
+          });
+        }
+      }
 
       const habitsCard = createGridCard("Habits", "Repeatables with misses and timing kept visible.", {
         icon: "check-square",
@@ -5826,6 +6131,222 @@ export class AskResearchQuestionModal extends Modal {
   }
 }
 
+export class FinanceSubscriptionModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private categories: BudgetCategory[];
+  private state: FinanceSubscriptionEntry;
+  private forcedKind: "recurring" | "one-time" | null;
+
+  constructor(
+    app: App,
+    plugin: DailyDashboardPlugin,
+    categories: BudgetCategory[],
+    existing?: FinanceSubscriptionEntry,
+    forcedKind: "recurring" | "one-time" | null = null
+  ) {
+    super(app);
+    this.plugin = plugin;
+    this.categories = categories;
+    this.forcedKind = forcedKind;
+    this.state = existing
+      ? { ...existing }
+      : {
+          id: "",
+          name: "",
+          cost: 0,
+          currency: "USD",
+          intervalMonths: forcedKind === "one-time" ? 1 : 1,
+          paymentMethod: "",
+          startedOn: "",
+          renewalDate: "",
+          status: forcedKind === "one-time" ? "active" : "active",
+          kind: forcedKind ?? "recurring",
+          categoryId: categories[0]?.id ?? "other",
+          notes: "",
+          cancelUrl: ""
+        };
+  }
+
+  onOpen(): void {
+    this.setTitle(this.state.id ? "Edit Subscription" : "Add Subscription");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Name")
+      .setDesc("Service or charge name shown in the subscriptions tracker.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Spotify Premium")
+          .setValue(this.state.name)
+          .onChange((value) => {
+            this.state.name = value;
+          });
+        window.setTimeout(() => text.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Type")
+      .setDesc("Recurring subscriptions affect monthly recurring totals. One-time items stay visible without distorting recurring cost math.")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("recurring", "Recurring");
+        dropdown.addOption("one-time", "One-time");
+        dropdown.setValue(this.state.kind);
+        dropdown.setDisabled(Boolean(this.forcedKind));
+        dropdown.onChange((value) => {
+          this.state.kind = value === "one-time" ? "one-time" : "recurring";
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Status")
+      .setDesc("Use trial, paused, canceled, or archived so the tracker can separate live pressure from historical clutter.")
+      .addDropdown((dropdown) => {
+        ["active", "trial", "paused", "canceled", "archived"].forEach((status) => dropdown.addOption(status, status.charAt(0).toUpperCase() + status.slice(1)));
+        dropdown.setValue(this.state.status);
+        dropdown.onChange((value) => {
+          this.state.status = value === "trial" || value === "paused" || value === "canceled" || value === "archived" ? value : "active";
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Amount")
+      .setDesc("The raw charge amount before monthly normalization.")
+      .addText((text) => {
+        text
+          .setPlaceholder("0")
+          .setValue(this.state.cost > 0 ? `${this.state.cost}` : "")
+          .onChange((value) => {
+            this.state.cost = Math.max(Number(value.trim() || 0), 0);
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.step = "0.01";
+      })
+      .addText((text) => {
+        text
+          .setPlaceholder("USD")
+          .setValue(this.state.currency)
+          .onChange((value) => {
+            this.state.currency = (value.trim() || "USD").toUpperCase();
+          });
+      });
+
+    new Setting(contentEl)
+      .setName("Billing interval in months")
+      .setDesc("Use 1 for monthly, 6 for every six months, and 12 for yearly.")
+      .addText((text) => {
+        text
+          .setPlaceholder("1")
+          .setValue(`${this.state.intervalMonths}`)
+          .onChange((value) => {
+            this.state.intervalMonths = Math.max(1, Math.round(Number(value.trim() || 1)));
+          });
+        text.inputEl.type = "number";
+        text.inputEl.min = "1";
+        text.inputEl.max = "120";
+      });
+
+    new Setting(contentEl)
+      .setName("Payment method")
+      .setDesc("Used by the overview to show payment-method concentration.")
+      .addText((text) => {
+        text
+          .setPlaceholder("Card, PayPal, Apple Pay, Crypto")
+          .setValue(this.state.paymentMethod)
+          .onChange((value) => {
+            this.state.paymentMethod = value;
+          });
+      });
+
+    new Setting(contentEl)
+      .setName("Category")
+      .setDesc("Used to compare recurring commitments against your simple monthly category targets.")
+      .addDropdown((dropdown) => {
+        this.categories.forEach((category) => dropdown.addOption(category.id, category.label));
+        dropdown.setValue(this.state.categoryId);
+        dropdown.onChange((value) => {
+          this.state.categoryId = value;
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Started on")
+      .setDesc("Optional start date for reference.")
+      .addText((text) => {
+        text
+          .setValue(this.state.startedOn)
+          .onChange((value) => {
+            this.state.startedOn = value.trim();
+          });
+        text.inputEl.type = "date";
+      });
+
+    new Setting(contentEl)
+      .setName("Next renewal")
+      .setDesc("Optional. Used for due-soon surfacing in the overview and subscriptions tab.")
+      .addText((text) => {
+        text
+          .setValue(this.state.renewalDate)
+          .onChange((value) => {
+            this.state.renewalDate = value.trim();
+          });
+        text.inputEl.type = "date";
+      });
+
+    new Setting(contentEl)
+      .setName("Cancel URL")
+      .setDesc("Optional link or path to the cancellation page or account settings screen.")
+      .addText((text) => {
+        text
+          .setPlaceholder("https://...")
+          .setValue(this.state.cancelUrl)
+          .onChange((value) => {
+            this.state.cancelUrl = value.trim();
+          });
+      });
+
+    new Setting(contentEl)
+      .setName("Notes")
+      .setDesc("Any friction, annual-renewal warning, trial context, or cancellation note worth keeping visible.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Annual renewal in February. Cancel from account settings, not billing page.")
+          .setValue(this.state.notes)
+          .onChange((value) => {
+            this.state.notes = value;
+          });
+        textArea.inputEl.rows = 4;
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText(this.state.id ? "Save subscription" : "Add subscription").setCta().onClick(async () => {
+          if (!this.state.name.trim()) {
+            new Notice("Subscription name is required.");
+            return;
+          }
+
+          await this.plugin.saveFinanceSubscription({
+            ...this.state,
+            kind: this.forcedKind ?? this.state.kind,
+            intervalMonths: Math.max(1, this.state.intervalMonths)
+          });
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 export class DailyDashboardSettingTab extends PluginSettingTab {
   private plugin: DailyDashboardPlugin;
 
@@ -6039,6 +6560,34 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
               )
             });
           });
+      });
+
+    containerEl.createEl("h3", { text: "Budgeting" });
+
+    new Setting(containerEl)
+      .setName("Enable budgeting section")
+      .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            budgetingEnabled: value
+          });
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Enable subscriptions tracker")
+      .setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            subscriptionsTrackerEnabled: value
+          });
+          this.display();
+        });
       });
 
     containerEl.createEl("h3", { text: "Tracking" });

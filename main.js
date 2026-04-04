@@ -57,6 +57,17 @@ var DEFAULT_SESSION_TRACKERS = [
   { id: "social", label: "Social", color: "#5f1814", visible: true },
   { id: "chores", label: "Chores", color: "#6fb149", visible: true }
 ];
+var DEFAULT_BUDGET_CATEGORIES = [
+  { id: "housing", label: "Housing", monthlyTarget: 0, color: "#d19a66" },
+  { id: "utilities", label: "Utilities", monthlyTarget: 0, color: "#61afef" },
+  { id: "food", label: "Food", monthlyTarget: 0, color: "#98c379" },
+  { id: "health", label: "Health", monthlyTarget: 0, color: "#e06c75" },
+  { id: "transport", label: "Transport", monthlyTarget: 0, color: "#e5c07b" },
+  { id: "software", label: "Software", monthlyTarget: 0, color: "#56b6c2" },
+  { id: "entertainment", label: "Entertainment", monthlyTarget: 0, color: "#c678dd" },
+  { id: "savings", label: "Savings", monthlyTarget: 0, color: "#7fd1b9" },
+  { id: "other", label: "Other", monthlyTarget: 0, color: "#abb2bf" }
+];
 var DEFAULT_SETTINGS = {
   dashboardTitle: "Obsidian DASH - Daily Action & System Hub",
   masterTodoPath: "Master Task Hub.md",
@@ -157,6 +168,8 @@ var DEFAULT_SETTINGS = {
   calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
+  budgetingEnabled: false,
+  subscriptionsTrackerEnabled: true,
   measurementSystem: "imperial",
   weightGoalTarget: 0,
   weightGoalMode: "maintain",
@@ -183,7 +196,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -255,6 +268,8 @@ function sanitizeSettings(settings) {
     calendarDocumentPath: ((_Q = settings.calendarDocumentPath) == null ? void 0 : _Q.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
+    budgetingEnabled: (_R = settings.budgetingEnabled) != null ? _R : DEFAULT_SETTINGS.budgetingEnabled,
+    subscriptionsTrackerEnabled: (_S = settings.subscriptionsTrackerEnabled) != null ? _S : DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
     measurementSystem,
     weightGoalTarget,
     weightGoalMode,
@@ -263,8 +278,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath2(((_R = settings.wallpaperFolder) == null ? void 0 : _R.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_S = settings.selectedWallpaper) == null ? void 0 : _S.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath2(((_T = settings.wallpaperFolder) == null ? void 0 : _T.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_U = settings.selectedWallpaper) == null ? void 0 : _U.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
     sessionTrackers: mergedSessionTrackers
@@ -4454,6 +4469,55 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ];
+function getSubscriptionMonthlyEquivalent(subscription) {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+  return subscription.cost / Math.max(subscription.intervalMonths, 1);
+}
+function getSubscriptionAnnualizedCost(subscription) {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+  return getSubscriptionMonthlyEquivalent(subscription) * 12;
+}
+function formatFinanceAmount(amount, currency) {
+  const normalizedCurrency = currency.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(normalizedCurrency)) {
+    try {
+      return new Intl.NumberFormat(void 0, {
+        style: "currency",
+        currency: normalizedCurrency,
+        maximumFractionDigits: amount >= 100 ? 0 : 2
+      }).format(amount);
+    } catch (e) {
+    }
+  }
+  return `${normalizedCurrency || "$"} ${amount.toFixed(amount >= 100 ? 0 : 2)}`;
+}
+function formatSubscriptionCycle(subscription) {
+  if (subscription.kind === "one-time") {
+    return "One-time";
+  }
+  if (subscription.intervalMonths === 1) {
+    return "Monthly";
+  }
+  if (subscription.intervalMonths === 12) {
+    return "Yearly";
+  }
+  return `Every ${subscription.intervalMonths} months`;
+}
+function getDaysUntilDate(dateText, referenceDate = /* @__PURE__ */ new Date()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText.trim())) {
+    return null;
+  }
+  const target = /* @__PURE__ */ new Date(`${dateText}T00:00:00`);
+  const reference = /* @__PURE__ */ new Date(`${formatDateKey(referenceDate)}T00:00:00`);
+  if (Number.isNaN(target.getTime()) || Number.isNaN(reference.getTime())) {
+    return null;
+  }
+  return Math.round((target.getTime() - reference.getTime()) / 864e5);
+}
 var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -4489,6 +4553,8 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     this.aiQuestionDraft = "";
     this.expandedHabitMissNotes = /* @__PURE__ */ new Set();
     this.selectedGamificationWindow = "today";
+    this.selectedBudgetingTab = "overview";
+    this.budgetCategoryDraft = "";
     this.draggedSessionDeckTrackerId = null;
     this.handleDocumentPointerDown = (event) => {
       if (!this.notificationPanelOpen && !this.quickAddPanelOpen || !this.contentEl.isConnected) {
@@ -5048,12 +5114,13 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     return section.createDiv({ cls: "daily-dashboard-subsection-body" });
   }
   async render() {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
     try {
       const { contentEl } = this;
       const todayEntry = this.plugin.getTodayEntry();
       const todoSnapshot = await this.plugin.getTodoSnapshot();
       const settings = this.plugin.getSettings();
+      const financeData = this.plugin.getFinanceData();
       const calendarSnapshot = await this.plugin.getUpcomingCalendarSnapshot();
       const dashboardNotifications = this.plugin.getDashboardNotifications(todoSnapshot, calendarSnapshot);
       const weeklyAgenda = this.plugin.getWeeklyAgenda(todayEntry.date);
@@ -6087,6 +6154,237 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const gamificationActions = gamificationCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       createButton(gamificationActions, "Gamification report", async () => this.plugin.generateGamificationReport(), false, "trophy");
       createButton(gamificationActions, "Weekly report", async () => this.plugin.generateWeeklyReport(), false, "bar-chart-3");
+      if (settings.budgetingEnabled) {
+        const categoryById = new Map(financeData.budgetCategories.map((category) => [category.id, category]));
+        const visibleSubscriptions = financeData.subscriptions.filter((subscription) => subscription.status !== "archived");
+        const recurringSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "recurring" && subscription.status !== "canceled");
+        const otherSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "one-time" || subscription.status === "canceled");
+        const activeSubscriptions = visibleSubscriptions.filter((subscription) => subscription.status === "active" || subscription.status === "trial" || subscription.status === "paused");
+        const dueSoonSubscriptions = visibleSubscriptions.filter((subscription) => {
+          const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+          return daysUntilRenewal !== null && daysUntilRenewal >= 0 && daysUntilRenewal <= 30;
+        });
+        const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
+        const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost(subscription), 0);
+        const costliestSubscription = (_u = [...recurringSubscriptions].sort((left, right) => getSubscriptionMonthlyEquivalent(right) - getSubscriptionMonthlyEquivalent(left))[0]) != null ? _u : null;
+        const paymentMethodCounts = activeSubscriptions.reduce((counts, subscription) => {
+          var _a2;
+          const key = subscription.paymentMethod.trim() || "Unknown";
+          counts.set(key, ((_a2 = counts.get(key)) != null ? _a2 : 0) + 1);
+          return counts;
+        }, /* @__PURE__ */ new Map());
+        const currencyCounts = visibleSubscriptions.reduce((counts, subscription) => {
+          var _a2;
+          const key = subscription.currency.trim() || "USD";
+          counts.set(key, ((_a2 = counts.get(key)) != null ? _a2 : 0) + 1);
+          return counts;
+        }, /* @__PURE__ */ new Map());
+        const totalBudgetTarget = financeData.budgetCategories.reduce((sum, category) => sum + category.monthlyTarget, 0);
+        const committedByCategory = financeData.budgetCategories.reduce((totals, category) => {
+          totals.set(category.id, recurringSubscriptions.filter((subscription) => subscription.categoryId === category.id).reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0));
+          return totals;
+        }, /* @__PURE__ */ new Map());
+        const budgetingCard = createGridCard("Budgeting", "Keep recurring costs, practical monthly targets, and renewal pressure visible without turning the dashboard into a full accounting app.", {
+          icon: "wallet-cards",
+          eyebrow: "Money",
+          tone: "focus",
+          tag: activeSubscriptions.length > 0 ? "Live" : "Optional"
+        });
+        const budgetingSummary = budgetingCard.createDiv({ cls: "daily-dashboard-chip-row" });
+        createSemanticChip(budgetingSummary, `${activeSubscriptions.length} active`, activeSubscriptions.length > 0 ? "focus" : "neutral");
+        createSemanticChip(budgetingSummary, `${dueSoonSubscriptions.length} due soon`, dueSoonSubscriptions.length > 0 ? "alert" : "neutral");
+        createSemanticChip(budgetingSummary, formatFinanceAmount(monthlyRecurringTotal, "USD"), monthlyRecurringTotal > 0 ? "capture" : "neutral");
+        const budgetingTabs = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
+        const availableBudgetingTabs = [
+          { key: "overview", label: "Overview", metric: `${activeSubscriptions.length}` },
+          ...settings.subscriptionsTrackerEnabled ? [{ key: "subscriptions", label: "Subscriptions", metric: `${visibleSubscriptions.length}` }] : [],
+          { key: "budget", label: "Budget", metric: `${financeData.budgetCategories.length}` }
+        ];
+        if (!availableBudgetingTabs.some((tab) => tab.key === this.selectedBudgetingTab)) {
+          this.selectedBudgetingTab = (_w = (_v = availableBudgetingTabs[0]) == null ? void 0 : _v.key) != null ? _w : "overview";
+        }
+        availableBudgetingTabs.forEach((tab) => {
+          const button = budgetingTabs.createEl("button", {
+            cls: this.selectedBudgetingTab === tab.key ? "daily-dashboard-gamification-tab is-active" : "daily-dashboard-gamification-tab"
+          });
+          button.type = "button";
+          button.createEl("span", { text: tab.label });
+          button.createEl("strong", { text: tab.metric });
+          button.addEventListener("click", () => {
+            this.selectedBudgetingTab = tab.key;
+            void this.render();
+          });
+        });
+        if (this.selectedBudgetingTab === "overview") {
+          const overviewGrid = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+          this.renderDayMetric(overviewGrid, "Monthly recurring", formatFinanceAmount(monthlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Yearly recurring", formatFinanceAmount(yearlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Costliest", costliestSubscription ? `${costliestSubscription.name} \u2022 ${formatFinanceAmount(getSubscriptionMonthlyEquivalent(costliestSubscription), "USD")}` : "None");
+          this.renderDayMetric(overviewGrid, "Budget target", formatFinanceAmount(totalBudgetTarget, "USD"));
+          const overviewLists = budgetingCard.createDiv({ cls: "daily-dashboard-budget-overview-grid" });
+          const recurringBlock = overviewLists.createDiv({ cls: "daily-dashboard-score-block" });
+          const recurringHeader = recurringBlock.createDiv({ cls: "daily-dashboard-score-header" });
+          recurringHeader.createEl("strong", { text: "Recurring pressure" });
+          createSemanticChip(recurringHeader, `${recurringSubscriptions.length} tracked`, recurringSubscriptions.length > 0 ? "capture" : "neutral");
+          if (recurringSubscriptions.length === 0) {
+            recurringBlock.createDiv({ cls: "daily-dashboard-empty-state", text: "No recurring subscriptions yet. Add a few and the overview will start surfacing monthly pressure, renewals, and cost concentration." });
+          } else {
+            const list = recurringBlock.createDiv({ cls: "daily-dashboard-project-list" });
+            recurringSubscriptions.slice(0, 6).forEach((subscription) => {
+              const row = list.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              row.createEl("strong", { text: subscription.name });
+              const renewalMeta = getDaysUntilDate(subscription.renewalDate);
+              row.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatSubscriptionCycle(subscription)} \u2022 ${formatFinanceAmount(subscription.cost, subscription.currency)}${renewalMeta !== null ? ` \u2022 renews in ${renewalMeta}d` : ""}`
+              });
+            });
+          }
+          const methodsBlock = overviewLists.createDiv({ cls: "daily-dashboard-score-block" });
+          const methodsHeader = methodsBlock.createDiv({ cls: "daily-dashboard-score-header" });
+          methodsHeader.createEl("strong", { text: "Methods and currencies" });
+          createSemanticChip(methodsHeader, `${paymentMethodCounts.size} methods`, paymentMethodCounts.size > 0 ? "state" : "neutral");
+          const methodChips = methodsBlock.createDiv({ cls: "daily-dashboard-chip-row" });
+          if (paymentMethodCounts.size === 0) {
+            createSemanticChip(methodChips, "No payment methods yet", "neutral");
+          } else {
+            [...paymentMethodCounts.entries()].sort((left, right) => right[1] - left[1]).forEach(([method, count]) => {
+              createSemanticChip(methodChips, `${method} ${count}`, "state");
+            });
+          }
+          const currencyChips = methodsBlock.createDiv({ cls: "daily-dashboard-chip-row" });
+          if (currencyCounts.size === 0) {
+            createSemanticChip(currencyChips, "No currencies yet", "neutral");
+          } else {
+            [...currencyCounts.entries()].sort((left, right) => right[1] - left[1]).forEach(([currency, count]) => {
+              createSemanticChip(currencyChips, `${currency} ${count}`, "capture");
+            });
+          }
+        }
+        if (this.selectedBudgetingTab === "subscriptions") {
+          const subscriptionActions = budgetingCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+          createButton(subscriptionActions, "Add subscription", async () => {
+            new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories).open();
+          }, true, "plus-circle");
+          createButton(subscriptionActions, "Add one-time", async () => {
+            new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories, void 0, "one-time").open();
+          }, false, "receipt-text");
+          const recurringSection = budgetingCard.createDiv({ cls: "daily-dashboard-score-block" });
+          const recurringHeader = recurringSection.createDiv({ cls: "daily-dashboard-score-header" });
+          recurringHeader.createEl("strong", { text: "Recurring" });
+          createSemanticChip(recurringHeader, `${recurringSubscriptions.length} tracked`, recurringSubscriptions.length > 0 ? "capture" : "neutral");
+          const recurringList = recurringSection.createDiv({ cls: "daily-dashboard-project-list" });
+          if (recurringSubscriptions.length === 0) {
+            recurringList.createDiv({ cls: "daily-dashboard-empty-state", text: "No recurring subscriptions yet." });
+          } else {
+            recurringSubscriptions.forEach((subscription) => {
+              var _a2, _b2;
+              const row = recurringList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+              copy.createEl("strong", { text: subscription.name });
+              const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${formatSubscriptionCycle(subscription)} \u2022 ${subscription.paymentMethod || "Method unknown"}`
+              });
+              copy.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${(_b2 = (_a2 = categoryById.get(subscription.categoryId)) == null ? void 0 : _a2.label) != null ? _b2 : "Other"} \u2022 ${subscription.status}${daysUntilRenewal !== null ? ` \u2022 renews in ${daysUntilRenewal}d` : ""}`
+              });
+              const actions2 = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+              createButton(actions2, "Edit", async () => {
+                new FinanceSubscriptionModal(this.app, this.plugin, financeData.budgetCategories, subscription).open();
+              }, false, "pencil");
+              createButton(actions2, "Remove", async () => {
+                await this.runDestructiveAction(
+                  `Removed subscription "${subscription.name}".`,
+                  async () => this.plugin.removeFinanceSubscription(subscription.id),
+                  async () => this.plugin.saveFinanceSubscription(subscription)
+                );
+              }, false, "trash-2");
+            });
+          }
+          const otherSection = budgetingCard.createDiv({ cls: "daily-dashboard-score-block" });
+          const otherHeader = otherSection.createDiv({ cls: "daily-dashboard-score-header" });
+          otherHeader.createEl("strong", { text: "One-time and canceled" });
+          createSemanticChip(otherHeader, `${otherSubscriptions.length} tracked`, otherSubscriptions.length > 0 ? "state" : "neutral");
+          const otherList = otherSection.createDiv({ cls: "daily-dashboard-project-list" });
+          if (otherSubscriptions.length === 0) {
+            otherList.createDiv({ cls: "daily-dashboard-empty-state", text: "No one-time or canceled entries yet." });
+          } else {
+            otherSubscriptions.forEach((subscription) => {
+              const row = otherList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              row.createEl("strong", { text: subscription.name });
+              row.createEl("span", {
+                cls: "daily-dashboard-row-meta",
+                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${subscription.kind === "one-time" ? "One-time" : subscription.status} \u2022 ${subscription.paymentMethod || "Method unknown"}`
+              });
+            });
+          }
+        }
+        if (this.selectedBudgetingTab === "budget") {
+          const budgetGrid = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
+          const committedRecurring = financeData.budgetCategories.reduce((sum, category) => {
+            var _a2;
+            return sum + ((_a2 = committedByCategory.get(category.id)) != null ? _a2 : 0);
+          }, 0);
+          this.renderDayMetric(budgetGrid, "Target total", formatFinanceAmount(totalBudgetTarget, "USD"));
+          this.renderDayMetric(budgetGrid, "Committed recurring", formatFinanceAmount(committedRecurring, "USD"));
+          this.renderDayMetric(budgetGrid, "Headroom", formatFinanceAmount(Math.max(totalBudgetTarget - committedRecurring, 0), "USD"));
+          this.renderDayMetric(budgetGrid, "Categories", `${financeData.budgetCategories.length}`);
+          const categoryAddRow = budgetingCard.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
+          const categoryInput = categoryAddRow.createEl("input", {
+            cls: "daily-dashboard-input",
+            attr: { type: "text", placeholder: "Add a budget category" }
+          });
+          categoryInput.value = this.budgetCategoryDraft;
+          categoryInput.addEventListener("input", () => {
+            this.budgetCategoryDraft = categoryInput.value;
+          });
+          categoryInput.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void this.plugin.addBudgetCategory(this.budgetCategoryDraft).then((added) => {
+                if (added) {
+                  this.budgetCategoryDraft = "";
+                }
+              });
+            }
+          });
+          createButton(categoryAddRow, "Add category", async () => {
+            const added = await this.plugin.addBudgetCategory(this.budgetCategoryDraft);
+            if (added) {
+              this.budgetCategoryDraft = "";
+            }
+          }, false, "plus");
+          const budgetList = budgetingCard.createDiv({ cls: "daily-dashboard-project-list" });
+          financeData.budgetCategories.forEach((category) => {
+            var _a2;
+            const committed = (_a2 = committedByCategory.get(category.id)) != null ? _a2 : 0;
+            const row = budgetList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-budget-category-row" });
+            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, category.label, "focus");
+            createSemanticChip(chipRow, `${financeData.subscriptions.filter((subscription) => subscription.categoryId === category.id && subscription.kind === "recurring" && subscription.status !== "canceled").length} linked`, committed > 0 ? "capture" : "neutral");
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `Committed recurring ${formatFinanceAmount(committed, "USD")}` });
+            const controls = row.createDiv({ cls: "daily-dashboard-budget-category-controls" });
+            const targetInput = controls.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0", step: "1" } });
+            targetInput.value = `${category.monthlyTarget}`;
+            targetInput.addEventListener("change", () => {
+              void this.plugin.updateBudgetCategoryTarget(category.id, Number(targetInput.value));
+            });
+            const removeButton = controls.createEl("button", { cls: "daily-dashboard-ghost-button", text: "Remove" });
+            removeButton.type = "button";
+            removeButton.addEventListener("click", () => {
+              void this.runDestructiveAction(
+                `Removed budget category "${category.label}".`,
+                async () => this.plugin.removeBudgetCategory(category.id),
+                async () => this.plugin.saveBudgetCategory(category)
+              );
+            });
+          });
+        }
+      }
       const habitsCard = createGridCard("Habits", "Repeatables with misses and timing kept visible.", {
         icon: "check-square",
         eyebrow: "Routines",
@@ -6381,7 +6679,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const weightHistory = this.plugin.getAllEntries().filter((entry) => typeof entry.bodyWeight === "number");
       const latestLoggedWeight = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].bodyWeight : null;
       const earliestWeightForTrend = weightHistory.length > 1 ? weightHistory[Math.max(0, weightHistory.length - 7)].bodyWeight : null;
-      const currentWeight = (_u = todayEntry.bodyWeight) != null ? _u : latestLoggedWeight;
+      const currentWeight = (_x = todayEntry.bodyWeight) != null ? _x : latestLoggedWeight;
       const targetWeight = settings.weightGoalTarget > 0 ? settings.weightGoalTarget : null;
       const weightDelta = currentWeight !== null && targetWeight !== null ? Number((targetWeight - currentWeight).toFixed(1)) : null;
       const weightTrendDelta = currentWeight !== null && earliestWeightForTrend !== null ? Number((currentWeight - earliestWeightForTrend).toFixed(1)) : null;
@@ -9304,6 +9602,134 @@ var AskResearchQuestionModal = class extends import_obsidian3.Modal {
     this.contentEl.empty();
   }
 };
+var FinanceSubscriptionModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, categories, existing, forcedKind = null) {
+    var _a, _b;
+    super(app);
+    this.plugin = plugin;
+    this.categories = categories;
+    this.forcedKind = forcedKind;
+    this.state = existing ? { ...existing } : {
+      id: "",
+      name: "",
+      cost: 0,
+      currency: "USD",
+      intervalMonths: forcedKind === "one-time" ? 1 : 1,
+      paymentMethod: "",
+      startedOn: "",
+      renewalDate: "",
+      status: forcedKind === "one-time" ? "active" : "active",
+      kind: forcedKind != null ? forcedKind : "recurring",
+      categoryId: (_b = (_a = categories[0]) == null ? void 0 : _a.id) != null ? _b : "other",
+      notes: "",
+      cancelUrl: ""
+    };
+  }
+  onOpen() {
+    this.setTitle(this.state.id ? "Edit Subscription" : "Add Subscription");
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian3.Setting(contentEl).setName("Name").setDesc("Service or charge name shown in the subscriptions tracker.").addText((text) => {
+      text.setPlaceholder("Spotify Premium").setValue(this.state.name).onChange((value) => {
+        this.state.name = value;
+      });
+      window.setTimeout(() => text.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Type").setDesc("Recurring subscriptions affect monthly recurring totals. One-time items stay visible without distorting recurring cost math.").addDropdown((dropdown) => {
+      dropdown.addOption("recurring", "Recurring");
+      dropdown.addOption("one-time", "One-time");
+      dropdown.setValue(this.state.kind);
+      dropdown.setDisabled(Boolean(this.forcedKind));
+      dropdown.onChange((value) => {
+        this.state.kind = value === "one-time" ? "one-time" : "recurring";
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Status").setDesc("Use trial, paused, canceled, or archived so the tracker can separate live pressure from historical clutter.").addDropdown((dropdown) => {
+      ["active", "trial", "paused", "canceled", "archived"].forEach((status) => dropdown.addOption(status, status.charAt(0).toUpperCase() + status.slice(1)));
+      dropdown.setValue(this.state.status);
+      dropdown.onChange((value) => {
+        this.state.status = value === "trial" || value === "paused" || value === "canceled" || value === "archived" ? value : "active";
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Amount").setDesc("The raw charge amount before monthly normalization.").addText((text) => {
+      text.setPlaceholder("0").setValue(this.state.cost > 0 ? `${this.state.cost}` : "").onChange((value) => {
+        this.state.cost = Math.max(Number(value.trim() || 0), 0);
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "0";
+      text.inputEl.step = "0.01";
+    }).addText((text) => {
+      text.setPlaceholder("USD").setValue(this.state.currency).onChange((value) => {
+        this.state.currency = (value.trim() || "USD").toUpperCase();
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Billing interval in months").setDesc("Use 1 for monthly, 6 for every six months, and 12 for yearly.").addText((text) => {
+      text.setPlaceholder("1").setValue(`${this.state.intervalMonths}`).onChange((value) => {
+        this.state.intervalMonths = Math.max(1, Math.round(Number(value.trim() || 1)));
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "1";
+      text.inputEl.max = "120";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Payment method").setDesc("Used by the overview to show payment-method concentration.").addText((text) => {
+      text.setPlaceholder("Card, PayPal, Apple Pay, Crypto").setValue(this.state.paymentMethod).onChange((value) => {
+        this.state.paymentMethod = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Category").setDesc("Used to compare recurring commitments against your simple monthly category targets.").addDropdown((dropdown) => {
+      this.categories.forEach((category) => dropdown.addOption(category.id, category.label));
+      dropdown.setValue(this.state.categoryId);
+      dropdown.onChange((value) => {
+        this.state.categoryId = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Started on").setDesc("Optional start date for reference.").addText((text) => {
+      text.setValue(this.state.startedOn).onChange((value) => {
+        this.state.startedOn = value.trim();
+      });
+      text.inputEl.type = "date";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Next renewal").setDesc("Optional. Used for due-soon surfacing in the overview and subscriptions tab.").addText((text) => {
+      text.setValue(this.state.renewalDate).onChange((value) => {
+        this.state.renewalDate = value.trim();
+      });
+      text.inputEl.type = "date";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Cancel URL").setDesc("Optional link or path to the cancellation page or account settings screen.").addText((text) => {
+      text.setPlaceholder("https://...").setValue(this.state.cancelUrl).onChange((value) => {
+        this.state.cancelUrl = value.trim();
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Notes").setDesc("Any friction, annual-renewal warning, trial context, or cancellation note worth keeping visible.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Annual renewal in February. Cancel from account settings, not billing page.").setValue(this.state.notes).onChange((value) => {
+        this.state.notes = value;
+      });
+      textArea.inputEl.rows = 4;
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText(this.state.id ? "Save subscription" : "Add subscription").setCta().onClick(async () => {
+        var _a;
+        if (!this.state.name.trim()) {
+          new import_obsidian3.Notice("Subscription name is required.");
+          return;
+        }
+        await this.plugin.saveFinanceSubscription({
+          ...this.state,
+          kind: (_a = this.forcedKind) != null ? _a : this.state.kind,
+          intervalMonths: Math.max(1, this.state.intervalMonths)
+        });
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -9422,6 +9848,25 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
             this.plugin.getSettings().calendarLookaheadHours
           )
         });
+      });
+    });
+    containerEl.createEl("h3", { text: "Budgeting" });
+    new import_obsidian3.Setting(containerEl).setName("Enable budgeting section").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.").addToggle((toggle) => {
+      toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          budgetingEnabled: value
+        });
+        this.display();
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Enable subscriptions tracker").setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.").addToggle((toggle) => {
+      toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          subscriptionsTrackerEnabled: value
+        });
+        this.display();
       });
     });
     containerEl.createEl("h3", { text: "Tracking" });
@@ -10580,6 +11025,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       settings: { ...DEFAULT_SETTINGS },
       entries: {},
       calendarEvents: [],
+      financeData: {
+        budgetCategories: DEFAULT_BUDGET_CATEGORIES.map((category) => ({ ...category })),
+        subscriptions: []
+      },
       dayState: {
         activeDate: formatDateKey(/* @__PURE__ */ new Date()),
         status: "not-started",
@@ -11226,6 +11675,94 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   getSettings() {
     return this.data.settings;
+  }
+  getFinanceData() {
+    return this.data.financeData;
+  }
+  async addBudgetCategory(label) {
+    var _a, _b;
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      return false;
+    }
+    const existing = this.data.financeData.budgetCategories.find((category) => category.label.toLowerCase() === trimmedLabel.toLowerCase());
+    if (existing) {
+      new import_obsidian4.Notice("That budget category already exists.");
+      return false;
+    }
+    const nextCategory = {
+      id: this.normalizeFinanceId(trimmedLabel, `budget-category-${Date.now()}`),
+      label: trimmedLabel,
+      monthlyTarget: 0,
+      color: (_b = (_a = DEFAULT_BUDGET_CATEGORIES[this.data.financeData.budgetCategories.length % DEFAULT_BUDGET_CATEGORIES.length]) == null ? void 0 : _a.color) != null ? _b : "#abb2bf"
+    };
+    this.data.financeData.budgetCategories = [...this.data.financeData.budgetCategories, nextCategory];
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    return true;
+  }
+  async saveBudgetCategory(category) {
+    const normalized = this.normalizeBudgetCategory(category, this.data.financeData.budgetCategories.length);
+    if (!normalized) {
+      new import_obsidian4.Notice("Budget category label is required.");
+      return;
+    }
+    const nextCategories = this.data.financeData.budgetCategories.filter((item) => item.id !== normalized.id);
+    nextCategories.push(normalized);
+    this.data.financeData.budgetCategories = nextCategories.sort((left, right) => left.label.localeCompare(right.label));
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async updateBudgetCategoryTarget(categoryId, monthlyTarget) {
+    this.data.financeData.budgetCategories = this.data.financeData.budgetCategories.map((category) => category.id === categoryId ? { ...category, monthlyTarget: clamp(Number(monthlyTarget) || 0, 0, 1e6) } : category);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async removeBudgetCategory(categoryId) {
+    var _a;
+    if (this.data.financeData.budgetCategories.length <= 1) {
+      new import_obsidian4.Notice("Keep at least one budget category available.");
+      return;
+    }
+    const fallbackCategoryId = (_a = this.data.financeData.budgetCategories.find((category) => category.id !== categoryId)) == null ? void 0 : _a.id;
+    if (!fallbackCategoryId) {
+      return;
+    }
+    this.data.financeData.budgetCategories = this.data.financeData.budgetCategories.filter((category) => category.id !== categoryId);
+    this.data.financeData.subscriptions = this.data.financeData.subscriptions.map((subscription) => subscription.categoryId === categoryId ? { ...subscription, categoryId: fallbackCategoryId } : subscription);
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async saveFinanceSubscription(subscription) {
+    var _a, _b;
+    const rawSubscription = subscription.id.trim().length > 0 ? subscription : {
+      ...subscription,
+      id: `subscription-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+    };
+    const normalized = this.normalizeFinanceSubscription(
+      rawSubscription,
+      0,
+      new Set(this.data.financeData.budgetCategories.map((category) => category.id)),
+      (_b = (_a = this.data.financeData.budgetCategories[0]) == null ? void 0 : _a.id) != null ? _b : "other"
+    );
+    if (!normalized) {
+      new import_obsidian4.Notice("Subscription name is required.");
+      return;
+    }
+    const nextSubscriptions = this.data.financeData.subscriptions.filter((item) => item.id !== normalized.id);
+    nextSubscriptions.push(normalized);
+    this.data.financeData.subscriptions = nextSubscriptions.sort((left, right) => {
+      const leftKey = left.renewalDate || "9999-99-99";
+      const rightKey = right.renewalDate || "9999-99-99";
+      return leftKey.localeCompare(rightKey) || left.name.localeCompare(right.name);
+    });
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async removeFinanceSubscription(subscriptionId) {
+    this.data.financeData.subscriptions = this.data.financeData.subscriptions.filter((subscription) => subscription.id !== subscriptionId);
+    await this.savePluginData();
+    this.refreshDashboardViews();
   }
   getHabitDefinitions() {
     return this.data.settings.habitDefinitions;
@@ -16456,6 +16993,7 @@ No entries available.`;
       settings,
       entries,
       calendarEvents,
+      financeData: this.normalizeFinanceData(loaded == null ? void 0 : loaded.financeData),
       dayState,
       noteIndex: normalizeNoteIndexCache(loaded == null ? void 0 : loaded.noteIndex),
       uiState: this.normalizeUiState(loaded == null ? void 0 : loaded.uiState)
@@ -16468,6 +17006,72 @@ No entries available.`;
       dismissedNotificationIds: Array.isArray(state == null ? void 0 : state.dismissedNotificationIds) ? state.dismissedNotificationIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : [],
       dismissedCleanupSuggestionIds: Array.isArray(state == null ? void 0 : state.dismissedCleanupSuggestionIds) ? state.dismissedCleanupSuggestionIds.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 200) : []
     };
+  }
+  normalizeFinanceData(finance) {
+    var _a, _b;
+    const categories = Array.isArray(finance == null ? void 0 : finance.budgetCategories) ? finance.budgetCategories.map((category, index) => this.normalizeBudgetCategory(category, index)).filter((category) => category !== null) : [];
+    const normalizedCategories = categories.length > 0 ? categories : DEFAULT_BUDGET_CATEGORIES.map((category) => ({ ...category }));
+    const categoryIds = new Set(normalizedCategories.map((category) => category.id));
+    const defaultCategoryId = (_b = (_a = normalizedCategories[0]) == null ? void 0 : _a.id) != null ? _b : "other";
+    const subscriptions = Array.isArray(finance == null ? void 0 : finance.subscriptions) ? finance.subscriptions.map((subscription, index) => this.normalizeFinanceSubscription(subscription, index, categoryIds, defaultCategoryId)).filter((subscription) => subscription !== null).sort((left, right) => {
+      const leftKey = left.renewalDate || "9999-99-99";
+      const rightKey = right.renewalDate || "9999-99-99";
+      return leftKey.localeCompare(rightKey) || left.name.localeCompare(right.name);
+    }) : [];
+    return {
+      budgetCategories: normalizedCategories,
+      subscriptions
+    };
+  }
+  normalizeBudgetCategory(category, index) {
+    var _a, _b;
+    if (!category || typeof category !== "object") {
+      return null;
+    }
+    const label = typeof category.label === "string" ? category.label.trim() : "";
+    if (!label) {
+      return null;
+    }
+    const id = this.normalizeFinanceId(typeof category.id === "string" ? category.id : label, `budget-category-${index + 1}`);
+    const monthlyTarget = Number.isFinite(Number(category.monthlyTarget)) ? clamp(Number(category.monthlyTarget), 0, 1e6) : 0;
+    const color = typeof category.color === "string" && /^#[0-9a-fA-F]{6}$/.test(category.color.trim()) ? category.color.trim() : (_b = (_a = DEFAULT_BUDGET_CATEGORIES[index % DEFAULT_BUDGET_CATEGORIES.length]) == null ? void 0 : _a.color) != null ? _b : "#abb2bf";
+    return {
+      id,
+      label,
+      monthlyTarget,
+      color
+    };
+  }
+  normalizeFinanceSubscription(subscription, index, categoryIds, defaultCategoryId) {
+    if (!subscription || typeof subscription !== "object") {
+      return null;
+    }
+    const name = typeof subscription.name === "string" ? subscription.name.trim() : "";
+    if (!name) {
+      return null;
+    }
+    const status = subscription.status === "trial" || subscription.status === "paused" || subscription.status === "canceled" || subscription.status === "archived" ? subscription.status : "active";
+    const kind = subscription.kind === "one-time" ? "one-time" : "recurring";
+    const categoryId = typeof subscription.categoryId === "string" && categoryIds.has(subscription.categoryId) ? subscription.categoryId : defaultCategoryId;
+    return {
+      id: this.normalizeFinanceId(typeof subscription.id === "string" ? subscription.id : name, `subscription-${index + 1}`),
+      name,
+      cost: Number.isFinite(Number(subscription.cost)) ? clamp(Number(subscription.cost), 0, 1e6) : 0,
+      currency: typeof subscription.currency === "string" && subscription.currency.trim().length > 0 ? subscription.currency.trim().toUpperCase().slice(0, 8) : "USD",
+      intervalMonths: Number.isFinite(Number(subscription.intervalMonths)) ? clamp(Number(subscription.intervalMonths), 1, 120) : 1,
+      paymentMethod: typeof subscription.paymentMethod === "string" ? subscription.paymentMethod.trim() : "",
+      startedOn: typeof subscription.startedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(subscription.startedOn.trim()) ? subscription.startedOn.trim() : "",
+      renewalDate: typeof subscription.renewalDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(subscription.renewalDate.trim()) ? subscription.renewalDate.trim() : "",
+      status,
+      kind,
+      categoryId,
+      notes: typeof subscription.notes === "string" ? subscription.notes.trim() : "",
+      cancelUrl: typeof subscription.cancelUrl === "string" ? subscription.cancelUrl.trim() : ""
+    };
+  }
+  normalizeFinanceId(value, fallback) {
+    const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return normalized || fallback;
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
@@ -17206,6 +17810,7 @@ No entries available.`;
       settings: this.data.settings,
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
+      financeData: this.data.financeData,
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex,
       uiState: this.data.uiState
