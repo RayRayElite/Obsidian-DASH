@@ -181,6 +181,105 @@ export function renderFinanceMonthlySnapshot(input: { monthKey: string; generate
   ].join("\n");
 }
 
+export function renderFinanceMonthlyReview(input: { monthKey: string; generatedAt: Date; financeData: FinanceData }): string {
+  const monthLabel = formatMonthLabel(input.monthKey);
+  const visibleSubscriptions = input.financeData.subscriptions.filter((subscription) => subscription.status !== "archived");
+  const recurringSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "recurring" && subscription.status !== "canceled");
+  const activeSubscriptions = visibleSubscriptions.filter((subscription) => subscription.status === "active" || subscription.status === "trial" || subscription.status === "paused");
+  const trialSubscriptions = activeSubscriptions.filter((subscription) => subscription.status === "trial");
+  const annualRenewals = recurringSubscriptions
+    .filter((subscription) => subscription.intervalMonths >= 12)
+    .sort((left, right) => left.renewalDate.localeCompare(right.renewalDate) || left.name.localeCompare(right.name));
+  const dueSoonSubscriptions = activeSubscriptions
+    .map((subscription) => ({ subscription, daysUntilRenewal: getDaysUntilDate(subscription.renewalDate, input.generatedAt) }))
+    .filter((item) => item.daysUntilRenewal !== null && item.daysUntilRenewal >= 0 && item.daysUntilRenewal <= 45)
+    .sort((left, right) => (left.daysUntilRenewal ?? 999) - (right.daysUntilRenewal ?? 999));
+  const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
+  const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost(subscription), 0);
+  const totalBudgetTarget = input.financeData.budgetCategories.reduce((sum, category) => sum + category.monthlyTarget, 0);
+  const budgetPressureRows = input.financeData.budgetCategories
+    .map((category) => {
+      const committedRecurring = getCategoryCommittedRecurring(category, recurringSubscriptions);
+      return {
+        category,
+        committedRecurring,
+        gap: category.monthlyTarget - committedRecurring,
+        linkedCount: recurringSubscriptions.filter((subscription) => subscription.categoryId === category.id).length
+      };
+    })
+    .sort((left, right) => left.gap - right.gap || right.committedRecurring - left.committedRecurring || left.category.label.localeCompare(right.category.label));
+  const paymentMethodBreakdown = activeSubscriptions.reduce((counts, subscription) => {
+    const key = subscription.paymentMethod.trim() || "Unknown";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+  const categoryConcentration = budgetPressureRows
+    .filter((row) => row.committedRecurring > 0)
+    .sort((left, right) => right.committedRecurring - left.committedRecurring)
+    .slice(0, 3);
+  const creepSignals = [
+    categoryConcentration.length > 0 ? `${categoryConcentration[0].category.label} carries the highest recurring load at ${formatFinanceAmount(categoryConcentration[0].committedRecurring, "USD")}.` : "No category currently has meaningful recurring load.",
+    annualRenewals.length > 0 ? `${annualRenewals.length} annual renewal${annualRenewals.length === 1 ? " is" : "s are"} still easy to forget because they do not show up as monthly charges.` : "No annual renewals are currently tracked.",
+    trialSubscriptions.length > 0 ? `${trialSubscriptions.length} active trial${trialSubscriptions.length === 1 ? " is" : "s are"} waiting to convert into paid recurring cost.` : "No active trials are currently tracked.",
+    budgetPressureRows.some((row) => row.gap < 0) ? `${budgetPressureRows.filter((row) => row.gap < 0).length} budget categor${budgetPressureRows.filter((row) => row.gap < 0).length === 1 ? "y is" : "ies are"} already over target from recurring commitments alone.` : "No budget category is over target from recurring commitments alone."
+  ];
+
+  return [
+    `# Finance Review - ${monthLabel}`,
+    "",
+    `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+    `- Month key: ${input.monthKey}`,
+    `- Scope: This review summarizes the current subscription tracker and budget-category targets. Transaction-level actuals are still outside the current finance model.`,
+    "",
+    "## Summary Block",
+    `- Main win: ${recurringSubscriptions.length > 0 ? `${recurringSubscriptions.length} recurring subscriptions are now visible as a single operational system instead of scattered bills.` : "No recurring subscriptions are tracked yet."}`,
+    `- Main blocker: ${budgetPressureRows.find((row) => row.gap < 0) ? `${budgetPressureRows.find((row) => row.gap < 0)?.category.label} is already over target from recurring commitments.` : dueSoonSubscriptions[0] ? `${dueSoonSubscriptions[0].subscription.name} renews in ${dueSoonSubscriptions[0].daysUntilRenewal} days and needs a keep/cancel decision.` : "No immediate finance blocker stands out from the current tracked data."}`,
+    `- Biggest drift: ${creepSignals[0]}`,
+    `- Key health signal: ${formatFinanceAmount(monthlyRecurringTotal, "USD")} monthly recurring against ${formatFinanceAmount(totalBudgetTarget, "USD")} planned budget capacity.`,
+    `- Most important follow-up: ${trialSubscriptions[0] ? `Review trial ${trialSubscriptions[0].name} before it converts.` : annualRenewals[0] ? `Decide whether ${annualRenewals[0].name} still deserves its next annual renewal.` : dueSoonSubscriptions[0] ? `Prepare for the next renewal on ${dueSoonSubscriptions[0].subscription.name}.` : "Keep payment methods, renewal dates, and category targets accurate before the next review."}`,
+    `- Context links: [[Dashboard Finance/Monthly/${input.monthKey}|Finance Snapshot ${input.monthKey}]], [[Master Task Hub|Master Task Hub]]`,
+    "",
+    "## Executive Summary",
+    `- Monthly recurring total: ${formatFinanceAmount(monthlyRecurringTotal, "USD")}`,
+    `- Annualized recurring total: ${formatFinanceAmount(yearlyRecurringTotal, "USD")}`,
+    `- Budget target total: ${formatFinanceAmount(totalBudgetTarget, "USD")}`,
+    `- Headroom after recurring commitments: ${formatFinanceAmount(totalBudgetTarget - monthlyRecurringTotal, "USD")}`,
+    `- Due within 45 days: ${dueSoonSubscriptions.length}`,
+    `- Active trials: ${trialSubscriptions.length}`,
+    `- Annual renewals tracked: ${annualRenewals.length}`,
+    "",
+    "## Subscription Creep Signals",
+    ...creepSignals.map((signal) => `- ${signal}`),
+    "",
+    "## Renewal Insights",
+    ...(dueSoonSubscriptions.length > 0
+      ? dueSoonSubscriptions.map(({ subscription, daysUntilRenewal }) => `- ${subscription.name}: renews in ${daysUntilRenewal} day${daysUntilRenewal === 1 ? "" : "s"} • ${formatFinanceAmount(subscription.cost, subscription.currency)} • ${formatSubscriptionCycle(subscription)}${subscription.cancelUrl ? ` • cancel ${subscription.cancelUrl}` : ""}`)
+      : ["- No subscription renewals are due in the next 45 days."]),
+    "",
+    "## Annual Renewal Exposure",
+    ...(annualRenewals.length > 0
+      ? annualRenewals.map((subscription) => `- ${subscription.name}: ${formatFinanceAmount(subscription.cost, subscription.currency)} yearly-equivalent charge • next renewal ${subscription.renewalDate || "unknown"}`)
+      : ["- No annual renewals are currently tracked."]),
+    "",
+    "## Budget Pressure Review",
+    ...(budgetPressureRows.length > 0
+      ? budgetPressureRows.map((row) => `- ${row.category.label}: target ${formatFinanceAmount(row.category.monthlyTarget, "USD")} • committed recurring ${formatFinanceAmount(row.committedRecurring, "USD")} • headroom ${formatFinanceAmount(row.gap, "USD")} • ${row.linkedCount} linked recurring item${row.linkedCount === 1 ? "" : "s"}`)
+      : ["- No budget categories are configured yet."]),
+    "",
+    "## Payment Method Concentration",
+    ...(paymentMethodBreakdown.size > 0
+      ? [...paymentMethodBreakdown.entries()].sort((left, right) => right[1] - left[1]).map(([method, count]) => `- ${method}: ${count} active subscription${count === 1 ? "" : "s"}`)
+      : ["- No payment methods are recorded yet."]),
+    "",
+    "## Review Actions",
+    `- [ ] Review ${dueSoonSubscriptions[0]?.subscription.name || "the next due renewal"} and decide keep, cancel, or downgrade.`,
+    `- [ ] Confirm ${categoryConcentration[0]?.category.label || "the highest-cost category"} still deserves its current recurring load.`,
+    `- [ ] Close any trial or annual renewal that no longer matches the current season or project load.`,
+    `- [ ] Refresh payment method, renewal date, and category metadata for anything still incomplete.`,
+    ""
+  ].join("\n");
+}
+
 function createContextLink(label: string, path = ""): string {
   const safeLabel = label.trim();
   if (!safeLabel) {

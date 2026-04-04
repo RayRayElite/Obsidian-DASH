@@ -2018,6 +2018,9 @@ export class DailyDashboardView extends ItemView {
         createButton(budgetingActions, "Generate snapshot", async () => {
           await this.plugin.generateMonthlyFinanceSnapshot(true);
         }, false, "file-text");
+        createButton(budgetingActions, "Generate review", async () => {
+          await this.plugin.generateMonthlyFinanceReview(true);
+        }, false, "clipboard-list");
 
         const budgetingTabs = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
         const availableBudgetingTabs = [

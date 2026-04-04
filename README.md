@@ -155,7 +155,7 @@ Consumable presets now stack into the same matching entry when you tap them repe
 
 New installs now open a guided first-run setup wizard automatically until the core configuration is confirmed. The wizard walks through dashboard identity, project-hub paths, reporting and calendar folders, and AI defaults, and it can be reopened later from the command palette or the plugin settings tab.
 
-The budgeting feature is opt-in from plugin settings. The current slice focuses on a subscriptions-first workflow: manual recurring or one-time charge entries, monthly and annual recurring totals, due-soon renewals, payment-method and currency summaries, lightweight budget-category targets for comparing committed recurring cost against rough monthly intent, and a `Generate monthly finance snapshot` action that writes a readable note under `Dashboard Finance/Monthly`.
+The budgeting feature is opt-in from plugin settings. The current slice focuses on a subscriptions-first workflow: manual recurring or one-time charge entries, monthly and annual recurring totals, due-soon renewals, payment-method and currency summaries, lightweight budget-category targets for comparing committed recurring cost against rough monthly intent, a `Generate monthly finance snapshot` action under `Dashboard Finance/Monthly`, and a `Generate monthly finance review` action under `Dashboard Finance/Reports` that summarizes subscription creep, renewal pressure, annual renewals, and review actions.
 
 ## AI Integration
 

@@ -67,6 +67,7 @@ import {
   renderDailyLog,
   renderGamificationReport,
   renderGamificationSectionLines,
+  renderFinanceMonthlyReview,
   renderFinanceMonthlySnapshot,
   renderPersonalTrendSectionLines,
   renderPeriodReport,
@@ -605,6 +606,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate monthly finance snapshot",
       callback: () => {
         void this.generateMonthlyFinanceSnapshot(true);
+      }
+    });
+
+    this.addCommand({
+      id: "generate-monthly-finance-review",
+      name: "Generate monthly finance review",
+      callback: () => {
+        void this.generateMonthlyFinanceReview(true);
       }
     });
 
@@ -5581,6 +5590,22 @@ export default class DailyDashboardPlugin extends Plugin {
     if (openAfterGenerate) {
       await this.openFile(file);
       new Notice("Monthly finance snapshot generated.");
+    }
+    return file;
+  }
+
+  async generateMonthlyFinanceReview(openAfterGenerate: boolean): Promise<TFile | null> {
+    const today = new Date();
+    const monthKey = formatDateKey(today).slice(0, 7);
+    const content = renderFinanceMonthlyReview({
+      monthKey,
+      generatedAt: today,
+      financeData: this.getFinanceData()
+    });
+    const file = await this.upsertMarkdownFile(`Dashboard Finance/Reports/${monthKey} Finance Review.md`, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice("Monthly finance review generated.");
     }
     return file;
   }
