@@ -1376,6 +1376,11 @@
 }
 
 .daily-dashboard-habit-controls {
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.daily-dashboard-habit-row-controls {
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-start;
@@ -3083,7 +3088,7 @@ input.daily-dashboard-input {
     width: 100%;
   }
 
-  .daily-dashboard-habit-controls {
+  .daily-dashboard-habit-row-controls {
     width: 100%;
     align-items: stretch;
   }

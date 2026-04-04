@@ -5966,7 +5966,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             cls: "daily-dashboard-row-meta",
             text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} \u2022 Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
           });
-          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls daily-dashboard-habit-row-controls" });
           ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
             const button = controls.createEl("button", {
               cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
@@ -6184,7 +6184,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             text: isHabitDueOnDate(habit, todayEntry.date) ? "No completions logged yet today." : "Not due today."
           });
         }
-        const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
+        const controls = row.createDiv({ cls: "daily-dashboard-habit-controls daily-dashboard-habit-row-controls" });
         const topControls = controls.createDiv({ cls: "daily-dashboard-habit-top-controls" });
         const countButtons = topControls.createDiv({ cls: "daily-dashboard-habit-step-group" });
         for (let index = 1; index <= habit.target; index += 1) {
