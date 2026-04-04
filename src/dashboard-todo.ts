@@ -1071,6 +1071,58 @@ export function renderKanbanHub(input: {
   ].join("\n");
 }
 
+export function syncKanbanHubToMasterHub(input: {
+  masterContent: string;
+  kanbanContent: string;
+  archivedAt: string;
+}): { content: string; movedTasks: number; completedTasks: number } {
+  const cards = parseKanbanHubCards(input.kanbanContent);
+  let content = input.masterContent;
+  let movedTasks = 0;
+
+  cards.forEach((card) => {
+    if (!card.taskId) {
+      return;
+    }
+
+    if (card.lane === "Done" || card.checked) {
+      const completed = markTaskCompleteById(content, card.projectName, card.taskId);
+      if (completed.marked) {
+        content = completed.content;
+      }
+      return;
+    }
+
+    const location = findProjectTaskLocationById(content, card.projectName, card.taskId);
+    if (!location) {
+      return;
+    }
+
+    const targetSection = card.lane;
+    if (location.section.toLowerCase() === targetSection.toLowerCase()) {
+      return;
+    }
+
+    const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
+    if (!removed) {
+      return;
+    }
+
+    const movedTaskText = targetSection === "Waiting"
+      ? removed.taskText
+      : stripBlockingTaskAnnotations(removed.taskText);
+    content = insertTaskIntoProjectSection(removed.content, card.projectName, targetSection, movedTaskText);
+    movedTasks += 1;
+  });
+
+  const archived = archiveCompletedTasks(content, input.archivedAt);
+  return {
+    content: archived.content,
+    movedTasks,
+    completedTasks: archived.archivedTasks.length
+  };
+}
+
 export function repairMasterHubStructure(content: string, input: {
   masterTodoPath: string;
   projectNotesFolder: string;
@@ -1407,6 +1459,155 @@ function renderKanbanTaskLine(task: TodoTaskSummary, checked: boolean): string {
   ].filter((value) => value.length > 0);
 
   return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}`;
+}
+
+function parseKanbanHubCards(content: string): Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> {
+  const lines = content.split(/\r?\n/);
+  const cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> = [];
+  let currentProjectName = "";
+  let currentLane: KanbanLane | null = null;
+
+  lines.forEach((line) => {
+    const summaryMatch = line.trim().match(/^<summary>(.+?) • Now /);
+    if (summaryMatch) {
+      currentProjectName = summaryMatch[1].trim();
+      currentLane = null;
+      return;
+    }
+
+    if (line.trim() === "</details>") {
+      currentProjectName = "";
+      currentLane = null;
+      return;
+    }
+
+    const laneMatch = line.trim().match(/^### (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    if (laneMatch) {
+      currentLane = laneMatch[1] as KanbanLane;
+      return;
+    }
+
+    if (!currentProjectName || !currentLane) {
+      return;
+    }
+
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+
+    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    if (!taskIdMatch) {
+      return;
+    }
+
+    cards.push({
+      projectName: currentProjectName,
+      lane: currentLane,
+      taskId: taskIdMatch[1].trim(),
+      checked: taskMatch[1].toLowerCase() === "x"
+    });
+  });
+
+  return cards;
+}
+
+function findProjectTaskLocationById(content: string, projectName: string, taskId: string): { section: string; checked: boolean } | null {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return null;
+  }
+
+  let currentSection = "General";
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(lines[index]);
+    if (sectionName) {
+      currentSection = sectionName;
+      continue;
+    }
+
+    const taskMatch = lines[index].match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      continue;
+    }
+
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
+      return {
+        section: currentSection,
+        checked: taskMatch[1].toLowerCase() === "x"
+      };
+    }
+  }
+
+  return null;
+}
+
+function removeTaskByIdFromProject(content: string, projectName: string, taskId: string): { content: string; taskText: string } | null {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return null;
+  }
+
+  const output = [...lines];
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const taskMatch = output[index].match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      continue;
+    }
+
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
+      continue;
+    }
+
+    output.splice(index, 1);
+    return {
+      content: output.join("\n"),
+      taskText: taskMatch[2].trim()
+    };
+  }
+
+  return null;
+}
+
+function markTaskCompleteById(content: string, projectName: string, taskId: string): { content: string; marked: boolean } {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return { content, marked: false };
+  }
+
+  const output = [...lines];
+  let currentSection = "General";
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(output[index]);
+    if (sectionName) {
+      currentSection = sectionName;
+      continue;
+    }
+
+    const taskMatch = output[index].match(CHECKLIST_REGEX);
+    if (!taskMatch || currentSection.trim().toLowerCase() === "completed archive") {
+      continue;
+    }
+
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
+      continue;
+    }
+
+    output[index] = output[index].replace(/^(	| )*- \[ \]/, (match) => match.replace("[ ]", "[x]"));
+    return { content: output.join("\n"), marked: true };
+  }
+
+  return { content, marked: false };
+}
+
+function stripBlockingTaskAnnotations(value: string): string {
+  return value
+    .replace(/\s*\[(?:blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function getProjectBlockMetadataInsertIndex(lines: string[]): number {

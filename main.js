@@ -3800,6 +3800,44 @@ function renderKanbanHub(input) {
     ...activeProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
   ].join("\n");
 }
+function syncKanbanHubToMasterHub(input) {
+  const cards = parseKanbanHubCards(input.kanbanContent);
+  let content = input.masterContent;
+  let movedTasks = 0;
+  cards.forEach((card) => {
+    if (!card.taskId) {
+      return;
+    }
+    if (card.lane === "Done" || card.checked) {
+      const completed = markTaskCompleteById(content, card.projectName, card.taskId);
+      if (completed.marked) {
+        content = completed.content;
+      }
+      return;
+    }
+    const location = findProjectTaskLocationById(content, card.projectName, card.taskId);
+    if (!location) {
+      return;
+    }
+    const targetSection = card.lane;
+    if (location.section.toLowerCase() === targetSection.toLowerCase()) {
+      return;
+    }
+    const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
+    if (!removed) {
+      return;
+    }
+    const movedTaskText = targetSection === "Waiting" ? removed.taskText : stripBlockingTaskAnnotations(removed.taskText);
+    content = insertTaskIntoProjectSection(removed.content, card.projectName, targetSection, movedTaskText);
+    movedTasks += 1;
+  });
+  const archived = archiveCompletedTasks(content, input.archivedAt);
+  return {
+    content: archived.content,
+    movedTasks,
+    completedTasks: archived.archivedTasks.length
+  };
+}
 function repairMasterHubStructure(content, input) {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -4091,6 +4129,126 @@ function renderKanbanTaskLine(task, checked) {
     task.taskId ? `id ${task.taskId}` : ""
   ].filter((value) => value.length > 0);
   return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}`;
+}
+function parseKanbanHubCards(content) {
+  const lines = content.split(/\r?\n/);
+  const cards = [];
+  let currentProjectName = "";
+  let currentLane = null;
+  lines.forEach((line) => {
+    const summaryMatch = line.trim().match(/^<summary>(.+?) • Now /);
+    if (summaryMatch) {
+      currentProjectName = summaryMatch[1].trim();
+      currentLane = null;
+      return;
+    }
+    if (line.trim() === "</details>") {
+      currentProjectName = "";
+      currentLane = null;
+      return;
+    }
+    const laneMatch = line.trim().match(/^### (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    if (laneMatch) {
+      currentLane = laneMatch[1];
+      return;
+    }
+    if (!currentProjectName || !currentLane) {
+      return;
+    }
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    if (!taskIdMatch) {
+      return;
+    }
+    cards.push({
+      projectName: currentProjectName,
+      lane: currentLane,
+      taskId: taskIdMatch[1].trim(),
+      checked: taskMatch[1].toLowerCase() === "x"
+    });
+  });
+  return cards;
+}
+function findProjectTaskLocationById(content, projectName, taskId) {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return null;
+  }
+  let currentSection = "General";
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(lines[index]);
+    if (sectionName) {
+      currentSection = sectionName;
+      continue;
+    }
+    const taskMatch = lines[index].match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      continue;
+    }
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
+      return {
+        section: currentSection,
+        checked: taskMatch[1].toLowerCase() === "x"
+      };
+    }
+  }
+  return null;
+}
+function removeTaskByIdFromProject(content, projectName, taskId) {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return null;
+  }
+  const output = [...lines];
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const taskMatch = output[index].match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      continue;
+    }
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
+      continue;
+    }
+    output.splice(index, 1);
+    return {
+      content: output.join("\n"),
+      taskText: taskMatch[2].trim()
+    };
+  }
+  return null;
+}
+function markTaskCompleteById(content, projectName, taskId) {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return { content, marked: false };
+  }
+  const output = [...lines];
+  let currentSection = "General";
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(output[index]);
+    if (sectionName) {
+      currentSection = sectionName;
+      continue;
+    }
+    const taskMatch = output[index].match(CHECKLIST_REGEX);
+    if (!taskMatch || currentSection.trim().toLowerCase() === "completed archive") {
+      continue;
+    }
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
+      continue;
+    }
+    output[index] = output[index].replace(/^(	| )*- \[ \]/, (match) => match.replace("[ ]", "[x]"));
+    return { content: output.join("\n"), marked: true };
+  }
+  return { content, marked: false };
+}
+function stripBlockingTaskAnnotations(value) {
+  return value.replace(/\s*\[(?:blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 function getProjectBlockMetadataInsertIndex(lines) {
   let index = 1;
@@ -11727,6 +11885,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "sync-kanban-hub-to-master-task-hub",
+      name: "Sync Kanban Hub to Master Task Hub",
+      callback: () => {
+        void this.syncKanbanHubToMasterTaskHub(true);
+      }
+    });
+    this.addCommand({
       id: "generate-weekly-review-note",
       name: "Generate weekly review note",
       callback: () => {
@@ -15588,6 +15753,32 @@ ${context}`, resolvedModel);
     const file = await this.refreshKanbanHub(false);
     if (showNotice) {
       new import_obsidian4.Notice(file ? "Kanban foundations repaired and Kanban Hub refreshed." : "Kanban repair could not complete because the Master Task Hub is missing.");
+    }
+  }
+  async syncKanbanHubToMasterTaskHub(showNotice) {
+    const todoFile = this.getMasterTodoFile();
+    const kanbanFile = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath));
+    if (!todoFile || !(kanbanFile instanceof import_obsidian4.TFile)) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub or Kanban Hub note is missing.");
+      }
+      return;
+    }
+    const masterContent = await this.app.vault.read(todoFile);
+    const kanbanContent = await this.app.vault.read(kanbanFile);
+    const synced = syncKanbanHubToMasterHub({
+      masterContent,
+      kanbanContent,
+      archivedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    });
+    if (synced.content !== masterContent) {
+      await this.app.vault.modify(todoFile, synced.content);
+      await this.refreshMasterHubPortfolioSnapshot(false);
+    }
+    await this.refreshKanbanHub(false);
+    this.refreshDashboardViews();
+    if (showNotice) {
+      new import_obsidian4.Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
   }
   async addTodayFocusItem(value) {

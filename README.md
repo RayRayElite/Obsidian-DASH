@@ -32,7 +32,7 @@ The stronger recommended document structure now lives in `Documentation/Document
 
 The command palette now also includes `Refresh master task hub portfolio snapshot`, which writes or updates a compact `## Portfolio Snapshot` section near the top of the hub with portfolio pressure, external blockers, and momentum highlights. Plugin-driven hub changes such as project creation, archive sweeps, repeating-task sync, and reference offload also refresh that section automatically.
 
-The Kanban foundation slice now also adds stable `[task-id: ...]` annotations to active hub checklist items when needed and exposes `Refresh Kanban Hub` plus `Repair Kanban foundations and refresh hub`. Those commands write a generated board note at the configured Kanban Hub path so the same project set can be scanned as boards without replacing the Master Task Hub as the canonical editing surface yet.
+The Kanban foundation slice now also adds stable `[task-id: ...]` annotations to active hub checklist items when needed and exposes `Refresh Kanban Hub`, `Repair Kanban foundations and refresh hub`, plus `Sync Kanban Hub to Master Task Hub`. Those commands write a generated board note at the configured Kanban Hub path and let lane moves made in that note persist back into the Master Task Hub without replacing the hub as the canonical source of truth.
 
 If older hub projects or project notes predate the newer metadata and section structure, run `Repair master task hub and project notes`. That workflow only adds missing metadata lines, missing sections, missing project notes, and a refreshed portfolio snapshot; it does not delete or rewrite existing hub content.
 

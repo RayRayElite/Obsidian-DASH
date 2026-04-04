@@ -96,7 +96,8 @@ import {
   sanitizeFileName,
   trimLeadingBlankLines,
   trimTrailingBlankLines,
-  stripMarkdownExtension
+  stripMarkdownExtension,
+  syncKanbanHubToMasterHub
 } from "./src/dashboard-todo";
 import {
   AddHabitModal,
@@ -564,6 +565,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Repair Kanban foundations and refresh hub",
       callback: () => {
         void this.repairKanbanFoundations(true);
+      }
+    });
+
+    this.addCommand({
+      id: "sync-kanban-hub-to-master-task-hub",
+      name: "Sync Kanban Hub to Master Task Hub",
+      callback: () => {
+        void this.syncKanbanHubToMasterTaskHub(true);
       }
     });
 
@@ -5236,6 +5245,36 @@ export default class DailyDashboardPlugin extends Plugin {
     const file = await this.refreshKanbanHub(false);
     if (showNotice) {
       new Notice(file ? "Kanban foundations repaired and Kanban Hub refreshed." : "Kanban repair could not complete because the Master Task Hub is missing.");
+    }
+  }
+
+  async syncKanbanHubToMasterTaskHub(showNotice: boolean): Promise<void> {
+    const todoFile = this.getMasterTodoFile();
+    const kanbanFile = this.app.vault.getAbstractFileByPath(normalizePath(this.data.settings.kanbanHubPath));
+    if (!todoFile || !(kanbanFile instanceof TFile)) {
+      if (showNotice) {
+        new Notice("Master task hub or Kanban Hub note is missing.");
+      }
+      return;
+    }
+
+    const masterContent = await this.app.vault.read(todoFile);
+    const kanbanContent = await this.app.vault.read(kanbanFile);
+    const synced = syncKanbanHubToMasterHub({
+      masterContent,
+      kanbanContent,
+      archivedAt: formatDateTimeKey(new Date())
+    });
+
+    if (synced.content !== masterContent) {
+      await this.app.vault.modify(todoFile, synced.content);
+      await this.refreshMasterHubPortfolioSnapshot(false);
+    }
+    await this.refreshKanbanHub(false);
+    this.refreshDashboardViews();
+
+    if (showNotice) {
+      new Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
   }
 
