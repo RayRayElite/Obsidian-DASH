@@ -9,7 +9,7 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 - supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
 - tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery, and keeps bowel tracking inside Vitals instead of a separate day-flow block
 - includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, link them to a tracked project, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
-- includes an optional budgeting card with an overview, subscriptions tracker, and simple category targets so recurring charges and renewal pressure can live in the dashboard without turning the plugin into a full accounting app
+- includes an optional budgeting card with an overview, subscriptions tracker, simple category targets, and a generated monthly finance snapshot note so recurring charges and renewal pressure can live in the dashboard without turning the plugin into a full accounting app
 - writes a markdown daily log note for every tracked day
 - generates weekly reviews plus weekly and monthly markdown reports from those daily logs
 - exports dashboard history into a markdown summary plus CSV dumps for daily metrics, habits, completed tasks, and calendar events
@@ -152,7 +152,7 @@ Consumable presets now stack into the same matching entry when you tap them repe
 
 New installs now open a guided first-run setup wizard automatically until the core configuration is confirmed. The wizard walks through dashboard identity, project-hub paths, reporting and calendar folders, and AI defaults, and it can be reopened later from the command palette or the plugin settings tab.
 
-The budgeting feature is opt-in from plugin settings. The first slice focuses on a subscriptions-first workflow: manual recurring or one-time charge entries, monthly and annual recurring totals, due-soon renewals, payment-method and currency summaries, plus lightweight budget-category targets for comparing committed recurring cost against rough monthly intent.
+The budgeting feature is opt-in from plugin settings. The current slice focuses on a subscriptions-first workflow: manual recurring or one-time charge entries, monthly and annual recurring totals, due-soon renewals, payment-method and currency summaries, lightweight budget-category targets for comparing committed recurring cost against rough monthly intent, and a `Generate monthly finance snapshot` action that writes a readable note under `Dashboard Finance/Monthly`.
 
 ## AI Integration
 

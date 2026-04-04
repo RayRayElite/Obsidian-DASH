@@ -1306,6 +1306,139 @@ function normalizeHabitAutomation(input, index, definitions) {
 // src/dashboard-logs.ts
 var DEFAULT_SLEEP_TARGET_MINUTES = 8 * 60;
 var CALENDAR_FOLLOW_THROUGH_MARKER = "daily-dashboard-calendar-follow:";
+function getSubscriptionMonthlyEquivalent(subscription) {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+  return subscription.cost / Math.max(subscription.intervalMonths, 1);
+}
+function getSubscriptionAnnualizedCost(subscription) {
+  if (subscription.kind !== "recurring") {
+    return 0;
+  }
+  return getSubscriptionMonthlyEquivalent(subscription) * 12;
+}
+function formatFinanceAmount(amount, currency) {
+  const normalizedCurrency = currency.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(normalizedCurrency)) {
+    try {
+      return new Intl.NumberFormat(void 0, {
+        style: "currency",
+        currency: normalizedCurrency,
+        maximumFractionDigits: amount >= 100 ? 0 : 2
+      }).format(amount);
+    } catch (e) {
+    }
+  }
+  return `${normalizedCurrency || "$"} ${amount.toFixed(amount >= 100 ? 0 : 2)}`;
+}
+function formatSubscriptionCycle(subscription) {
+  if (subscription.kind === "one-time") {
+    return "One-time";
+  }
+  if (subscription.intervalMonths === 1) {
+    return "Monthly";
+  }
+  if (subscription.intervalMonths === 12) {
+    return "Yearly";
+  }
+  return `Every ${subscription.intervalMonths} months`;
+}
+function getDaysUntilDate(dateText, referenceDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText.trim())) {
+    return null;
+  }
+  const target = /* @__PURE__ */ new Date(`${dateText}T00:00:00`);
+  const reference = /* @__PURE__ */ new Date(`${formatDateKey(referenceDate)}T00:00:00`);
+  if (Number.isNaN(target.getTime()) || Number.isNaN(reference.getTime())) {
+    return null;
+  }
+  return Math.round((target.getTime() - reference.getTime()) / 864e5);
+}
+function getCategoryCommittedRecurring(category, subscriptions) {
+  return subscriptions.filter((subscription) => subscription.categoryId === category.id && subscription.kind === "recurring" && subscription.status !== "canceled").reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
+}
+function formatMonthLabel(monthKey) {
+  const [yearText, monthText] = monthKey.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return monthKey;
+  }
+  return new Intl.DateTimeFormat(void 0, { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+}
+function renderFinanceMonthlySnapshot(input) {
+  var _a, _b;
+  const monthLabel = formatMonthLabel(input.monthKey);
+  const visibleSubscriptions = input.financeData.subscriptions.filter((subscription) => subscription.status !== "archived");
+  const recurringSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "recurring" && subscription.status !== "canceled");
+  const activeSubscriptions = visibleSubscriptions.filter((subscription) => subscription.status === "active" || subscription.status === "trial" || subscription.status === "paused");
+  const dueSoonSubscriptions = activeSubscriptions.map((subscription) => ({ subscription, daysUntilRenewal: getDaysUntilDate(subscription.renewalDate, input.generatedAt) })).filter((item) => item.daysUntilRenewal !== null && item.daysUntilRenewal >= 0 && item.daysUntilRenewal <= 30).sort((left, right) => {
+    var _a2, _b2;
+    return ((_a2 = left.daysUntilRenewal) != null ? _a2 : 999) - ((_b2 = right.daysUntilRenewal) != null ? _b2 : 999);
+  });
+  const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
+  const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost(subscription), 0);
+  const totalBudgetTarget = input.financeData.budgetCategories.reduce((sum, category) => sum + category.monthlyTarget, 0);
+  const categoryRows = input.financeData.budgetCategories.map((category) => ({
+    category,
+    committedRecurring: getCategoryCommittedRecurring(category, recurringSubscriptions)
+  })).sort((left, right) => right.committedRecurring - left.committedRecurring || right.category.monthlyTarget - left.category.monthlyTarget || left.category.label.localeCompare(right.category.label));
+  const topCategory = (_a = categoryRows.find((row) => row.committedRecurring > 0)) != null ? _a : null;
+  const costliestSubscription = (_b = [...recurringSubscriptions].sort((left, right) => getSubscriptionMonthlyEquivalent(right) - getSubscriptionMonthlyEquivalent(left))[0]) != null ? _b : null;
+  const trialSubscriptions = activeSubscriptions.filter((subscription) => subscription.status === "trial").sort((left, right) => left.renewalDate.localeCompare(right.renewalDate) || left.name.localeCompare(right.name));
+  return [
+    `# Finance Snapshot - ${monthLabel}`,
+    "",
+    `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+    `- Month key: ${input.monthKey}`,
+    `- Coverage: Subscription tracker and budget-category targets currently drive this snapshot. Transaction-level actuals are not included yet.`,
+    "",
+    "## Summary Block",
+    `- Main pressure: ${formatFinanceAmount(monthlyRecurringTotal, "USD")} in tracked monthly recurring cost across ${recurringSubscriptions.length} recurring subscription${recurringSubscriptions.length === 1 ? "" : "s"}.`,
+    `- Main renewal: ${dueSoonSubscriptions[0] ? `${dueSoonSubscriptions[0].subscription.name} in ${dueSoonSubscriptions[0].daysUntilRenewal} day${dueSoonSubscriptions[0].daysUntilRenewal === 1 ? "" : "s"}` : "No renewal is due in the next 30 days."}`,
+    `- Biggest drift risk: ${topCategory ? `${topCategory.category.label} carries ${formatFinanceAmount(topCategory.committedRecurring, "USD")} of recurring spend against a ${formatFinanceAmount(topCategory.category.monthlyTarget, "USD")} target.` : "No category has recurring pressure yet."}`,
+    `- Most expensive subscription: ${costliestSubscription ? `${costliestSubscription.name} at ${formatFinanceAmount(getSubscriptionMonthlyEquivalent(costliestSubscription), "USD")} monthly-equivalent.` : "No recurring subscriptions tracked yet."}`,
+    `- Most important follow-up: ${trialSubscriptions[0] ? `Review trial ${trialSubscriptions[0].name}${trialSubscriptions[0].renewalDate ? ` before ${trialSubscriptions[0].renewalDate}` : " before it converts."}` : dueSoonSubscriptions[0] ? `Review renewal prep for ${dueSoonSubscriptions[0].subscription.name}.` : "Keep subscription metadata current so the next review stays trustworthy."}`,
+    `- Context links: [[Dashboard Logs/Daily|Daily Logs]], [[Master Task Hub|Master Task Hub]]`,
+    "",
+    "## Snapshot",
+    `- Active subscriptions: ${activeSubscriptions.length}`,
+    `- Monthly recurring total: ${formatFinanceAmount(monthlyRecurringTotal, "USD")}`,
+    `- Yearly recurring total: ${formatFinanceAmount(yearlyRecurringTotal, "USD")}`,
+    `- Budget target total: ${formatFinanceAmount(totalBudgetTarget, "USD")}`,
+    `- Headroom versus recurring: ${formatFinanceAmount(totalBudgetTarget - monthlyRecurringTotal, "USD")}`,
+    `- Renewals due in next 30 days: ${dueSoonSubscriptions.length}`,
+    "",
+    "## Renewal Pressure",
+    ...dueSoonSubscriptions.length > 0 ? dueSoonSubscriptions.map(({ subscription, daysUntilRenewal }) => {
+      var _a2, _b2;
+      const categoryLabel = (_b2 = (_a2 = input.financeData.budgetCategories.find((category) => category.id === subscription.categoryId)) == null ? void 0 : _a2.label) != null ? _b2 : "Other";
+      return `- ${subscription.name}: ${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${formatSubscriptionCycle(subscription)} \u2022 ${categoryLabel} \u2022 ${subscription.paymentMethod || "Method unknown"} \u2022 renews in ${daysUntilRenewal} day${daysUntilRenewal === 1 ? "" : "s"}${subscription.cancelUrl ? ` \u2022 cancel: ${subscription.cancelUrl}` : ""}`;
+    }) : ["- No renewals are due in the next 30 days."],
+    "",
+    "## Budget Categories",
+    ...categoryRows.length > 0 ? categoryRows.map(({ category, committedRecurring }) => {
+      const linkedCount = recurringSubscriptions.filter((subscription) => subscription.categoryId === category.id).length;
+      const gap = category.monthlyTarget - committedRecurring;
+      return `- ${category.label}: target ${formatFinanceAmount(category.monthlyTarget, "USD")} \u2022 committed recurring ${formatFinanceAmount(committedRecurring, "USD")} \u2022 headroom ${formatFinanceAmount(gap, "USD")} \u2022 ${linkedCount} linked recurring item${linkedCount === 1 ? "" : "s"}`;
+    }) : ["- No budget categories configured."],
+    "",
+    "## Subscription Roster",
+    ...visibleSubscriptions.length > 0 ? visibleSubscriptions.map((subscription) => {
+      var _a2, _b2;
+      const categoryLabel = (_b2 = (_a2 = input.financeData.budgetCategories.find((category) => category.id === subscription.categoryId)) == null ? void 0 : _a2.label) != null ? _b2 : "Other";
+      const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate, input.generatedAt);
+      return `- ${subscription.name}: ${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${formatSubscriptionCycle(subscription)} \u2022 ${subscription.status} \u2022 ${categoryLabel} \u2022 ${subscription.paymentMethod || "Method unknown"}${daysUntilRenewal !== null ? ` \u2022 renews in ${daysUntilRenewal} day${daysUntilRenewal === 1 ? "" : "s"}` : ""}${subscription.notes ? ` \u2022 note: ${subscription.notes}` : ""}`;
+    }) : ["- No subscription entries tracked yet."],
+    "",
+    "## Coverage Notes",
+    "- This snapshot currently reflects tracked subscriptions plus budget-category targets.",
+    "- Manual transactions, true category actuals, and reconciliation workflows are still future slices.",
+    "- Use this note as an operational review artifact, not as an accounting ledger.",
+    ""
+  ].join("\n");
+}
 function createContextLink(label, path = "") {
   const safeLabel = label.trim();
   if (!safeLabel) {
@@ -4469,19 +4602,19 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ];
-function getSubscriptionMonthlyEquivalent(subscription) {
+function getSubscriptionMonthlyEquivalent2(subscription) {
   if (subscription.kind !== "recurring") {
     return 0;
   }
   return subscription.cost / Math.max(subscription.intervalMonths, 1);
 }
-function getSubscriptionAnnualizedCost(subscription) {
+function getSubscriptionAnnualizedCost2(subscription) {
   if (subscription.kind !== "recurring") {
     return 0;
   }
-  return getSubscriptionMonthlyEquivalent(subscription) * 12;
+  return getSubscriptionMonthlyEquivalent2(subscription) * 12;
 }
-function formatFinanceAmount(amount, currency) {
+function formatFinanceAmount2(amount, currency) {
   const normalizedCurrency = currency.trim().toUpperCase();
   if (/^[A-Z]{3}$/.test(normalizedCurrency)) {
     try {
@@ -4495,7 +4628,7 @@ function formatFinanceAmount(amount, currency) {
   }
   return `${normalizedCurrency || "$"} ${amount.toFixed(amount >= 100 ? 0 : 2)}`;
 }
-function formatSubscriptionCycle(subscription) {
+function formatSubscriptionCycle2(subscription) {
   if (subscription.kind === "one-time") {
     return "One-time";
   }
@@ -4507,7 +4640,7 @@ function formatSubscriptionCycle(subscription) {
   }
   return `Every ${subscription.intervalMonths} months`;
 }
-function getDaysUntilDate(dateText, referenceDate = /* @__PURE__ */ new Date()) {
+function getDaysUntilDate2(dateText, referenceDate = /* @__PURE__ */ new Date()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText.trim())) {
     return null;
   }
@@ -6161,12 +6294,12 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const otherSubscriptions = visibleSubscriptions.filter((subscription) => subscription.kind === "one-time" || subscription.status === "canceled");
         const activeSubscriptions = visibleSubscriptions.filter((subscription) => subscription.status === "active" || subscription.status === "trial" || subscription.status === "paused");
         const dueSoonSubscriptions = visibleSubscriptions.filter((subscription) => {
-          const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+          const daysUntilRenewal = getDaysUntilDate2(subscription.renewalDate);
           return daysUntilRenewal !== null && daysUntilRenewal >= 0 && daysUntilRenewal <= 30;
         });
-        const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0);
-        const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost(subscription), 0);
-        const costliestSubscription = (_u = [...recurringSubscriptions].sort((left, right) => getSubscriptionMonthlyEquivalent(right) - getSubscriptionMonthlyEquivalent(left))[0]) != null ? _u : null;
+        const monthlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent2(subscription), 0);
+        const yearlyRecurringTotal = recurringSubscriptions.reduce((sum, subscription) => sum + getSubscriptionAnnualizedCost2(subscription), 0);
+        const costliestSubscription = (_u = [...recurringSubscriptions].sort((left, right) => getSubscriptionMonthlyEquivalent2(right) - getSubscriptionMonthlyEquivalent2(left))[0]) != null ? _u : null;
         const paymentMethodCounts = activeSubscriptions.reduce((counts, subscription) => {
           var _a2;
           const key = subscription.paymentMethod.trim() || "Unknown";
@@ -6181,7 +6314,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         }, /* @__PURE__ */ new Map());
         const totalBudgetTarget = financeData.budgetCategories.reduce((sum, category) => sum + category.monthlyTarget, 0);
         const committedByCategory = financeData.budgetCategories.reduce((totals, category) => {
-          totals.set(category.id, recurringSubscriptions.filter((subscription) => subscription.categoryId === category.id).reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent(subscription), 0));
+          totals.set(category.id, recurringSubscriptions.filter((subscription) => subscription.categoryId === category.id).reduce((sum, subscription) => sum + getSubscriptionMonthlyEquivalent2(subscription), 0));
           return totals;
         }, /* @__PURE__ */ new Map());
         const budgetingCard = createGridCard("Budgeting", "Keep recurring costs, practical monthly targets, and renewal pressure visible without turning the dashboard into a full accounting app.", {
@@ -6193,7 +6326,11 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const budgetingSummary = budgetingCard.createDiv({ cls: "daily-dashboard-chip-row" });
         createSemanticChip(budgetingSummary, `${activeSubscriptions.length} active`, activeSubscriptions.length > 0 ? "focus" : "neutral");
         createSemanticChip(budgetingSummary, `${dueSoonSubscriptions.length} due soon`, dueSoonSubscriptions.length > 0 ? "alert" : "neutral");
-        createSemanticChip(budgetingSummary, formatFinanceAmount(monthlyRecurringTotal, "USD"), monthlyRecurringTotal > 0 ? "capture" : "neutral");
+        createSemanticChip(budgetingSummary, formatFinanceAmount2(monthlyRecurringTotal, "USD"), monthlyRecurringTotal > 0 ? "capture" : "neutral");
+        const budgetingActions = budgetingCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(budgetingActions, "Generate snapshot", async () => {
+          await this.plugin.generateMonthlyFinanceSnapshot(true);
+        }, false, "file-text");
         const budgetingTabs = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
         const availableBudgetingTabs = [
           { key: "overview", label: "Overview", metric: `${activeSubscriptions.length}` },
@@ -6217,10 +6354,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
         if (this.selectedBudgetingTab === "overview") {
           const overviewGrid = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-stat-grid" });
-          this.renderDayMetric(overviewGrid, "Monthly recurring", formatFinanceAmount(monthlyRecurringTotal, "USD"));
-          this.renderDayMetric(overviewGrid, "Yearly recurring", formatFinanceAmount(yearlyRecurringTotal, "USD"));
-          this.renderDayMetric(overviewGrid, "Costliest", costliestSubscription ? `${costliestSubscription.name} \u2022 ${formatFinanceAmount(getSubscriptionMonthlyEquivalent(costliestSubscription), "USD")}` : "None");
-          this.renderDayMetric(overviewGrid, "Budget target", formatFinanceAmount(totalBudgetTarget, "USD"));
+          this.renderDayMetric(overviewGrid, "Monthly recurring", formatFinanceAmount2(monthlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Yearly recurring", formatFinanceAmount2(yearlyRecurringTotal, "USD"));
+          this.renderDayMetric(overviewGrid, "Costliest", costliestSubscription ? `${costliestSubscription.name} \u2022 ${formatFinanceAmount2(getSubscriptionMonthlyEquivalent2(costliestSubscription), "USD")}` : "None");
+          this.renderDayMetric(overviewGrid, "Budget target", formatFinanceAmount2(totalBudgetTarget, "USD"));
           const overviewLists = budgetingCard.createDiv({ cls: "daily-dashboard-budget-overview-grid" });
           const recurringBlock = overviewLists.createDiv({ cls: "daily-dashboard-score-block" });
           const recurringHeader = recurringBlock.createDiv({ cls: "daily-dashboard-score-header" });
@@ -6233,10 +6370,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             recurringSubscriptions.slice(0, 6).forEach((subscription) => {
               const row = list.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
               row.createEl("strong", { text: subscription.name });
-              const renewalMeta = getDaysUntilDate(subscription.renewalDate);
+              const renewalMeta = getDaysUntilDate2(subscription.renewalDate);
               row.createEl("span", {
                 cls: "daily-dashboard-row-meta",
-                text: `${formatSubscriptionCycle(subscription)} \u2022 ${formatFinanceAmount(subscription.cost, subscription.currency)}${renewalMeta !== null ? ` \u2022 renews in ${renewalMeta}d` : ""}`
+                text: `${formatSubscriptionCycle2(subscription)} \u2022 ${formatFinanceAmount2(subscription.cost, subscription.currency)}${renewalMeta !== null ? ` \u2022 renews in ${renewalMeta}d` : ""}`
               });
             });
           }
@@ -6282,10 +6419,10 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               const row = recurringList.createDiv({ cls: "daily-dashboard-project-row daily-dashboard-project-row--dense" });
               const copy = row.createDiv({ cls: "daily-dashboard-stack" });
               copy.createEl("strong", { text: subscription.name });
-              const daysUntilRenewal = getDaysUntilDate(subscription.renewalDate);
+              const daysUntilRenewal = getDaysUntilDate2(subscription.renewalDate);
               copy.createEl("span", {
                 cls: "daily-dashboard-row-meta",
-                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${formatSubscriptionCycle(subscription)} \u2022 ${subscription.paymentMethod || "Method unknown"}`
+                text: `${formatFinanceAmount2(subscription.cost, subscription.currency)} \u2022 ${formatSubscriptionCycle2(subscription)} \u2022 ${subscription.paymentMethod || "Method unknown"}`
               });
               copy.createEl("span", {
                 cls: "daily-dashboard-row-meta",
@@ -6317,7 +6454,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
               row.createEl("strong", { text: subscription.name });
               row.createEl("span", {
                 cls: "daily-dashboard-row-meta",
-                text: `${formatFinanceAmount(subscription.cost, subscription.currency)} \u2022 ${subscription.kind === "one-time" ? "One-time" : subscription.status} \u2022 ${subscription.paymentMethod || "Method unknown"}`
+                text: `${formatFinanceAmount2(subscription.cost, subscription.currency)} \u2022 ${subscription.kind === "one-time" ? "One-time" : subscription.status} \u2022 ${subscription.paymentMethod || "Method unknown"}`
               });
             });
           }
@@ -6328,9 +6465,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             var _a2;
             return sum + ((_a2 = committedByCategory.get(category.id)) != null ? _a2 : 0);
           }, 0);
-          this.renderDayMetric(budgetGrid, "Target total", formatFinanceAmount(totalBudgetTarget, "USD"));
-          this.renderDayMetric(budgetGrid, "Committed recurring", formatFinanceAmount(committedRecurring, "USD"));
-          this.renderDayMetric(budgetGrid, "Headroom", formatFinanceAmount(Math.max(totalBudgetTarget - committedRecurring, 0), "USD"));
+          this.renderDayMetric(budgetGrid, "Target total", formatFinanceAmount2(totalBudgetTarget, "USD"));
+          this.renderDayMetric(budgetGrid, "Committed recurring", formatFinanceAmount2(committedRecurring, "USD"));
+          this.renderDayMetric(budgetGrid, "Headroom", formatFinanceAmount2(Math.max(totalBudgetTarget - committedRecurring, 0), "USD"));
           this.renderDayMetric(budgetGrid, "Categories", `${financeData.budgetCategories.length}`);
           const categoryAddRow = budgetingCard.createDiv({ cls: "daily-dashboard-inline-form daily-dashboard-inline-form--food" });
           const categoryInput = categoryAddRow.createEl("input", {
@@ -6366,7 +6503,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
             const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
             createSemanticChip(chipRow, category.label, "focus");
             createSemanticChip(chipRow, `${financeData.subscriptions.filter((subscription) => subscription.categoryId === category.id && subscription.kind === "recurring" && subscription.status !== "canceled").length} linked`, committed > 0 ? "capture" : "neutral");
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `Committed recurring ${formatFinanceAmount(committed, "USD")}` });
+            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: `Committed recurring ${formatFinanceAmount2(committed, "USD")}` });
             const controls = row.createDiv({ cls: "daily-dashboard-budget-category-controls" });
             const targetInput = controls.createEl("input", { cls: "daily-dashboard-amount-input", attr: { type: "number", min: "0", step: "1" } });
             targetInput.value = `${category.monthlyTarget}`;
@@ -11367,6 +11504,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "generate-monthly-finance-snapshot",
+      name: "Generate monthly finance snapshot",
+      callback: () => {
+        void this.generateMonthlyFinanceSnapshot(true);
+      }
+    });
+    this.addCommand({
       id: "sync-repeating-project-tasks",
       name: "Sync repeating project tasks",
       callback: () => {
@@ -15397,6 +15541,21 @@ ${context}`, resolvedModel);
     await this.app.vault.modify(todoFile, updatedContent);
     this.refreshDashboardViews();
   }
+  async generateMonthlyFinanceSnapshot(openAfterGenerate) {
+    const today = /* @__PURE__ */ new Date();
+    const monthKey = formatDateKey(today).slice(0, 7);
+    const content = renderFinanceMonthlySnapshot({
+      monthKey,
+      generatedAt: today,
+      financeData: this.getFinanceData()
+    });
+    const file = await this.upsertMarkdownFile(`Dashboard Finance/Monthly/${monthKey}.md`, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new import_obsidian4.Notice("Monthly finance snapshot generated.");
+    }
+    return file;
+  }
   async generateWeeklyReview() {
     const today = /* @__PURE__ */ new Date();
     const range = getIsoWeekRange(today);
@@ -18260,6 +18419,15 @@ ${body}`;
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
+    if (normalizedPath.startsWith("dashboard finance/monthly/")) {
+      return "finance-monthly-snapshot";
+    }
+    if (normalizedPath.startsWith("dashboard finance/reports/")) {
+      return "finance-report";
+    }
+    if (normalizedPath.startsWith("dashboard finance/subscriptions/")) {
+      return "finance-subscription-export";
+    }
     if (prefixMatches(this.data.settings.weeklyReportFolder)) {
       return "weekly-report";
     }
@@ -18332,6 +18500,12 @@ ${body}`;
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/asset");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
+    } else if (normalizedPath.startsWith("dashboard finance/monthly/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/monthly");
+    } else if (normalizedPath.startsWith("dashboard finance/reports/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/report");
+    } else if (normalizedPath.startsWith("dashboard finance/subscriptions/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/subscriptions");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {
       autoTags.push("daily-dashboard/weekly-report");
     } else if (prefixMatches(this.data.settings.monthlyReportFolder)) {

@@ -2014,6 +2014,11 @@ export class DailyDashboardView extends ItemView {
         createSemanticChip(budgetingSummary, `${dueSoonSubscriptions.length} due soon`, dueSoonSubscriptions.length > 0 ? "alert" : "neutral");
         createSemanticChip(budgetingSummary, formatFinanceAmount(monthlyRecurringTotal, "USD"), monthlyRecurringTotal > 0 ? "capture" : "neutral");
 
+        const budgetingActions = budgetingCard.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+        createButton(budgetingActions, "Generate snapshot", async () => {
+          await this.plugin.generateMonthlyFinanceSnapshot(true);
+        }, false, "file-text");
+
         const budgetingTabs = budgetingCard.createDiv({ cls: "daily-dashboard-gamification-tabs" });
         const availableBudgetingTabs = [
           { key: "overview", label: "Overview", metric: `${activeSubscriptions.length}` },

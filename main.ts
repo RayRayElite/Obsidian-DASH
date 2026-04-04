@@ -67,6 +67,7 @@ import {
   renderDailyLog,
   renderGamificationReport,
   renderGamificationSectionLines,
+  renderFinanceMonthlySnapshot,
   renderPersonalTrendSectionLines,
   renderPeriodReport,
   renderWeeklyReview
@@ -569,6 +570,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Generate recurring friction patterns note",
       callback: () => {
         void this.generateRecurringFrictionPatternsNote(true);
+      }
+    });
+
+    this.addCommand({
+      id: "generate-monthly-finance-snapshot",
+      name: "Generate monthly finance snapshot",
+      callback: () => {
+        void this.generateMonthlyFinanceSnapshot(true);
       }
     });
 
@@ -5464,6 +5473,22 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
   }
 
+  async generateMonthlyFinanceSnapshot(openAfterGenerate: boolean): Promise<TFile | null> {
+    const today = new Date();
+    const monthKey = formatDateKey(today).slice(0, 7);
+    const content = renderFinanceMonthlySnapshot({
+      monthKey,
+      generatedAt: today,
+      financeData: this.getFinanceData()
+    });
+    const file = await this.upsertMarkdownFile(`Dashboard Finance/Monthly/${monthKey}.md`, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice("Monthly finance snapshot generated.");
+    }
+    return file;
+  }
+
   async generateWeeklyReview(): Promise<void> {
     const today = new Date();
     const range = getIsoWeekRange(today);
@@ -8935,6 +8960,15 @@ export default class DailyDashboardPlugin extends Plugin {
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
+    if (normalizedPath.startsWith("dashboard finance/monthly/")) {
+      return "finance-monthly-snapshot";
+    }
+    if (normalizedPath.startsWith("dashboard finance/reports/")) {
+      return "finance-report";
+    }
+    if (normalizedPath.startsWith("dashboard finance/subscriptions/")) {
+      return "finance-subscription-export";
+    }
     if (prefixMatches(this.data.settings.weeklyReportFolder)) {
       return "weekly-report";
     }
@@ -9013,6 +9047,12 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/asset");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
+    } else if (normalizedPath.startsWith("dashboard finance/monthly/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/monthly");
+    } else if (normalizedPath.startsWith("dashboard finance/reports/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/report");
+    } else if (normalizedPath.startsWith("dashboard finance/subscriptions/")) {
+      autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/subscriptions");
     } else if (prefixMatches(this.data.settings.weeklyReportFolder)) {
       autoTags.push("daily-dashboard/weekly-report");
     } else if (prefixMatches(this.data.settings.monthlyReportFolder)) {
