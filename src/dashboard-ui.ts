@@ -1776,7 +1776,7 @@ export class DailyDashboardView extends ItemView {
             cls: "daily-dashboard-row-meta",
             text: `Duration ${session.end ? formatMinutesAsHours(getMinutesBetween(session.start, session.end)) : "In progress"} • Quality: ${todayEntry.poopQualityByStart[session.start] || "Not tagged"}`
           });
-          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls daily-dashboard-habit-row-controls" });
+          const controls = row.createDiv({ cls: "daily-dashboard-habit-controls" });
           ["easy", "normal", "strained", "urgent", "loose"].forEach((quality) => {
             const button = controls.createEl("button", {
               cls: todayEntry.poopQualityByStart[session.start] === quality ? "daily-dashboard-step is-active" : "daily-dashboard-step",
