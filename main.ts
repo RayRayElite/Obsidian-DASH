@@ -5347,7 +5347,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const content = renderKanbanHub({
       snapshot: source.snapshot,
       generatedAt: new Date(),
-      masterTodoPath: this.data.settings.masterTodoPath
+      masterTodoPath: this.data.settings.masterTodoPath,
+      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
     });
     this.markKanbanManagedWrite(this.data.settings.kanbanHubPath);
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);

@@ -3869,6 +3869,22 @@ function renderKanbanHub(input) {
   var _a, _b;
   const activeProjects = input.snapshot.projects.filter((project) => project.projectState !== "someday");
   const todayCompleted = input.snapshot.projects.reduce((sum, project) => sum + project.completedTaskDetails.length, 0);
+  if (input.compatibilityMode) {
+    const laneCards = buildKanbanHubLaneCards(activeProjects);
+    return [
+      "---",
+      "kanban-plugin: board",
+      "daily-dashboard-kanban: hub",
+      `daily-dashboard-master: ${input.masterTodoPath}`,
+      `daily-dashboard-generated: ${formatDateTimeKey(input.generatedAt)}`,
+      "---",
+      "",
+      ...KANBAN_LANE_ORDER.flatMap((lane) => {
+        var _a2;
+        return renderKanbanHubBoardLane(lane, (_a2 = laneCards.get(lane)) != null ? _a2 : []);
+      })
+    ].join("\n");
+  }
   return [
     "# Kanban Hub",
     "",
@@ -3892,6 +3908,42 @@ function renderKanbanHub(input) {
     ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
     ...activeProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
   ].join("\n");
+}
+function buildKanbanHubLaneCards(projects) {
+  const laneCards = new Map(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
+  projects.forEach((project) => {
+    const laneTasks = buildKanbanLaneTaskMap(project);
+    KANBAN_LANE_ORDER.forEach((lane) => {
+      var _a;
+      ((_a = laneTasks.get(lane)) != null ? _a : []).forEach((task) => {
+        var _a2;
+        (_a2 = laneCards.get(lane)) == null ? void 0 : _a2.push({ projectName: project.name, task });
+      });
+    });
+  });
+  return laneCards;
+}
+function renderKanbanHubBoardLane(lane, cards) {
+  return [
+    `## ${lane}`,
+    ...cards.length > 0 ? cards.map(({ projectName, task }) => renderKanbanHubBoardTaskLine(projectName, task, lane === "Done")) : [],
+    ""
+  ];
+}
+function renderKanbanHubBoardTaskLine(projectName, task, checked) {
+  const metadata = [
+    `project ${projectName}`,
+    task.dueDate ? `due ${task.dueDate}` : "",
+    task.blockedReason ? `blocked ${task.blockedReason}` : "",
+    task.unblockDate ? `unblock ${task.unblockDate}` : "",
+    task.effort ? `effort ${task.effort}` : "",
+    task.energy ? `energy ${task.energy}` : "",
+    task.executionContext ? `context ${task.executionContext}` : "",
+    task.trigger ? `trigger ${task.trigger}` : "",
+    task.minimumStep ? `minimum step ${task.minimumStep}` : "",
+    task.taskId ? `id ${task.taskId}` : ""
+  ].filter((value) => value.length > 0);
+  return `- [${checked ? "x" : " "}] [${projectName}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}`;
 }
 function buildKanbanBoardNotePath(folderPath, projectName) {
   const normalizedFolder = (0, import_obsidian2.normalizePath)(folderPath.trim());
@@ -4384,6 +4436,9 @@ function renderKanbanTaskLine(task, checked) {
   return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}`;
 }
 function parseKanbanHubCards(content) {
+  if (/^---\r?\n[\s\S]*?kanban-plugin:\s*board[\s\S]*?---/i.test(content)) {
+    return parseKanbanHubBoardCards(content);
+  }
   const lines = content.split(/\r?\n/);
   const cards = [];
   let currentProjectName = "";
@@ -4418,6 +4473,43 @@ function parseKanbanHubCards(content) {
     }
     cards.push({
       projectName: currentProjectName,
+      lane: currentLane,
+      taskId: taskIdMatch[1].trim(),
+      checked: taskMatch[1].toLowerCase() === "x"
+    });
+  });
+  return cards;
+}
+function parseKanbanHubBoardCards(content) {
+  const lines = content.split(/\r?\n/);
+  const cards = [];
+  let currentLane = null;
+  lines.forEach((line) => {
+    var _a, _b;
+    const laneMatch = line.trim().match(/^## (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    if (laneMatch) {
+      currentLane = laneMatch[1];
+      return;
+    }
+    if (!currentLane) {
+      return;
+    }
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    const projectMetaMatch = taskMatch[2].match(/(?:^| • )project (.+?)(?: •|$)/i);
+    const projectPrefixMatch = taskMatch[2].match(/^\[([^\]]+)\]\s+/);
+    if (!taskIdMatch) {
+      return;
+    }
+    const projectName = ((_a = projectMetaMatch == null ? void 0 : projectMetaMatch[1]) == null ? void 0 : _a.trim()) || ((_b = projectPrefixMatch == null ? void 0 : projectPrefixMatch[1]) == null ? void 0 : _b.trim()) || "";
+    if (!projectName) {
+      return;
+    }
+    cards.push({
+      projectName,
       lane: currentLane,
       taskId: taskIdMatch[1].trim(),
       checked: taskMatch[1].toLowerCase() === "x"
@@ -10870,6 +10962,24 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: "Budgeting" });
+    new import_obsidian3.Setting(containerEl).setName("Enable budgeting section").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.").addToggle((toggle) => {
+      toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          budgetingEnabled: value
+        });
+        this.display();
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Enable subscriptions tracker").setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.").addToggle((toggle) => {
+      toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          subscriptionsTrackerEnabled: value
+        });
+        this.display();
+      });
+    });
     containerEl.createEl("h3", { text: "Kanban" });
     new import_obsidian3.Setting(containerEl).setName("Enable Kanban foundations").setDesc("Keep the Kanban Hub path and related note-generation workflow visible in settings while Kanban remains an optional companion to the Master Task Hub.").addToggle((toggle) => {
       toggle.setValue(settings.kanbanEnabled).onChange(async (value) => {
@@ -10910,24 +11020,6 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
           ...this.plugin.getSettings(),
           kanbanAutoSyncEnabled: value
         });
-      });
-    });
-    new import_obsidian3.Setting(containerEl).setName("Enable budgeting section").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.").addToggle((toggle) => {
-      toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
-        await this.plugin.updateSettings({
-          ...this.plugin.getSettings(),
-          budgetingEnabled: value
-        });
-        this.display();
-      });
-    });
-    new import_obsidian3.Setting(containerEl).setName("Enable subscriptions tracker").setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.").addToggle((toggle) => {
-      toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
-        await this.plugin.updateSettings({
-          ...this.plugin.getSettings(),
-          subscriptionsTrackerEnabled: value
-        });
-        this.display();
       });
     });
     containerEl.createEl("h3", { text: "Tracking" });
@@ -11362,10 +11454,11 @@ var DEFAULT_DASHBOARD_LAYOUT_CARDS = [
   { key: "exercise-weight", title: "Exercise & Weight", order: 7, hidden: false, pinned: false, width: "default" },
   { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
   { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
+  { key: "budgeting", title: "Budgeting", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false, width: "default" }
 ];
 var DASHBOARD_SHORTCUTS = [
   { keys: "Alt+Shift+V", label: "Cycle view mode", description: "Switch between mobile, compact, and widescreen modes." },
@@ -16370,7 +16463,8 @@ ${context}`, resolvedModel);
     const content = renderKanbanHub({
       snapshot: source.snapshot,
       generatedAt: /* @__PURE__ */ new Date(),
-      masterTodoPath: this.data.settings.masterTodoPath
+      masterTodoPath: this.data.settings.masterTodoPath,
+      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
     });
     this.markKanbanManagedWrite(this.data.settings.kanbanHubPath);
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);

@@ -6824,6 +6824,31 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h3", { text: "Budgeting" });
 
+    new Setting(containerEl)
+      .setName("Enable budgeting section")
+      .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            budgetingEnabled: value
+          });
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Enable subscriptions tracker")
+      .setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            subscriptionsTrackerEnabled: value
+          });
+          this.display();
+        });
+      });
 
     containerEl.createEl("h3", { text: "Kanban" });
 
@@ -6891,32 +6916,6 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             ...this.plugin.getSettings(),
             kanbanAutoSyncEnabled: value
           });
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Enable budgeting section")
-      .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")
-      .addToggle((toggle) => {
-        toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
-          await this.plugin.updateSettings({
-            ...this.plugin.getSettings(),
-            budgetingEnabled: value
-          });
-          this.display();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Enable subscriptions tracker")
-      .setDesc("Keep the subscriptions tab visible inside budgeting. This can stay on even if you only want recurring-charge tracking.")
-      .addToggle((toggle) => {
-        toggle.setValue(settings.subscriptionsTrackerEnabled).onChange(async (value) => {
-          await this.plugin.updateSettings({
-            ...this.plugin.getSettings(),
-            subscriptionsTrackerEnabled: value
-          });
-          this.display();
         });
       });
 
@@ -7671,10 +7670,11 @@ const DEFAULT_DASHBOARD_LAYOUT_CARDS: DashboardLayoutCardState[] = [
   { key: "exercise-weight", title: "Exercise & Weight", order: 7, hidden: false, pinned: false, width: "default" },
   { key: "sleep-and-notes", title: "Sleep And Notes", order: 8, hidden: false, pinned: false, width: "default" },
   { key: "timeline-search", title: "Timeline Search", order: 9, hidden: false, pinned: false, width: "default" },
-  { key: "heatmaps", title: "Heatmaps", order: 10, hidden: false, pinned: false, width: "default" },
-  { key: "ai-workspace", title: "AI Workspace", order: 11, hidden: false, pinned: false, width: "full" },
-  { key: "project-health", title: "Project Health", order: 12, hidden: false, pinned: false, width: "default" },
-  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 13, hidden: false, pinned: false, width: "default" }
+  { key: "budgeting", title: "Budgeting", order: 10, hidden: false, pinned: false, width: "default" },
+  { key: "heatmaps", title: "Heatmaps", order: 11, hidden: false, pinned: false, width: "default" },
+  { key: "ai-workspace", title: "AI Workspace", order: 12, hidden: false, pinned: false, width: "full" },
+  { key: "project-health", title: "Project Health", order: 13, hidden: false, pinned: false, width: "default" },
+  { key: "stale-work-and-cleanup", title: "Stale Work And Cleanup", order: 14, hidden: false, pinned: false, width: "default" }
 ];
 
 const DASHBOARD_SHORTCUTS: DashboardShortcutDefinition[] = [
