@@ -98,7 +98,8 @@ import {
   trimLeadingBlankLines,
   trimTrailingBlankLines,
   stripMarkdownExtension,
-  syncKanbanHubToMasterHub
+  syncKanbanHubToMasterHub,
+  updateTaskByIdInProject
 } from "./src/dashboard-todo";
 import {
   AddHabitModal,
@@ -109,6 +110,8 @@ import {
   DailyDashboardView,
   FirstRunSetupWizardModal,
   FocusCaptureModal,
+  KanbanQuickAddModal,
+  KanbanTaskEditModal,
   LogicalDayRepairModal,
   ProjectReviewModal,
   PromoteTaskModal
@@ -574,6 +577,22 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Sync Kanban Hub to Master Task Hub",
       callback: () => {
         void this.syncKanbanHubToMasterTaskHub(true);
+      }
+    });
+
+    this.addCommand({
+      id: "kanban-quick-add-task",
+      name: "Kanban quick add task",
+      callback: () => {
+        void this.openKanbanQuickAddFlow();
+      }
+    });
+
+    this.addCommand({
+      id: "edit-kanban-task",
+      name: "Edit Kanban task",
+      callback: () => {
+        void this.openKanbanTaskEditFlow();
       }
     });
 
@@ -5575,7 +5594,46 @@ export default class DailyDashboardPlugin extends Plugin {
     const content = await this.app.vault.read(todoFile);
     const updatedContent = insertTaskIntoProjectSection(content, projectName, sectionName, trimmedTask);
     await this.app.vault.modify(todoFile, updatedContent);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+    }
     this.refreshDashboardViews();
+  }
+
+  async editKanbanTask(projectName: string, taskId: string, taskText: string, lane: string): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const trimmedTask = taskText.trim();
+    const trimmedLane = lane.trim();
+    if (!trimmedTask || !trimmedLane) {
+      new Notice("Task text and lane are required.");
+      return false;
+    }
+
+    const content = await this.app.vault.read(todoFile);
+    const updated = updateTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      taskText: trimmedTask,
+      sectionName: trimmedLane
+    });
+    if (!updated.updated) {
+      new Notice("Could not find that Kanban task in the master task hub.");
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, updated.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+    }
+    this.refreshDashboardViews();
+    return true;
   }
 
   async generateMonthlyFinanceSnapshot(openAfterGenerate: boolean): Promise<TFile | null> {
@@ -7158,6 +7216,28 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
     new PromoteTaskModal(this.app, this, snapshot.projects).open();
+  }
+
+  async openKanbanQuickAddFlow(): Promise<void> {
+    const snapshot = await this.getTodoSnapshot();
+    const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
+    if (projects.length === 0) {
+      new Notice("No active or incubating projects found in the master task hub.");
+      return;
+    }
+
+    new KanbanQuickAddModal(this.app, this, projects).open();
+  }
+
+  async openKanbanTaskEditFlow(): Promise<void> {
+    const snapshot = await this.getTodoSnapshot();
+    const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
+    if (projects.length === 0) {
+      new Notice("No editable Kanban tasks found in the master task hub.");
+      return;
+    }
+
+    new KanbanTaskEditModal(this.app, this, projects).open();
   }
 
   async openProjectReviewModeFlow(): Promise<void> {

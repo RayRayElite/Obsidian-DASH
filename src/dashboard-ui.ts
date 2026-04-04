@@ -45,6 +45,7 @@ import {
   type HabitDefinition,
   type IntakeEntry,
   type IntakeQuickPreset,
+  type KanbanLane,
   type NextUpFocusItem,
   type ProjectReviewOption,
   type QuickAddState,
@@ -92,6 +93,8 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ] as const;
+
+const KANBAN_EDITABLE_LANES: KanbanLane[] = ["Now", "Next", "Later", "Waiting", "Parking Lot"];
 
 function getSubscriptionMonthlyEquivalent(subscription: FinanceSubscriptionEntry): number {
   if (subscription.kind !== "recurring") {
@@ -5857,6 +5860,255 @@ export class PromoteTaskModal extends Modal {
           });
       });
     }
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+export class KanbanQuickAddModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private projects: TodoProjectSummary[];
+  private selectedProjectName: string;
+  private selectedLane: KanbanLane;
+  private taskText: string;
+
+  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
+    super(app);
+    this.plugin = plugin;
+    this.projects = projects;
+    this.selectedProjectName = projects[0]?.name ?? "";
+    this.selectedLane = "Now";
+    this.taskText = "";
+  }
+
+  onOpen(): void {
+    this.setTitle("Kanban Quick Add Task");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Project")
+      .setDesc("Choose which project board should receive the new task.")
+      .addDropdown((dropdown) => {
+        this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
+        dropdown.setValue(this.selectedProjectName);
+        dropdown.onChange((value) => {
+          this.selectedProjectName = value;
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Lane")
+      .setDesc("This maps directly back to the matching Master Task Hub section.")
+      .addDropdown((dropdown) => {
+        KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+        dropdown.setValue(this.selectedLane);
+        dropdown.onChange((value) => {
+          this.selectedLane = value as KanbanLane;
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Task text")
+      .setDesc("Keep it concrete. The task will be inserted into the Master Task Hub and then mirrored into the Kanban Hub.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Ship the next Kanban improvement")
+          .setValue(this.taskText)
+          .onChange((value) => {
+            this.taskText = value;
+          });
+        textArea.inputEl.rows = 4;
+        window.setTimeout(() => textArea.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Add task").setCta().onClick(async () => {
+          if (!this.selectedProjectName.trim() || !this.taskText.trim()) {
+            new Notice("Project and task text are required.");
+            return;
+          }
+
+          await this.plugin.addTaskToProject(this.selectedProjectName, this.selectedLane, this.taskText);
+          new Notice("Kanban task added.");
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+export class KanbanTaskEditModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private projects: TodoProjectSummary[];
+  private selectedProjectName: string;
+  private selectedTaskId: string;
+  private selectedLane: KanbanLane;
+  private taskText: string;
+
+  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
+    super(app);
+    this.plugin = plugin;
+    this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
+    this.selectedProjectName = this.projects[0]?.name ?? "";
+    this.selectedTaskId = "";
+    this.selectedLane = "Now";
+    this.taskText = "";
+    this.syncSelectionFromTask();
+  }
+
+  private getEditableTasks(project: TodoProjectSummary): TodoTaskSummary[] {
+    return [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails
+    ].filter((task) => task.taskId.trim().length > 0);
+  }
+
+  private getSelectedProject(): TodoProjectSummary | null {
+    return this.projects.find((project) => project.name === this.selectedProjectName) ?? null;
+  }
+
+  private getSelectedTask(): TodoTaskSummary | null {
+    return this.getEditableTasks(this.getSelectedProject() ?? { } as TodoProjectSummary)
+      .find((task) => task.taskId === this.selectedTaskId) ?? null;
+  }
+
+  private syncSelectionFromTask(): void {
+    const project = this.getSelectedProject();
+    const tasks = project ? this.getEditableTasks(project) : [];
+    if (tasks.length === 0) {
+      this.selectedTaskId = "";
+      this.taskText = "";
+      this.selectedLane = "Now";
+      return;
+    }
+
+    const selectedTask = tasks.find((task) => task.taskId === this.selectedTaskId) ?? tasks[0];
+    this.selectedTaskId = selectedTask.taskId;
+    this.taskText = selectedTask.text;
+    this.selectedLane = (selectedTask.kanbanLane || selectedTask.section) as KanbanLane;
+    if (!KANBAN_EDITABLE_LANES.includes(this.selectedLane)) {
+      this.selectedLane = "Now";
+    }
+  }
+
+  private formatTaskMeta(task: TodoTaskSummary): string {
+    return [
+      task.section,
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
+    ].filter((value) => value.length > 0).join(" • ");
+  }
+
+  onOpen(): void {
+    this.setTitle("Edit Kanban Task");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    if (this.projects.length === 0) {
+      contentEl.createEl("p", { text: "No editable Kanban tasks were found in the current Master Task Hub." });
+      return;
+    }
+
+    const selectedProject = this.getSelectedProject();
+    const tasks = selectedProject ? this.getEditableTasks(selectedProject) : [];
+    const selectedTask = tasks.find((task) => task.taskId === this.selectedTaskId) ?? tasks[0] ?? null;
+    if (!selectedTask) {
+      contentEl.createEl("p", { text: "No editable Kanban tasks were found for the selected project." });
+      return;
+    }
+
+    new Setting(contentEl)
+      .setName("Project")
+      .setDesc("Switch projects to edit a different board task.")
+      .addDropdown((dropdown) => {
+        this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
+        dropdown.setValue(this.selectedProjectName);
+        dropdown.onChange((value) => {
+          this.selectedProjectName = value;
+          this.syncSelectionFromTask();
+          this.onOpen();
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Task")
+      .setDesc("Pick the board item you want to rewrite or move.")
+      .addDropdown((dropdown) => {
+        tasks.forEach((task) => dropdown.addOption(task.taskId, `${task.kanbanLane || task.section}: ${task.text.slice(0, 80)}`));
+        dropdown.setValue(this.selectedTaskId);
+        dropdown.onChange((value) => {
+          this.selectedTaskId = value;
+          this.syncSelectionFromTask();
+          this.onOpen();
+        });
+      });
+
+    contentEl.createEl("p", { cls: "daily-dashboard-row-meta", text: this.formatTaskMeta(selectedTask) || "No extra task metadata recorded." });
+
+    new Setting(contentEl)
+      .setName("Task text")
+      .setDesc("This updates the task label while preserving existing task metadata annotations.")
+      .addTextArea((textArea) => {
+        textArea
+          .setPlaceholder("Refine the task wording")
+          .setValue(this.taskText)
+          .onChange((value) => {
+            this.taskText = value;
+          });
+        textArea.inputEl.rows = 4;
+        window.setTimeout(() => textArea.inputEl.focus(), 0);
+      });
+
+    new Setting(contentEl)
+      .setName("Lane")
+      .setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.")
+      .addDropdown((dropdown) => {
+        KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+        dropdown.setValue(this.selectedLane);
+        dropdown.onChange((value) => {
+          this.selectedLane = value as KanbanLane;
+        });
+      });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Save task").setCta().onClick(async () => {
+          const saved = await this.plugin.editKanbanTask(this.selectedProjectName, this.selectedTaskId, this.taskText, this.selectedLane);
+          if (!saved) {
+            return;
+          }
+
+          new Notice("Kanban task updated.");
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
   }
 
   onClose(): void {

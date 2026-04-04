@@ -1064,6 +1064,8 @@ export function renderKanbanHub(input: {
     `- Most important follow-up: ${input.snapshot.projects.find((project) => project.nextAction.trim().length > 0)?.nextAction || "Refresh the Master Task Hub and define the next real action for active work."}`,
     `- Context links: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
     "",
+    ...renderKanbanBoardSummary(input.snapshot),
+    ...renderKanbanBoardFilters(activeProjects),
     ...renderKanbanReviewHelpers(input.snapshot),
     ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
     ...(activeProjects.length === 0
@@ -1430,6 +1432,8 @@ function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
   ];
 
   return [
+    `## ${project.name}`,
+    "",
     "<details open>",
     `<summary>${summaryMetrics.join(" • ")}</summary>`,
     "",
@@ -1443,6 +1447,52 @@ function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
     "</details>",
     ""
   ];
+}
+
+function renderKanbanBoardSummary(snapshot: TodoSnapshot): string[] {
+  const activeProjects = snapshot.projects.filter((project) => project.projectState !== "someday");
+  const readyNowCount = activeProjects.filter((project) => project.nowTaskDetails.length > 0).length;
+  const waitingCount = activeProjects.filter((project) => project.waitingTaskDetails.length > 0).length;
+  const overdueCount = activeProjects.filter((project) => project.overdueTasks.length > 0).length;
+  const staleCount = activeProjects.filter((project) => (project.staleDays ?? 0) >= 7).length;
+  const doneVisibleCount = activeProjects.reduce((sum, project) => sum + project.completedTaskDetails.length, 0);
+
+  return [
+    "## Board Summary",
+    `- Ready now boards: ${readyNowCount}`,
+    `- Waiting-heavy boards: ${waitingCount}`,
+    `- Overdue boards: ${overdueCount}`,
+    `- Stale boards: ${staleCount}`,
+    `- Visible done cards: ${doneVisibleCount}`,
+    ""
+  ];
+}
+
+function renderKanbanBoardFilters(projects: TodoProjectSummary[]): string[] {
+  return [
+    "## Board Filters",
+    `- Ready now: ${renderKanbanProjectAnchorList(projects.filter((project) => project.nowTaskDetails.length > 0))}`,
+    `- Waiting-heavy: ${renderKanbanProjectAnchorList(projects.filter((project) => project.waitingTaskDetails.length > 0 || project.blockedTasks.length > 0))}`,
+    `- Overdue: ${renderKanbanProjectAnchorList(projects.filter((project) => project.overdueTasks.length > 0))}`,
+    `- Stale: ${renderKanbanProjectAnchorList(projects.filter((project) => (project.staleDays ?? 0) >= 7))}`,
+    ""
+  ];
+}
+
+function renderKanbanProjectAnchorList(projects: TodoProjectSummary[]): string {
+  if (projects.length === 0) {
+    return "None";
+  }
+
+  return projects
+    .slice(0, 8)
+    .map((project) => `[${project.name}](${createKanbanBoardAnchor(project.name)})`)
+    .join(", ");
+}
+
+function createKanbanBoardAnchor(projectName: string): string {
+  const anchor = projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `#${anchor || "project"}`;
 }
 
 function renderKanbanReviewHelpers(snapshot: TodoSnapshot): string[] {
@@ -1622,6 +1672,34 @@ function removeTaskByIdFromProject(content: string, projectName: string, taskId:
   return null;
 }
 
+export function updateTaskByIdInProject(content: string, input: {
+  projectName: string;
+  taskId: string;
+  taskText: string;
+  sectionName: string;
+}): { content: string; updated: boolean } {
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId);
+  if (!location) {
+    return { content, updated: false };
+  }
+
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId);
+  if (!removed) {
+    return { content, updated: false };
+  }
+
+  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
+  const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting"
+    ? nextTaskText
+    : stripBlockingTaskAnnotations(nextTaskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
+
+  return {
+    content: nextContent,
+    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase()
+  };
+}
+
 function markTaskCompleteById(content: string, projectName: string, taskId: string): { content: string; marked: boolean } {
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
@@ -1652,6 +1730,21 @@ function markTaskCompleteById(content: string, projectName: string, taskId: stri
   }
 
   return { content, marked: false };
+}
+
+function replaceTaskDisplayText(taskText: string, nextText: string): string {
+  const trimmedTaskText = taskText.trim();
+  const trimmedNextText = nextText.trim();
+  if (!trimmedTaskText || !trimmedNextText) {
+    return trimmedNextText || trimmedTaskText;
+  }
+
+  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):/i);
+  if (!annotationMatch || typeof annotationMatch.index !== "number") {
+    return trimmedNextText;
+  }
+
+  return `${trimmedNextText}${trimmedTaskText.slice(annotationMatch.index)}`;
 }
 
 function stripBlockingTaskAnnotations(value: string): string {

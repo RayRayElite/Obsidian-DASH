@@ -3880,6 +3880,8 @@ function renderKanbanHub(input) {
     `- Most important follow-up: ${((_b = input.snapshot.projects.find((project) => project.nextAction.trim().length > 0)) == null ? void 0 : _b.nextAction) || "Refresh the Master Task Hub and define the next real action for active work."}`,
     `- Context links: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
     "",
+    ...renderKanbanBoardSummary(input.snapshot),
+    ...renderKanbanBoardFilters(activeProjects),
     ...renderKanbanReviewHelpers(input.snapshot),
     ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
     ...activeProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
@@ -4186,6 +4188,8 @@ function renderKanbanProjectBoard(project) {
     ...project.staleDays !== null && project.staleDays >= 7 ? [`Stale ${project.staleDays}d`] : []
   ];
   return [
+    `## ${project.name}`,
+    "",
     "<details open>",
     `<summary>${summaryMetrics.join(" \u2022 ")}</summary>`,
     "",
@@ -4202,6 +4206,49 @@ function renderKanbanProjectBoard(project) {
     "</details>",
     ""
   ];
+}
+function renderKanbanBoardSummary(snapshot) {
+  const activeProjects = snapshot.projects.filter((project) => project.projectState !== "someday");
+  const readyNowCount = activeProjects.filter((project) => project.nowTaskDetails.length > 0).length;
+  const waitingCount = activeProjects.filter((project) => project.waitingTaskDetails.length > 0).length;
+  const overdueCount = activeProjects.filter((project) => project.overdueTasks.length > 0).length;
+  const staleCount = activeProjects.filter((project) => {
+    var _a;
+    return ((_a = project.staleDays) != null ? _a : 0) >= 7;
+  }).length;
+  const doneVisibleCount = activeProjects.reduce((sum, project) => sum + project.completedTaskDetails.length, 0);
+  return [
+    "## Board Summary",
+    `- Ready now boards: ${readyNowCount}`,
+    `- Waiting-heavy boards: ${waitingCount}`,
+    `- Overdue boards: ${overdueCount}`,
+    `- Stale boards: ${staleCount}`,
+    `- Visible done cards: ${doneVisibleCount}`,
+    ""
+  ];
+}
+function renderKanbanBoardFilters(projects) {
+  return [
+    "## Board Filters",
+    `- Ready now: ${renderKanbanProjectAnchorList(projects.filter((project) => project.nowTaskDetails.length > 0))}`,
+    `- Waiting-heavy: ${renderKanbanProjectAnchorList(projects.filter((project) => project.waitingTaskDetails.length > 0 || project.blockedTasks.length > 0))}`,
+    `- Overdue: ${renderKanbanProjectAnchorList(projects.filter((project) => project.overdueTasks.length > 0))}`,
+    `- Stale: ${renderKanbanProjectAnchorList(projects.filter((project) => {
+      var _a;
+      return ((_a = project.staleDays) != null ? _a : 0) >= 7;
+    }))}`,
+    ""
+  ];
+}
+function renderKanbanProjectAnchorList(projects) {
+  if (projects.length === 0) {
+    return "None";
+  }
+  return projects.slice(0, 8).map((project) => `[${project.name}](${createKanbanBoardAnchor(project.name)})`).join(", ");
+}
+function createKanbanBoardAnchor(projectName) {
+  const anchor = projectName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `#${anchor || "project"}`;
 }
 function renderKanbanReviewHelpers(snapshot) {
   const projectMap = new Map(snapshot.projects.map((project) => [project.name.toLowerCase(), project]));
@@ -4350,6 +4397,23 @@ function removeTaskByIdFromProject(content, projectName, taskId) {
   }
   return null;
 }
+function updateTaskByIdInProject(content, input) {
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId);
+  if (!location) {
+    return { content, updated: false };
+  }
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId);
+  if (!removed) {
+    return { content, updated: false };
+  }
+  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
+  const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting" ? nextTaskText : stripBlockingTaskAnnotations(nextTaskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
+  return {
+    content: nextContent,
+    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase()
+  };
+}
 function markTaskCompleteById(content, projectName, taskId) {
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
@@ -4375,6 +4439,18 @@ function markTaskCompleteById(content, projectName, taskId) {
     return { content: output.join("\n"), marked: true };
   }
   return { content, marked: false };
+}
+function replaceTaskDisplayText(taskText, nextText) {
+  const trimmedTaskText = taskText.trim();
+  const trimmedNextText = nextText.trim();
+  if (!trimmedTaskText || !trimmedNextText) {
+    return trimmedNextText || trimmedTaskText;
+  }
+  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):/i);
+  if (!annotationMatch || typeof annotationMatch.index !== "number") {
+    return trimmedNextText;
+  }
+  return `${trimmedNextText}${trimmedTaskText.slice(annotationMatch.index)}`;
 }
 function stripBlockingTaskAnnotations(value) {
   return value.replace(/\s*\[(?:blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
@@ -5101,6 +5177,7 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ];
+var KANBAN_EDITABLE_LANES = ["Now", "Next", "Later", "Waiting", "Parking Lot"];
 function getSubscriptionMonthlyEquivalent2(subscription) {
   if (subscription.kind !== "recurring") {
     return 0;
@@ -10040,6 +10117,190 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
     this.contentEl.empty();
   }
 };
+var KanbanQuickAddModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, projects) {
+    var _a, _b;
+    super(app);
+    this.plugin = plugin;
+    this.projects = projects;
+    this.selectedProjectName = (_b = (_a = projects[0]) == null ? void 0 : _a.name) != null ? _b : "";
+    this.selectedLane = "Now";
+    this.taskText = "";
+  }
+  onOpen() {
+    this.setTitle("Kanban Quick Add Task");
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian3.Setting(contentEl).setName("Project").setDesc("Choose which project board should receive the new task.").addDropdown((dropdown) => {
+      this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
+      dropdown.setValue(this.selectedProjectName);
+      dropdown.onChange((value) => {
+        this.selectedProjectName = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("This maps directly back to the matching Master Task Hub section.").addDropdown((dropdown) => {
+      KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+      dropdown.setValue(this.selectedLane);
+      dropdown.onChange((value) => {
+        this.selectedLane = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Task text").setDesc("Keep it concrete. The task will be inserted into the Master Task Hub and then mirrored into the Kanban Hub.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Ship the next Kanban improvement").setValue(this.taskText).onChange((value) => {
+        this.taskText = value;
+      });
+      textArea.inputEl.rows = 4;
+      window.setTimeout(() => textArea.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Add task").setCta().onClick(async () => {
+        if (!this.selectedProjectName.trim() || !this.taskText.trim()) {
+          new import_obsidian3.Notice("Project and task text are required.");
+          return;
+        }
+        await this.plugin.addTaskToProject(this.selectedProjectName, this.selectedLane, this.taskText);
+        new import_obsidian3.Notice("Kanban task added.");
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var KanbanTaskEditModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, projects) {
+    var _a, _b;
+    super(app);
+    this.plugin = plugin;
+    this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
+    this.selectedProjectName = (_b = (_a = this.projects[0]) == null ? void 0 : _a.name) != null ? _b : "";
+    this.selectedTaskId = "";
+    this.selectedLane = "Now";
+    this.taskText = "";
+    this.syncSelectionFromTask();
+  }
+  getEditableTasks(project) {
+    return [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails
+    ].filter((task) => task.taskId.trim().length > 0);
+  }
+  getSelectedProject() {
+    var _a;
+    return (_a = this.projects.find((project) => project.name === this.selectedProjectName)) != null ? _a : null;
+  }
+  getSelectedTask() {
+    var _a, _b;
+    return (_b = this.getEditableTasks((_a = this.getSelectedProject()) != null ? _a : {}).find((task) => task.taskId === this.selectedTaskId)) != null ? _b : null;
+  }
+  syncSelectionFromTask() {
+    var _a;
+    const project = this.getSelectedProject();
+    const tasks = project ? this.getEditableTasks(project) : [];
+    if (tasks.length === 0) {
+      this.selectedTaskId = "";
+      this.taskText = "";
+      this.selectedLane = "Now";
+      return;
+    }
+    const selectedTask = (_a = tasks.find((task) => task.taskId === this.selectedTaskId)) != null ? _a : tasks[0];
+    this.selectedTaskId = selectedTask.taskId;
+    this.taskText = selectedTask.text;
+    this.selectedLane = selectedTask.kanbanLane || selectedTask.section;
+    if (!KANBAN_EDITABLE_LANES.includes(this.selectedLane)) {
+      this.selectedLane = "Now";
+    }
+  }
+  formatTaskMeta(task) {
+    return [
+      task.section,
+      task.isOverdue ? "Overdue" : task.isDueSoon ? "Due soon" : "",
+      task.dueDate ? `Due ${task.dueDate}` : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.unblockDate ? `Unblock ${task.unblockDate}` : "",
+      task.effort ? `Effort ${task.effort}` : "",
+      task.energy ? `Energy ${task.energy}` : "",
+      task.executionContext ? `Context ${task.executionContext}` : "",
+      task.trigger ? `Trigger ${task.trigger}` : "",
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : ""
+    ].filter((value) => value.length > 0).join(" \u2022 ");
+  }
+  onOpen() {
+    var _a, _b;
+    this.setTitle("Edit Kanban Task");
+    const { contentEl } = this;
+    contentEl.empty();
+    if (this.projects.length === 0) {
+      contentEl.createEl("p", { text: "No editable Kanban tasks were found in the current Master Task Hub." });
+      return;
+    }
+    const selectedProject = this.getSelectedProject();
+    const tasks = selectedProject ? this.getEditableTasks(selectedProject) : [];
+    const selectedTask = (_b = (_a = tasks.find((task) => task.taskId === this.selectedTaskId)) != null ? _a : tasks[0]) != null ? _b : null;
+    if (!selectedTask) {
+      contentEl.createEl("p", { text: "No editable Kanban tasks were found for the selected project." });
+      return;
+    }
+    new import_obsidian3.Setting(contentEl).setName("Project").setDesc("Switch projects to edit a different board task.").addDropdown((dropdown) => {
+      this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
+      dropdown.setValue(this.selectedProjectName);
+      dropdown.onChange((value) => {
+        this.selectedProjectName = value;
+        this.syncSelectionFromTask();
+        this.onOpen();
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Task").setDesc("Pick the board item you want to rewrite or move.").addDropdown((dropdown) => {
+      tasks.forEach((task) => dropdown.addOption(task.taskId, `${task.kanbanLane || task.section}: ${task.text.slice(0, 80)}`));
+      dropdown.setValue(this.selectedTaskId);
+      dropdown.onChange((value) => {
+        this.selectedTaskId = value;
+        this.syncSelectionFromTask();
+        this.onOpen();
+      });
+    });
+    contentEl.createEl("p", { cls: "daily-dashboard-row-meta", text: this.formatTaskMeta(selectedTask) || "No extra task metadata recorded." });
+    new import_obsidian3.Setting(contentEl).setName("Task text").setDesc("This updates the task label while preserving existing task metadata annotations.").addTextArea((textArea) => {
+      textArea.setPlaceholder("Refine the task wording").setValue(this.taskText).onChange((value) => {
+        this.taskText = value;
+      });
+      textArea.inputEl.rows = 4;
+      window.setTimeout(() => textArea.inputEl.focus(), 0);
+    });
+    new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.").addDropdown((dropdown) => {
+      KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+      dropdown.setValue(this.selectedLane);
+      dropdown.onChange((value) => {
+        this.selectedLane = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Save task").setCta().onClick(async () => {
+        const saved = await this.plugin.editKanbanTask(this.selectedProjectName, this.selectedTaskId, this.taskText, this.selectedLane);
+        if (!saved) {
+          return;
+        }
+        new import_obsidian3.Notice("Kanban task updated.");
+        this.close();
+      });
+    }).addExtraButton((button) => {
+      button.setIcon("x").setTooltip("Cancel").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
 var ProjectReviewModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, options) {
     var _a, _b;
@@ -12021,6 +12282,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Sync Kanban Hub to Master Task Hub",
       callback: () => {
         void this.syncKanbanHubToMasterTaskHub(true);
+      }
+    });
+    this.addCommand({
+      id: "kanban-quick-add-task",
+      name: "Kanban quick add task",
+      callback: () => {
+        void this.openKanbanQuickAddFlow();
+      }
+    });
+    this.addCommand({
+      id: "edit-kanban-task",
+      name: "Edit Kanban task",
+      callback: () => {
+        void this.openKanbanTaskEditFlow();
       }
     });
     this.addCommand({
@@ -16148,7 +16423,42 @@ ${context}`, resolvedModel);
     const content = await this.app.vault.read(todoFile);
     const updatedContent = insertTaskIntoProjectSection(content, projectName, sectionName, trimmedTask);
     await this.app.vault.modify(todoFile, updatedContent);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+    }
     this.refreshDashboardViews();
+  }
+  async editKanbanTask(projectName, taskId, taskText, lane) {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+    const trimmedTask = taskText.trim();
+    const trimmedLane = lane.trim();
+    if (!trimmedTask || !trimmedLane) {
+      new import_obsidian4.Notice("Task text and lane are required.");
+      return false;
+    }
+    const content = await this.app.vault.read(todoFile);
+    const updated = updateTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      taskText: trimmedTask,
+      sectionName: trimmedLane
+    });
+    if (!updated.updated) {
+      new import_obsidian4.Notice("Could not find that Kanban task in the master task hub.");
+      return false;
+    }
+    await this.app.vault.modify(todoFile, updated.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+    }
+    this.refreshDashboardViews();
+    return true;
   }
   async generateMonthlyFinanceSnapshot(openAfterGenerate) {
     const today = /* @__PURE__ */ new Date();
@@ -17522,6 +17832,26 @@ No entries available.`;
       return;
     }
     new PromoteTaskModal(this.app, this, snapshot.projects).open();
+  }
+  async openKanbanQuickAddFlow() {
+    var _a;
+    const snapshot = await this.getTodoSnapshot();
+    const projects = (_a = snapshot == null ? void 0 : snapshot.projects.filter((project) => project.projectState !== "someday")) != null ? _a : [];
+    if (projects.length === 0) {
+      new import_obsidian4.Notice("No active or incubating projects found in the master task hub.");
+      return;
+    }
+    new KanbanQuickAddModal(this.app, this, projects).open();
+  }
+  async openKanbanTaskEditFlow() {
+    var _a;
+    const snapshot = await this.getTodoSnapshot();
+    const projects = (_a = snapshot == null ? void 0 : snapshot.projects.filter((project) => project.projectState !== "someday")) != null ? _a : [];
+    if (projects.length === 0) {
+      new import_obsidian4.Notice("No editable Kanban tasks found in the master task hub.");
+      return;
+    }
+    new KanbanTaskEditModal(this.app, this, projects).open();
   }
   async openProjectReviewModeFlow() {
     const options = await this.getProjectReviewOptions();
