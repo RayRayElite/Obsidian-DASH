@@ -1074,14 +1074,87 @@ export function renderKanbanHub(input: {
   ].join("\n");
 }
 
+export function buildKanbanBoardNotePath(folderPath: string, projectName: string): string {
+  const normalizedFolder = normalizePath(folderPath.trim());
+  const safeName = sanitizeFileName(projectName.trim()) || "Kanban Board";
+  return normalizedFolder ? `${normalizedFolder}/${safeName}.md` : `${safeName}.md`;
+}
+
+export function renderKanbanProjectBoardNote(input: {
+  project: TodoProjectSummary;
+  generatedAt: Date;
+  masterTodoPath: string;
+  compatibilityMode: boolean;
+}): string {
+  const laneTasks = buildKanbanLaneTaskMap(input.project);
+
+  if (input.compatibilityMode) {
+    return [
+      "---",
+      "kanban-plugin: board",
+      `daily-dashboard-project: ${input.project.name}`,
+      `daily-dashboard-master: ${input.masterTodoPath}`,
+      "---",
+      "",
+      ...KANBAN_LANE_ORDER.flatMap((lane) => renderKanbanLane(lane, laneTasks.get(lane) ?? [], { headingLevel: 2, emptyPlaceholder: null }))
+    ].join("\n");
+  }
+
+  const projectNote = input.project.noteLinks[0] ? createWikiLink(input.project.noteLinks[0], input.project.name) : input.project.name;
+  const summaryMetrics = [
+    `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+    `- Master Task Hub: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
+    `- Project note: ${projectNote}`,
+    `- Status: ${input.project.status}`,
+    `- Health: ${input.project.healthLabel} (${input.project.healthScore})`,
+    `- Next action: ${input.project.nextAction || "None recorded."}`,
+    `- Waiting on: ${input.project.waitingOn || "None"}`
+  ];
+
+  return [
+    `# ${input.project.name} Kanban Board`,
+    "",
+    ...summaryMetrics,
+    "",
+    ...KANBAN_LANE_ORDER.flatMap((lane) => renderKanbanLane(lane, laneTasks.get(lane) ?? [], { headingLevel: 2 }))
+  ].join("\n");
+}
+
 export function syncKanbanHubToMasterHub(input: {
   masterContent: string;
   kanbanContent: string;
   archivedAt: string;
-}): { content: string; movedTasks: number; completedTasks: number } {
-  const cards = parseKanbanHubCards(input.kanbanContent);
-  let content = input.masterContent;
+}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
+  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt);
+}
+
+export function syncKanbanBoardNoteToMasterHub(input: {
+  masterContent: string;
+  boardContent: string;
+  archivedAt: string;
+}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; projectName: string } {
+  const projectName = parseKanbanBoardProjectName(input.boardContent);
+  if (!projectName) {
+    return {
+      content: input.masterContent,
+      movedTasks: 0,
+      completedTasks: 0,
+      missingTasks: 0,
+      projectName: ""
+    };
+  }
+
+  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt);
+  return {
+    ...synced,
+    projectName
+  };
+}
+
+function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }>, archivedAt: string): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
+  let content = masterContent;
   let movedTasks = 0;
+  let missingTasks = 0;
 
   cards.forEach((card) => {
     if (!card.taskId) {
@@ -1098,6 +1171,7 @@ export function syncKanbanHubToMasterHub(input: {
 
     const location = findProjectTaskLocationById(content, card.projectName, card.taskId);
     if (!location) {
+      missingTasks += 1;
       return;
     }
 
@@ -1108,6 +1182,7 @@ export function syncKanbanHubToMasterHub(input: {
 
     const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
     if (!removed) {
+      missingTasks += 1;
       return;
     }
 
@@ -1118,11 +1193,12 @@ export function syncKanbanHubToMasterHub(input: {
     movedTasks += 1;
   });
 
-  const archived = archiveCompletedTasks(content, input.archivedAt);
+  const archived = archiveCompletedTasks(content, archivedAt);
   return {
     content: archived.content,
     movedTasks,
-    completedTasks: archived.archivedTasks.length
+    completedTasks: archived.archivedTasks.length,
+    missingTasks
   };
 }
 
@@ -1413,14 +1489,7 @@ function createTaskId(seed: string): string {
 
 function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
   const projectNote = project.noteLinks[0] ? createWikiLink(project.noteLinks[0], project.name) : project.name;
-  const laneTasks = new Map<KanbanLane, TodoTaskSummary[]>(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
-  [...project.nowTaskDetails, ...project.nextTaskDetails, ...project.laterTaskDetails, ...project.waitingTaskDetails, ...project.parkingLotTaskDetails]
-    .forEach((task) => {
-      if (task.kanbanLane) {
-        laneTasks.get(task.kanbanLane as KanbanLane)?.push(task);
-      }
-    });
-  laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+  const laneTasks = buildKanbanLaneTaskMap(project);
   const summaryMetrics = [
     `${project.name}`,
     `Now ${laneTasks.get("Now")?.length ?? 0}`,
@@ -1447,6 +1516,18 @@ function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
     "</details>",
     ""
   ];
+}
+
+function buildKanbanLaneTaskMap(project: TodoProjectSummary): Map<KanbanLane, TodoTaskSummary[]> {
+  const laneTasks = new Map<KanbanLane, TodoTaskSummary[]>(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
+  [...project.nowTaskDetails, ...project.nextTaskDetails, ...project.laterTaskDetails, ...project.waitingTaskDetails, ...project.parkingLotTaskDetails]
+    .forEach((task) => {
+      if (task.kanbanLane) {
+        laneTasks.get(task.kanbanLane as KanbanLane)?.push(task);
+      }
+    });
+  laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+  return laneTasks;
 }
 
 function renderKanbanBoardSummary(snapshot: TodoSnapshot): string[] {
@@ -1536,12 +1617,14 @@ function renderKanbanReviewHelpers(snapshot: TodoSnapshot): string[] {
   ];
 }
 
-function renderKanbanLane(lane: KanbanLane, tasks: TodoTaskSummary[]): string[] {
+function renderKanbanLane(lane: KanbanLane, tasks: TodoTaskSummary[], options?: { headingLevel?: 2 | 3; emptyPlaceholder?: string | null }): string[] {
+  const headingPrefix = options?.headingLevel === 2 ? "##" : "###";
+  const emptyPlaceholder = options?.emptyPlaceholder === undefined ? "- None" : options.emptyPlaceholder;
   return [
-    `### ${lane}`,
+    `${headingPrefix} ${lane}`,
     ...(tasks.length > 0
       ? tasks.map((task) => renderKanbanTaskLine(task, lane === "Done"))
-      : ["- None"]),
+      : emptyPlaceholder ? [emptyPlaceholder] : []),
     ""
   ];
 }
@@ -1604,6 +1687,56 @@ function parseKanbanHubCards(content: string): Array<{ projectName: string; lane
 
     cards.push({
       projectName: currentProjectName,
+      lane: currentLane,
+      taskId: taskIdMatch[1].trim(),
+      checked: taskMatch[1].toLowerCase() === "x"
+    });
+  });
+
+  return cards;
+}
+
+function parseKanbanBoardProjectName(content: string): string {
+  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (frontmatterMatch) {
+    const projectMatch = frontmatterMatch[1].match(/^daily-dashboard-project:\s*(.+)$/m);
+    if (projectMatch?.[1]?.trim()) {
+      return projectMatch[1].trim();
+    }
+  }
+
+  const titleMatch = content.match(/^#\s+(.+?)\s+Kanban Board\s*$/m);
+  return titleMatch?.[1]?.trim() ?? "";
+}
+
+function parseKanbanBoardCards(content: string, projectName: string): Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> {
+  const lines = content.split(/\r?\n/);
+  const cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> = [];
+  let currentLane: KanbanLane | null = null;
+
+  lines.forEach((line) => {
+    const laneMatch = line.trim().match(/^##? (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    if (laneMatch) {
+      currentLane = laneMatch[1] as KanbanLane;
+      return;
+    }
+
+    if (!currentLane) {
+      return;
+    }
+
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+
+    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    if (!taskIdMatch) {
+      return;
+    }
+
+    cards.push({
+      projectName,
       lane: currentLane,
       taskId: taskIdMatch[1].trim(),
       checked: taskMatch[1].toLowerCase() === "x"

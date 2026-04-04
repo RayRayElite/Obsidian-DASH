@@ -170,6 +170,9 @@ var DEFAULT_SETTINGS = {
   calendarWarningHours: 12,
   kanbanEnabled: false,
   kanbanHubPath: "Dashboard Kanban/Kanban Hub.md",
+  kanbanBoardNotesFolder: "Dashboard Kanban/Boards",
+  kanbanPluginCompatibilityMode: false,
+  kanbanAutoSyncEnabled: false,
   budgetingEnabled: false,
   subscriptionsTrackerEnabled: true,
   measurementSystem: "imperial",
@@ -198,7 +201,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -272,8 +275,11 @@ function sanitizeSettings(settings) {
     calendarWarningHours,
     kanbanEnabled: (_R = settings.kanbanEnabled) != null ? _R : DEFAULT_SETTINGS.kanbanEnabled,
     kanbanHubPath: ((_S = settings.kanbanHubPath) == null ? void 0 : _S.trim()) || DEFAULT_SETTINGS.kanbanHubPath,
-    budgetingEnabled: (_T = settings.budgetingEnabled) != null ? _T : DEFAULT_SETTINGS.budgetingEnabled,
-    subscriptionsTrackerEnabled: (_U = settings.subscriptionsTrackerEnabled) != null ? _U : DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
+    kanbanBoardNotesFolder: normalizeFolderPath2(((_T = settings.kanbanBoardNotesFolder) == null ? void 0 : _T.trim()) || DEFAULT_SETTINGS.kanbanBoardNotesFolder),
+    kanbanPluginCompatibilityMode: (_U = settings.kanbanPluginCompatibilityMode) != null ? _U : DEFAULT_SETTINGS.kanbanPluginCompatibilityMode,
+    kanbanAutoSyncEnabled: (_V = settings.kanbanAutoSyncEnabled) != null ? _V : DEFAULT_SETTINGS.kanbanAutoSyncEnabled,
+    budgetingEnabled: (_W = settings.budgetingEnabled) != null ? _W : DEFAULT_SETTINGS.budgetingEnabled,
+    subscriptionsTrackerEnabled: (_X = settings.subscriptionsTrackerEnabled) != null ? _X : DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
     measurementSystem,
     weightGoalTarget,
     weightGoalMode,
@@ -282,8 +288,8 @@ function sanitizeSettings(settings) {
     habitAutomations,
     showUndoNotifications,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath2(((_V = settings.wallpaperFolder) == null ? void 0 : _V.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_W = settings.selectedWallpaper) == null ? void 0 : _W.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath2(((_Y = settings.wallpaperFolder) == null ? void 0 : _Y.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((_Z = settings.selectedWallpaper) == null ? void 0 : _Z.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
     sessionTrackers: mergedSessionTrackers
@@ -3887,10 +3893,72 @@ function renderKanbanHub(input) {
     ...activeProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
   ].join("\n");
 }
+function buildKanbanBoardNotePath(folderPath, projectName) {
+  const normalizedFolder = (0, import_obsidian2.normalizePath)(folderPath.trim());
+  const safeName = sanitizeFileName(projectName.trim()) || "Kanban Board";
+  return normalizedFolder ? `${normalizedFolder}/${safeName}.md` : `${safeName}.md`;
+}
+function renderKanbanProjectBoardNote(input) {
+  const laneTasks = buildKanbanLaneTaskMap(input.project);
+  if (input.compatibilityMode) {
+    return [
+      "---",
+      "kanban-plugin: board",
+      `daily-dashboard-project: ${input.project.name}`,
+      `daily-dashboard-master: ${input.masterTodoPath}`,
+      "---",
+      "",
+      ...KANBAN_LANE_ORDER.flatMap((lane) => {
+        var _a;
+        return renderKanbanLane(lane, (_a = laneTasks.get(lane)) != null ? _a : [], { headingLevel: 2, emptyPlaceholder: null });
+      })
+    ].join("\n");
+  }
+  const projectNote = input.project.noteLinks[0] ? createWikiLink(input.project.noteLinks[0], input.project.name) : input.project.name;
+  const summaryMetrics = [
+    `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+    `- Master Task Hub: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
+    `- Project note: ${projectNote}`,
+    `- Status: ${input.project.status}`,
+    `- Health: ${input.project.healthLabel} (${input.project.healthScore})`,
+    `- Next action: ${input.project.nextAction || "None recorded."}`,
+    `- Waiting on: ${input.project.waitingOn || "None"}`
+  ];
+  return [
+    `# ${input.project.name} Kanban Board`,
+    "",
+    ...summaryMetrics,
+    "",
+    ...KANBAN_LANE_ORDER.flatMap((lane) => {
+      var _a;
+      return renderKanbanLane(lane, (_a = laneTasks.get(lane)) != null ? _a : [], { headingLevel: 2 });
+    })
+  ].join("\n");
+}
 function syncKanbanHubToMasterHub(input) {
-  const cards = parseKanbanHubCards(input.kanbanContent);
-  let content = input.masterContent;
+  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt);
+}
+function syncKanbanBoardNoteToMasterHub(input) {
+  const projectName = parseKanbanBoardProjectName(input.boardContent);
+  if (!projectName) {
+    return {
+      content: input.masterContent,
+      movedTasks: 0,
+      completedTasks: 0,
+      missingTasks: 0,
+      projectName: ""
+    };
+  }
+  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt);
+  return {
+    ...synced,
+    projectName
+  };
+}
+function syncKanbanCardsToMasterHub(masterContent, cards, archivedAt) {
+  let content = masterContent;
   let movedTasks = 0;
+  let missingTasks = 0;
   cards.forEach((card) => {
     if (!card.taskId) {
       return;
@@ -3904,6 +3972,7 @@ function syncKanbanHubToMasterHub(input) {
     }
     const location = findProjectTaskLocationById(content, card.projectName, card.taskId);
     if (!location) {
+      missingTasks += 1;
       return;
     }
     const targetSection = card.lane;
@@ -3912,17 +3981,19 @@ function syncKanbanHubToMasterHub(input) {
     }
     const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
     if (!removed) {
+      missingTasks += 1;
       return;
     }
     const movedTaskText = targetSection === "Waiting" ? removed.taskText : stripBlockingTaskAnnotations(removed.taskText);
     content = insertTaskIntoProjectSection(removed.content, card.projectName, targetSection, movedTaskText);
     movedTasks += 1;
   });
-  const archived = archiveCompletedTasks(content, input.archivedAt);
+  const archived = archiveCompletedTasks(content, archivedAt);
   return {
     content: archived.content,
     movedTasks,
-    completedTasks: archived.archivedTasks.length
+    completedTasks: archived.archivedTasks.length,
+    missingTasks
   };
 }
 function repairMasterHubStructure(content, input) {
@@ -4170,14 +4241,7 @@ function createTaskId(seed) {
 function renderKanbanProjectBoard(project) {
   var _a, _b, _c, _d, _e, _f, _g, _h;
   const projectNote = project.noteLinks[0] ? createWikiLink(project.noteLinks[0], project.name) : project.name;
-  const laneTasks = new Map(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
-  [...project.nowTaskDetails, ...project.nextTaskDetails, ...project.laterTaskDetails, ...project.waitingTaskDetails, ...project.parkingLotTaskDetails].forEach((task) => {
-    var _a2;
-    if (task.kanbanLane) {
-      (_a2 = laneTasks.get(task.kanbanLane)) == null ? void 0 : _a2.push(task);
-    }
-  });
-  laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+  const laneTasks = buildKanbanLaneTaskMap(project);
   const summaryMetrics = [
     `${project.name}`,
     `Now ${(_b = (_a = laneTasks.get("Now")) == null ? void 0 : _a.length) != null ? _b : 0}`,
@@ -4206,6 +4270,17 @@ function renderKanbanProjectBoard(project) {
     "</details>",
     ""
   ];
+}
+function buildKanbanLaneTaskMap(project) {
+  const laneTasks = new Map(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
+  [...project.nowTaskDetails, ...project.nextTaskDetails, ...project.laterTaskDetails, ...project.waitingTaskDetails, ...project.parkingLotTaskDetails].forEach((task) => {
+    var _a;
+    if (task.kanbanLane) {
+      (_a = laneTasks.get(task.kanbanLane)) == null ? void 0 : _a.push(task);
+    }
+  });
+  laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+  return laneTasks;
 }
 function renderKanbanBoardSummary(snapshot) {
   const activeProjects = snapshot.projects.filter((project) => project.projectState !== "someday");
@@ -4285,10 +4360,12 @@ function renderKanbanReviewHelpers(snapshot) {
     ""
   ];
 }
-function renderKanbanLane(lane, tasks) {
+function renderKanbanLane(lane, tasks, options) {
+  const headingPrefix = (options == null ? void 0 : options.headingLevel) === 2 ? "##" : "###";
+  const emptyPlaceholder = (options == null ? void 0 : options.emptyPlaceholder) === void 0 ? "- None" : options.emptyPlaceholder;
   return [
-    `### ${lane}`,
-    ...tasks.length > 0 ? tasks.map((task) => renderKanbanTaskLine(task, lane === "Done")) : ["- None"],
+    `${headingPrefix} ${lane}`,
+    ...tasks.length > 0 ? tasks.map((task) => renderKanbanTaskLine(task, lane === "Done")) : emptyPlaceholder ? [emptyPlaceholder] : [],
     ""
   ];
 }
@@ -4341,6 +4418,48 @@ function parseKanbanHubCards(content) {
     }
     cards.push({
       projectName: currentProjectName,
+      lane: currentLane,
+      taskId: taskIdMatch[1].trim(),
+      checked: taskMatch[1].toLowerCase() === "x"
+    });
+  });
+  return cards;
+}
+function parseKanbanBoardProjectName(content) {
+  var _a, _b, _c;
+  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (frontmatterMatch) {
+    const projectMatch = frontmatterMatch[1].match(/^daily-dashboard-project:\s*(.+)$/m);
+    if ((_a = projectMatch == null ? void 0 : projectMatch[1]) == null ? void 0 : _a.trim()) {
+      return projectMatch[1].trim();
+    }
+  }
+  const titleMatch = content.match(/^#\s+(.+?)\s+Kanban Board\s*$/m);
+  return (_c = (_b = titleMatch == null ? void 0 : titleMatch[1]) == null ? void 0 : _b.trim()) != null ? _c : "";
+}
+function parseKanbanBoardCards(content, projectName) {
+  const lines = content.split(/\r?\n/);
+  const cards = [];
+  let currentLane = null;
+  lines.forEach((line) => {
+    const laneMatch = line.trim().match(/^##? (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    if (laneMatch) {
+      currentLane = laneMatch[1];
+      return;
+    }
+    if (!currentLane) {
+      return;
+    }
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    if (!taskIdMatch) {
+      return;
+    }
+    cards.push({
+      projectName,
       lane: currentLane,
       taskId: taskIdMatch[1].trim(),
       checked: taskMatch[1].toLowerCase() === "x"
@@ -10769,6 +10888,30 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         });
       });
     });
+    new import_obsidian3.Setting(containerEl).setName("Kanban board notes folder").setDesc("Optional generated per-project board notes live here when you refresh board-note artifacts.").addText((text) => {
+      text.setPlaceholder(DEFAULT_SETTINGS.kanbanBoardNotesFolder).setValue(settings.kanbanBoardNotesFolder).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          kanbanBoardNotesFolder: value.trim() || DEFAULT_SETTINGS.kanbanBoardNotesFolder
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Obsidian Kanban compatibility mode").setDesc("Write generated project board notes with `kanban-plugin: board` frontmatter so the Obsidian Kanban plugin can open them as boards.").addToggle((toggle) => {
+      toggle.setValue(settings.kanbanPluginCompatibilityMode).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          kanbanPluginCompatibilityMode: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Kanban auto-sync listeners").setDesc("Watch generated Kanban notes for manual edits and sync them back into the Master Task Hub with repair notices when task ids drift.").addToggle((toggle) => {
+      toggle.setValue(settings.kanbanAutoSyncEnabled).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          kanbanAutoSyncEnabled: value
+        });
+      });
+    });
     new import_obsidian3.Setting(containerEl).setName("Enable budgeting section").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.").addToggle((toggle) => {
       toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
         await this.plugin.updateSettings({
@@ -11974,6 +12117,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.warnedRoutineWindowKeys = /* @__PURE__ */ new Set();
     this.activeRoutineNotificationSignature = "";
     this.notificationAudioContext = null;
+    this.kanbanManagedWritePaths = /* @__PURE__ */ new Set();
+    this.kanbanSyncDebounceId = null;
+    this.pendingKanbanSyncPath = "";
   }
   getErrorMessage(error) {
     if (error instanceof Error && error.message.trim()) {
@@ -12046,6 +12192,49 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           { frequency: 1318.5, duration: 0.16, gap: 0, gain: 0.04, waveform: "sine" }
         ];
     }
+  }
+  markKanbanManagedWrite(path) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+    this.kanbanManagedWritePaths.add(normalizedPath);
+    window.setTimeout(() => {
+      this.kanbanManagedWritePaths.delete(normalizedPath);
+    }, 2500);
+  }
+  isKanbanBoardNotePath(path) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path).toLowerCase();
+    const normalizedFolder = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanBoardNotesFolder).toLowerCase();
+    return normalizedPath.startsWith(`${normalizedFolder}/`) && normalizedPath.endsWith(".md");
+  }
+  shouldAutoSyncKanbanArtifact(path) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+    if (!this.data.settings.kanbanEnabled || !this.data.settings.kanbanAutoSyncEnabled) {
+      return false;
+    }
+    if (this.kanbanManagedWritePaths.has(normalizedPath)) {
+      return false;
+    }
+    return normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath) || this.isKanbanBoardNotePath(normalizedPath);
+  }
+  scheduleKanbanArtifactSync(path) {
+    this.pendingKanbanSyncPath = (0, import_obsidian4.normalizePath)(path);
+    if (this.kanbanSyncDebounceId !== null) {
+      window.clearTimeout(this.kanbanSyncDebounceId);
+    }
+    this.kanbanSyncDebounceId = window.setTimeout(() => {
+      const targetPath = this.pendingKanbanSyncPath;
+      this.pendingKanbanSyncPath = "";
+      this.kanbanSyncDebounceId = null;
+      if (!targetPath) {
+        return;
+      }
+      if (targetPath === (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath)) {
+        void this.syncKanbanHubToMasterTaskHub(false);
+        return;
+      }
+      if (this.isKanbanBoardNotePath(targetPath)) {
+        void this.syncKanbanBoardNoteToMasterTaskHub(targetPath, false);
+      }
+    }, 700);
   }
   async initializeWorkspaceArtifacts() {
     await this.importCalendarEventsFromMarkdown();
@@ -12282,6 +12471,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Sync Kanban Hub to Master Task Hub",
       callback: () => {
         void this.syncKanbanHubToMasterTaskHub(true);
+      }
+    });
+    this.addCommand({
+      id: "refresh-kanban-board-notes",
+      name: "Create or refresh Kanban board notes",
+      callback: () => {
+        void this.refreshKanbanBoardNotes(true);
+      }
+    });
+    this.addCommand({
+      id: "refresh-all-kanban-artifacts",
+      name: "Refresh all Kanban artifacts",
+      callback: () => {
+        void this.refreshAllKanbanArtifacts(true);
       }
     });
     this.addCommand({
@@ -12575,6 +12778,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       if (this.isDailyLogPath(normalizedPath)) {
         void this.reloadDailyLogFile(file);
         return;
+      }
+      if (this.shouldAutoSyncKanbanArtifact(normalizedPath)) {
+        this.scheduleKanbanArtifactSync(normalizedPath);
       }
       if (file.extension === "md") {
         this.scheduleNoteIndexRefresh();
@@ -16134,39 +16340,91 @@ ${context}`, resolvedModel);
       }
     }
   }
-  async refreshKanbanHub(openAfterGenerate) {
+  async getKanbanSnapshotSource() {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
-      if (openAfterGenerate) {
-        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
-      }
       return null;
     }
     const originalContent = await this.app.vault.read(todoFile);
     const backfilled = backfillMasterHubTaskIds(originalContent);
     let activeContent = originalContent;
     if (backfilled.content !== originalContent) {
+      this.markKanbanManagedWrite(todoFile.path);
       await this.app.vault.modify(todoFile, backfilled.content);
       activeContent = backfilled.content;
     }
-    const snapshot = parseTodoSnapshot(activeContent);
+    return {
+      todoFile,
+      snapshot: parseTodoSnapshot(activeContent),
+      addedTaskIds: backfilled.addedTaskIds
+    };
+  }
+  async refreshKanbanHub(openAfterGenerate) {
+    const source = await this.getKanbanSnapshotSource();
+    if (!source) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
     const content = renderKanbanHub({
-      snapshot,
+      snapshot: source.snapshot,
       generatedAt: /* @__PURE__ */ new Date(),
       masterTodoPath: this.data.settings.masterTodoPath
     });
+    this.markKanbanManagedWrite(this.data.settings.kanbanHubPath);
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);
     if (openAfterGenerate) {
       await this.openFile(file);
-      new import_obsidian4.Notice(`Kanban Hub refreshed${backfilled.addedTaskIds > 0 ? ` with ${backfilled.addedTaskIds} task id${backfilled.addedTaskIds === 1 ? "" : "s"} added to the Master Task Hub` : ""}.`);
+      new import_obsidian4.Notice(`Kanban Hub refreshed${source.addedTaskIds > 0 ? ` with ${source.addedTaskIds} task id${source.addedTaskIds === 1 ? "" : "s"} added to the Master Task Hub` : ""}.`);
     }
     return file;
   }
+  async refreshKanbanBoardNotes(openAfterGenerate) {
+    const source = await this.getKanbanSnapshotSource();
+    if (!source) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return [];
+    }
+    const boardProjects = source.snapshot.projects.filter((project) => project.projectState !== "someday");
+    const files = [];
+    for (const project of boardProjects) {
+      const path = buildKanbanBoardNotePath(this.data.settings.kanbanBoardNotesFolder, project.name);
+      const content = renderKanbanProjectBoardNote({
+        project,
+        generatedAt: /* @__PURE__ */ new Date(),
+        masterTodoPath: this.data.settings.masterTodoPath,
+        compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
+      });
+      this.markKanbanManagedWrite(path);
+      files.push(await this.upsertMarkdownFile(path, content));
+    }
+    if (openAfterGenerate) {
+      if (files[0]) {
+        await this.openFile(files[0]);
+      }
+      new import_obsidian4.Notice(`Refreshed ${files.length} Kanban board note${files.length === 1 ? "" : "s"}.`);
+    }
+    return files;
+  }
+  async refreshAllKanbanArtifacts(openAfterGenerate) {
+    const hubFile = await this.refreshKanbanHub(false);
+    const boardFiles = await this.refreshKanbanBoardNotes(false);
+    if (openAfterGenerate && hubFile) {
+      await this.openFile(hubFile);
+    }
+    if (openAfterGenerate) {
+      new import_obsidian4.Notice(`Refreshed Kanban Hub and ${boardFiles.length} board note${boardFiles.length === 1 ? "" : "s"}.`);
+    }
+  }
   async repairKanbanFoundations(showNotice) {
     await this.repairMasterHubAndProjectNotes(false);
-    const file = await this.refreshKanbanHub(false);
+    const hubFile = await this.refreshKanbanHub(false);
+    const boardFiles = await this.refreshKanbanBoardNotes(false);
     if (showNotice) {
-      new import_obsidian4.Notice(file ? "Kanban foundations repaired and Kanban Hub refreshed." : "Kanban repair could not complete because the Master Task Hub is missing.");
+      new import_obsidian4.Notice(hubFile ? `Kanban foundations repaired, Kanban Hub refreshed, and ${boardFiles.length} board note${boardFiles.length === 1 ? "" : "s"} regenerated.` : "Kanban repair could not complete because the Master Task Hub is missing.");
     }
   }
   async syncKanbanHubToMasterTaskHub(showNotice) {
@@ -16186,13 +16444,53 @@ ${context}`, resolvedModel);
       archivedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     });
     if (synced.content !== masterContent) {
+      this.markKanbanManagedWrite(todoFile.path);
       await this.app.vault.modify(todoFile, synced.content);
       await this.refreshMasterHubPortfolioSnapshot(false);
     }
     await this.refreshKanbanHub(false);
+    await this.refreshKanbanBoardNotes(false);
     this.refreshDashboardViews();
-    if (showNotice) {
+    if (synced.missingTasks > 0) {
+      new import_obsidian4.Notice(`Kanban sync skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because task ids no longer matched the Master Task Hub. Run Repair Kanban foundations and refresh hub if the board drifted.`);
+    } else if (showNotice) {
       new import_obsidian4.Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
+    }
+  }
+  async syncKanbanBoardNoteToMasterTaskHub(boardPath, showNotice) {
+    const todoFile = this.getMasterTodoFile();
+    const boardFile = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(boardPath));
+    if (!todoFile || !(boardFile instanceof import_obsidian4.TFile)) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub or Kanban board note is missing.");
+      }
+      return;
+    }
+    const masterContent = await this.app.vault.read(todoFile);
+    const boardContent = await this.app.vault.read(boardFile);
+    const synced = syncKanbanBoardNoteToMasterHub({
+      masterContent,
+      boardContent,
+      archivedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    });
+    if (!synced.projectName) {
+      if (showNotice) {
+        new import_obsidian4.Notice("That Kanban board note is missing the generated project metadata. Refresh board notes to rebuild it.");
+      }
+      return;
+    }
+    if (synced.content !== masterContent) {
+      this.markKanbanManagedWrite(todoFile.path);
+      await this.app.vault.modify(todoFile, synced.content);
+      await this.refreshMasterHubPortfolioSnapshot(false);
+    }
+    await this.refreshKanbanHub(false);
+    await this.refreshKanbanBoardNotes(false);
+    this.refreshDashboardViews();
+    if (synced.missingTasks > 0) {
+      new import_obsidian4.Notice(`Kanban board sync for ${synced.projectName} skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because task ids no longer matched the Master Task Hub. Refresh board notes or run Kanban repair to rebuild them.`);
+    } else if (showNotice) {
+      new import_obsidian4.Notice(`${synced.projectName} board sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
   }
   async addTodayFocusItem(value) {
@@ -16426,6 +16724,7 @@ ${context}`, resolvedModel);
     await this.refreshMasterHubPortfolioSnapshot(false);
     if (this.data.settings.kanbanEnabled) {
       await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
     }
     this.refreshDashboardViews();
   }
@@ -16456,6 +16755,7 @@ ${context}`, resolvedModel);
     await this.refreshMasterHubPortfolioSnapshot(false);
     if (this.data.settings.kanbanEnabled) {
       await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
     }
     this.refreshDashboardViews();
     return true;
@@ -19376,6 +19676,9 @@ ${body}`;
     if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath).toLowerCase()) {
       return "kanban-hub";
     }
+    if (prefixMatches(this.data.settings.kanbanBoardNotesFolder)) {
+      return "kanban-board";
+    }
     if (normalizedPath.startsWith("dashboard finance/monthly/")) {
       return "finance-monthly-snapshot";
     }
@@ -19459,6 +19762,8 @@ ${body}`;
       autoTags.push("daily-dashboard/daily-log");
     } else if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath).toLowerCase()) {
       autoTags.push("daily-dashboard/kanban", "daily-dashboard/kanban/hub");
+    } else if (prefixMatches(this.data.settings.kanbanBoardNotesFolder)) {
+      autoTags.push("daily-dashboard/kanban", "daily-dashboard/kanban/board");
     } else if (normalizedPath.startsWith("dashboard finance/monthly/")) {
       autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/monthly");
     } else if (normalizedPath.startsWith("dashboard finance/reports/")) {

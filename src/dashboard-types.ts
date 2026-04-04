@@ -506,6 +506,9 @@ export interface DashboardSettings {
   calendarWarningHours: number;
   kanbanEnabled: boolean;
   kanbanHubPath: string;
+  kanbanBoardNotesFolder: string;
+  kanbanPluginCompatibilityMode: boolean;
+  kanbanAutoSyncEnabled: boolean;
   budgetingEnabled: boolean;
   subscriptionsTrackerEnabled: boolean;
   measurementSystem: MeasurementSystem;
@@ -1075,6 +1078,9 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarWarningHours: 12,
   kanbanEnabled: false,
   kanbanHubPath: "Dashboard Kanban/Kanban Hub.md",
+  kanbanBoardNotesFolder: "Dashboard Kanban/Boards",
+  kanbanPluginCompatibilityMode: false,
+  kanbanAutoSyncEnabled: false,
   budgetingEnabled: false,
   subscriptionsTrackerEnabled: true,
   measurementSystem: "imperial",

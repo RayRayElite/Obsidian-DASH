@@ -6854,6 +6854,46 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
             });
           });
       });
+
+    new Setting(containerEl)
+      .setName("Kanban board notes folder")
+      .setDesc("Optional generated per-project board notes live here when you refresh board-note artifacts.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.kanbanBoardNotesFolder)
+          .setValue(settings.kanbanBoardNotesFolder)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              kanbanBoardNotesFolder: value.trim() || DEFAULT_SETTINGS.kanbanBoardNotesFolder
+            });
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Obsidian Kanban compatibility mode")
+      .setDesc("Write generated project board notes with `kanban-plugin: board` frontmatter so the Obsidian Kanban plugin can open them as boards.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.kanbanPluginCompatibilityMode).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            kanbanPluginCompatibilityMode: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Kanban auto-sync listeners")
+      .setDesc("Watch generated Kanban notes for manual edits and sync them back into the Master Task Hub with repair notices when task ids drift.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.kanbanAutoSyncEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            kanbanAutoSyncEnabled: value
+          });
+        });
+      });
+
     new Setting(containerEl)
       .setName("Enable budgeting section")
       .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")
