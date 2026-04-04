@@ -32,7 +32,7 @@ Before starting substantial implementation work, first decide whether clarificat
 
 If clarification is needed:
 
-1. ask all relevant questions in a single grouped follow-up using the ask-questions flow when available;
+1. ask all relevant questions in a single grouped follow-up using the ask-questions flow when available instead of separate plain chat questions;
 2. keep the questions concise and only ask what is necessary to unblock good implementation;
 3. prefer one batch of questions over multiple back-and-forth turns;
 4. after the user answers, continue the original task immediately without requiring them to restate it.
