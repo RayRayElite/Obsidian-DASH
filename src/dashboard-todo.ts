@@ -1055,7 +1055,7 @@ export function renderKanbanHub(input: {
     `- Project boards: ${activeProjects.length}`,
     `- Open tracked tasks: ${input.snapshot.totalOpen}`,
     `- Archived tasks visible to Kanban: ${todayCompleted}`,
-    `- Editing model: Treat this as a generated board view of the Master Task Hub. Refresh it after hub changes until bidirectional sync lands.`,
+    `- Editing model: Treat this as a generated board view of the Master Task Hub. Lane moves can be synced back manually; refresh it after direct hub edits or repair flows.`,
     "",
     "## Summary Block",
     `- Main pressure: ${input.snapshot.overdueTasks.length} overdue task${input.snapshot.overdueTasks.length === 1 ? "" : "s"} and ${input.snapshot.blockedTasks.length} waiting task${input.snapshot.blockedTasks.length === 1 ? "" : "s"}.`,
@@ -1064,6 +1064,7 @@ export function renderKanbanHub(input: {
     `- Most important follow-up: ${input.snapshot.projects.find((project) => project.nextAction.trim().length > 0)?.nextAction || "Refresh the Master Task Hub and define the next real action for active work."}`,
     `- Context links: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
     "",
+    ...renderKanbanReviewHelpers(input.snapshot),
     ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
     ...(activeProjects.length === 0
       ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""]
@@ -1418,10 +1419,19 @@ function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
       }
     });
   laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+  const summaryMetrics = [
+    `${project.name}`,
+    `Now ${laneTasks.get("Now")?.length ?? 0}`,
+    `Next ${laneTasks.get("Next")?.length ?? 0}`,
+    `Waiting ${laneTasks.get("Waiting")?.length ?? 0}`,
+    `Done ${laneTasks.get("Done")?.length ?? 0}`,
+    ...(project.blockedTasks.length > 0 ? [`Blocked ${project.blockedTasks.length}`] : []),
+    ...(project.staleDays !== null && project.staleDays >= 7 ? [`Stale ${project.staleDays}d`] : [])
+  ];
 
   return [
     "<details open>",
-    `<summary>${project.name} • Now ${laneTasks.get("Now")?.length ?? 0} • Next ${laneTasks.get("Next")?.length ?? 0} • Waiting ${laneTasks.get("Waiting")?.length ?? 0} • Done ${laneTasks.get("Done")?.length ?? 0}</summary>`,
+    `<summary>${summaryMetrics.join(" • ")}</summary>`,
     "",
     `- Project note: ${projectNote}`,
     `- Status: ${project.status}`,
@@ -1431,6 +1441,47 @@ function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
     "",
     ...KANBAN_LANE_ORDER.flatMap((lane) => renderKanbanLane(lane, laneTasks.get(lane) ?? [])),
     "</details>",
+    ""
+  ];
+}
+
+function renderKanbanReviewHelpers(snapshot: TodoSnapshot): string[] {
+  const projectMap = new Map(snapshot.projects.map((project) => [project.name.toLowerCase(), project]));
+  const blockedTaskLines = snapshot.blockedTasks.slice(0, 8).map(({ project, task }) => {
+    const projectSummary = projectMap.get(project.toLowerCase());
+    const projectLabel = projectSummary?.noteLinks[0]
+      ? createWikiLink(projectSummary.noteLinks[0], projectSummary.name)
+      : project;
+    const details = [
+      task.blockedReason ? `blocked ${task.blockedReason}` : "",
+      task.unblockDate ? `unblock ${task.unblockDate}` : "",
+      projectSummary?.waitingOn.trim() && projectSummary.waitingOn.trim().toLowerCase() !== "none" ? `waiting on ${projectSummary.waitingOn.trim()}` : "",
+      projectSummary?.nextAction.trim() ? `next ${projectSummary.nextAction.trim()}` : ""
+    ].filter((value) => value.length > 0);
+
+    return `- ${projectLabel}: ${task.text}${details.length > 0 ? ` | ${details.join(" | ")}` : ""}`;
+  });
+  const staleProjectLines = snapshot.staleProjects.slice(0, 8).map((project) => {
+    const projectLabel = project.noteLinks[0] ? createWikiLink(project.noteLinks[0], project.name) : project.name;
+    const details = [
+      `${project.staleDays} stale day${project.staleDays === 1 ? "" : "s"}`,
+      `${project.openCount} open task${project.openCount === 1 ? "" : "s"}`,
+      project.waitingOn.trim().length > 0 && project.waitingOn.trim().toLowerCase() !== "none" ? `waiting on ${project.waitingOn.trim()}` : "",
+      project.nextAction.trim() ? `next ${project.nextAction.trim()}` : ""
+    ].filter((value) => value.length > 0);
+
+    return `- ${projectLabel}: ${details.join(" | ")}`;
+  });
+
+  return [
+    "## Review Helpers",
+    "- Review blocked tasks first, then stale projects, before spending time reorganizing lanes.",
+    "",
+    "### Blocked Tasks",
+    ...(blockedTaskLines.length > 0 ? blockedTaskLines : ["- No blocked tasks are currently visible in the Kanban snapshot."]),
+    "",
+    "### Stale Projects",
+    ...(staleProjectLines.length > 0 ? staleProjectLines : ["- No active project currently crosses the stale threshold."]),
     ""
   ];
 }
