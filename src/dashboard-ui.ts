@@ -6569,6 +6569,36 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h3", { text: "Budgeting" });
 
+
+    containerEl.createEl("h3", { text: "Kanban" });
+
+    new Setting(containerEl)
+      .setName("Enable Kanban foundations")
+      .setDesc("Keep the Kanban Hub path and related note-generation workflow visible in settings while Kanban remains an optional companion to the Master Task Hub.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.kanbanEnabled).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            kanbanEnabled: value
+          });
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Kanban Hub path")
+      .setDesc("Generated markdown board note that mirrors the Master Task Hub into per-project Kanban lanes.")
+      .addText((text) => {
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.kanbanHubPath)
+          .setValue(settings.kanbanHubPath)
+          .onChange(async (value) => {
+            await this.plugin.updateSettings({
+              ...this.plugin.getSettings(),
+              kanbanHubPath: value.trim() || DEFAULT_SETTINGS.kanbanHubPath
+            });
+          });
+      });
     new Setting(containerEl)
       .setName("Enable budgeting section")
       .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")

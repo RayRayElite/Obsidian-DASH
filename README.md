@@ -16,6 +16,7 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 - can call OpenAI for AI-powered morning startup briefs, shutdown summaries, weekly planning, project risk scans, anomaly detection, period comparisons, project synthesis, "why today felt off" analysis, active-note analysis, and freeform questions grounded in dashboard context
 - can initialize a compiled research wiki scaffold with raw/source/concept/index/output folders plus a generated health-check note for maintenance review
 - reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
+- can generate a note-first `Kanban Hub` companion document from the master task hub, with per-project boards for `Now`, `Next`, `Later`, `Waiting`, `Parking Lot`, and recent `Done` work
 - automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
 - lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
 - includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a hero-bar notification popover for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
@@ -31,6 +32,8 @@ The stronger recommended document structure now lives in `Documentation/Document
 
 The command palette now also includes `Refresh master task hub portfolio snapshot`, which writes or updates a compact `## Portfolio Snapshot` section near the top of the hub with portfolio pressure, external blockers, and momentum highlights. Plugin-driven hub changes such as project creation, archive sweeps, repeating-task sync, and reference offload also refresh that section automatically.
 
+The Kanban foundation slice now also adds stable `[task-id: ...]` annotations to active hub checklist items when needed and exposes `Refresh Kanban Hub` plus `Repair Kanban foundations and refresh hub`. Those commands write a generated board note at the configured Kanban Hub path so the same project set can be scanned as boards without replacing the Master Task Hub as the canonical editing surface yet.
+
 If older hub projects or project notes predate the newer metadata and section structure, run `Repair master task hub and project notes`. That workflow only adds missing metadata lines, missing sections, missing project notes, and a refreshed portfolio snapshot; it does not delete or rewrite existing hub content.
 
 1. keep active work as unchecked checklist items in non-reference sections
@@ -39,7 +42,7 @@ If older hub projects or project notes predate the newer metadata and section st
 
 This gives you a work-history trail without deleting finished tasks.
 
-The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Parking Lot`, `### Repeating`, `### Risks`, `### Constraints`, `### Decisions`, `### Assets`, `### Reference`, and `### Completed Archive` sections. New projects created by the plugin now include the core operational structure automatically, and project-note templates also include `Change Log`, `Known Terms / Definitions`, and `Useful Links / Assets` sections so durable context has a stable home.
+The richer dashboard flow also works best when projects keep `### Now`, `### Next`, `### Later`, `### Waiting`, `### Parking Lot`, `### Repeating`, `### Risks`, `### Constraints`, `### Decisions`, `### Assets`, `### Reference`, and `### Completed Archive` sections. New projects created by the plugin now include the core operational structure automatically, and project-note templates also include `Change Log`, `Known Terms / Definitions`, and `Useful Links / Assets` sections so durable context has a stable home.
 
 The `### Repeating` section now supports richer repeat rules instead of only simple weekly-style tags. Plain bullets and checklist bullets both work. Supported forms include `- Pay rent [repeat: monthly day 1]`, `- Water plants [repeat: every 10 days]`, `- Review backlog [repeat: every 2 weeks]`, `- Gym session [repeat: weekdays mon wed fri]`, plus the legacy short forms like `[daily]`, `[weekly]`, `[monthly]`, and `[yearly]`. When synced into the master hub, due repeating tasks are inserted into `### Next` with their normalized repeat tag preserved.
 

@@ -125,6 +125,8 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     calendarDocumentPath: settings.calendarDocumentPath?.trim() || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
+    kanbanEnabled: settings.kanbanEnabled ?? DEFAULT_SETTINGS.kanbanEnabled,
+    kanbanHubPath: settings.kanbanHubPath?.trim() || DEFAULT_SETTINGS.kanbanHubPath,
     budgetingEnabled: settings.budgetingEnabled ?? DEFAULT_SETTINGS.budgetingEnabled,
     subscriptionsTrackerEnabled: settings.subscriptionsTrackerEnabled ?? DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
     measurementSystem,

@@ -25,6 +25,7 @@ export type DashboardNotificationSound = "off" | "chime" | "ping" | "alert";
 export type ResearchGroundingMode = "vault-only" | "vault-plus-model" | "vault-plus-web";
 export type FinanceSubscriptionStatus = "active" | "trial" | "paused" | "canceled" | "archived";
 export type FinanceSubscriptionKind = "recurring" | "one-time";
+export type KanbanLane = "Now" | "Next" | "Later" | "Waiting" | "Parking Lot" | "Done";
 
 export interface HabitDefinition {
   id: string;
@@ -503,6 +504,8 @@ export interface DashboardSettings {
   calendarDocumentPath: string;
   calendarLookaheadHours: number;
   calendarWarningHours: number;
+  kanbanEnabled: boolean;
+  kanbanHubPath: string;
   budgetingEnabled: boolean;
   subscriptionsTrackerEnabled: boolean;
   measurementSystem: MeasurementSystem;
@@ -676,6 +679,9 @@ export interface TodoProjectSummary {
   nowTaskDetails: TodoTaskSummary[];
   nextTaskDetails: TodoTaskSummary[];
   laterTaskDetails: TodoTaskSummary[];
+  waitingTaskDetails: TodoTaskSummary[];
+  parkingLotTaskDetails: TodoTaskSummary[];
+  completedTaskDetails: TodoTaskSummary[];
   dueRepeatingTaskDetails: TodoTaskSummary[];
   dueSoonTasks: TodoTaskSummary[];
   overdueTasks: TodoTaskSummary[];
@@ -715,9 +721,11 @@ export interface CleanupSuggestion {
 }
 
 export interface TodoTaskSummary {
+  taskId: string;
   text: string;
   rawText: string;
   section: string;
+  kanbanLane: KanbanLane | "";
   dueDate: string;
   blockedReason: string;
   unblockDate: string;
@@ -1065,6 +1073,8 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   calendarDocumentPath: "Dashboard Logs/Calendar.md",
   calendarLookaheadHours: 48,
   calendarWarningHours: 12,
+  kanbanEnabled: false,
+  kanbanHubPath: "Dashboard Kanban/Kanban Hub.md",
   budgetingEnabled: false,
   subscriptionsTrackerEnabled: true,
   measurementSystem: "imperial",

@@ -1,6 +1,6 @@
 import { TFile, Vault, normalizePath } from "obsidian";
 
-import { clamp, computeMissedHabits, formatDateKey, renderScore } from "./dashboard-core";
+import { clamp, computeMissedHabits, formatDateKey, formatDateTimeKey, renderScore } from "./dashboard-core";
 import {
   type CleanupSuggestion,
   type ArchiveMaintenanceResult,
@@ -18,6 +18,7 @@ import {
   type RepeatingTaskDefinition,
   type RepeatingTaskIntervalUnit,
   type RepeatingTaskRule,
+  type KanbanLane,
   type TodoTaskSummary,
   type TodoProjectRange,
   type TodoProjectSummary,
@@ -26,6 +27,8 @@ import {
 } from "./dashboard-types";
 
 const NON_PROJECT_HUB_HEADINGS = new Set(["portfolio snapshot"]);
+const TASK_ID_ANNOTATION_KEY = "task-id";
+const KANBAN_LANE_ORDER: KanbanLane[] = ["Now", "Next", "Later", "Waiting", "Parking Lot", "Done"];
 
 export function parseTodoSnapshot(content: string): TodoSnapshot {
   const lines = content.split(/\r?\n/);
@@ -62,6 +65,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     const nowTaskDetails: TodoTaskSummary[] = [];
     const nextTaskDetails: TodoTaskSummary[] = [];
     const laterTaskDetails: TodoTaskSummary[] = [];
+    const waitingTaskDetails: TodoTaskSummary[] = [];
+    const parkingLotTaskDetails: TodoTaskSummary[] = [];
+    const completedTaskDetails: TodoTaskSummary[] = [];
     const dueRepeatingTaskDetails: TodoTaskSummary[] = [];
     const dueSoonTasks: TodoTaskSummary[] = [];
     const overdueTasks: TodoTaskSummary[] = [];
@@ -133,6 +139,15 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
 
       if (sectionKey === "completed archive" || isComplete) {
         archivedCount += 1;
+        if (sectionKey === "completed archive") {
+          const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), project.name);
+          if (archivedTask) {
+            const completedSummary = parseTodoTaskSummary(archivedTask.text, archivedTask.section, now);
+            completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done" });
+          }
+        } else {
+          completedTaskDetails.push({ ...taskSummary, kanbanLane: "Done" });
+        }
         const completedAt = extractArchivedDate(taskText);
         if (completedAt) {
           if (!lastCompletedAt || completedAt > lastCompletedAt) {
@@ -162,6 +177,12 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       if (sectionKey === "later") {
         laterTasks.push(taskSummary.text);
         laterTaskDetails.push(taskSummary);
+      }
+      if (taskSummary.kanbanLane === "Waiting") {
+        waitingTaskDetails.push(taskSummary);
+      }
+      if (taskSummary.kanbanLane === "Parking Lot") {
+        parkingLotTaskDetails.push(taskSummary);
       }
       if (sectionKey === "repeating") {
         dueRepeatingTasks.push(taskSummary.text);
@@ -272,6 +293,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       nowTaskDetails,
       nextTaskDetails,
       laterTaskDetails,
+      waitingTaskDetails,
+      parkingLotTaskDetails,
+      completedTaskDetails,
       dueRepeatingTaskDetails,
       dueSoonTasks,
       overdueTasks,
@@ -714,6 +738,9 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     "### Later",
     "- [ ]",
     "",
+    "### Waiting",
+    "- [ ]",
+    "",
     "### Parking Lot",
     "- Idea:",
     "",
@@ -770,6 +797,9 @@ export function renderProjectNoteTemplate(input: CreateProjectInput, masterTodoP
     "- [ ]",
     "",
     "### Later",
+    "- [ ]",
+    "",
+    "### Waiting",
     "- [ ]",
     "",
     "### Parking Lot",
@@ -842,6 +872,9 @@ export function renderExistingProjectNoteTemplate(project: ExistingProjectDefini
     "- [ ]",
     "",
     "### Later",
+    "- [ ]",
+    "",
+    "### Waiting",
     "- [ ]",
     "",
     "### Parking Lot",
@@ -980,20 +1013,79 @@ export function extractFirstNoteLinkPath(value: string): string | null {
   return match ? match[1] : null;
 }
 
-export function repairMasterHubStructure(content: string, input: {
-  masterTodoPath: string;
-  projectNotesFolder: string;
-}): { content: string; updatedProjects: number; addedMetadata: number; addedSections: number } {
+export function backfillMasterHubTaskIds(content: string): { content: string; addedTaskIds: number } {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
   if (projectRanges.length === 0) {
-    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0 };
+    return { content, addedTaskIds: 0 };
+  }
+
+  const output = [...lines];
+  let addedTaskIds = 0;
+
+  [...projectRanges].reverse().forEach((project) => {
+    const result = ensureTaskIdsInProjectLines(output.slice(project.start, project.end + 1), project.name);
+    if (result.addedTaskIds === 0) {
+      return;
+    }
+
+    output.splice(project.start, project.end - project.start + 1, ...result.lines);
+    addedTaskIds += result.addedTaskIds;
+  });
+
+  return {
+    content: output.join("\n"),
+    addedTaskIds
+  };
+}
+
+export function renderKanbanHub(input: {
+  snapshot: TodoSnapshot;
+  generatedAt: Date;
+  masterTodoPath: string;
+}): string {
+  const activeProjects = input.snapshot.projects.filter((project) => project.projectState !== "someday");
+  const todayCompleted = input.snapshot.projects.reduce((sum, project) => sum + project.completedTaskDetails.length, 0);
+
+  return [
+    "# Kanban Hub",
+    "",
+    `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+    `- Master Task Hub: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
+    `- Project boards: ${activeProjects.length}`,
+    `- Open tracked tasks: ${input.snapshot.totalOpen}`,
+    `- Archived tasks visible to Kanban: ${todayCompleted}`,
+    `- Editing model: Treat this as a generated board view of the Master Task Hub. Refresh it after hub changes until bidirectional sync lands.`,
+    "",
+    "## Summary Block",
+    `- Main pressure: ${input.snapshot.overdueTasks.length} overdue task${input.snapshot.overdueTasks.length === 1 ? "" : "s"} and ${input.snapshot.blockedTasks.length} waiting task${input.snapshot.blockedTasks.length === 1 ? "" : "s"}.`,
+    `- Main renewal: ${input.snapshot.projects.find((project) => project.waitingTaskDetails.length > 0)?.name || "No waiting-heavy project currently stands out."}`,
+    `- Biggest drift risk: ${input.snapshot.staleProjects[0] ? `${input.snapshot.staleProjects[0].name} has been stale for ${input.snapshot.staleProjects[0].staleDays} days.` : "No active project currently meets the stale-project threshold."}`,
+    `- Most important follow-up: ${input.snapshot.projects.find((project) => project.nextAction.trim().length > 0)?.nextAction || "Refresh the Master Task Hub and define the next real action for active work."}`,
+    `- Context links: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
+    "",
+    ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
+    ...(activeProjects.length === 0
+      ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""]
+      : [])
+  ].join("\n");
+}
+
+export function repairMasterHubStructure(content: string, input: {
+  masterTodoPath: string;
+  projectNotesFolder: string;
+}): { content: string; updatedProjects: number; addedMetadata: number; addedSections: number; addedTaskIds: number } {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0, addedTaskIds: 0 };
   }
 
   const output = [...lines];
   let updatedProjects = 0;
   let addedMetadata = 0;
   let addedSections = 0;
+  let addedTaskIds = 0;
 
   [...projectRanges].reverse().forEach((project) => {
     const result = repairMasterHubProjectLines(output.slice(project.start, project.end + 1), {
@@ -1005,6 +1097,7 @@ export function repairMasterHubStructure(content: string, input: {
       updatedProjects += 1;
       addedMetadata += result.addedMetadata;
       addedSections += result.addedSections;
+      addedTaskIds += result.addedTaskIds;
     }
   });
 
@@ -1012,7 +1105,8 @@ export function repairMasterHubStructure(content: string, input: {
     content: output.join("\n"),
     updatedProjects,
     addedMetadata,
-    addedSections
+    addedSections,
+    addedTaskIds
   };
 }
 
@@ -1058,7 +1152,7 @@ export function repairProjectNoteStructure(content: string, input: {
     { heading: "Current Bottleneck", body: ["- Capture the main constraint, ambiguity, or drag factor here."] },
     { heading: "Current Focus", body: ["- Add the current objective here."] },
     { heading: "Repeating Tasks", body: ["- [ ] Weekly review [weekly]"] },
-    { heading: "Priority Lanes", body: ["### Now", "- [ ]", "", "### Next", "- [ ]", "", "### Later", "- [ ]", "", "### Parking Lot", "- Idea:"] },
+    { heading: "Priority Lanes", body: ["### Now", "- [ ]", "", "### Next", "- [ ]", "", "### Later", "- [ ]", "", "### Waiting", "- [ ]", "", "### Parking Lot", "- Idea:"] },
     { heading: "Risks", body: ["- Capture the major failure modes, drift risks, or watch-outs here."] },
     { heading: "Constraints", body: ["- Capture time, energy, dependency, or scope constraints here."] },
     { heading: "Relationships", body: ["- Related projects, dependencies, and blockers."] },
@@ -1095,7 +1189,7 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 
   const output = [...lines];
   const normalizedSection = sectionName.trim();
-  const taskLine = `- [ ] ${taskText.trim()}`;
+  const taskLine = `- [ ] ${ensureTaskIdOnTaskText(taskText.trim(), `${projectName}-${normalizedSection}-${taskText}`)}`;
   let sectionStart = -1;
   let sectionEnd = project.end;
 
@@ -1149,7 +1243,7 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 function repairMasterHubProjectLines(projectLines: string[], input: {
   masterTodoPath: string;
   projectNotesFolder: string;
-}): { content: string; addedMetadata: number; addedSections: number } {
+}): { content: string; addedMetadata: number; addedSections: number; addedTaskIds: number } {
   const lines = [...projectLines];
   const headingLine = lines[0]?.trim() ?? "";
   const projectName = headingLine.replace(/^##\s+/, "").trim();
@@ -1176,6 +1270,7 @@ function repairMasterHubProjectLines(projectLines: string[], input: {
     .filter((heading): heading is string => Boolean(heading))
     .map((heading) => heading.toLowerCase()));
   const sectionsToAdd: Array<{ heading: string; body: string[] }> = [
+    { heading: "Waiting", body: ["- [ ]"] },
     { heading: "Parking Lot", body: ["- Idea:"] },
     { heading: "Risks", body: ["- Capture risks, drift patterns, and failure modes here."] },
     { heading: "Constraints", body: ["- Capture hard limits, dependencies, or health constraints here."] },
@@ -1194,11 +1289,124 @@ function repairMasterHubProjectLines(projectLines: string[], input: {
     addedSections += 1;
   });
 
+  const taskIdResult = ensureTaskIdsInProjectLines(lines, projectName);
+
   return {
-    content: lines.join("\n"),
+    content: taskIdResult.lines.join("\n"),
     addedMetadata: missingMetaLines.length,
-    addedSections
+    addedSections,
+    addedTaskIds: taskIdResult.addedTaskIds
   };
+}
+
+function ensureTaskIdsInProjectLines(projectLines: string[], projectName: string): { lines: string[]; addedTaskIds: number } {
+  const output = [...projectLines];
+  let currentSection = "General";
+  let addedTaskIds = 0;
+
+  output.forEach((line, index) => {
+    const sectionName = getSectionName(line);
+    if (sectionName) {
+      currentSection = sectionName;
+      return;
+    }
+
+    const taskMatch = line.match(CHECKLIST_REGEX);
+    if (!taskMatch) {
+      return;
+    }
+
+    const sectionKey = currentSection.trim().toLowerCase();
+    if (sectionKey === "completed archive" || sectionKey === "reference" || sectionKey === "resources") {
+      return;
+    }
+
+    const taskText = taskMatch[2].trim();
+    if (!taskText) {
+      return;
+    }
+
+    if (extractTaskAnnotation(taskText, TASK_ID_ANNOTATION_KEY)) {
+      return;
+    }
+
+    output[index] = line.replace(CHECKLIST_REGEX, (_match, prefix: string, rawTaskText: string) => `${prefix}${ensureTaskIdOnTaskText(rawTaskText.trim(), `${projectName}-${currentSection}-${rawTaskText}`)}`);
+    addedTaskIds += 1;
+  });
+
+  return { lines: output, addedTaskIds };
+}
+
+function ensureTaskIdOnTaskText(taskText: string, seed: string): string {
+  const trimmed = taskText.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const existingTaskId = extractTaskAnnotation(trimmed, TASK_ID_ANNOTATION_KEY);
+  if (existingTaskId) {
+    return trimmed;
+  }
+
+  return `${trimmed} [${TASK_ID_ANNOTATION_KEY}: ${createTaskId(seed)}]`;
+}
+
+function createTaskId(seed: string): string {
+  const normalizedSeed = seed.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
+  return `${normalizedSeed}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function renderKanbanProjectBoard(project: TodoProjectSummary): string[] {
+  const projectNote = project.noteLinks[0] ? createWikiLink(project.noteLinks[0], project.name) : project.name;
+  const laneTasks = new Map<KanbanLane, TodoTaskSummary[]>(KANBAN_LANE_ORDER.map((lane) => [lane, []]));
+  [...project.nowTaskDetails, ...project.nextTaskDetails, ...project.laterTaskDetails, ...project.waitingTaskDetails, ...project.parkingLotTaskDetails]
+    .forEach((task) => {
+      if (task.kanbanLane) {
+        laneTasks.get(task.kanbanLane as KanbanLane)?.push(task);
+      }
+    });
+  laneTasks.set("Done", project.completedTaskDetails.slice(0, 12));
+
+  return [
+    "<details open>",
+    `<summary>${project.name} • Now ${laneTasks.get("Now")?.length ?? 0} • Next ${laneTasks.get("Next")?.length ?? 0} • Waiting ${laneTasks.get("Waiting")?.length ?? 0} • Done ${laneTasks.get("Done")?.length ?? 0}</summary>`,
+    "",
+    `- Project note: ${projectNote}`,
+    `- Status: ${project.status}`,
+    `- Health: ${project.healthLabel} (${project.healthScore})`,
+    `- Next action: ${project.nextAction || "None recorded."}`,
+    `- Waiting on: ${project.waitingOn || "None"}`,
+    "",
+    ...KANBAN_LANE_ORDER.flatMap((lane) => renderKanbanLane(lane, laneTasks.get(lane) ?? [])),
+    "</details>",
+    ""
+  ];
+}
+
+function renderKanbanLane(lane: KanbanLane, tasks: TodoTaskSummary[]): string[] {
+  return [
+    `### ${lane}`,
+    ...(tasks.length > 0
+      ? tasks.map((task) => renderKanbanTaskLine(task, lane === "Done"))
+      : ["- None"]),
+    ""
+  ];
+}
+
+function renderKanbanTaskLine(task: TodoTaskSummary, checked: boolean): string {
+  const metadata = [
+    task.dueDate ? `due ${task.dueDate}` : "",
+    task.blockedReason ? `blocked ${task.blockedReason}` : "",
+    task.unblockDate ? `unblock ${task.unblockDate}` : "",
+    task.effort ? `effort ${task.effort}` : "",
+    task.energy ? `energy ${task.energy}` : "",
+    task.executionContext ? `context ${task.executionContext}` : "",
+    task.trigger ? `trigger ${task.trigger}` : "",
+    task.minimumStep ? `minimum step ${task.minimumStep}` : "",
+    task.taskId ? `id ${task.taskId}` : ""
+  ].filter((value) => value.length > 0);
+
+  return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}`;
 }
 
 function getProjectBlockMetadataInsertIndex(lines: string[]): number {
@@ -1911,6 +2119,7 @@ function extractTrackedDate(value: string): string | null {
 }
 
 function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
+  const taskId = extractTaskAnnotation(rawText, TASK_ID_ANNOTATION_KEY);
   const dueDate = extractTaskAnnotation(rawText, "due");
   const blockedReason = extractTaskAnnotation(rawText, "blocked");
   const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
@@ -1923,11 +2132,14 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
   const todayKey = formatDateKey(now);
   const isOverdue = Boolean(dueDate && dueDate < todayKey);
   const isDueSoon = Boolean(dueDate && !isOverdue && daysBetween(todayKey, dueDate) <= 3);
+  const isBlocked = Boolean(blockedReason);
 
   return {
+    taskId: taskId ?? "",
     text: text || rawText,
     rawText,
     section,
+    kanbanLane: resolveKanbanLane(section, isBlocked),
     dueDate: dueDate ?? "",
     blockedReason: blockedReason ?? "",
     unblockDate: unblockDate ?? "",
@@ -1936,10 +2148,37 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
     executionContext: executionContext ?? "",
     trigger: trigger ?? "",
     minimumStep: minimumStep ?? "",
-    isBlocked: Boolean(blockedReason),
+    isBlocked,
     isDueSoon,
     isOverdue
   };
+}
+
+function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | "" {
+  if (isBlocked) {
+    return "Waiting";
+  }
+
+  const normalized = section.trim().toLowerCase();
+  if (normalized === "now") {
+    return "Now";
+  }
+  if (normalized === "next" || normalized === "add" || normalized === "fix") {
+    return "Next";
+  }
+  if (normalized === "later") {
+    return "Later";
+  }
+  if (normalized === "waiting") {
+    return "Waiting";
+  }
+  if (normalized === "parking lot") {
+    return "Parking Lot";
+  }
+  if (normalized === "completed archive") {
+    return "Done";
+  }
+  return "";
 }
 
 function extractTaskAnnotation(value: string, key: string): string | null {
@@ -1950,7 +2189,7 @@ function extractTaskAnnotation(value: string, key: string): string | null {
 
 function stripTaskAnnotations(value: string): string {
   return value
-    .replace(/\s*\[(?:due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

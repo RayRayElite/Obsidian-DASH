@@ -74,6 +74,7 @@ import {
 } from "./src/dashboard-logs";
 import {
   archiveCompletedTasks,
+  backfillMasterHubTaskIds,
   createWikiLink,
   extractProjectDefinitionsFromTodo,
   extractRepeatingTasks,
@@ -88,6 +89,7 @@ import {
   repairMasterHubStructure,
   repairProjectNoteStructure,
   reconcileCompletedTasks,
+  renderKanbanHub,
   renderExistingProjectNoteTemplate,
   renderProjectNoteTemplate,
   renderTodoProjectBlock,
@@ -546,6 +548,22 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Repair master task hub and project notes",
       callback: () => {
         void this.repairMasterHubAndProjectNotes(true);
+      }
+    });
+
+    this.addCommand({
+      id: "refresh-kanban-hub",
+      name: "Refresh Kanban Hub",
+      callback: () => {
+        void this.refreshKanbanHub(true);
+      }
+    });
+
+    this.addCommand({
+      id: "repair-kanban-sync-foundations",
+      name: "Repair Kanban foundations and refresh hub",
+      callback: () => {
+        void this.repairKanbanFoundations(true);
       }
     });
 
@@ -5174,11 +5192,50 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (showNotice) {
       const changedHubProjects = repairedHub.updatedProjects;
-      if (changedHubProjects === 0 && repairedNotes === 0) {
+      if (changedHubProjects === 0 && repairedNotes === 0 && repairedHub.addedTaskIds === 0) {
         new Notice("Master task hub and project notes already match the current structure.");
       } else {
-        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"} and ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
+        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"}, ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}, and ${repairedHub.addedTaskIds} task id${repairedHub.addedTaskIds === 1 ? "" : "s"}.`);
       }
+    }
+  }
+
+  async refreshKanbanHub(openAfterGenerate: boolean): Promise<TFile | null> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (openAfterGenerate) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+
+    const originalContent = await this.app.vault.read(todoFile);
+    const backfilled = backfillMasterHubTaskIds(originalContent);
+    let activeContent = originalContent;
+    if (backfilled.content !== originalContent) {
+      await this.app.vault.modify(todoFile, backfilled.content);
+      activeContent = backfilled.content;
+    }
+
+    const snapshot = parseTodoSnapshot(activeContent);
+    const content = renderKanbanHub({
+      snapshot,
+      generatedAt: new Date(),
+      masterTodoPath: this.data.settings.masterTodoPath
+    });
+    const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice(`Kanban Hub refreshed${backfilled.addedTaskIds > 0 ? ` with ${backfilled.addedTaskIds} task id${backfilled.addedTaskIds === 1 ? "" : "s"} added to the Master Task Hub` : ""}.`);
+    }
+    return file;
+  }
+
+  async repairKanbanFoundations(showNotice: boolean): Promise<void> {
+    await this.repairMasterHubAndProjectNotes(false);
+    const file = await this.refreshKanbanHub(false);
+    if (showNotice) {
+      new Notice(file ? "Kanban foundations repaired and Kanban Hub refreshed." : "Kanban repair could not complete because the Master Task Hub is missing.");
     }
   }
 
@@ -8960,6 +9017,9 @@ export default class DailyDashboardPlugin extends Plugin {
     if (prefixMatches(this.data.settings.dailyLogFolder)) {
       return "daily-log";
     }
+    if (normalizedPath === normalizePath(this.data.settings.kanbanHubPath).toLowerCase()) {
+      return "kanban-hub";
+    }
     if (normalizedPath.startsWith("dashboard finance/monthly/")) {
       return "finance-monthly-snapshot";
     }
@@ -9047,6 +9107,8 @@ export default class DailyDashboardPlugin extends Plugin {
       autoTags.push("daily-dashboard/knowledge-base", "daily-dashboard/knowledge-base/asset");
     } else if (prefixMatches(this.data.settings.dailyLogFolder)) {
       autoTags.push("daily-dashboard/daily-log");
+    } else if (normalizedPath === normalizePath(this.data.settings.kanbanHubPath).toLowerCase()) {
+      autoTags.push("daily-dashboard/kanban", "daily-dashboard/kanban/hub");
     } else if (normalizedPath.startsWith("dashboard finance/monthly/")) {
       autoTags.push("daily-dashboard/finance", "daily-dashboard/finance/monthly");
     } else if (normalizedPath.startsWith("dashboard finance/reports/")) {
