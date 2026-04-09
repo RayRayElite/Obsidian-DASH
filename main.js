@@ -12692,6 +12692,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.searchText = "";
     this.dragCard = null;
     this.selectedCardKey = null;
+    this.detailEditState = null;
     this.isRefreshing = false;
     this.plugin = plugin;
   }
@@ -12728,7 +12729,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const viewState = this.plugin.getKanbanViewState();
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
-    const shell = this.contentEl.createDiv({ cls: "dash-kanban-shell" });
+    const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density}` });
     if (!snapshot || snapshot.projects.length === 0) {
       const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state" });
       emptyState.createEl("h2", { text: "DASH Kanban needs a Master Task Hub" });
@@ -12778,9 +12779,32 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
     }
     this.selectedCardKey = null;
+    this.detailEditState = null;
     return null;
   }
+  syncDetailEditState(project, card) {
+    if (this.detailEditState && this.detailEditState.projectName === project.projectName && this.detailEditState.taskId === card.taskId) {
+      return;
+    }
+    this.detailEditState = {
+      projectName: project.projectName,
+      taskId: card.taskId,
+      taskText: card.text,
+      lane: card.targetSection
+    };
+  }
+  getEditableLaneChoices(projectName, currentLane) {
+    const choices = this.plugin.getKanbanLaneOptions(projectName).filter((option) => !option.done).map((option) => ({
+      value: option.targetSection || option.label,
+      label: option.helperText ? `${option.label} (${option.helperText})` : option.label
+    }));
+    if (!choices.some((choice) => choice.value === currentLane) && currentLane.trim()) {
+      choices.unshift({ value: currentLane, label: currentLane });
+    }
+    return choices;
+  }
   renderDetailPanel(parent, project, card) {
+    this.syncDetailEditState(project, card);
     const panel = parent.createDiv({ cls: "dash-kanban-detail-panel" });
     const header = panel.createDiv({ cls: "dash-kanban-detail-header" });
     const copy = header.createDiv({ cls: "dash-kanban-detail-copy" });
@@ -12792,6 +12816,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const closeButton = panel.createEl("button", { cls: "dash-kanban-detail-close", text: "Close" });
     closeButton.addEventListener("click", () => {
       this.selectedCardKey = null;
+      this.detailEditState = null;
       void this.requestRefresh();
     });
     const chips = panel.createDiv({ cls: "dash-kanban-detail-chips" });
@@ -12838,9 +12863,70 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           return;
         }
         this.selectedCardKey = null;
+        this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
       })
     );
+    if (!card.done && this.detailEditState && this.detailEditState.projectName === project.projectName && this.detailEditState.taskId === card.taskId) {
+      const quickEdit = panel.createDiv({ cls: "dash-kanban-inline-editor" });
+      quickEdit.createEl("h3", { text: "Quick edit" });
+      quickEdit.createEl("p", {
+        cls: "dash-kanban-card-note",
+        text: "Rewrite the task or move it to another active lane without leaving the board."
+      });
+      const editorGrid = quickEdit.createDiv({ cls: "dash-kanban-inline-editor-grid" });
+      const textField = editorGrid.createDiv({ cls: "dash-kanban-inline-field is-wide" });
+      textField.createEl("span", { cls: "dash-kanban-detail-label", text: "Task text" });
+      const textArea = textField.createEl("textarea", { cls: "dash-kanban-inline-textarea" });
+      textArea.value = this.detailEditState.taskText;
+      textArea.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.taskText = textArea.value;
+      });
+      const laneField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      laneField.createEl("span", { cls: "dash-kanban-detail-label", text: "Lane" });
+      const laneSelect = laneField.createEl("select", { cls: "dash-kanban-inline-select" });
+      const laneChoices = this.getEditableLaneChoices(project.projectName, this.detailEditState.lane);
+      laneChoices.forEach((choice) => {
+        var _a, _b;
+        laneSelect.add(new Option(choice.label, choice.value, choice.value === ((_a = this.detailEditState) == null ? void 0 : _a.lane), choice.value === ((_b = this.detailEditState) == null ? void 0 : _b.lane)));
+      });
+      laneSelect.value = this.detailEditState.lane;
+      laneSelect.addEventListener("change", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.lane = laneSelect.value;
+      });
+      const editorActions = quickEdit.createDiv({ cls: "dash-kanban-detail-actions" });
+      editorActions.append(
+        this.createHeaderButton("save", "Save changes", () => {
+          const draft = this.detailEditState;
+          if (!draft) {
+            return;
+          }
+          void (async () => {
+            const saved = await this.plugin.editKanbanTask(project.projectName, card.taskId, draft.taskText, draft.lane);
+            if (!saved) {
+              return;
+            }
+            this.detailEditState = null;
+            await this.requestRefresh();
+          })();
+        }),
+        this.createHeaderButton("rotate-ccw", "Reset", () => {
+          this.detailEditState = {
+            projectName: project.projectName,
+            taskId: card.taskId,
+            taskText: card.text,
+            lane: card.targetSection
+          };
+          void this.requestRefresh();
+        })
+      );
+    }
     const links = panel.createDiv({ cls: "dash-kanban-detail-actions" });
     links.append(
       this.createHeaderButton("file-text", "Open hub", () => {
@@ -12896,6 +12982,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
     createSemanticChip(summary, viewState.focusFilter === "all" ? "All work" : viewState.focusFilter === "attention" ? "Attention filter" : viewState.focusFilter === "blocked" ? "Blocked filter" : "Due filter", "state");
+    createSemanticChip(summary, viewState.density === "compact" ? "Compact density" : "Comfortable density", "neutral");
     createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
@@ -12920,6 +13007,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         var _a;
         const targetProject = snapshot.selectedProjectName || ((_a = snapshot.projects[0]) == null ? void 0 : _a.projectName) || "";
         void this.plugin.openDashKanbanBoardSettings(targetProject);
+      }),
+      this.createHeaderButton("database-zap", "Cleanup registry", () => {
+        void this.plugin.pruneStaleKanbanRegistryEntries(true);
       })
     );
     const filterRow = controls.createDiv({ cls: "dash-kanban-filter-row" });
@@ -12972,6 +13062,15 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }),
       this.createToggleButton(`Due ${filterCounts.due}`, viewState.focusFilter === "due", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "due" });
+      })
+    );
+    const densityRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
+    densityRow.append(
+      this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
+        await this.plugin.updateKanbanViewState({ density: "comfortable" });
+      }),
+      this.createToggleButton("Compact", viewState.density === "compact", async () => {
+        await this.plugin.updateKanbanViewState({ density: "compact" });
       })
     );
   }
@@ -13141,6 +13240,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     cardEl.draggable = card.taskId.trim().length > 0;
     cardEl.addEventListener("click", () => {
       this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+      this.detailEditState = null;
       void this.requestRefresh();
     });
     cardEl.addEventListener("dragstart", (event) => {
@@ -13204,6 +13304,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         if (((_a2 = this.selectedCardKey) == null ? void 0 : _a2.projectName) === project.projectName && ((_b2 = this.selectedCardKey) == null ? void 0 : _b2.taskId) === card.taskId) {
           this.selectedCardKey = null;
         }
+        this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
       }),
       this.createCardActionButton("plus-square", "Add sibling card", (event) => {
@@ -13503,7 +13604,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           mode: "all-projects",
           selectedProjectName: "",
           showDone: true,
-          focusFilter: "all"
+          focusFilter: "all",
+          density: "comfortable"
         },
         lastCleanupPreviewAt: ""
       },
@@ -13927,6 +14029,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Repair Kanban links",
       callback: () => {
         void this.generateKanbanRepairReport(true);
+      }
+    });
+    this.addCommand({
+      id: "prune-stale-kanban-registry-entries",
+      name: "Prune stale Kanban registry entries",
+      callback: () => {
+        void this.pruneStaleKanbanRegistryEntries(true);
       }
     });
     this.addCommand({
@@ -15511,7 +15620,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...previousState,
       ...nextState
     });
-    if (merged.mode === previousState.mode && merged.selectedProjectName === previousState.selectedProjectName && merged.showDone === previousState.showDone && merged.focusFilter === previousState.focusFilter) {
+    if (merged.mode === previousState.mode && merged.selectedProjectName === previousState.selectedProjectName && merged.showDone === previousState.showDone && merged.focusFilter === previousState.focusFilter && merged.density === previousState.density) {
       return;
     }
     this.data.kanbanState.viewState = merged;
@@ -15715,6 +15824,31 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     this.refreshDashboardViews();
     return true;
+  }
+  async pruneStaleKanbanRegistryEntries(showNotice) {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (showNotice) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return 0;
+    }
+    const staleTaskIds = this.collectKanbanRepairDiagnostics(snapshot).orphanedRegistryTaskIds;
+    if (staleTaskIds.length === 0) {
+      if (showNotice) {
+        new import_obsidian4.Notice("No stale Kanban registry entries were found.");
+      }
+      return 0;
+    }
+    staleTaskIds.forEach((taskId) => {
+      delete this.data.kanbanState.taskRegistry[taskId];
+    });
+    await this.savePluginData();
+    this.refreshDashboardViews();
+    if (showNotice) {
+      new import_obsidian4.Notice(`Pruned ${staleTaskIds.length} stale Kanban registry entr${staleTaskIds.length === 1 ? "y" : "ies"}.`);
+    }
+    return staleTaskIds.length;
   }
   async saveKanbanBoardConfiguration(input) {
     const projectName = input.projectName.trim();
@@ -18545,7 +18679,8 @@ ${context}`, resolvedModel);
       mode: (value == null ? void 0 : value.mode) === "single-project" ? "single-project" : "all-projects",
       selectedProjectName: typeof (value == null ? void 0 : value.selectedProjectName) === "string" ? value.selectedProjectName.trim() : "",
       showDone: (value == null ? void 0 : value.showDone) !== false,
-      focusFilter: (value == null ? void 0 : value.focusFilter) === "attention" || (value == null ? void 0 : value.focusFilter) === "blocked" || (value == null ? void 0 : value.focusFilter) === "due" ? value.focusFilter : "all"
+      focusFilter: (value == null ? void 0 : value.focusFilter) === "attention" || (value == null ? void 0 : value.focusFilter) === "blocked" || (value == null ? void 0 : value.focusFilter) === "due" ? value.focusFilter : "all",
+      density: (value == null ? void 0 : value.density) === "compact" ? "compact" : "comfortable"
     };
   }
   normalizeKanbanState(state) {
@@ -18696,6 +18831,7 @@ ${context}`, resolvedModel);
   collectKanbanRepairDiagnostics(snapshot) {
     const malformedBoardConfigs = [];
     const orphanedRegistryEntries = [];
+    const orphanedRegistryTaskIds = [];
     const projectNames = new Set(snapshot.projects.map((project) => project.name.toLowerCase()));
     const activeTaskKeys = /* @__PURE__ */ new Set();
     snapshot.projects.forEach((project) => {
@@ -18728,15 +18864,18 @@ ${context}`, resolvedModel);
     Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
       if (!projectNames.has(entry.projectName.trim().toLowerCase())) {
         orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        orphanedRegistryTaskIds.push(entry.taskId);
         return;
       }
       if (!activeTaskKeys.has(entry.taskId.trim())) {
         orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        orphanedRegistryTaskIds.push(entry.taskId);
       }
     });
     return {
       malformedBoardConfigs,
-      orphanedRegistryEntries
+      orphanedRegistryEntries,
+      orphanedRegistryTaskIds: [...new Set(orphanedRegistryTaskIds.filter((taskId) => taskId.trim().length > 0))]
     };
   }
   renderKanbanRepairReport(snapshot, generatedAt) {

@@ -37,6 +37,7 @@ import {
   type DashKanbanCard,
   type DashKanbanProjectBoard,
   type DashKanbanWorkspaceSnapshot,
+  type DashboardKanbanDensity,
   type DashboardKanbanFocusFilter,
   type DashboardKanbanViewMode,
   type ActivitySessionKind,
@@ -8668,6 +8669,7 @@ export class DashKanbanView extends ItemView {
   private searchText = "";
   private dragCard: { projectName: string; taskId: string } | null = null;
   private selectedCardKey: { projectName: string; taskId: string } | null = null;
+  private detailEditState: { projectName: string; taskId: string; taskText: string; lane: string } | null = null;
   private isRefreshing = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: DailyDashboardPlugin) {
@@ -8716,7 +8718,7 @@ export class DashKanbanView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
 
-    const shell = this.contentEl.createDiv({ cls: "dash-kanban-shell" });
+    const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density}` });
     if (!snapshot || snapshot.projects.length === 0) {
       const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state" });
       emptyState.createEl("h2", { text: "DASH Kanban needs a Master Task Hub" });
@@ -8771,10 +8773,42 @@ export class DashKanbanView extends ItemView {
     }
 
     this.selectedCardKey = null;
+    this.detailEditState = null;
     return null;
   }
 
+  private syncDetailEditState(project: DashKanbanProjectBoard, card: DashKanbanCard): void {
+    if (this.detailEditState
+      && this.detailEditState.projectName === project.projectName
+      && this.detailEditState.taskId === card.taskId) {
+      return;
+    }
+
+    this.detailEditState = {
+      projectName: project.projectName,
+      taskId: card.taskId,
+      taskText: card.text,
+      lane: card.targetSection
+    };
+  }
+
+  private getEditableLaneChoices(projectName: string, currentLane: string): Array<{ value: string; label: string }> {
+    const choices = this.plugin.getKanbanLaneOptions(projectName)
+      .filter((option) => !option.done)
+      .map((option) => ({
+        value: option.targetSection || option.label,
+        label: option.helperText ? `${option.label} (${option.helperText})` : option.label
+      }));
+
+    if (!choices.some((choice) => choice.value === currentLane) && currentLane.trim()) {
+      choices.unshift({ value: currentLane, label: currentLane });
+    }
+
+    return choices;
+  }
+
   private renderDetailPanel(parent: HTMLElement, project: DashKanbanProjectBoard, card: DashKanbanCard): void {
+    this.syncDetailEditState(project, card);
     const panel = parent.createDiv({ cls: "dash-kanban-detail-panel" });
     const header = panel.createDiv({ cls: "dash-kanban-detail-header" });
     const copy = header.createDiv({ cls: "dash-kanban-detail-copy" });
@@ -8787,6 +8821,7 @@ export class DashKanbanView extends ItemView {
     const closeButton = panel.createEl("button", { cls: "dash-kanban-detail-close", text: "Close" });
     closeButton.addEventListener("click", () => {
       this.selectedCardKey = null;
+      this.detailEditState = null;
       void this.requestRefresh();
     });
 
@@ -8836,9 +8871,73 @@ export class DashKanbanView extends ItemView {
           return;
         }
         this.selectedCardKey = null;
+        this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
       })
     );
+
+    if (!card.done && this.detailEditState && this.detailEditState.projectName === project.projectName && this.detailEditState.taskId === card.taskId) {
+      const quickEdit = panel.createDiv({ cls: "dash-kanban-inline-editor" });
+      quickEdit.createEl("h3", { text: "Quick edit" });
+      quickEdit.createEl("p", {
+        cls: "dash-kanban-card-note",
+        text: "Rewrite the task or move it to another active lane without leaving the board."
+      });
+
+      const editorGrid = quickEdit.createDiv({ cls: "dash-kanban-inline-editor-grid" });
+      const textField = editorGrid.createDiv({ cls: "dash-kanban-inline-field is-wide" });
+      textField.createEl("span", { cls: "dash-kanban-detail-label", text: "Task text" });
+      const textArea = textField.createEl("textarea", { cls: "dash-kanban-inline-textarea" });
+      textArea.value = this.detailEditState.taskText;
+      textArea.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.taskText = textArea.value;
+      });
+
+      const laneField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      laneField.createEl("span", { cls: "dash-kanban-detail-label", text: "Lane" });
+      const laneSelect = laneField.createEl("select", { cls: "dash-kanban-inline-select" });
+      const laneChoices = this.getEditableLaneChoices(project.projectName, this.detailEditState.lane);
+      laneChoices.forEach((choice) => {
+        laneSelect.add(new Option(choice.label, choice.value, choice.value === this.detailEditState?.lane, choice.value === this.detailEditState?.lane));
+      });
+      laneSelect.value = this.detailEditState.lane;
+      laneSelect.addEventListener("change", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.lane = laneSelect.value;
+      });
+
+      const editorActions = quickEdit.createDiv({ cls: "dash-kanban-detail-actions" });
+      editorActions.append(
+        this.createHeaderButton("save", "Save changes", () => {
+          const draft = this.detailEditState;
+          if (!draft) {
+            return;
+          }
+          void (async () => {
+            const saved = await this.plugin.editKanbanTask(project.projectName, card.taskId, draft.taskText, draft.lane);
+            if (!saved) {
+              return;
+            }
+            this.detailEditState = null;
+            await this.requestRefresh();
+          })();
+        }),
+        this.createHeaderButton("rotate-ccw", "Reset", () => {
+          this.detailEditState = {
+            projectName: project.projectName,
+            taskId: card.taskId,
+            taskText: card.text,
+            lane: card.targetSection
+          };
+          void this.requestRefresh();
+        })
+      );
+    }
 
     const links = panel.createDiv({ cls: "dash-kanban-detail-actions" });
     links.append(
@@ -8883,7 +8982,7 @@ export class DashKanbanView extends ItemView {
     );
   }
 
-  private renderHeader(parent: HTMLElement, snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean; focusFilter: DashboardKanbanFocusFilter }): void {
+  private renderHeader(parent: HTMLElement, snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean; focusFilter: DashboardKanbanFocusFilter; density: DashboardKanbanDensity }): void {
     const header = parent.createDiv({ cls: "dash-kanban-header" });
     const searchQuery = this.searchText.trim().toLowerCase();
     const filterCounts = this.getFocusFilterCounts(this.getSearchedProjects(this.getScopedProjects(snapshot, viewState), searchQuery));
@@ -8907,6 +9006,7 @@ export class DashKanbanView extends ItemView {
         : viewState.focusFilter === "blocked"
           ? "Blocked filter"
           : "Due filter", "state");
+    createSemanticChip(summary, viewState.density === "compact" ? "Compact density" : "Comfortable density", "neutral");
     createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
@@ -8929,6 +9029,9 @@ export class DashKanbanView extends ItemView {
       this.createHeaderButton("sliders-horizontal", "Board settings", () => {
         const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
         void this.plugin.openDashKanbanBoardSettings(targetProject);
+      }),
+      this.createHeaderButton("database-zap", "Cleanup registry", () => {
+        void this.plugin.pruneStaleKanbanRegistryEntries(true);
       })
     );
 
@@ -8986,6 +9089,16 @@ export class DashKanbanView extends ItemView {
       }),
       this.createToggleButton(`Due ${filterCounts.due}`, viewState.focusFilter === "due", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "due" });
+      })
+    );
+
+    const densityRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
+    densityRow.append(
+      this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
+        await this.plugin.updateKanbanViewState({ density: "comfortable" });
+      }),
+      this.createToggleButton("Compact", viewState.density === "compact", async () => {
+        await this.plugin.updateKanbanViewState({ density: "compact" });
       })
     );
   }
@@ -9183,6 +9296,7 @@ export class DashKanbanView extends ItemView {
     cardEl.draggable = card.taskId.trim().length > 0;
     cardEl.addEventListener("click", () => {
       this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+      this.detailEditState = null;
       void this.requestRefresh();
     });
     cardEl.addEventListener("dragstart", (event) => {
@@ -9247,6 +9361,7 @@ export class DashKanbanView extends ItemView {
         if (this.selectedCardKey?.projectName === project.projectName && this.selectedCardKey?.taskId === card.taskId) {
           this.selectedCardKey = null;
         }
+        this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
       }),
       this.createCardActionButton("plus-square", "Add sibling card", (event) => {

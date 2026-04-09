@@ -232,7 +232,8 @@ export default class DailyDashboardPlugin extends Plugin {
         mode: "all-projects",
         selectedProjectName: "",
         showDone: true,
-        focusFilter: "all"
+        focusFilter: "all",
+        density: "comfortable"
       },
       lastCleanupPreviewAt: ""
     },
@@ -716,6 +717,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Repair Kanban links",
       callback: () => {
         void this.generateKanbanRepairReport(true);
+      }
+    });
+
+    this.addCommand({
+      id: "prune-stale-kanban-registry-entries",
+      name: "Prune stale Kanban registry entries",
+      callback: () => {
+        void this.pruneStaleKanbanRegistryEntries(true);
       }
     });
 
@@ -2663,7 +2672,8 @@ export default class DailyDashboardPlugin extends Plugin {
     if (merged.mode === previousState.mode
       && merged.selectedProjectName === previousState.selectedProjectName
       && merged.showDone === previousState.showDone
-      && merged.focusFilter === previousState.focusFilter) {
+      && merged.focusFilter === previousState.focusFilter
+      && merged.density === previousState.density) {
       return;
     }
 
@@ -2900,6 +2910,36 @@ export default class DailyDashboardPlugin extends Plugin {
     }
     this.refreshDashboardViews();
     return true;
+  }
+
+  async pruneStaleKanbanRegistryEntries(showNotice: boolean): Promise<number> {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (showNotice) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return 0;
+    }
+
+    const staleTaskIds = this.collectKanbanRepairDiagnostics(snapshot).orphanedRegistryTaskIds;
+    if (staleTaskIds.length === 0) {
+      if (showNotice) {
+        new Notice("No stale Kanban registry entries were found.");
+      }
+      return 0;
+    }
+
+    staleTaskIds.forEach((taskId) => {
+      delete this.data.kanbanState.taskRegistry[taskId];
+    });
+    await this.savePluginData();
+    this.refreshDashboardViews();
+
+    if (showNotice) {
+      new Notice(`Pruned ${staleTaskIds.length} stale Kanban registry entr${staleTaskIds.length === 1 ? "y" : "ies"}.`);
+    }
+
+    return staleTaskIds.length;
   }
 
   async saveKanbanBoardConfiguration(input: {
@@ -6319,7 +6359,8 @@ export default class DailyDashboardPlugin extends Plugin {
         || value?.focusFilter === "blocked"
         || value?.focusFilter === "due"
         ? value.focusFilter
-        : "all"
+        : "all",
+      density: value?.density === "compact" ? "compact" : "comfortable"
     };
   }
 
@@ -6523,9 +6564,11 @@ export default class DailyDashboardPlugin extends Plugin {
   private collectKanbanRepairDiagnostics(snapshot: TodoSnapshot): {
     malformedBoardConfigs: string[];
     orphanedRegistryEntries: string[];
+    orphanedRegistryTaskIds: string[];
   } {
     const malformedBoardConfigs: string[] = [];
     const orphanedRegistryEntries: string[] = [];
+    const orphanedRegistryTaskIds: string[] = [];
     const projectNames = new Set(snapshot.projects.map((project) => project.name.toLowerCase()));
     const activeTaskKeys = new Set<string>();
 
@@ -6563,17 +6606,20 @@ export default class DailyDashboardPlugin extends Plugin {
     Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
       if (!projectNames.has(entry.projectName.trim().toLowerCase())) {
         orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        orphanedRegistryTaskIds.push(entry.taskId);
         return;
       }
 
       if (!activeTaskKeys.has(entry.taskId.trim())) {
         orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        orphanedRegistryTaskIds.push(entry.taskId);
       }
     });
 
     return {
       malformedBoardConfigs,
-      orphanedRegistryEntries
+      orphanedRegistryEntries,
+      orphanedRegistryTaskIds: [...new Set(orphanedRegistryTaskIds.filter((taskId) => taskId.trim().length > 0))]
     };
   }
 

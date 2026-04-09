@@ -304,6 +304,57 @@
   gap: 8px;
 }
 
+.dash-kanban-inline-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-accent) 12%, var(--background-modifier-border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+}
+
+.dash-kanban-inline-editor h3 {
+  margin: 0;
+}
+
+.dash-kanban-inline-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(180px, 0.8fr);
+  gap: 12px;
+}
+
+.dash-kanban-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dash-kanban-inline-field.is-wide {
+  min-width: 0;
+}
+
+.dash-kanban-inline-textarea,
+.dash-kanban-inline-select {
+  width: 100%;
+  border: 1px solid var(--dash-kanban-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  color: var(--text-normal);
+}
+
+.dash-kanban-inline-textarea {
+  min-height: 88px;
+  padding: 12px 14px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.dash-kanban-inline-select {
+  min-height: 42px;
+  padding: 8px 12px;
+}
+
 .dash-kanban-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -493,6 +544,51 @@
   font-size: 0.8rem;
 }
 
+.dash-kanban-shell.is-compact {
+  gap: 16px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-header {
+  gap: 14px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-project-board,
+.dash-kanban-shell.is-compact .dash-kanban-detail-panel,
+.dash-kanban-shell.is-compact .dash-kanban-hero,
+.dash-kanban-shell.is-compact .dash-kanban-controls,
+.dash-kanban-shell.is-compact .dash-kanban-repair-banner {
+  padding: 16px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lanes {
+  gap: 10px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lane {
+  min-height: 220px;
+  padding: 11px;
+  gap: 10px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-card-stack {
+  gap: 8px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-card {
+  gap: 8px;
+  padding: 11px;
+  border-radius: 16px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-card-title {
+  font-size: 0.95rem;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-card-note,
+.dash-kanban-shell.is-compact .dash-kanban-project-focus {
+  font-size: 0.84rem;
+}
+
 .dash-kanban-empty-state {
   padding: 28px;
   text-align: center;
@@ -535,6 +631,10 @@
   .dash-kanban-filter-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .dash-kanban-inline-editor-grid {
+    grid-template-columns: 1fr;
   }
 
   .dash-kanban-project-select,
