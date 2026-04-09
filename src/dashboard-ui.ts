@@ -134,7 +134,9 @@ function getKanbanPriorityTone(priority: string): string {
 }
 
 function formatKanbanDueDateDraft(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 12);
+  const cleaned = value.toUpperCase().replace(/[^0-9AP]/g, "");
+  const meridiemLetter = cleaned.match(/[AP]/)?.[0] ?? "";
+  const digits = cleaned.replace(/[AP]/g, "").slice(0, 12);
   const month = digits.slice(0, 2);
   const day = digits.slice(2, 4);
   const year = digits.slice(4, 8);
@@ -153,6 +155,9 @@ function formatKanbanDueDateDraft(value: string): string {
   }
   if (digits.length > 10) {
     formatted += `:${minute}`;
+  }
+  if (meridiemLetter && digits.length >= 12) {
+    formatted += ` ${meridiemLetter}M`;
   }
   return formatted;
 }
@@ -9189,6 +9194,22 @@ export class DashKanbanView extends ItemView {
     parent.appendChild(pill);
   }
 
+  private appendCardLabel(parent: HTMLElement, label: string, value: string, kind: "priority" | "due" | "effort" | "done"): void {
+    if (!value.trim()) {
+      return;
+    }
+    const pill = document.createElement("span");
+    pill.className = "dash-kanban-card-label";
+    pill.dataset.kind = kind;
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = label;
+    pill.appendChild(labelEl);
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    pill.appendChild(valueEl);
+    parent.appendChild(pill);
+  }
+
   private closeInlineCardEditor(): void {
     this.selectedCardKey = null;
     this.detailEditState = null;
@@ -10567,6 +10588,25 @@ export class DashKanbanView extends ItemView {
         content.appendChild(note);
       }
 
+      const labelRow = document.createElement("div");
+      labelRow.className = "dash-kanban-card-label-row";
+      if (card.priority) {
+        this.appendCardLabel(labelRow, "Priority", card.priority.trim(), "priority");
+      }
+      if (card.done && card.completedAt) {
+        this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
+      } else {
+        if (card.dueDate) {
+          this.appendCardLabel(labelRow, "Due", card.dueDate, "due");
+        }
+        if (card.effort) {
+          this.appendCardLabel(labelRow, "Effort", card.effort, "effort");
+        }
+      }
+      if (labelRow.childElementCount > 0) {
+        content.appendChild(labelRow);
+      }
+
       cardEl.appendChild(content);
     }
 
@@ -10591,20 +10631,6 @@ export class DashKanbanView extends ItemView {
     const footerInfo = document.createElement("div");
     footerInfo.className = "dash-kanban-card-footer-info";
     footer.appendChild(footerInfo);
-    this.appendCardFooterPill(footerInfo, "Lane", card.sectionName);
-    if (card.priority) {
-      this.appendCardFooterPill(footerInfo, "Priority", card.priority.trim(), "priority");
-    }
-    if (card.done && card.completedAt) {
-      this.appendCardFooterPill(footerInfo, "Finished", card.completedAt, "done");
-    } else {
-      if (card.dueDate) {
-        this.appendCardFooterPill(footerInfo, "Due", card.dueDate, "due");
-      }
-      if (card.effort) {
-        this.appendCardFooterPill(footerInfo, "Effort", card.effort, "effort");
-      }
-    }
     if (card.assignee) {
       this.appendCardFooterPill(footerInfo, "Owner", `@${card.assignee}`);
     }
@@ -10696,9 +10722,9 @@ export class DashKanbanView extends ItemView {
       const input = document.createElement("input");
       input.className = "dash-kanban-popover-input";
       input.type = "text";
-      input.placeholder = "mm/dd/yyyy HH:MM";
+      input.placeholder = "MM/DD/YYYY HH:MM AM";
       input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : card.dueDate;
-      input.inputMode = "numeric";
+      input.inputMode = "text";
       picker.appendChild(input);
       input.addEventListener("input", () => {
         const formatted = formatKanbanDueDateDraft(input.value);

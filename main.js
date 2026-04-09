@@ -6028,7 +6028,10 @@ function getKanbanPriorityTone(priority) {
   return normalized === "urgent" || normalized === "high" || normalized === "medium" || normalized === "low" ? normalized : "none";
 }
 function formatKanbanDueDateDraft(value) {
-  const digits = value.replace(/\D/g, "").slice(0, 12);
+  var _a, _b;
+  const cleaned = value.toUpperCase().replace(/[^0-9AP]/g, "");
+  const meridiemLetter = (_b = (_a = cleaned.match(/[AP]/)) == null ? void 0 : _a[0]) != null ? _b : "";
+  const digits = cleaned.replace(/[AP]/g, "").slice(0, 12);
   const month = digits.slice(0, 2);
   const day = digits.slice(2, 4);
   const year = digits.slice(4, 8);
@@ -6046,6 +6049,9 @@ function formatKanbanDueDateDraft(value) {
   }
   if (digits.length > 10) {
     formatted += `:${minute}`;
+  }
+  if (meridiemLetter && digits.length >= 12) {
+    formatted += ` ${meridiemLetter}M`;
   }
   return formatted;
 }
@@ -13228,6 +13234,21 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     pill.appendChild(valueEl);
     parent.appendChild(pill);
   }
+  appendCardLabel(parent, label, value, kind) {
+    if (!value.trim()) {
+      return;
+    }
+    const pill = document.createElement("span");
+    pill.className = "dash-kanban-card-label";
+    pill.dataset.kind = kind;
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = label;
+    pill.appendChild(labelEl);
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    pill.appendChild(valueEl);
+    parent.appendChild(pill);
+  }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
     this.detailEditState = null;
@@ -14459,6 +14480,24 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         note.textContent = card.notePreview;
         content.appendChild(note);
       }
+      const labelRow = document.createElement("div");
+      labelRow.className = "dash-kanban-card-label-row";
+      if (card.priority) {
+        this.appendCardLabel(labelRow, "Priority", card.priority.trim(), "priority");
+      }
+      if (card.done && card.completedAt) {
+        this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
+      } else {
+        if (card.dueDate) {
+          this.appendCardLabel(labelRow, "Due", card.dueDate, "due");
+        }
+        if (card.effort) {
+          this.appendCardLabel(labelRow, "Effort", card.effort, "effort");
+        }
+      }
+      if (labelRow.childElementCount > 0) {
+        content.appendChild(labelRow);
+      }
       cardEl.appendChild(content);
     }
     const metaRow = document.createElement("div");
@@ -14481,20 +14520,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const footerInfo = document.createElement("div");
     footerInfo.className = "dash-kanban-card-footer-info";
     footer.appendChild(footerInfo);
-    this.appendCardFooterPill(footerInfo, "Lane", card.sectionName);
-    if (card.priority) {
-      this.appendCardFooterPill(footerInfo, "Priority", card.priority.trim(), "priority");
-    }
-    if (card.done && card.completedAt) {
-      this.appendCardFooterPill(footerInfo, "Finished", card.completedAt, "done");
-    } else {
-      if (card.dueDate) {
-        this.appendCardFooterPill(footerInfo, "Due", card.dueDate, "due");
-      }
-      if (card.effort) {
-        this.appendCardFooterPill(footerInfo, "Effort", card.effort, "effort");
-      }
-    }
     if (card.assignee) {
       this.appendCardFooterPill(footerInfo, "Owner", `@${card.assignee}`);
     }
@@ -14581,9 +14606,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       const input = document.createElement("input");
       input.className = "dash-kanban-popover-input";
       input.type = "text";
-      input.placeholder = "mm/dd/yyyy HH:MM";
+      input.placeholder = "MM/DD/YYYY HH:MM AM";
       input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : card.dueDate;
-      input.inputMode = "numeric";
+      input.inputMode = "text";
       picker.appendChild(input);
       input.addEventListener("input", () => {
         const formatted = formatKanbanDueDateDraft(input.value);
