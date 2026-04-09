@@ -75,7 +75,6 @@ import {
 } from "./src/dashboard-logs";
 import {
   archiveCompletedTasks,
-  backfillMasterHubTaskIds,
   buildKanbanBoardNotePath,
   createWikiLink,
   extractProjectDefinitionsFromTodo,
@@ -83,6 +82,7 @@ import {
   findProjectRanges,
   findTodoCategoryRanges,
   getIsoWeekRange,
+  inspectMasterHubKanbanMigration,
   insertProjectIntoTodo,
   insertTaskIntoProjectSection,
   isRepeatingTaskDue,
@@ -161,6 +161,9 @@ import {
   type GamificationSummary,
   type HabitDefinition,
   type IntakeEntry,
+  type KanbanMigrationPreview,
+  type KanbanState,
+  type KanbanTaskRegistryEntry,
   type LogicalDayInsights,
   type LogicalDayPrompt,
   type NoteIndexEntry,
@@ -197,6 +200,10 @@ export default class DailyDashboardPlugin extends Plugin {
     financeData: {
       budgetCategories: DEFAULT_BUDGET_CATEGORIES.map((category) => ({ ...category })),
       subscriptions: []
+    },
+    kanbanState: {
+      taskRegistry: {},
+      lastCleanupPreviewAt: ""
     },
     dayState: {
       activeDate: formatDateKey(new Date()),
@@ -625,6 +632,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Repair Kanban foundations and refresh hub",
       callback: () => {
         void this.repairKanbanFoundations(true);
+      }
+    });
+
+    this.addCommand({
+      id: "preview-kanban-cleanup-migration",
+      name: "Preview Kanban cleanup migration",
+      callback: () => {
+        void this.previewKanbanCleanupMigration(true);
       }
     });
 
@@ -5261,7 +5276,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const originalHubContent = await this.app.vault.read(todoFile);
     const repairedHub = repairMasterHubStructure(originalHubContent, {
       masterTodoPath: this.data.settings.masterTodoPath,
-      projectNotesFolder: this.data.settings.projectNotesFolder
+      projectNotesFolder: this.data.settings.projectNotesFolder,
+      includeKanbanTaskIds: false
     });
 
     let activeHubContent = originalHubContent;
@@ -5305,34 +5321,209 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (showNotice) {
       const changedHubProjects = repairedHub.updatedProjects;
-      if (changedHubProjects === 0 && repairedNotes === 0 && repairedHub.addedTaskIds === 0) {
+      if (changedHubProjects === 0 && repairedNotes === 0) {
         new Notice("Master task hub and project notes already match the current structure.");
       } else {
-        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"}, ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}, and ${repairedHub.addedTaskIds} task id${repairedHub.addedTaskIds === 1 ? "" : "s"}.`);
+        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"} and ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
       }
     }
   }
 
-  private async getKanbanSnapshotSource(): Promise<{ todoFile: TFile; snapshot: TodoSnapshot; addedTaskIds: number } | null> {
+  private async getKanbanSnapshotSource(): Promise<{ todoFile: TFile; snapshot: TodoSnapshot; preview: KanbanMigrationPreview } | null> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       return null;
     }
 
-    const originalContent = await this.app.vault.read(todoFile);
-    const backfilled = backfillMasterHubTaskIds(originalContent);
-    let activeContent = originalContent;
-    if (backfilled.content !== originalContent) {
-      this.markKanbanManagedWrite(todoFile.path);
-      await this.app.vault.modify(todoFile, backfilled.content);
-      activeContent = backfilled.content;
-    }
+    const activeContent = await this.app.vault.read(todoFile);
 
     return {
       todoFile,
       snapshot: parseTodoSnapshot(activeContent),
-      addedTaskIds: backfilled.addedTaskIds
+      preview: inspectMasterHubKanbanMigration(activeContent)
     };
+  }
+
+  private getKanbanCleanupPreviewPath(): string {
+    const normalizedHubPath = normalizePath(this.data.settings.kanbanHubPath);
+    const lastSlash = normalizedHubPath.lastIndexOf("/");
+    const folder = lastSlash >= 0 ? normalizedHubPath.slice(0, lastSlash) : "";
+    return folder ? `${folder}/Kanban Cleanup Preview.md` : "Kanban Cleanup Preview.md";
+  }
+
+  private normalizeKanbanState(state: Partial<KanbanState> | null | undefined): KanbanState {
+    const taskRegistry: Record<string, KanbanTaskRegistryEntry> = {};
+    if (state?.taskRegistry && typeof state.taskRegistry === "object") {
+      Object.entries(state.taskRegistry).forEach(([taskId, entry]) => {
+        if (!entry || typeof entry !== "object") {
+          return;
+        }
+
+        const normalizedTaskId = typeof entry.taskId === "string" && entry.taskId.trim().length > 0 ? entry.taskId.trim() : taskId.trim();
+        if (!normalizedTaskId) {
+          return;
+        }
+
+        taskRegistry[normalizedTaskId] = {
+          taskId: normalizedTaskId,
+          projectName: typeof entry.projectName === "string" ? entry.projectName.trim() : "",
+          sectionName: typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General",
+          taskText: typeof entry.taskText === "string" ? entry.taskText.trim() : "",
+          checked: Boolean(entry.checked),
+          source: "visible-task-id",
+          updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
+        };
+      });
+    }
+
+    return {
+      taskRegistry,
+      lastCleanupPreviewAt: typeof state?.lastCleanupPreviewAt === "string" ? state.lastCleanupPreviewAt.trim() : ""
+    };
+  }
+
+  private seedKanbanTaskRegistryFromPreview(preview: KanbanMigrationPreview, updatedAt: string): number {
+    let changed = 0;
+
+    preview.tasksWithVisibleId.forEach((task) => {
+      if (!task.taskId) {
+        return;
+      }
+
+      const existing = this.data.kanbanState.taskRegistry[task.taskId];
+      const nextEntry: KanbanTaskRegistryEntry = {
+        taskId: task.taskId,
+        projectName: task.projectName,
+        sectionName: task.sectionName,
+        taskText: task.taskText,
+        checked: task.checked,
+        source: "visible-task-id",
+        updatedAt
+      };
+
+      if (!existing
+        || existing.projectName !== nextEntry.projectName
+        || existing.sectionName !== nextEntry.sectionName
+        || existing.taskText !== nextEntry.taskText
+        || existing.checked !== nextEntry.checked
+        || existing.updatedAt !== nextEntry.updatedAt) {
+        this.data.kanbanState.taskRegistry[task.taskId] = nextEntry;
+        changed += 1;
+      }
+    });
+
+    if (this.data.kanbanState.lastCleanupPreviewAt !== updatedAt) {
+      this.data.kanbanState.lastCleanupPreviewAt = updatedAt;
+      changed += 1;
+    }
+
+    return changed;
+  }
+
+  private renderKanbanCleanupPreview(input: {
+    generatedAt: Date;
+    preview: KanbanMigrationPreview;
+    boardNotePaths: string[];
+  }): string {
+    const previewPath = this.getKanbanCleanupPreviewPath();
+    const visibleByProject = new Map<string, number>();
+    const missingByProject = new Map<string, number>();
+
+    input.preview.tasksWithVisibleId.forEach((task) => {
+      visibleByProject.set(task.projectName, (visibleByProject.get(task.projectName) ?? 0) + 1);
+    });
+    input.preview.tasksMissingVisibleId.forEach((task) => {
+      missingByProject.set(task.projectName, (missingByProject.get(task.projectName) ?? 0) + 1);
+    });
+
+    const visibleProjectLines = [...visibleByProject.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([projectName, count]) => `- ${projectName}: ${count} task${count === 1 ? "" : "s"}`);
+    const missingProjectLines = [...missingByProject.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([projectName, count]) => `- ${projectName}: ${count} task${count === 1 ? "" : "s"}`);
+    const missingTaskLines = input.preview.tasksMissingVisibleId.length > 0
+      ? input.preview.tasksMissingVisibleId.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (Master Task Hub line ${task.lineNumber})`)
+      : ["- No open tasks are currently missing legacy visible sync ids."];
+    const boardNoteLines = input.boardNotePaths.length > 0
+      ? input.boardNotePaths.map((path) => `- [[${stripMarkdownExtension(path)}|${path.split("/").pop()?.replace(/\.md$/i, "") || path}]]`)
+      : ["- No generated project board notes currently exist."];
+
+    return [
+      "# Kanban Cleanup Preview",
+      "",
+      `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      `- Preview note: [[${stripMarkdownExtension(previewPath)}|Kanban Cleanup Preview]]`,
+      `- Open tracked tasks inspected: ${input.preview.openTasks}`,
+      `- Legacy visible task ids still present: ${input.preview.tasksWithVisibleId.length}`,
+      `- Open tasks missing legacy visible ids: ${input.preview.tasksMissingVisibleId.length}`,
+      `- Hidden task-registry entries seeded: ${Object.keys(this.data.kanbanState.taskRegistry).length}`,
+      `- Compatibility mode: ${this.data.settings.kanbanPluginCompatibilityMode ? "On" : "Off"}`,
+      `- Existing generated board notes: ${input.boardNotePaths.length}`,
+      "",
+      "## What Changed",
+      "- Refreshing Kanban artifacts no longer rewrites the Master Task Hub just to inject visible task ids.",
+      "- Structural repair no longer adds visible task ids to existing hub tasks.",
+      "- This preview seeds the hidden Kanban task registry from currently visible ids so later migration work has a stable starting point.",
+      "",
+      "## Coverage By Project",
+      "### Tasks With Legacy Visible Ids",
+      ...(visibleProjectLines.length > 0 ? visibleProjectLines : ["- No active legacy visible ids were found."]),
+      "",
+      "### Tasks Missing Legacy Visible Ids",
+      ...(missingProjectLines.length > 0 ? missingProjectLines : ["- No open tasks are currently missing legacy visible ids."]),
+      "",
+      "## Missing-Id Task List",
+      ...missingTaskLines,
+      ...(input.preview.tasksMissingVisibleId.length > 80 ? ["", `- ${input.preview.tasksMissingVisibleId.length - 80} additional task${input.preview.tasksMissingVisibleId.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : []),
+      "",
+      "## Existing Kanban Artifacts",
+      `- Main Kanban Hub path: [[${stripMarkdownExtension(this.data.settings.kanbanHubPath)}|Kanban Hub]]`,
+      ...boardNoteLines,
+      "",
+      "## Immediate Implication",
+      "- Generated boards can still sync legacy-id-backed tasks today.",
+      "- Tasks without legacy visible ids can still appear in generated Kanban artifacts, but old bidirectional sync paths will not be reliable for them until the hidden registry migration slice is complete.",
+      "- Use this note as the non-destructive checkpoint before any visible task-id cleanup work.",
+      ""
+    ].join("\n");
+  }
+
+  async previewKanbanCleanupMigration(openAfterGenerate: boolean): Promise<TFile | null> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (openAfterGenerate) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+
+    const masterContent = await this.app.vault.read(todoFile);
+    const generatedAt = new Date();
+    const preview = inspectMasterHubKanbanMigration(masterContent);
+    const normalizedBoardFolder = normalizePath(this.data.settings.kanbanBoardNotesFolder);
+    const boardNotePaths = this.app.vault.getMarkdownFiles()
+      .map((file) => normalizePath(file.path))
+      .filter((path) => normalizedBoardFolder.length > 0 && path.startsWith(`${normalizedBoardFolder}/`));
+    const seededAt = formatDateTimeKey(generatedAt);
+    const seededChanges = this.seedKanbanTaskRegistryFromPreview(preview, seededAt);
+    if (seededChanges > 0) {
+      await this.savePluginData();
+    }
+
+    const file = await this.upsertMarkdownFile(this.getKanbanCleanupPreviewPath(), this.renderKanbanCleanupPreview({
+      generatedAt,
+      preview,
+      boardNotePaths
+    }));
+
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice(`Kanban cleanup preview generated with ${preview.tasksMissingVisibleId.length} open task${preview.tasksMissingVisibleId.length === 1 ? "" : "s"} still missing legacy visible sync ids.`);
+    }
+
+    return file;
   }
 
   async refreshKanbanHub(openAfterGenerate: boolean): Promise<TFile | null> {
@@ -5354,7 +5545,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);
     if (openAfterGenerate) {
       await this.openFile(file);
-      new Notice(`Kanban Hub refreshed${source.addedTaskIds > 0 ? ` with ${source.addedTaskIds} task id${source.addedTaskIds === 1 ? "" : "s"} added to the Master Task Hub` : ""}.`);
+      new Notice(`Kanban Hub refreshed${source.preview.tasksMissingVisibleId.length > 0 ? `; ${source.preview.tasksMissingVisibleId.length} open task${source.preview.tasksMissingVisibleId.length === 1 ? " still lacks" : "s still lack"} legacy visible sync ids. Run Preview Kanban cleanup migration to inspect them.` : "."}`);
     }
     return file;
   }
@@ -5386,7 +5577,7 @@ export default class DailyDashboardPlugin extends Plugin {
       if (files[0]) {
         await this.openFile(files[0]);
       }
-      new Notice(`Refreshed ${files.length} Kanban board note${files.length === 1 ? "" : "s"}.`);
+      new Notice(`Refreshed ${files.length} Kanban board note${files.length === 1 ? "" : "s"}${source.preview.tasksMissingVisibleId.length > 0 ? `; ${source.preview.tasksMissingVisibleId.length} open task${source.preview.tasksMissingVisibleId.length === 1 ? " remains" : "s remain"} outside legacy visible sync coverage.` : "."}`);
     }
     return files;
   }
@@ -7721,6 +7912,7 @@ export default class DailyDashboardPlugin extends Plugin {
       entries,
       calendarEvents,
       financeData: this.normalizeFinanceData(loaded?.financeData),
+      kanbanState: this.normalizeKanbanState(loaded?.kanbanState),
       dayState,
       noteIndex: normalizeNoteIndexCache(loaded?.noteIndex),
       uiState: this.normalizeUiState(loaded?.uiState)
@@ -8766,6 +8958,7 @@ export default class DailyDashboardPlugin extends Plugin {
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
       financeData: this.data.financeData,
+      kanbanState: this.data.kanbanState,
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex,
       uiState: this.data.uiState

@@ -605,9 +605,25 @@ export interface DashboardPluginData {
   entries: Record<string, DailyEntry>;
   calendarEvents: CalendarEventEntry[];
   financeData: FinanceData;
+  kanbanState: KanbanState;
   dayState: DayLifecycleState;
   noteIndex: NoteIndexCache;
   uiState: DashboardUiState;
+}
+
+export interface KanbanTaskRegistryEntry {
+  taskId: string;
+  projectName: string;
+  sectionName: string;
+  taskText: string;
+  checked: boolean;
+  source: "visible-task-id";
+  updatedAt: string;
+}
+
+export interface KanbanState {
+  taskRegistry: Record<string, KanbanTaskRegistryEntry>;
+  lastCleanupPreviewAt: string;
 }
 
 export interface NoteIndexChunk {
@@ -701,6 +717,23 @@ export interface TodoSnapshot {
   dueSoonTasks: Array<{ project: string; task: TodoTaskSummary }>;
   overdueTasks: Array<{ project: string; task: TodoTaskSummary }>;
   blockedTasks: Array<{ project: string; task: TodoTaskSummary }>;
+}
+
+export interface KanbanMigrationTaskPreview {
+  projectName: string;
+  sectionName: string;
+  taskText: string;
+  taskId: string;
+  checked: boolean;
+  lineNumber: number;
+}
+
+export interface KanbanMigrationPreview {
+  totalTasks: number;
+  openTasks: number;
+  archivedTasks: number;
+  tasksWithVisibleId: KanbanMigrationTaskPreview[];
+  tasksMissingVisibleId: KanbanMigrationTaskPreview[];
 }
 
 export type CleanupSuggestionKind =
