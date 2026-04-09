@@ -1014,13 +1014,17 @@
 }
 
 .dash-kanban-card-top {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 10px;
   padding-right: 4px;
 }
 
 .dash-kanban-card-tones,
 .dash-kanban-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -1095,63 +1099,12 @@
   color: var(--text-normal);
 }
 
-.dash-kanban-card-label-row .dash-kanban-card-label[data-kind="priority"] {
-  flex: 1 1 100%;
-  justify-content: space-between;
-  min-height: 34px;
-  padding: 0 12px;
-}
-
 .dash-kanban-card-label strong {
   font-size: 0.66rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
-
-.dash-kanban-card-label[data-kind="priority"] {
-  border-width: 2px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.dash-kanban-card-label[data-kind="priority"] strong {
-  color: inherit;
-}
-
-.dash-kanban-card-label[data-kind="priority"] span {
-  font-weight: 800;
-  font-size: 0.84rem;
-}
-
-.dash-kanban-card-label[data-kind="priority"][data-priority="urgent"],
-.dash-kanban-card-label[data-kind="priority"] {
-  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 36%, var(--dash-kanban-border));
-}
-
-.dash-kanban-card[data-priority="urgent"] .dash-kanban-card-label[data-kind="priority"] {
-  border-color: #ff7769;
-  background: linear-gradient(135deg, color-mix(in srgb, #ff7769 30%, var(--dash-kanban-card-surface-strong)), color-mix(in srgb, #ff9b8f 16%, var(--dash-kanban-card-surface)));
-  color: #ffd2ca;
-}
-
-.dash-kanban-card[data-priority="high"] .dash-kanban-card-label[data-kind="priority"] {
-  border-color: #ffb061;
-  background: linear-gradient(135deg, color-mix(in srgb, #ffb061 28%, var(--dash-kanban-card-surface-strong)), color-mix(in srgb, #ffd089 14%, var(--dash-kanban-card-surface)));
-  color: #ffe0b8;
-}
-
-.dash-kanban-card[data-priority="medium"] .dash-kanban-card-label[data-kind="priority"] {
-  border-color: #77b7ff;
-  background: linear-gradient(135deg, color-mix(in srgb, #77b7ff 28%, var(--dash-kanban-card-surface-strong)), color-mix(in srgb, #afd8ff 14%, var(--dash-kanban-card-surface)));
-  color: #d8ebff;
-}
-
-.dash-kanban-card[data-priority="low"] .dash-kanban-card-label[data-kind="priority"] {
-  border-color: #74c98a;
-  background: linear-gradient(135deg, color-mix(in srgb, #74c98a 28%, var(--dash-kanban-card-surface-strong)), color-mix(in srgb, #a9e2b8 14%, var(--dash-kanban-card-surface)));
-  color: #d9f7df;
-}
-
 .dash-kanban-card-label[data-kind="due"] {
   border-color: color-mix(in srgb, #77b7ff 32%, var(--dash-kanban-border));
 }

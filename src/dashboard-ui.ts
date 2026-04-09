@@ -10533,6 +10533,9 @@ export class DashKanbanView extends ItemView {
     } else if (card.isDueSoon) {
       createSemanticChip(toneRow, "Due soon", "capture");
     }
+    if (resolvedDueDate && !card.done) {
+      createSemanticChip(toneRow, `Due ${resolvedDueDate}`, card.isOverdue ? "alert" : card.isDueSoon ? "capture" : "neutral");
+    }
     if (card.isBlocked) {
       createSemanticChip(toneRow, "Blocked", "alert");
     }
@@ -10624,15 +10627,9 @@ export class DashKanbanView extends ItemView {
 
       const labelRow = document.createElement("div");
       labelRow.className = "dash-kanban-card-label-row";
-      if (resolvedPriority) {
-        this.appendCardLabel(labelRow, "Priority", resolvedPriority.trim(), "priority");
-      }
       if (card.done && card.completedAt) {
         this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
       } else {
-        if (resolvedDueDate) {
-          this.appendCardLabel(labelRow, "Due", resolvedDueDate, "due");
-        }
         if (resolvedEffort) {
           this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
         }

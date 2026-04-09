@@ -3615,6 +3615,26 @@ function extractTrackedDate(value: string): string | null {
   return match ? match[1] : null;
 }
 
+function normalizeTodoDueDateKey(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const isoMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+
+  const slashMatch = trimmed.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!slashMatch) {
+    return null;
+  }
+
+  const [, month, day, year] = slashMatch;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
   const taskId = extractTaskAnnotation(rawText, TASK_ID_ANNOTATION_KEY);
   const priority = extractTaskAnnotation(rawText, "priority");
@@ -3628,8 +3648,9 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
   const minimumStep = extractTaskAnnotation(rawText, "minimum-step") || extractTaskAnnotation(rawText, "minimum step") || extractTaskAnnotation(rawText, "min-step") || extractTaskAnnotation(rawText, "min step");
   const text = stripTaskAnnotations(rawText).trim();
   const todayKey = formatDateKey(now);
-  const isOverdue = Boolean(dueDate && dueDate < todayKey);
-  const isDueSoon = Boolean(dueDate && !isOverdue && daysBetween(todayKey, dueDate) <= 3);
+  const dueDateKey = dueDate ? normalizeTodoDueDateKey(dueDate) : null;
+  const isOverdue = Boolean(dueDateKey && dueDateKey < todayKey);
+  const isDueSoon = Boolean(dueDateKey && !isOverdue && daysBetween(todayKey, dueDateKey) <= 3);
   const isBlocked = Boolean(blockedReason);
 
   return {

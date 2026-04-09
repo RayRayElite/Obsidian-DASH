@@ -5892,6 +5892,22 @@ function extractTrackedDate(value) {
   const match = value.match(/(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : null;
 }
+function normalizeTodoDueDateKey(value) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const isoMatch = trimmed.match(/(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+  const slashMatch = trimmed.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!slashMatch) {
+    return null;
+  }
+  const [, month, day, year] = slashMatch;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
 function parseTodoTaskSummary(rawText, section, now) {
   const taskId = extractTaskAnnotation(rawText, TASK_ID_ANNOTATION_KEY);
   const priority = extractTaskAnnotation(rawText, "priority");
@@ -5905,8 +5921,9 @@ function parseTodoTaskSummary(rawText, section, now) {
   const minimumStep = extractTaskAnnotation(rawText, "minimum-step") || extractTaskAnnotation(rawText, "minimum step") || extractTaskAnnotation(rawText, "min-step") || extractTaskAnnotation(rawText, "min step");
   const text = stripTaskAnnotations(rawText).trim();
   const todayKey = formatDateKey(now);
-  const isOverdue = Boolean(dueDate && dueDate < todayKey);
-  const isDueSoon = Boolean(dueDate && !isOverdue && daysBetween(todayKey, dueDate) <= 3);
+  const dueDateKey = dueDate ? normalizeTodoDueDateKey(dueDate) : null;
+  const isOverdue = Boolean(dueDateKey && dueDateKey < todayKey);
+  const isDueSoon = Boolean(dueDateKey && !isOverdue && daysBetween(todayKey, dueDateKey) <= 3);
   const isBlocked = Boolean(blockedReason);
   return {
     taskId: taskId != null ? taskId : "",
@@ -14483,6 +14500,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     } else if (card.isDueSoon) {
       createSemanticChip(toneRow, "Due soon", "capture");
     }
+    if (resolvedDueDate && !card.done) {
+      createSemanticChip(toneRow, `Due ${resolvedDueDate}`, card.isOverdue ? "alert" : card.isDueSoon ? "capture" : "neutral");
+    }
     if (card.isBlocked) {
       createSemanticChip(toneRow, "Blocked", "alert");
     }
@@ -14566,15 +14586,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       const labelRow = document.createElement("div");
       labelRow.className = "dash-kanban-card-label-row";
-      if (resolvedPriority) {
-        this.appendCardLabel(labelRow, "Priority", resolvedPriority.trim(), "priority");
-      }
       if (card.done && card.completedAt) {
         this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
       } else {
-        if (resolvedDueDate) {
-          this.appendCardLabel(labelRow, "Due", resolvedDueDate, "due");
-        }
         if (resolvedEffort) {
           this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
         }
