@@ -3998,9 +3998,10 @@ function repairBrokenKanbanMasterHubLines(content) {
 function renderKanbanHub(input) {
   var _a, _b;
   const activeProjects = input.snapshot.projects.filter((project) => project.projectState !== "someday");
+  const visibleProjects = activeProjects.filter((project) => resolveKanbanBoardConfiguration(project, input.boardTemplates, input.boardConfigurations).showInHub);
   const todayCompleted = input.snapshot.projects.reduce((sum, project) => sum + project.completedTaskDetails.length, 0);
   if (input.compatibilityMode) {
-    const laneCards = buildKanbanHubLaneCards(activeProjects);
+    const laneCards = buildKanbanHubLaneCards(visibleProjects);
     return [
       "---",
       "kanban-plugin: board",
@@ -4020,7 +4021,7 @@ function renderKanbanHub(input) {
     "",
     `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
     `- Master Task Hub: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
-    `- Project boards: ${activeProjects.length}`,
+    `- Project boards: ${visibleProjects.length}`,
     `- Open tracked tasks: ${input.snapshot.totalOpen}`,
     `- Archived tasks visible to Kanban: ${todayCompleted}`,
     `- Editing model: Treat this as a generated board view of the Master Task Hub. Lane moves can be synced back manually; refresh it after direct hub edits or repair flows.`,
@@ -4033,10 +4034,10 @@ function renderKanbanHub(input) {
     `- Context links: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
     "",
     ...renderKanbanBoardSummary(input.snapshot),
-    ...renderKanbanBoardFilters(activeProjects),
+    ...renderKanbanBoardFilters(visibleProjects),
     ...renderKanbanReviewHelpers(input.snapshot),
-    ...activeProjects.flatMap((project) => renderKanbanProjectBoard(project)),
-    ...activeProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
+    ...visibleProjects.flatMap((project) => renderKanbanProjectBoard(project, input.boardTemplates, input.boardConfigurations)),
+    ...visibleProjects.length === 0 ? ["## Empty State", "- No active or incubating projects were found in the Master Task Hub.", ""] : []
   ].join("\n");
 }
 function buildKanbanHubLaneCards(projects) {
@@ -4095,11 +4096,13 @@ function renderKanbanProjectBoardNote(input) {
       })
     ].join("\n");
   }
+  const resolvedBoard = resolveKanbanBoardConfiguration(input.project, input.boardTemplates, input.boardConfigurations);
   const projectNote = input.project.noteLinks[0] ? createWikiLink(input.project.noteLinks[0], input.project.name) : input.project.name;
   const summaryMetrics = [
     `- Generated: ${formatDateTimeKey(input.generatedAt)}`,
     `- Master Task Hub: [[${stripMarkdownExtension(input.masterTodoPath)}|Master Task Hub]]`,
     `- Project note: ${projectNote}`,
+    `- Board template: ${resolvedBoard.template.name}`,
     `- Status: ${input.project.status}`,
     `- Health: ${input.project.healthLabel} (${input.project.healthScore})`,
     `- Next action: ${input.project.nextAction || "None recorded."}`,
@@ -4110,10 +4113,7 @@ function renderKanbanProjectBoardNote(input) {
     "",
     ...summaryMetrics,
     "",
-    ...KANBAN_LANE_ORDER.flatMap((lane) => {
-      var _a;
-      return renderKanbanLane(lane, (_a = laneTasks.get(lane)) != null ? _a : [], { headingLevel: 2 });
-    })
+    ...renderNativeKanbanProjectSections(input.project, resolvedBoard, { headingLevel: 2 })
   ].join("\n");
 }
 function syncKanbanHubToMasterHub(input) {
@@ -4490,18 +4490,24 @@ function createTaskId(seed) {
   const normalizedSeed = seed.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
   return `${normalizedSeed}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
-function renderKanbanProjectBoard(project) {
-  var _a, _b, _c, _d, _e, _f, _g, _h;
+function renderKanbanProjectBoard(project, boardTemplates, boardConfigurations) {
   const projectNote = project.noteLinks[0] ? createWikiLink(project.noteLinks[0], project.name) : project.name;
-  const laneTasks = buildKanbanLaneTaskMap(project);
+  const resolvedBoard = resolveKanbanBoardConfiguration(project, boardTemplates, boardConfigurations);
+  const laneEntries = buildNativeKanbanLaneEntries(project, resolvedBoard.laneDefinitions);
   const summaryMetrics = [
     `${project.name}`,
-    `Now ${(_b = (_a = laneTasks.get("Now")) == null ? void 0 : _a.length) != null ? _b : 0}`,
-    `Next ${(_d = (_c = laneTasks.get("Next")) == null ? void 0 : _c.length) != null ? _d : 0}`,
-    `Waiting ${(_f = (_e = laneTasks.get("Waiting")) == null ? void 0 : _e.length) != null ? _f : 0}`,
-    `Done ${(_h = (_g = laneTasks.get("Done")) == null ? void 0 : _g.length) != null ? _h : 0}`,
+    `Template ${resolvedBoard.template.name}`,
+    `Open ${project.openCount}`,
+    ...laneEntries.map((entry) => `${entry.label} ${entry.tasks.length}`).slice(0, 4),
     ...project.blockedTasks.length > 0 ? [`Blocked ${project.blockedTasks.length}`] : [],
     ...project.staleDays !== null && project.staleDays >= 7 ? [`Stale ${project.staleDays}d`] : []
+  ];
+  const contextLines = [
+    project.focus.trim() ? `> Focus: ${project.focus.trim()}` : "> Focus: No explicit focus recorded.",
+    project.projectSummary.trim() ? `> Summary: ${project.projectSummary.trim()}` : "> Summary: No project summary recorded.",
+    project.nextAction.trim() ? `> Next action: ${project.nextAction.trim()}` : "> Next action: No next action recorded.",
+    project.waitingOn.trim() ? `> Waiting on: ${project.waitingOn.trim()}` : "> Waiting on: None",
+    `> Template: ${resolvedBoard.template.name}`
   ];
   return [
     `## ${project.name}`,
@@ -4512,15 +4518,95 @@ function renderKanbanProjectBoard(project) {
     `- Project note: ${projectNote}`,
     `- Status: ${project.status}`,
     `- Health: ${project.healthLabel} (${project.healthScore})`,
-    `- Next action: ${project.nextAction || "None recorded."}`,
-    `- Waiting on: ${project.waitingOn || "None"}`,
+    `- Lane layout: ${resolvedBoard.laneDefinitions.map((lane) => lane.label).join(" | ")}`,
     "",
-    ...KANBAN_LANE_ORDER.flatMap((lane) => {
-      var _a2;
-      return renderKanbanLane(lane, (_a2 = laneTasks.get(lane)) != null ? _a2 : []);
-    }),
+    "> [!info]- Project Context",
+    ...contextLines,
+    "",
+    "> [!summary]- Board Strip",
+    ...laneEntries.map((entry) => `> ${entry.label}: ${entry.tasks.length} task${entry.tasks.length === 1 ? "" : "s"}${entry.lane.helperText ? ` | ${entry.lane.helperText}` : ""}`),
+    "",
+    ...renderNativeKanbanProjectSections(project, resolvedBoard),
     "</details>",
     ""
+  ];
+}
+function resolveKanbanBoardConfiguration(project, boardTemplates = {}, boardConfigurations = {}) {
+  var _a, _b, _c;
+  const configuration = (_a = boardConfigurations[project.name]) != null ? _a : {
+    projectName: project.name,
+    templateId: "execution-default",
+    showInHub: project.projectState !== "someday",
+    laneDefinitions: [],
+    updatedAt: ""
+  };
+  const template = (_c = (_b = boardTemplates[configuration.templateId]) != null ? _b : Object.values(boardTemplates)[0]) != null ? _c : {
+    templateId: "execution-default",
+    name: "Execution Default",
+    description: "Default DASH execution board",
+    laneDefinitions: buildFallbackExecutionLaneDefinitions(),
+    builtIn: true,
+    updatedAt: ""
+  };
+  const laneDefinitions = configuration.laneDefinitions.length > 0 ? configuration.laneDefinitions : template.laneDefinitions;
+  return {
+    template,
+    configuration,
+    laneDefinitions,
+    showInHub: configuration.showInHub !== false
+  };
+}
+function renderNativeKanbanProjectSections(project, resolvedBoard, options) {
+  const laneEntries = buildNativeKanbanLaneEntries(project, resolvedBoard.laneDefinitions);
+  return laneEntries.flatMap((entry) => renderNativeKanbanLane(entry.lane, entry.tasks, options));
+}
+function buildNativeKanbanLaneEntries(project, laneDefinitions) {
+  const allTasks = [
+    ...project.nowTaskDetails,
+    ...project.nextTaskDetails,
+    ...project.laterTaskDetails,
+    ...project.waitingTaskDetails,
+    ...project.parkingLotTaskDetails,
+    ...project.completedTaskDetails
+  ];
+  return laneDefinitions.map((lane) => ({
+    lane,
+    label: lane.label,
+    tasks: allTasks.filter((task) => doesKanbanLaneDefinitionMatchTask(lane, task))
+  }));
+}
+function doesKanbanLaneDefinitionMatchTask(lane, task) {
+  if (lane.done) {
+    return task.kanbanLane === "Done" || task.section.trim().toLowerCase() === "completed archive";
+  }
+  if (lane.ruleType === "custom" && lane.mappedSections.length === 0) {
+    return false;
+  }
+  const normalizedTaskSection = normalizeLegacyKanbanSectionName(task.section);
+  const normalizedTaskLane = task.kanbanLane ? task.kanbanLane.trim().toLowerCase() : "";
+  return lane.mappedSections.some((section) => {
+    const normalizedSection = normalizeLegacyKanbanSectionName(section);
+    return normalizedSection === normalizedTaskSection || normalizedSection === normalizedTaskLane;
+  });
+}
+function renderNativeKanbanLane(lane, tasks, options) {
+  const headingPrefix = (options == null ? void 0 : options.headingLevel) === 2 ? "##" : "###";
+  const laneHeader = lane.helperText.trim().length > 0 ? `${headingPrefix} ${lane.label} (${lane.helperText.trim()})` : `${headingPrefix} ${lane.label}`;
+  const emptyLine = lane.ruleType === "custom" && lane.mappedSections.length === 0 ? "- No hub mapping yet. This lane is reserved for a future custom workflow state." : "- None";
+  return [
+    laneHeader,
+    ...tasks.length > 0 ? tasks.map((task) => renderKanbanTaskLine(task, lane.done)) : [emptyLine],
+    ""
+  ];
+}
+function buildFallbackExecutionLaneDefinitions() {
+  return [
+    { laneKey: "now", label: "Now", helperText: "Current execution", ruleType: "hub-section", mappedSections: ["Now"], done: false },
+    { laneKey: "next", label: "Next", helperText: "Queued next actions", ruleType: "hub-section", mappedSections: ["Next", "Add", "Fix"], done: false },
+    { laneKey: "later", label: "Later", helperText: "Deferred but active", ruleType: "hub-section", mappedSections: ["Later"], done: false },
+    { laneKey: "waiting", label: "Waiting", helperText: "Dependencies or unblockers", ruleType: "hub-section", mappedSections: ["Waiting"], done: false },
+    { laneKey: "parking-lot", label: "Parking Lot", helperText: "Ideas and parked work", ruleType: "hub-section", mappedSections: ["Parking Lot"], done: false },
+    { laneKey: "done", label: "Done", helperText: "Recently completed", ruleType: "completion-state", mappedSections: ["Done", "Completed Archive"], done: true }
   ];
 }
 function buildKanbanLaneTaskMap(project) {
@@ -16351,7 +16437,8 @@ ${context}`, resolvedModel);
     }
     const content = await this.app.vault.read(todoFile);
     const snapshot = parseTodoSnapshot(content);
-    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(/* @__PURE__ */ new Date()));
+    const updatedAt = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt) + this.ensureKanbanBoardModelState(snapshot, updatedAt);
     if (changed > 0) {
       await this.savePluginData();
     }
@@ -16746,7 +16833,8 @@ ${context}`, resolvedModel);
     }
     const activeContent = await this.app.vault.read(todoFile);
     const snapshot = parseTodoSnapshot(activeContent);
-    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(/* @__PURE__ */ new Date()));
+    const updatedAt = formatDateTimeKey(/* @__PURE__ */ new Date());
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt) + this.ensureKanbanBoardModelState(snapshot, updatedAt);
     if (changed > 0) {
       await this.savePluginData();
     }
@@ -16841,6 +16929,115 @@ ${context}`, resolvedModel);
   createKanbanHiddenTaskId(seed) {
     const normalizedSeed = seed.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
     return `${normalizedSeed}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  ensureKanbanBoardModelState(snapshot, updatedAt) {
+    let changed = 0;
+    const builtInTemplates = this.getBuiltInKanbanBoardTemplates(updatedAt);
+    Object.entries(builtInTemplates).forEach(([templateId, template]) => {
+      const existing = this.data.kanbanState.boardTemplates[templateId];
+      const sameLaneShape = existing && JSON.stringify(existing.laneDefinitions) === JSON.stringify(template.laneDefinitions);
+      if (!existing || existing.name !== template.name || existing.description !== template.description || existing.builtIn !== template.builtIn || !sameLaneShape) {
+        this.data.kanbanState.boardTemplates[templateId] = template;
+        changed += 1;
+      }
+    });
+    snapshot.projects.forEach((project) => {
+      const existing = this.data.kanbanState.boardConfigurations[project.name];
+      if (existing) {
+        return;
+      }
+      this.data.kanbanState.boardConfigurations[project.name] = {
+        projectName: project.name,
+        templateId: this.inferKanbanBoardTemplateId(project),
+        showInHub: project.projectState !== "someday",
+        laneDefinitions: [],
+        updatedAt
+      };
+      changed += 1;
+    });
+    return changed;
+  }
+  getBuiltInKanbanBoardTemplates(updatedAt) {
+    const createLane = (laneKey, label, helperText, ruleType, mappedSections, done) => ({
+      laneKey,
+      label,
+      helperText,
+      ruleType,
+      mappedSections,
+      done
+    });
+    return {
+      "execution-default": {
+        templateId: "execution-default",
+        name: "Execution Default",
+        description: "Classic personal execution flow for active projects.",
+        laneDefinitions: [
+          createLane("now", "Now", "Current execution", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "bug-triage": {
+        templateId: "bug-triage",
+        name: "Bug Triage",
+        description: "Maintenance-oriented board vocabulary for fixes and verification.",
+        laneDefinitions: [
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "creative-pipeline": {
+        templateId: "creative-pipeline",
+        name: "Creative Pipeline",
+        description: "Idea-to-finish flow for assets, content, and polish work.",
+        laneDefinitions: [
+          createLane("ideas", "Ideas", "Loose concepts and captures", "hub-section", ["Parking Lot"], false),
+          createLane("drafting", "Drafting", "Active concept shaping", "hub-section", ["Next"], false),
+          createLane("building", "Building", "Current production work", "hub-section", ["Now"], false),
+          createLane("polish", "Polish", "Blocked on review or final pass", "hub-section", ["Waiting"], false),
+          createLane("archive", "Published", "Completed outputs", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "research-publishing": {
+        templateId: "research-publishing",
+        name: "Research / Publishing",
+        description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
+        laneDefinitions: [
+          createLane("backlog", "Backlog", "Queued research topics", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      }
+    };
+  }
+  inferKanbanBoardTemplateId(project) {
+    const haystack = [project.name, project.categoryName, project.status, project.projectSummary, project.focus].join(" ").toLowerCase();
+    if (/(bug|fix|patch|maintenance|qa|verify|defect)/.test(haystack)) {
+      return "bug-triage";
+    }
+    if (/(art|asset|creative|design|music|level|animation|visual)/.test(haystack)) {
+      return "creative-pipeline";
+    }
+    if (/(research|docs|documentation|wiki|article|guide|writing|publish|content)/.test(haystack)) {
+      return "research-publishing";
+    }
+    return "execution-default";
   }
   getKanbanCleanupPreviewPath() {
     const normalizedHubPath = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath);
@@ -17239,7 +17436,9 @@ ${context}`, resolvedModel);
       snapshot: source.snapshot,
       generatedAt: /* @__PURE__ */ new Date(),
       masterTodoPath: this.data.settings.masterTodoPath,
-      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
+      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
     this.markKanbanManagedWrite(this.data.settings.kanbanHubPath);
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);
@@ -17265,7 +17464,9 @@ ${context}`, resolvedModel);
         project,
         generatedAt: /* @__PURE__ */ new Date(),
         masterTodoPath: this.data.settings.masterTodoPath,
-        compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
+        compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode,
+        boardTemplates: this.data.kanbanState.boardTemplates,
+        boardConfigurations: this.data.kanbanState.boardConfigurations
       });
       this.markKanbanManagedWrite(path);
       files.push(await this.upsertMarkdownFile(path, content));

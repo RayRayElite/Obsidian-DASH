@@ -4920,7 +4920,9 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const content = await this.app.vault.read(todoFile);
     const snapshot = parseTodoSnapshot(content);
-    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(new Date()));
+    const updatedAt = formatDateTimeKey(new Date());
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt)
+      + this.ensureKanbanBoardModelState(snapshot, updatedAt);
     if (changed > 0) {
       await this.savePluginData();
     }
@@ -5392,7 +5394,9 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const activeContent = await this.app.vault.read(todoFile);
     const snapshot = parseTodoSnapshot(activeContent);
-    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(new Date()));
+    const updatedAt = formatDateTimeKey(new Date());
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt)
+      + this.ensureKanbanBoardModelState(snapshot, updatedAt);
     if (changed > 0) {
       await this.savePluginData();
     }
@@ -5515,6 +5519,135 @@ export default class DailyDashboardPlugin extends Plugin {
   private createKanbanHiddenTaskId(seed: string): string {
     const normalizedSeed = seed.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
     return `${normalizedSeed}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private ensureKanbanBoardModelState(snapshot: TodoSnapshot, updatedAt: string): number {
+    let changed = 0;
+    const builtInTemplates = this.getBuiltInKanbanBoardTemplates(updatedAt);
+
+    Object.entries(builtInTemplates).forEach(([templateId, template]) => {
+      const existing = this.data.kanbanState.boardTemplates[templateId];
+      const sameLaneShape = existing
+        && JSON.stringify(existing.laneDefinitions) === JSON.stringify(template.laneDefinitions);
+
+      if (!existing
+        || existing.name !== template.name
+        || existing.description !== template.description
+        || existing.builtIn !== template.builtIn
+        || !sameLaneShape) {
+        this.data.kanbanState.boardTemplates[templateId] = template;
+        changed += 1;
+      }
+    });
+
+    snapshot.projects.forEach((project) => {
+      const existing = this.data.kanbanState.boardConfigurations[project.name];
+      if (existing) {
+        return;
+      }
+
+      this.data.kanbanState.boardConfigurations[project.name] = {
+        projectName: project.name,
+        templateId: this.inferKanbanBoardTemplateId(project),
+        showInHub: project.projectState !== "someday",
+        laneDefinitions: [],
+        updatedAt
+      };
+      changed += 1;
+    });
+
+    return changed;
+  }
+
+  private getBuiltInKanbanBoardTemplates(updatedAt: string): Record<string, KanbanBoardTemplate> {
+    const createLane = (laneKey: string, label: string, helperText: string, ruleType: KanbanLaneDefinition["ruleType"], mappedSections: string[], done: boolean): KanbanLaneDefinition => ({
+      laneKey,
+      label,
+      helperText,
+      ruleType,
+      mappedSections,
+      done
+    });
+
+    return {
+      "execution-default": {
+        templateId: "execution-default",
+        name: "Execution Default",
+        description: "Classic personal execution flow for active projects.",
+        laneDefinitions: [
+          createLane("now", "Now", "Current execution", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "bug-triage": {
+        templateId: "bug-triage",
+        name: "Bug Triage",
+        description: "Maintenance-oriented board vocabulary for fixes and verification.",
+        laneDefinitions: [
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "creative-pipeline": {
+        templateId: "creative-pipeline",
+        name: "Creative Pipeline",
+        description: "Idea-to-finish flow for assets, content, and polish work.",
+        laneDefinitions: [
+          createLane("ideas", "Ideas", "Loose concepts and captures", "hub-section", ["Parking Lot"], false),
+          createLane("drafting", "Drafting", "Active concept shaping", "hub-section", ["Next"], false),
+          createLane("building", "Building", "Current production work", "hub-section", ["Now"], false),
+          createLane("polish", "Polish", "Blocked on review or final pass", "hub-section", ["Waiting"], false),
+          createLane("archive", "Published", "Completed outputs", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "research-publishing": {
+        templateId: "research-publishing",
+        name: "Research / Publishing",
+        description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
+        laneDefinitions: [
+          createLane("backlog", "Backlog", "Queued research topics", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      }
+    };
+  }
+
+  private inferKanbanBoardTemplateId(project: TodoProjectSummary): string {
+    const haystack = [project.name, project.categoryName, project.status, project.projectSummary, project.focus]
+      .join(" ")
+      .toLowerCase();
+
+    if (/(bug|fix|patch|maintenance|qa|verify|defect)/.test(haystack)) {
+      return "bug-triage";
+    }
+
+    if (/(art|asset|creative|design|music|level|animation|visual)/.test(haystack)) {
+      return "creative-pipeline";
+    }
+
+    if (/(research|docs|documentation|wiki|article|guide|writing|publish|content)/.test(haystack)) {
+      return "research-publishing";
+    }
+
+    return "execution-default";
   }
 
   private getKanbanCleanupPreviewPath(): string {
@@ -6024,7 +6157,9 @@ export default class DailyDashboardPlugin extends Plugin {
       snapshot: source.snapshot,
       generatedAt: new Date(),
       masterTodoPath: this.data.settings.masterTodoPath,
-      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
+      compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
     this.markKanbanManagedWrite(this.data.settings.kanbanHubPath);
     const file = await this.upsertMarkdownFile(this.data.settings.kanbanHubPath, content);
@@ -6052,7 +6187,9 @@ export default class DailyDashboardPlugin extends Plugin {
         project,
         generatedAt: new Date(),
         masterTodoPath: this.data.settings.masterTodoPath,
-        compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode
+        compatibilityMode: this.data.settings.kanbanPluginCompatibilityMode,
+        boardTemplates: this.data.kanbanState.boardTemplates,
+        boardConfigurations: this.data.kanbanState.boardConfigurations
       });
       this.markKanbanManagedWrite(path);
       files.push(await this.upsertMarkdownFile(path, content));
