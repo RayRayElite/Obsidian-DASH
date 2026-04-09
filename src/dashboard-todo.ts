@@ -140,9 +140,9 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
         continue;
       }
 
-      const taskText = taskMatch[2].trim();
-  const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
-  const normalizedTask = taskSummary.text.toLowerCase();
+        const taskText = taskMatch[2].trim();
+        const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
+        const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
       const normalizedKanbanSection = normalizeLegacyKanbanSectionName(currentSection);
       const isComplete = taskMatch[1].toLowerCase() === "x";
@@ -159,7 +159,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
           const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), project.name);
           if (archivedTask) {
             const completedSummary = parseTodoTaskSummary(archivedTask.text, archivedTask.section, now);
-            completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done" });
+            completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done", completedAt: archivedTask.archivedAt });
           }
         } else {
           completedTaskDetails.push({ ...taskSummary, kanbanLane: "Done" });
@@ -739,7 +739,7 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     `## ${input.projectName}`,
     `Project Note:: ${input.projectNoteLink}`,
     `Status:: ${input.status}`,
-    `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    ...(input.focus.trim() ? [`Focus:: ${input.focus.trim()}`] : []),
     `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.` ,
     "Why It Matters:: Define why this project deserves attention right now.",
     "Definition Of Done:: Describe what meaningful progress or completion looks like.",
@@ -748,25 +748,11 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     "Relationships::",
     "",
     ...workflowBlocks,
-    "### Repeating",
-    "- [ ] Weekly review [repeat: weekly fri]",
-    "",
-    "### Risks",
-    "- Capture risks, drift patterns, and failure modes here.",
-    "",
-    "### Constraints",
-    "- Capture hard limits, dependencies, or health constraints here.",
-    "",
-    "### Decisions",
-    "- Capture important decisions and tradeoffs here.",
-    "",
-    "### Assets",
-    "- Add durable links, files, commands, or supporting assets here.",
+    `### ${doneSectionName}`,
+    "- [ ]",
     "",
     "### Reference",
-    "- Add durable support material here.",
-    "",
-    `### ${doneSectionName}`
+    "- Add durable support material here."
   ].join("\n");
 }
 
@@ -788,7 +774,7 @@ export function renderProjectNoteTemplate(
     `# ${input.projectName}`,
     "",
     `Status:: ${input.status || "Planning"}`,
-    `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    ...(input.focus.trim() ? [`Focus:: ${input.focus.trim()}`] : []),
     `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.` ,
     "Why It Matters:: Define why this project deserves attention right now.",
     "Definition Of Done:: Describe what meaningful progress or completion looks like.",
@@ -3613,6 +3599,7 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
     rawText,
     section,
     kanbanLane: resolveKanbanLane(section, isBlocked),
+    completedAt: "",
     priority: priority ?? "",
     dueDate: dueDate ?? "",
     blockedReason: blockedReason ?? "",

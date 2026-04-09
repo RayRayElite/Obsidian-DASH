@@ -3081,7 +3081,7 @@ function parseTodoSnapshot(content) {
           const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), project.name);
           if (archivedTask) {
             const completedSummary = parseTodoTaskSummary(archivedTask.text, archivedTask.section, now);
-            completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done" });
+            completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done", completedAt: archivedTask.archivedAt });
           }
         } else {
           completedTaskDetails.push({ ...taskSummary, kanbanLane: "Done" });
@@ -3584,7 +3584,7 @@ function renderTodoProjectBlock(input) {
     `## ${input.projectName}`,
     `Project Note:: ${input.projectNoteLink}`,
     `Status:: ${input.status}`,
-    `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    ...input.focus.trim() ? [`Focus:: ${input.focus.trim()}`] : [],
     `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.`,
     "Why It Matters:: Define why this project deserves attention right now.",
     "Definition Of Done:: Describe what meaningful progress or completion looks like.",
@@ -3593,25 +3593,11 @@ function renderTodoProjectBlock(input) {
     "Relationships::",
     "",
     ...workflowBlocks,
-    "### Repeating",
-    "- [ ] Weekly review [repeat: weekly fri]",
-    "",
-    "### Risks",
-    "- Capture risks, drift patterns, and failure modes here.",
-    "",
-    "### Constraints",
-    "- Capture hard limits, dependencies, or health constraints here.",
-    "",
-    "### Decisions",
-    "- Capture important decisions and tradeoffs here.",
-    "",
-    "### Assets",
-    "- Add durable links, files, commands, or supporting assets here.",
+    `### ${doneSectionName}`,
+    "- [ ]",
     "",
     "### Reference",
-    "- Add durable support material here.",
-    "",
-    `### ${doneSectionName}`
+    "- Add durable support material here."
   ].join("\n");
 }
 function renderProjectNoteTemplate(input, masterTodoPath, workflowSections = ["Now", "Next", "Later", "Waiting", "Parking Lot"], doneSectionName = "Done") {
@@ -3626,7 +3612,7 @@ function renderProjectNoteTemplate(input, masterTodoPath, workflowSections = ["N
     `# ${input.projectName}`,
     "",
     `Status:: ${input.status || "Planning"}`,
-    `Focus:: ${input.focus || "Define the current focus for this project."}`,
+    ...input.focus.trim() ? [`Focus:: ${input.focus.trim()}`] : [],
     `Project Summary:: ${input.projectName} is an active project inside Obsidian DASH.`,
     "Why It Matters:: Define why this project deserves attention right now.",
     "Definition Of Done:: Describe what meaningful progress or completion looks like.",
@@ -5896,6 +5882,7 @@ function parseTodoTaskSummary(rawText, section, now) {
     rawText,
     section,
     kanbanLane: resolveKanbanLane(section, isBlocked),
+    completedAt: "",
     priority: priority != null ? priority : "",
     dueDate: dueDate != null ? dueDate : "",
     blockedReason: blockedReason != null ? blockedReason : "",
@@ -10777,12 +10764,6 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
         this.state.status = value;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("Focus").setDesc("Short description of the current objective for this project.").addTextArea((textArea) => {
-      textArea.setPlaceholder("What matters most right now for this project?").onChange((value) => {
-        this.state.focus = value;
-      });
-      textArea.inputEl.rows = 2;
-    });
     new import_obsidian3.Setting(contentEl).setName("Kanban template").setDesc("Pick a starting board shape for this project. Enable custom if you want to tune it immediately after creation.").addDropdown((dropdown) => {
       this.templates.forEach((template) => dropdown.addOption(template.templateId, template.name));
       dropdown.setValue(this.state.kanbanTemplateId);
@@ -13627,24 +13608,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (viewState.headerCollapsed) {
       const hero2 = header.createDiv({ cls: "dash-kanban-hero is-collapsed" });
       const collapsedTop = hero2.createDiv({ cls: "dash-kanban-collapsed-top" });
-      const copy2 = collapsedTop.createDiv({ cls: "dash-kanban-hero-copy" });
-      copy2.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
-      const collapseButton = this.createHeaderButton("chevron-down", "Expand header", () => {
-        void this.plugin.updateKanbanViewState({ headerCollapsed: false });
-      });
-      collapseButton.addClass("dash-kanban-collapse-button");
-      collapsedTop.appendChild(collapseButton);
-      const collapsedBottom = hero2.createDiv({ cls: "dash-kanban-collapsed-bottom" });
-      const summary2 = collapsedBottom.createDiv({ cls: "dash-kanban-summary" });
-      createSemanticChip(summary2, `${snapshot.totalProjects} projects`, "focus");
-      createSemanticChip(summary2, `${snapshot.totalCards} cards`, "capture");
-      createSemanticChip(summary2, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
-      createSemanticChip(summary2, viewState.focusFilter === "all" ? "All work" : viewState.focusFilter === "attention" ? "Attention" : viewState.focusFilter === "blocked" ? "Blocked" : "Due", "state");
-      createSemanticChip(summary2, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
-      if (snapshot.repairCount > 0) {
-        createSemanticChip(summary2, `${snapshot.repairCount} repair`, "alert");
-      }
-      const actionRow2 = collapsedBottom.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
+      const actionRow2 = collapsedTop.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
       actionRow2.append(
         this.createHeaderButton("folder-plus", "New project", () => {
           void this.plugin.openCreateProjectFlow();
@@ -13675,6 +13639,31 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.plugin.pruneStaleKanbanRegistryEntries(true);
         })
       );
+      const copy2 = collapsedTop.createDiv({ cls: "dash-kanban-hero-copy" });
+      copy2.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
+      const collapseButton = document.createElement("button");
+      collapseButton.type = "button";
+      collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon";
+      collapseButton.ariaLabel = "Expand header";
+      collapseButton.title = "Expand header";
+      (0, import_obsidian3.setIcon)(collapseButton, "chevron-down");
+      collapseButton.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+      collapseButton.addEventListener("click", () => {
+        void this.plugin.updateKanbanViewState({ headerCollapsed: false });
+      });
+      collapsedTop.appendChild(collapseButton);
+      const collapsedBottom = hero2.createDiv({ cls: "dash-kanban-collapsed-bottom" });
+      const summary2 = collapsedBottom.createDiv({ cls: "dash-kanban-summary" });
+      createSemanticChip(summary2, `${snapshot.totalProjects} projects`, "focus");
+      createSemanticChip(summary2, `${snapshot.totalCards} cards`, "capture");
+      createSemanticChip(summary2, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+      createSemanticChip(summary2, viewState.focusFilter === "all" ? "All work" : viewState.focusFilter === "attention" ? "Attention" : viewState.focusFilter === "blocked" ? "Blocked" : "Due", "state");
+      createSemanticChip(summary2, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
+      if (snapshot.repairCount > 0) {
+        createSemanticChip(summary2, `${snapshot.repairCount} repair`, "alert");
+      }
       return;
     }
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
@@ -13833,7 +13822,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           cardCount: cards.length
         };
       })
-    })).filter((project) => project.lanes.some((lane) => lane.cards.length > 0));
+    }));
   }
   matchesFocusFilter(card, filter) {
     if (filter === "all") {
@@ -14240,14 +14229,23 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.draggable = card.taskId.trim().length > 0;
-    cardEl.addEventListener("click", () => {
-      if (isSelected) {
+    const selectCard = () => {
+      if (this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId)) {
         return;
       }
       this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
       this.clearCardPopovers();
+      this.detailEditState = null;
+      void this.requestRefresh();
+    };
+    const editCard = () => {
+      this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+      this.clearCardPopovers();
       this.syncDetailEditState(project, card);
       void this.requestRefresh();
+    };
+    cardEl.addEventListener("click", () => {
+      selectCard();
     });
     cardEl.addEventListener("dragstart", (event) => {
       var _a;
@@ -14290,9 +14288,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       cardEl.removeClass("is-drop-target");
       void this.reorderCardWithinLane(project, lane, dragged.taskId, card.taskId);
     });
-    if (isSelected) {
-      this.syncDetailEditState(project, card);
-    }
     const top = document.createElement("div");
     top.className = "dash-kanban-card-top";
     if (card.assignee) {
@@ -14374,23 +14369,30 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
       }, 0);
     } else {
+      const content = document.createElement("div");
+      content.className = "dash-kanban-card-content";
+      content.addEventListener("click", (event) => {
+        event.stopPropagation();
+        editCard();
+      });
       const title = document.createElement("h4");
       title.className = "dash-kanban-card-title";
       title.textContent = card.text;
-      cardEl.appendChild(title);
+      content.appendChild(title);
       if (card.priority) {
         const priorityBadge = document.createElement("div");
         priorityBadge.className = "dash-kanban-card-priority";
         priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
         priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
-        cardEl.appendChild(priorityBadge);
+        content.appendChild(priorityBadge);
       }
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
         note.textContent = card.notePreview;
-        cardEl.appendChild(note);
+        content.appendChild(note);
       }
+      cardEl.appendChild(content);
     }
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
@@ -14415,15 +14417,21 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const section = document.createElement("span");
     section.textContent = card.sectionName;
     footerInfo.appendChild(section);
-    if (card.dueDate) {
-      const due = document.createElement("span");
-      due.textContent = card.dueDate;
-      footerInfo.appendChild(due);
-    }
-    if (card.effort) {
-      const effort = document.createElement("span");
-      effort.textContent = card.effort;
-      footerInfo.appendChild(effort);
+    if (card.done && card.completedAt) {
+      const completed = document.createElement("span");
+      completed.textContent = `Done ${card.completedAt}`;
+      footerInfo.appendChild(completed);
+    } else {
+      if (card.dueDate) {
+        const due = document.createElement("span");
+        due.textContent = `Due ${card.dueDate}`;
+        footerInfo.appendChild(due);
+      }
+      if (card.effort) {
+        const effort = document.createElement("span");
+        effort.textContent = `Effort ${card.effort}`;
+        footerInfo.appendChild(effort);
+      }
     }
     if (card.assignee) {
       const assignee = document.createElement("span");
@@ -14443,10 +14451,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         this.priorityPickerKey = ((_a = this.priorityPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
         this.duePickerKey = null;
         this.effortPickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("calendar", card.dueDate ? `Due ${card.dueDate}` : "Set due date", (event) => {
@@ -14455,10 +14460,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         this.duePickerKey = ((_a = this.duePickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.duePickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.effortPickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("timer", card.effort ? `Effort ${card.effort}` : "Set effort", (event) => {
@@ -14467,10 +14469,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         this.effortPickerKey = ((_a = this.effortPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.effortPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.duePickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("check", "Complete card", (event) => {
@@ -17579,6 +17578,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       laneLabel: laneOption.label,
       targetSection: laneOption.targetSection,
       done: laneOption.done,
+      completedAt: task.completedAt,
       priority: task.priority,
       dueDate: task.dueDate,
       blockedReason: task.blockedReason,

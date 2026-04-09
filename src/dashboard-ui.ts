@@ -5631,18 +5631,6 @@ export class CreateProjectModal extends Modal {
       });
 
     new Setting(contentEl)
-      .setName("Focus")
-      .setDesc("Short description of the current objective for this project.")
-      .addTextArea((textArea) => {
-        textArea
-          .setPlaceholder("What matters most right now for this project?")
-          .onChange((value) => {
-            this.state.focus = value;
-          });
-        textArea.inputEl.rows = 2;
-      });
-
-    new Setting(contentEl)
       .setName("Kanban template")
       .setDesc("Pick a starting board shape for this project. Enable custom if you want to tune it immediately after creation.")
       .addDropdown((dropdown) => {
@@ -9153,7 +9141,6 @@ export class DashKanbanView extends ItemView {
       this.isRefreshing = false;
     }
   }
-
   private async renderBoard(): Promise<void> {
     const snapshot = await this.plugin.getDashKanbanWorkspaceSnapshot();
     const viewState = this.plugin.getKanbanViewState();
@@ -9635,32 +9622,7 @@ export class DashKanbanView extends ItemView {
     if (viewState.headerCollapsed) {
       const hero = header.createDiv({ cls: "dash-kanban-hero is-collapsed" });
       const collapsedTop = hero.createDiv({ cls: "dash-kanban-collapsed-top" });
-      const copy = collapsedTop.createDiv({ cls: "dash-kanban-hero-copy" });
-      copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
-      const collapseButton = this.createHeaderButton("chevron-down", "Expand header", () => {
-        void this.plugin.updateKanbanViewState({ headerCollapsed: false });
-      });
-      collapseButton.addClass("dash-kanban-collapse-button");
-      collapsedTop.appendChild(collapseButton);
-
-      const collapsedBottom = hero.createDiv({ cls: "dash-kanban-collapsed-bottom" });
-      const summary = collapsedBottom.createDiv({ cls: "dash-kanban-summary" });
-      createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
-      createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
-      createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
-      createSemanticChip(summary, viewState.focusFilter === "all"
-        ? "All work"
-        : viewState.focusFilter === "attention"
-          ? "Attention"
-          : viewState.focusFilter === "blocked"
-            ? "Blocked"
-            : "Due", "state");
-      createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
-      if (snapshot.repairCount > 0) {
-        createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
-      }
-
-      const actionRow = collapsedBottom.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
+      const actionRow = collapsedTop.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
       actionRow.append(
         this.createHeaderButton("folder-plus", "New project", () => {
           void this.plugin.openCreateProjectFlow();
@@ -9688,6 +9650,39 @@ export class DashKanbanView extends ItemView {
           void this.plugin.pruneStaleKanbanRegistryEntries(true);
         })
       );
+      const copy = collapsedTop.createDiv({ cls: "dash-kanban-hero-copy" });
+      copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
+      const collapseButton = document.createElement("button");
+      collapseButton.type = "button";
+      collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon";
+      collapseButton.ariaLabel = "Expand header";
+      collapseButton.title = "Expand header";
+      setIcon(collapseButton, "chevron-down");
+      collapseButton.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+      collapseButton.addEventListener("click", () => {
+        void this.plugin.updateKanbanViewState({ headerCollapsed: false });
+      });
+      collapsedTop.appendChild(collapseButton);
+
+      const collapsedBottom = hero.createDiv({ cls: "dash-kanban-collapsed-bottom" });
+      const summary = collapsedBottom.createDiv({ cls: "dash-kanban-summary" });
+      createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
+      createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
+      createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+      createSemanticChip(summary, viewState.focusFilter === "all"
+        ? "All work"
+        : viewState.focusFilter === "attention"
+          ? "Attention"
+          : viewState.focusFilter === "blocked"
+            ? "Blocked"
+            : "Due", "state");
+      createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
+      if (snapshot.repairCount > 0) {
+        createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
+      }
+
       return;
     }
 
@@ -9871,8 +9866,7 @@ export class DashKanbanView extends ItemView {
             cardCount: cards.length
           };
         })
-      }))
-      .filter((project) => project.lanes.some((lane) => lane.cards.length > 0));
+      }));
   }
 
   private matchesFocusFilter(card: DashKanbanCard, filter: DashboardKanbanFocusFilter): boolean {
@@ -10326,14 +10320,26 @@ export class DashKanbanView extends ItemView {
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.draggable = card.taskId.trim().length > 0;
-    cardEl.addEventListener("click", () => {
-      if (isSelected) {
+
+    const selectCard = (): void => {
+      if (this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId)) {
         return;
       }
       this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
       this.clearCardPopovers();
+      this.detailEditState = null;
+      void this.requestRefresh();
+    };
+
+    const editCard = (): void => {
+      this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+      this.clearCardPopovers();
       this.syncDetailEditState(project, card);
       void this.requestRefresh();
+    };
+
+    cardEl.addEventListener("click", () => {
+      selectCard();
     });
     cardEl.addEventListener("dragstart", (event) => {
       this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
@@ -10375,9 +10381,6 @@ export class DashKanbanView extends ItemView {
       cardEl.removeClass("is-drop-target");
       void this.reorderCardWithinLane(project, lane, dragged.taskId, card.taskId);
     });
-    if (isSelected) {
-      this.syncDetailEditState(project, card);
-    }
 
     const top = document.createElement("div");
     top.className = "dash-kanban-card-top";
@@ -10466,25 +10469,34 @@ export class DashKanbanView extends ItemView {
         textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
       }, 0);
     } else {
+      const content = document.createElement("div");
+      content.className = "dash-kanban-card-content";
+      content.addEventListener("click", (event) => {
+        event.stopPropagation();
+        editCard();
+      });
+
       const title = document.createElement("h4");
       title.className = "dash-kanban-card-title";
       title.textContent = card.text;
-      cardEl.appendChild(title);
+      content.appendChild(title);
 
       if (card.priority) {
         const priorityBadge = document.createElement("div");
         priorityBadge.className = "dash-kanban-card-priority";
         priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
         priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
-        cardEl.appendChild(priorityBadge);
+        content.appendChild(priorityBadge);
       }
 
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
         note.textContent = card.notePreview;
-        cardEl.appendChild(note);
+        content.appendChild(note);
       }
+
+      cardEl.appendChild(content);
     }
 
     const metaRow = document.createElement("div");
@@ -10511,15 +10523,21 @@ export class DashKanbanView extends ItemView {
     const section = document.createElement("span");
     section.textContent = card.sectionName;
     footerInfo.appendChild(section);
-    if (card.dueDate) {
-      const due = document.createElement("span");
-      due.textContent = card.dueDate;
-      footerInfo.appendChild(due);
-    }
-    if (card.effort) {
-      const effort = document.createElement("span");
-      effort.textContent = card.effort;
-      footerInfo.appendChild(effort);
+    if (card.done && card.completedAt) {
+      const completed = document.createElement("span");
+      completed.textContent = `Done ${card.completedAt}`;
+      footerInfo.appendChild(completed);
+    } else {
+      if (card.dueDate) {
+        const due = document.createElement("span");
+        due.textContent = `Due ${card.dueDate}`;
+        footerInfo.appendChild(due);
+      }
+      if (card.effort) {
+        const effort = document.createElement("span");
+        effort.textContent = `Effort ${card.effort}`;
+        footerInfo.appendChild(effort);
+      }
     }
     if (card.assignee) {
       const assignee = document.createElement("span");
@@ -10542,10 +10560,7 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.duePickerKey = null;
         this.effortPickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("calendar", card.dueDate ? `Due ${card.dueDate}` : "Set due date", (event) => {
@@ -10555,10 +10570,7 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.effortPickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("timer", card.effort ? `Effort ${card.effort}` : "Set effort", (event) => {
@@ -10568,10 +10580,7 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.duePickerKey = null;
-        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
-          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-          this.syncDetailEditState(project, card);
-        }
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
       this.createCardActionButton("check", "Complete card", (event) => {

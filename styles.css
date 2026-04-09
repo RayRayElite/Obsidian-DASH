@@ -123,23 +123,40 @@
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .dash-kanban-collapsed-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .dash-kanban-collapsed-action-row {
-  justify-content: flex-end;
+  flex: 1 1 100%;
+  justify-content: flex-start;
   flex-wrap: wrap;
 }
 
 .dash-kanban-collapse-button {
   flex: 0 0 auto;
+}
+
+.dash-kanban-collapse-button--icon {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+.dash-kanban-collapse-button--icon span:not(.svg-icon) {
+  display: none;
+}
+
+.dash-kanban-card-content {
+  cursor: text;
 }
 
 .dash-kanban-subtitle,

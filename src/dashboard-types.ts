@@ -714,6 +714,7 @@ export interface DashKanbanCard {
   projectName: string;
   text: string;
   rawText: string;
+  completedAt: string;
   sectionName: string;
   laneKey: string;
   laneLabel: string;
@@ -929,6 +930,7 @@ export interface TodoTaskSummary {
   taskId: string;
   text: string;
   rawText: string;
+  completedAt: string;
   section: string;
   kanbanLane: KanbanLane | "";
   priority: string;

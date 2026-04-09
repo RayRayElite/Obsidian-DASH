@@ -3498,6 +3498,7 @@ export default class DailyDashboardPlugin extends Plugin {
       laneLabel: laneOption.label,
       targetSection: laneOption.targetSection,
       done: laneOption.done,
+      completedAt: task.completedAt,
       priority: task.priority,
       dueDate: task.dueDate,
       blockedReason: task.blockedReason,
