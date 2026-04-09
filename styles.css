@@ -156,6 +156,9 @@
 }
 
 .dash-kanban-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   cursor: text;
 }
 
@@ -1003,6 +1006,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
 }
 
 .dash-kanban-card-label {
@@ -1015,6 +1021,13 @@
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 22%, var(--dash-kanban-border));
   background: color-mix(in srgb, var(--background-primary) 76%, transparent);
   color: var(--text-normal);
+}
+
+.dash-kanban-card-label-row .dash-kanban-card-label[data-kind="priority"] {
+  flex: 1 1 100%;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .dash-kanban-card-label strong {
@@ -1034,7 +1047,8 @@
 }
 
 .dash-kanban-card-label[data-kind="priority"] span {
-  font-weight: 700;
+  font-weight: 800;
+  font-size: 0.84rem;
 }
 
 .dash-kanban-card-label[data-kind="priority"][data-priority="urgent"],

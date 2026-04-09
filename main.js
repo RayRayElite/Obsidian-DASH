@@ -5900,6 +5900,10 @@ function parseTodoTaskSummary(rawText, section, now) {
 function getTodoTaskDisplayText(rawText, section) {
   return parseTodoTaskSummary(rawText, section, /* @__PURE__ */ new Date()).text;
 }
+function getTodoTaskAnnotationValue(rawText, key) {
+  var _a;
+  return (_a = extractTaskAnnotation(rawText, key)) != null ? _a : "";
+}
 function resolveKanbanLane(section, isBlocked) {
   if (isBlocked) {
     return "Waiting";
@@ -14338,7 +14342,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   renderCard(project, lane, card) {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
-    const priorityTone = getKanbanPriorityTone(card.priority);
+    const resolvedPriority = card.priority || getTodoTaskAnnotationValue(card.rawText, "priority");
+    const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
+    const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
+    const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
@@ -14506,17 +14513,17 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       const labelRow = document.createElement("div");
       labelRow.className = "dash-kanban-card-label-row";
-      if (card.priority) {
-        this.appendCardLabel(labelRow, "Priority", card.priority.trim(), "priority");
+      if (resolvedPriority) {
+        this.appendCardLabel(labelRow, "Priority", resolvedPriority.trim(), "priority");
       }
       if (card.done && card.completedAt) {
         this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
       } else {
-        if (card.dueDate) {
-          this.appendCardLabel(labelRow, "Due", card.dueDate, "due");
+        if (resolvedDueDate) {
+          this.appendCardLabel(labelRow, "Due", resolvedDueDate, "due");
         }
-        if (card.effort) {
-          this.appendCardLabel(labelRow, "Effort", card.effort, "effort");
+        if (resolvedEffort) {
+          this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
         }
       }
       if (labelRow.childElementCount > 0) {
@@ -17689,6 +17696,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   buildDashKanbanCard(projectName, task, laneOption) {
     const allCategoryTags = this.getKanbanLaneOptions(projectName).map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
     const visibleTags = this.extractDashKanbanTags(task.rawText).filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
+    const resolvedPriority = task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
+    const resolvedDueDate = task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+    const resolvedEffort = task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
     return {
       taskId: task.taskId,
       projectName,
@@ -17700,11 +17710,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       targetSection: laneOption.targetSection,
       done: laneOption.done,
       completedAt: task.completedAt,
-      priority: task.priority,
-      dueDate: task.dueDate,
+      priority: resolvedPriority,
+      dueDate: resolvedDueDate,
       blockedReason: task.blockedReason,
       unblockDate: task.unblockDate,
-      effort: task.effort,
+      effort: resolvedEffort,
       energy: task.energy,
       executionContext: task.executionContext,
       trigger: task.trigger,

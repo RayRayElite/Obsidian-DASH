@@ -16,7 +16,7 @@ import {
   renderScore
 } from "./dashboard-core";
 import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes, getTrackedWorkMinutesByProject } from "./dashboard-logs";
-import { splitMultilineInput } from "./dashboard-todo";
+import { getTodoTaskAnnotationValue, splitMultilineInput } from "./dashboard-todo";
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
   CORE_SESSION_TRACKER_OPTIONS,
@@ -10441,7 +10441,10 @@ export class DashKanbanView extends ItemView {
   private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard): HTMLElement {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
-    const priorityTone = getKanbanPriorityTone(card.priority);
+    const resolvedPriority = card.priority || getTodoTaskAnnotationValue(card.rawText, "priority");
+    const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
+    const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
+    const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
@@ -10621,17 +10624,17 @@ export class DashKanbanView extends ItemView {
 
       const labelRow = document.createElement("div");
       labelRow.className = "dash-kanban-card-label-row";
-      if (card.priority) {
-        this.appendCardLabel(labelRow, "Priority", card.priority.trim(), "priority");
+      if (resolvedPriority) {
+        this.appendCardLabel(labelRow, "Priority", resolvedPriority.trim(), "priority");
       }
       if (card.done && card.completedAt) {
         this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
       } else {
-        if (card.dueDate) {
-          this.appendCardLabel(labelRow, "Due", card.dueDate, "due");
+        if (resolvedDueDate) {
+          this.appendCardLabel(labelRow, "Due", resolvedDueDate, "due");
         }
-        if (card.effort) {
-          this.appendCardLabel(labelRow, "Effort", card.effort, "effort");
+        if (resolvedEffort) {
+          this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
         }
       }
       if (labelRow.childElementCount > 0) {

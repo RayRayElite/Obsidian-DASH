@@ -84,6 +84,7 @@ import {
   findProjectRanges,
   findTodoCategoryRanges,
   formatKanbanCategoryMetadataValue,
+  getTodoTaskAnnotationValue,
   getTodoTaskDisplayText,
   getIsoWeekRange,
   inspectMasterHubKanbanMigration,
@@ -3487,6 +3488,9 @@ export default class DailyDashboardPlugin extends Plugin {
       .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
     const visibleTags = this.extractDashKanbanTags(task.rawText)
       .filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
+    const resolvedPriority = task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
+    const resolvedDueDate = task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+    const resolvedEffort = task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
 
     return {
       taskId: task.taskId,
@@ -3499,11 +3503,11 @@ export default class DailyDashboardPlugin extends Plugin {
       targetSection: laneOption.targetSection,
       done: laneOption.done,
       completedAt: task.completedAt,
-      priority: task.priority,
-      dueDate: task.dueDate,
+      priority: resolvedPriority,
+      dueDate: resolvedDueDate,
       blockedReason: task.blockedReason,
       unblockDate: task.unblockDate,
-      effort: task.effort,
+      effort: resolvedEffort,
       energy: task.energy,
       executionContext: task.executionContext,
       trigger: task.trigger,

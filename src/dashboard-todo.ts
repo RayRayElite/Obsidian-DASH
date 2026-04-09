@@ -3619,6 +3619,10 @@ export function getTodoTaskDisplayText(rawText: string, section: string): string
   return parseTodoTaskSummary(rawText, section, new Date()).text;
 }
 
+export function getTodoTaskAnnotationValue(rawText: string, key: "priority" | "due" | "effort"): string {
+  return extractTaskAnnotation(rawText, key) ?? "";
+}
+
 function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | "" {
   if (isBlocked) {
     return "Waiting";
