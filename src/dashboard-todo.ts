@@ -2489,6 +2489,24 @@ export function transferTaskByIdBetweenProjects(content: string, input: {
   };
 }
 
+export function deleteTaskByIdInProject(content: string, input: {
+  projectName: string;
+  taskId: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean; taskText: string } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false, taskText: "" };
+  }
+
+  return {
+    content: removed.content,
+    updated: removed.content !== content,
+    taskText: removed.taskText
+  };
+}
+
 export function completeTaskByIdInProject(content: string, input: {
   projectName: string;
   taskId: string;

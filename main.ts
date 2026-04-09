@@ -96,6 +96,7 @@ import {
   repairProjectNoteStructure,
   reconcileCompletedTasks,
   completeTaskByIdInProject,
+  deleteTaskByIdInProject,
   renderKanbanHub,
   renderKanbanProjectBoardNote,
   renderExistingProjectNoteTemplate,
@@ -2850,6 +2851,46 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     await this.app.vault.modify(todoFile, completed.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
+    }
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async deleteKanbanTask(projectName: string, taskId: string): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const content = await this.app.vault.read(todoFile);
+    const deleted = deleteTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!deleted.updated) {
+      new Notice("Could not delete that Kanban task from the board.");
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, deleted.content);
+
+    if (this.data.kanbanState.taskRegistry[taskId]) {
+      delete this.data.kanbanState.taskRegistry[taskId];
+    }
+
+    Object.entries(this.data.kanbanState.repairQueue).forEach(([repairId, repair]) => {
+      if (repair.taskId === taskId) {
+        delete this.data.kanbanState.repairQueue[repairId];
+      }
+    });
+
+    await this.savePluginData();
     await this.refreshMasterHubPortfolioSnapshot(false);
     if (this.data.settings.kanbanEnabled) {
       await this.refreshKanbanHub(false);
