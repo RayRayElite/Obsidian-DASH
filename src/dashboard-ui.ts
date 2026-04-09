@@ -9063,6 +9063,7 @@ export class DashKanbanView extends ItemView {
   private plugin: DailyDashboardPlugin;
   private searchText = "";
   private dragCard: { projectName: string; taskId: string; laneKey: string } | null = null;
+  private suppressCardClickUntil = 0;
   private selectedCardKey: { projectName: string; taskId: string } | null = null;
   private quickAddDraft: { projectName: string; laneKey: string; taskText: string } | null = null;
   private priorityPickerKey: { projectName: string; taskId: string } | null = null;
@@ -10318,8 +10319,10 @@ export class DashKanbanView extends ItemView {
   private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard): HTMLElement {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
+    const priorityTone = getKanbanPriorityTone(card.priority);
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
-    cardEl.draggable = card.taskId.trim().length > 0;
+    cardEl.dataset.priority = priorityTone;
+    cardEl.draggable = card.taskId.trim().length > 0 && !this.isCardEditing(project.projectName, card.taskId);
 
     const selectCard = (): void => {
       if (this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId)) {
@@ -10339,9 +10342,13 @@ export class DashKanbanView extends ItemView {
     };
 
     cardEl.addEventListener("click", () => {
+      if (Date.now() < this.suppressCardClickUntil) {
+        return;
+      }
       selectCard();
     });
     cardEl.addEventListener("dragstart", (event) => {
+      this.suppressCardClickUntil = Date.now() + 250;
       this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
       event.dataTransfer?.setData("text/plain", `${project.projectName}:${card.taskId}`);
@@ -10351,6 +10358,7 @@ export class DashKanbanView extends ItemView {
     });
     cardEl.addEventListener("dragend", () => {
       this.dragCard = null;
+      this.suppressCardClickUntil = Date.now() + 250;
       cardEl.removeClass("is-dragging");
     });
     cardEl.addEventListener("dragover", (event) => {
@@ -10484,7 +10492,7 @@ export class DashKanbanView extends ItemView {
       if (card.priority) {
         const priorityBadge = document.createElement("div");
         priorityBadge.className = "dash-kanban-card-priority";
-        priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
+        priorityBadge.dataset.priority = priorityTone;
         priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
         content.appendChild(priorityBadge);
       }
@@ -10525,7 +10533,7 @@ export class DashKanbanView extends ItemView {
     footerInfo.appendChild(section);
     if (card.done && card.completedAt) {
       const completed = document.createElement("span");
-      completed.textContent = `Done ${card.completedAt}`;
+      completed.textContent = `Finished ${card.completedAt}`;
       footerInfo.appendChild(completed);
     } else {
       if (card.dueDate) {

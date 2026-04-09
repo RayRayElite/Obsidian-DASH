@@ -13129,6 +13129,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     super(leaf);
     this.searchText = "";
     this.dragCard = null;
+    this.suppressCardClickUntil = 0;
     this.selectedCardKey = null;
     this.quickAddDraft = null;
     this.priorityPickerKey = null;
@@ -14227,8 +14228,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   renderCard(project, lane, card) {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
+    const priorityTone = getKanbanPriorityTone(card.priority);
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
-    cardEl.draggable = card.taskId.trim().length > 0;
+    cardEl.dataset.priority = priorityTone;
+    cardEl.draggable = card.taskId.trim().length > 0 && !this.isCardEditing(project.projectName, card.taskId);
     const selectCard = () => {
       if (this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId)) {
         return;
@@ -14245,10 +14248,14 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.requestRefresh();
     };
     cardEl.addEventListener("click", () => {
+      if (Date.now() < this.suppressCardClickUntil) {
+        return;
+      }
       selectCard();
     });
     cardEl.addEventListener("dragstart", (event) => {
       var _a;
+      this.suppressCardClickUntil = Date.now() + 250;
       this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
       (_a = event.dataTransfer) == null ? void 0 : _a.setData("text/plain", `${project.projectName}:${card.taskId}`);
@@ -14258,6 +14265,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
     cardEl.addEventListener("dragend", () => {
       this.dragCard = null;
+      this.suppressCardClickUntil = Date.now() + 250;
       cardEl.removeClass("is-dragging");
     });
     cardEl.addEventListener("dragover", (event) => {
@@ -14382,7 +14390,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       if (card.priority) {
         const priorityBadge = document.createElement("div");
         priorityBadge.className = "dash-kanban-card-priority";
-        priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
+        priorityBadge.dataset.priority = priorityTone;
         priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
         content.appendChild(priorityBadge);
       }
@@ -14419,7 +14427,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     footerInfo.appendChild(section);
     if (card.done && card.completedAt) {
       const completed = document.createElement("span");
-      completed.textContent = `Done ${card.completedAt}`;
+      completed.textContent = `Finished ${card.completedAt}`;
       footerInfo.appendChild(completed);
     } else {
       if (card.dueDate) {

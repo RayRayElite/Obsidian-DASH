@@ -33,8 +33,8 @@
   --dash-kanban-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
   padding: 22px;
   background:
-    radial-gradient(circle at top left, color-mix(in srgb, #9fd0ff 12%, transparent), transparent 28%),
-    radial-gradient(circle at 85% 0%, color-mix(in srgb, #ffd18c 10%, transparent), transparent 26%),
+    radial-gradient(circle at top left, color-mix(in srgb, #f1b46b 10%, transparent), transparent 28%),
+    radial-gradient(circle at 85% 0%, color-mix(in srgb, #6d5637 8%, transparent), transparent 24%),
     linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 94%, #080d13), var(--background-primary));
 }
 
@@ -321,13 +321,13 @@
 }
 
 .dash-kanban-project-board[data-theme="dark"] {
-  --dash-kanban-board-accent: #f2b36f;
-  --dash-kanban-board-accent-strong: #da6f47;
-  --dash-kanban-board-surface: color-mix(in srgb, #111723 76%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #0a1018 82%, var(--background-primary));
-  --dash-kanban-card-surface: color-mix(in srgb, #182233 86%, var(--background-primary));
-  --dash-kanban-card-surface-strong: color-mix(in srgb, #101722 88%, var(--background-primary-alt));
-  --dash-kanban-card-border: color-mix(in srgb, #f2b36f 18%, var(--background-modifier-border));
+  --dash-kanban-board-accent: #d8a062;
+  --dash-kanban-board-accent-strong: #8f5a31;
+  --dash-kanban-board-surface: color-mix(in srgb, #151311 82%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #0c0b0a 88%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #1b1816 88%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #12100f 90%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #d8a062 18%, var(--background-modifier-border));
 }
 
 .dash-kanban-project-board[data-theme="light"] {
@@ -372,14 +372,14 @@
 }
 
 .dash-kanban-project-board[data-theme="aurora"] {
-  --dash-kanban-board-accent: #74f0d6;
-  --dash-kanban-board-accent-strong: #67a3ff;
-  --dash-kanban-board-surface: color-mix(in srgb, #101d32 74%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #132615 82%, var(--background-primary));
-  --dash-kanban-card-surface: linear-gradient(160deg, rgba(14, 32, 44, 0.96), rgba(18, 48, 34, 0.88));
-  --dash-kanban-card-surface-strong: linear-gradient(160deg, rgba(15, 26, 48, 0.98), rgba(22, 50, 38, 0.92));
-  --dash-kanban-card-border: color-mix(in srgb, #74f0d6 24%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 16px 30px rgba(24, 72, 98, 0.24);
+  --dash-kanban-board-accent: #f05aa9;
+  --dash-kanban-board-accent-strong: #8d57ff;
+  --dash-kanban-board-surface: color-mix(in srgb, #251433 78%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #140b21 86%, var(--background-primary));
+  --dash-kanban-card-surface: linear-gradient(160deg, rgba(43, 19, 62, 0.96), rgba(81, 24, 74, 0.9));
+  --dash-kanban-card-surface-strong: linear-gradient(160deg, rgba(30, 12, 48, 0.98), rgba(69, 18, 77, 0.92));
+  --dash-kanban-card-border: color-mix(in srgb, #f05aa9 24%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 18px 34px rgba(73, 24, 98, 0.28);
 }
 
 .dash-kanban-detail-panel {
@@ -887,6 +887,35 @@
 
 .dash-kanban-card.is-overdue {
   border-color: color-mix(in srgb, #ff8b7d 42%, var(--background-modifier-border));
+}
+
+.dash-kanban-card[data-priority="urgent"] {
+  border-color: color-mix(in srgb, #ff7769 54%, var(--dash-kanban-card-border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #ff7769 10%, transparent), transparent 28%),
+    var(--dash-kanban-card-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #ff7769 12%, transparent), var(--dash-kanban-card-shadow);
+}
+
+.dash-kanban-card[data-priority="high"] {
+  border-color: color-mix(in srgb, #ffb061 48%, var(--dash-kanban-card-border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #ffb061 9%, transparent), transparent 28%),
+    var(--dash-kanban-card-surface);
+}
+
+.dash-kanban-card[data-priority="medium"] {
+  border-color: color-mix(in srgb, #77b7ff 42%, var(--dash-kanban-card-border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #77b7ff 8%, transparent), transparent 28%),
+    var(--dash-kanban-card-surface);
+}
+
+.dash-kanban-card[data-priority="low"] {
+  border-color: color-mix(in srgb, #74c98a 40%, var(--dash-kanban-card-border));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #74c98a 8%, transparent), transparent 28%),
+    var(--dash-kanban-card-surface);
 }
 
 .dash-kanban-card.is-blocked {
