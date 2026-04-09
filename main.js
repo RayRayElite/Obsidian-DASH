@@ -6036,6 +6036,10 @@ function formatKanbanPriorityLabel(priority) {
   }
   return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)} priority`;
 }
+function getKanbanPriorityTone(priority) {
+  const normalized = priority.trim().toLowerCase();
+  return normalized === "urgent" || normalized === "high" || normalized === "medium" || normalized === "low" ? normalized : "none";
+}
 var KANBAN_PRIORITY_OPTIONS = [
   { value: "", label: "None" },
   { value: "low", label: "Low" },
@@ -11269,7 +11273,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     return (_b = (_a = this.templates.find((template) => template.templateId === this.selectedTemplateId)) != null ? _a : this.templates[0]) != null ? _b : null;
   }
   laneDefinitionsMatch(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return JSON.stringify(left.map(({ mappedSections, ...lane }) => lane)) === JSON.stringify(right.map(({ mappedSections, ...lane }) => lane));
   }
   isCurrentTemplateCustom() {
     const template = this.getSelectedTemplate();
@@ -11371,7 +11375,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         this.showInHub = value;
       });
     });
-    new import_obsidian3.Setting(contentEl).setName("Board height").setDesc("Sets the lane viewport height before cards begin scrolling inside each lane.").addText((text) => {
+    new import_obsidian3.Setting(contentEl).setName("Board height").setDesc("Sets the lane viewport height before cards begin scrolling inside each lane. The board corner drag handle uses the same height.").addText((text) => {
       text.setValue(`${this.boardHeight}`).onChange((value) => {
         this.boardHeight = Math.min(Math.max(Math.round(Number(value || 420)), 260), 900);
       });
@@ -14374,6 +14378,13 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       title.className = "dash-kanban-card-title";
       title.textContent = card.text;
       cardEl.appendChild(title);
+      if (card.priority) {
+        const priorityBadge = document.createElement("div");
+        priorityBadge.className = "dash-kanban-card-priority";
+        priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
+        priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
+        cardEl.appendChild(priorityBadge);
+      }
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
@@ -14383,9 +14394,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
-    if (card.priority) {
-      createSemanticChip(metaRow, formatKanbanPriorityLabel(card.priority), card.priority === "urgent" || card.priority === "high" ? "alert" : "state");
-    }
     if (card.energy) {
       createSemanticChip(metaRow, `Energy ${card.energy}`, "health");
     }
@@ -17005,6 +17013,37 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return getTodoTaskDisplayText(task.rawText, task.section);
     }
     return (_b = (_a = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _a.taskText) != null ? _b : null;
+  }
+  async refreshAfterTodoMutation(includeKanbanArtifacts, awaitArtifacts) {
+    const runRefresh = async () => {
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      if (includeKanbanArtifacts && this.data.settings.kanbanEnabled) {
+        await this.refreshKanbanHub(false);
+        await this.refreshKanbanBoardNotes(false);
+      }
+      this.refreshDashboardViews();
+    };
+    if (awaitArtifacts) {
+      await runRefresh();
+      return;
+    }
+    this.refreshDashboardViews();
+    void runRefresh();
+  }
+  async syncKanbanRegistryAfterTaskEdit(taskId, input) {
+    const registryEntry = this.data.kanbanState.taskRegistry[taskId];
+    if (!registryEntry) {
+      return;
+    }
+    this.data.kanbanState.taskRegistry[taskId] = {
+      ...registryEntry,
+      projectName: input.projectName,
+      sectionName: input.sectionName,
+      taskText: getTodoTaskDisplayText(input.taskText, input.sectionName),
+      checked: Boolean(input.checked),
+      updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    };
+    await this.savePluginData();
   }
   async moveKanbanTask(projectName, taskId, laneSection) {
     var _a;
@@ -21248,12 +21287,7 @@ ${context}`, resolvedModel);
     const content = await this.app.vault.read(todoFile);
     const updatedContent = insertTaskIntoProjectSection(content, projectName, sectionName, trimmedTask);
     await this.app.vault.modify(todoFile, updatedContent);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, false);
   }
   async addKanbanTask(projectName, laneKey, taskText) {
     var _a;
@@ -21304,13 +21338,14 @@ ${context}`, resolvedModel);
       this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: trimmedLane,
+      taskText: formattedTaskText,
+      checked: false
+    });
     await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, true);
     return true;
   }
   async updateKanbanTaskDetails(projectName, taskId, input) {
@@ -21362,13 +21397,14 @@ ${context}`, resolvedModel);
       this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: trimmedLane,
+      taskText: updated.taskText,
+      checked: false
+    });
     await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, true);
     return true;
   }
   async cycleKanbanTaskPriority(projectName, taskId) {

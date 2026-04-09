@@ -2821,6 +2821,47 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.data.kanbanState.taskRegistry[taskId]?.taskText ?? null;
   }
 
+  private async refreshAfterTodoMutation(includeKanbanArtifacts: boolean, awaitArtifacts: boolean): Promise<void> {
+    const runRefresh = async (): Promise<void> => {
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      if (includeKanbanArtifacts && this.data.settings.kanbanEnabled) {
+        await this.refreshKanbanHub(false);
+        await this.refreshKanbanBoardNotes(false);
+      }
+      this.refreshDashboardViews();
+    };
+
+    if (awaitArtifacts) {
+      await runRefresh();
+      return;
+    }
+
+    this.refreshDashboardViews();
+    void runRefresh();
+  }
+
+  private async syncKanbanRegistryAfterTaskEdit(taskId: string, input: {
+    projectName: string;
+    sectionName: string;
+    taskText: string;
+    checked?: boolean;
+  }): Promise<void> {
+    const registryEntry = this.data.kanbanState.taskRegistry[taskId];
+    if (!registryEntry) {
+      return;
+    }
+
+    this.data.kanbanState.taskRegistry[taskId] = {
+      ...registryEntry,
+      projectName: input.projectName,
+      sectionName: input.sectionName,
+      taskText: getTodoTaskDisplayText(input.taskText, input.sectionName),
+      checked: Boolean(input.checked),
+      updatedAt: formatDateTimeKey(new Date())
+    };
+    await this.savePluginData();
+  }
+
   async moveKanbanTask(projectName: string, taskId: string, laneSection: string): Promise<boolean> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -7956,12 +7997,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const content = await this.app.vault.read(todoFile);
     const updatedContent = insertTaskIntoProjectSection(content, projectName, sectionName, trimmedTask);
     await this.app.vault.modify(todoFile, updatedContent);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, false);
   }
 
   async addKanbanTask(projectName: string, laneKey: string, taskText: string): Promise<void> {
@@ -8019,13 +8055,15 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.savePluginData();
     }
 
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: trimmedLane,
+      taskText: formattedTaskText,
+      checked: false
+    });
+
     await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, true);
     return true;
   }
 
@@ -8093,13 +8131,15 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.savePluginData();
     }
 
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: trimmedLane,
+      taskText: updated.taskText,
+      checked: false
+    });
+
     await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
+    await this.refreshAfterTodoMutation(true, true);
     return true;
   }
 

@@ -126,6 +126,13 @@ function formatKanbanPriorityLabel(priority: string): string {
   return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)} priority`;
 }
 
+function getKanbanPriorityTone(priority: string): string {
+  const normalized = priority.trim().toLowerCase();
+  return normalized === "urgent" || normalized === "high" || normalized === "medium" || normalized === "low"
+    ? normalized
+    : "none";
+}
+
 const KANBAN_PRIORITY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "", label: "None" },
   { value: "low", label: "Low" },
@@ -6269,7 +6276,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
   }
 
   private laneDefinitionsMatch(left: KanbanLaneDefinition[], right: KanbanLaneDefinition[]): boolean {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return JSON.stringify(left.map(({ mappedSections, ...lane }) => lane)) === JSON.stringify(right.map(({ mappedSections, ...lane }) => lane));
   }
 
   private isCurrentTemplateCustom(): boolean {
@@ -6396,7 +6403,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName("Board height")
-      .setDesc("Sets the lane viewport height before cards begin scrolling inside each lane.")
+      .setDesc("Sets the lane viewport height before cards begin scrolling inside each lane. The board corner drag handle uses the same height.")
       .addText((text) => {
         text.setValue(`${this.boardHeight}`).onChange((value) => {
           this.boardHeight = Math.min(Math.max(Math.round(Number(value || 420)), 260), 900);
@@ -10464,6 +10471,14 @@ export class DashKanbanView extends ItemView {
       title.textContent = card.text;
       cardEl.appendChild(title);
 
+      if (card.priority) {
+        const priorityBadge = document.createElement("div");
+        priorityBadge.className = "dash-kanban-card-priority";
+        priorityBadge.dataset.priority = getKanbanPriorityTone(card.priority);
+        priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
+        cardEl.appendChild(priorityBadge);
+      }
+
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
@@ -10474,9 +10489,6 @@ export class DashKanbanView extends ItemView {
 
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
-    if (card.priority) {
-      createSemanticChip(metaRow, formatKanbanPriorityLabel(card.priority), card.priority === "urgent" || card.priority === "high" ? "alert" : "state");
-    }
     if (card.energy) {
       createSemanticChip(metaRow, `Energy ${card.energy}`, "health");
     }

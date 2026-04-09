@@ -284,10 +284,16 @@
 }
 
 .dash-kanban-project-board {
+  position: relative;
   --dash-kanban-board-accent: var(--dash-kanban-accent);
   --dash-kanban-board-accent-strong: var(--dash-kanban-accent-strong);
   --dash-kanban-board-surface: color-mix(in srgb, var(--dash-kanban-surface) 92%, transparent);
   --dash-kanban-board-surface-strong: color-mix(in srgb, var(--dash-kanban-surface-strong) 92%, transparent);
+  --dash-kanban-card-surface: color-mix(in srgb, var(--background-primary) 88%, rgba(16, 20, 28, 0.78));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, var(--background-primary-alt) 84%, rgba(16, 20, 28, 0.92));
+  --dash-kanban-card-border: color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 14px 26px rgba(0, 0, 0, 0.16);
+  --dash-kanban-board-height: 420px;
   padding: 18px;
   display: flex;
   flex-direction: column;
@@ -302,6 +308,9 @@
   --dash-kanban-board-accent-strong: #da6f47;
   --dash-kanban-board-surface: color-mix(in srgb, #111723 76%, var(--background-primary-alt));
   --dash-kanban-board-surface-strong: color-mix(in srgb, #0a1018 82%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #182233 86%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #101722 88%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #f2b36f 18%, var(--background-modifier-border));
 }
 
 .dash-kanban-project-board[data-theme="light"] {
@@ -309,6 +318,10 @@
   --dash-kanban-board-accent-strong: #7d4a24;
   --dash-kanban-board-surface: color-mix(in srgb, #f6efe3 86%, var(--background-primary));
   --dash-kanban-board-surface-strong: color-mix(in srgb, #eadbc2 78%, var(--background-primary-alt));
+  --dash-kanban-card-surface: color-mix(in srgb, #fffaf0 94%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #f2e6d3 88%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #b46b2c 18%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 12px 24px rgba(103, 74, 35, 0.10);
 }
 
 .dash-kanban-project-board[data-theme="ocean"] {
@@ -316,6 +329,9 @@
   --dash-kanban-board-accent-strong: #2f86d8;
   --dash-kanban-board-surface: color-mix(in srgb, #102234 72%, var(--background-primary-alt));
   --dash-kanban-board-surface-strong: color-mix(in srgb, #0a1624 82%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #11293f 88%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #0b1d31 90%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #71c6ff 20%, var(--background-modifier-border));
 }
 
 .dash-kanban-project-board[data-theme="forest"] {
@@ -323,6 +339,9 @@
   --dash-kanban-board-accent-strong: #3f8f56;
   --dash-kanban-board-surface: color-mix(in srgb, #16281d 72%, var(--background-primary-alt));
   --dash-kanban-board-surface-strong: color-mix(in srgb, #101b14 82%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #183025 88%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #112218 90%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #88c98c 20%, var(--background-modifier-border));
 }
 
 .dash-kanban-project-board[data-theme="rose"] {
@@ -330,13 +349,20 @@
   --dash-kanban-board-accent-strong: #b85c72;
   --dash-kanban-board-surface: color-mix(in srgb, #2d1821 70%, var(--background-primary-alt));
   --dash-kanban-board-surface-strong: color-mix(in srgb, #1d0f17 82%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #341824 88%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #24111a 90%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #f0909f 20%, var(--background-modifier-border));
 }
 
 .dash-kanban-project-board[data-theme="aurora"] {
-  --dash-kanban-board-accent: #8ce0d0;
-  --dash-kanban-board-accent-strong: #4da6d8;
-  --dash-kanban-board-surface: color-mix(in srgb, #132234 72%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #122016 78%, var(--background-primary));
+  --dash-kanban-board-accent: #74f0d6;
+  --dash-kanban-board-accent-strong: #67a3ff;
+  --dash-kanban-board-surface: color-mix(in srgb, #101d32 74%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #132615 82%, var(--background-primary));
+  --dash-kanban-card-surface: linear-gradient(160deg, rgba(14, 32, 44, 0.96), rgba(18, 48, 34, 0.88));
+  --dash-kanban-card-surface-strong: linear-gradient(160deg, rgba(15, 26, 48, 0.98), rgba(22, 50, 38, 0.92));
+  --dash-kanban-card-border: color-mix(in srgb, #74f0d6 24%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 16px 30px rgba(24, 72, 98, 0.24);
 }
 
 .dash-kanban-detail-panel {
@@ -390,7 +416,6 @@
   padding: 6px 12px;
   border: 1px solid var(--dash-kanban-border);
   border-radius: 999px;
-  --dash-kanban-board-height: 420px;
 }
 
 .dash-kanban-detail-chips,
@@ -602,7 +627,7 @@
 }
 
 .dash-kanban-matrix-row-header {
-  min-height: 100%;
+  min-height: var(--dash-kanban-board-height);
   padding: 16px 14px;
   border-left: 3px solid var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
   border-radius: 16px;
@@ -610,7 +635,7 @@
 }
 
 .dash-kanban-matrix-empty-cell {
-  min-height: 220px;
+  min-height: var(--dash-kanban-board-height);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -635,11 +660,13 @@
 }
 
 .dash-kanban-lane {
-  min-height: 260px;
+  min-height: var(--dash-kanban-board-height);
+  height: var(--dash-kanban-board-height);
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--dash-kanban-board-accent) 9%, transparent), transparent 34%),
     linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-board-surface) 90%, transparent), color-mix(in srgb, var(--dash-kanban-board-surface-strong) 92%, transparent));
@@ -731,6 +758,7 @@
   gap: 10px;
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -799,17 +827,18 @@
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--background-modifier-border));
+  border: 1px solid var(--dash-kanban-card-border);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 22%),
-    color-mix(in srgb, var(--background-primary) 90%, rgba(16, 20, 28, 0.78));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 22%),
+    var(--dash-kanban-card-surface);
+  box-shadow: var(--dash-kanban-card-shadow);
   cursor: grab;
 }
 
 .dash-kanban-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.22);
 }
 
 .dash-kanban-card.is-dragging {
@@ -888,6 +917,44 @@
   margin: 0;
   font-size: 1rem;
   line-height: 1.3;
+}
+
+.dash-kanban-card-priority {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--dash-kanban-card-border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-kanban-card-priority[data-priority="urgent"] {
+  border-color: color-mix(in srgb, #ff7769 46%, var(--dash-kanban-card-border));
+  background: color-mix(in srgb, #ff7769 16%, var(--dash-kanban-card-surface-strong));
+  color: #ffd2ca;
+}
+
+.dash-kanban-card-priority[data-priority="high"] {
+  border-color: color-mix(in srgb, #ffb061 44%, var(--dash-kanban-card-border));
+  background: color-mix(in srgb, #ffb061 16%, var(--dash-kanban-card-surface-strong));
+  color: #ffe0b8;
+}
+
+.dash-kanban-card-priority[data-priority="medium"] {
+  border-color: color-mix(in srgb, #77b7ff 40%, var(--dash-kanban-card-border));
+  background: color-mix(in srgb, #77b7ff 14%, var(--dash-kanban-card-surface-strong));
+  color: #d8ebff;
+}
+
+.dash-kanban-card-priority[data-priority="low"] {
+  border-color: color-mix(in srgb, #74c98a 38%, var(--dash-kanban-card-border));
+  background: color-mix(in srgb, #74c98a 14%, var(--dash-kanban-card-surface-strong));
+  color: #d9f7df;
 }
 
 .dash-kanban-card-editor-text {
@@ -1040,6 +1107,44 @@
 
 .dash-kanban-popover-option:hover {
   background: color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--background-primary));
+}
+
+.dash-kanban-board-resizer {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--dash-kanban-board-accent) 18%, transparent), transparent),
+    color-mix(in srgb, var(--background-primary) 78%, transparent);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.16);
+  cursor: ns-resize;
+}
+
+.dash-kanban-board-resizer::before {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid color-mix(in srgb, var(--dash-kanban-board-accent-strong) 72%, white);
+  border-bottom: 2px solid color-mix(in srgb, var(--dash-kanban-board-accent-strong) 72%, white);
+}
+
+.dash-kanban-board-resizer span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .dash-kanban-shell.is-compact {
