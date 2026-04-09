@@ -4405,12 +4405,12 @@ function renameProjectSectionHeading(content, input) {
   const currentSectionName = input.currentSectionName.trim();
   const nextSectionName = input.nextSectionName.trim();
   if (!projectName || !currentSectionName || !nextSectionName || currentSectionName.toLowerCase() === nextSectionName.toLowerCase()) {
-    return { content, updated: false };
+    return { content, updated: false, collision: false };
   }
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
   if (!project) {
-    return { content, updated: false };
+    return { content, updated: false, collision: false };
   }
   let currentSectionIndex = -1;
   let targetAlreadyExists = false;
@@ -4426,15 +4426,19 @@ function renameProjectSectionHeading(content, input) {
       currentSectionIndex = index;
     }
   }
-  if (currentSectionIndex === -1 || targetAlreadyExists) {
-    return { content, updated: false };
+  if (currentSectionIndex === -1) {
+    return { content, updated: false, collision: false };
+  }
+  if (targetAlreadyExists) {
+    return { content, updated: false, collision: true };
   }
   const output = [...lines];
   const headingPrefix = (_b = (_a = output[currentSectionIndex].match(/^\s*#+/)) == null ? void 0 : _a[0]) != null ? _b : "###";
   output[currentSectionIndex] = `${headingPrefix} ${nextSectionName}`;
   return {
     content: output.join("\n"),
-    updated: true
+    updated: true,
+    collision: false
   };
 }
 function repairMasterHubProjectLines(projectLines, input) {
@@ -16943,13 +16947,16 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         await this.refreshKanbanBoardNotes(false);
       }
     }
+    if (hubRenameResult.collisionCount > 0) {
+      new import_obsidian4.Notice(`Kanban rename review needed: ${hubRenameResult.collisionCount} hub section target${hubRenameResult.collisionCount === 1 ? " already exists" : "s already exist"}.`);
+    }
     this.refreshDashboardViews();
   }
   async applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, nextLaneDefinitions) {
     var _a;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile || previousLaneDefinitions.length === 0 || nextLaneDefinitions.length === 0) {
-      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false };
+      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false, collisionCount: 0 };
     }
     const previousByLaneKey = new Map(previousLaneDefinitions.map((lane) => [lane.laneKey, lane]));
     const previousSingleSectionCounts = /* @__PURE__ */ new Map();
@@ -16963,6 +16970,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
     let content = null;
     let updatedMasterHub = false;
+    let collisionCount = 0;
     const adjustedLaneDefinitions = nextLaneDefinitions.map((lane) => ({
       ...lane,
       mappedSections: [...lane.mappedSections]
@@ -17003,6 +17011,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         currentSectionName: previousSectionName,
         nextSectionName: nextLabel
       });
+      if (renamed.collision) {
+        collisionCount += 1;
+        continue;
+      }
       if (!renamed.updated) {
         continue;
       }
@@ -17015,7 +17027,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     return {
       laneDefinitions: adjustedLaneDefinitions,
-      updatedMasterHub
+      updatedMasterHub,
+      collisionCount
     };
   }
   async updateKanbanBoardPresentation(projectName, input) {

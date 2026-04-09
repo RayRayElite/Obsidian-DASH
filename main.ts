@@ -3059,6 +3059,9 @@ export default class DailyDashboardPlugin extends Plugin {
         await this.refreshKanbanBoardNotes(false);
       }
     }
+    if (hubRenameResult.collisionCount > 0) {
+      new Notice(`Kanban rename review needed: ${hubRenameResult.collisionCount} hub section target${hubRenameResult.collisionCount === 1 ? " already exists" : "s already exist"}.`);
+    }
     this.refreshDashboardViews();
   }
 
@@ -3066,10 +3069,10 @@ export default class DailyDashboardPlugin extends Plugin {
     projectName: string,
     previousLaneDefinitions: KanbanLaneDefinition[],
     nextLaneDefinitions: KanbanLaneDefinition[]
-  ): Promise<{ laneDefinitions: KanbanLaneDefinition[]; updatedMasterHub: boolean }> {
+  ): Promise<{ laneDefinitions: KanbanLaneDefinition[]; updatedMasterHub: boolean; collisionCount: number }> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile || previousLaneDefinitions.length === 0 || nextLaneDefinitions.length === 0) {
-      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false };
+      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false, collisionCount: 0 };
     }
 
     const previousByLaneKey = new Map(previousLaneDefinitions.map((lane) => [lane.laneKey, lane]));
@@ -3084,6 +3087,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     let content: string | null = null;
     let updatedMasterHub = false;
+    let collisionCount = 0;
     const adjustedLaneDefinitions = nextLaneDefinitions.map((lane) => ({
       ...lane,
       mappedSections: [...lane.mappedSections]
@@ -3128,6 +3132,10 @@ export default class DailyDashboardPlugin extends Plugin {
         currentSectionName: previousSectionName,
         nextSectionName: nextLabel
       });
+      if (renamed.collision) {
+        collisionCount += 1;
+        continue;
+      }
       if (!renamed.updated) {
         continue;
       }
@@ -3143,7 +3151,8 @@ export default class DailyDashboardPlugin extends Plugin {
 
     return {
       laneDefinitions: adjustedLaneDefinitions,
-      updatedMasterHub
+      updatedMasterHub,
+      collisionCount
     };
   }
 

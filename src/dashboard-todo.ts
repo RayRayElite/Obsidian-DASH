@@ -1711,18 +1711,18 @@ export function renameProjectSectionHeading(content: string, input: {
   projectName: string;
   currentSectionName: string;
   nextSectionName: string;
-}): { content: string; updated: boolean } {
+}): { content: string; updated: boolean; collision: boolean } {
   const projectName = input.projectName.trim();
   const currentSectionName = input.currentSectionName.trim();
   const nextSectionName = input.nextSectionName.trim();
   if (!projectName || !currentSectionName || !nextSectionName || currentSectionName.toLowerCase() === nextSectionName.toLowerCase()) {
-    return { content, updated: false };
+    return { content, updated: false, collision: false };
   }
 
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
   if (!project) {
-    return { content, updated: false };
+    return { content, updated: false, collision: false };
   }
 
   let currentSectionIndex = -1;
@@ -1741,8 +1741,12 @@ export function renameProjectSectionHeading(content: string, input: {
     }
   }
 
-  if (currentSectionIndex === -1 || targetAlreadyExists) {
-    return { content, updated: false };
+  if (currentSectionIndex === -1) {
+    return { content, updated: false, collision: false };
+  }
+
+  if (targetAlreadyExists) {
+    return { content, updated: false, collision: true };
   }
 
   const output = [...lines];
@@ -1750,7 +1754,8 @@ export function renameProjectSectionHeading(content: string, input: {
   output[currentSectionIndex] = `${headingPrefix} ${nextSectionName}`;
   return {
     content: output.join("\n"),
-    updated: true
+    updated: true,
+    collision: false
   };
 }
 
