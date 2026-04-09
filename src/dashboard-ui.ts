@@ -37,6 +37,7 @@ import {
   type DashKanbanCard,
   type DashKanbanProjectBoard,
   type DashKanbanWorkspaceSnapshot,
+  type DashboardKanbanFocusFilter,
   type DashboardKanbanViewMode,
   type ActivitySessionKind,
   type DashboardFocusDisplayItem,
@@ -8728,6 +8729,9 @@ export class DashKanbanView extends ItemView {
     }
 
     this.renderHeader(shell, snapshot, viewState);
+    if (snapshot.repairCount > 0) {
+      this.renderRepairBanner(shell, snapshot.repairCount);
+    }
     const visibleProjects = this.getVisibleProjects(snapshot, viewState);
     const selectedCard = this.getSelectedCard(visibleProjects);
 
@@ -8859,8 +8863,30 @@ export class DashKanbanView extends ItemView {
     field.createEl("strong", { text: value });
   }
 
-  private renderHeader(parent: HTMLElement, snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): void {
+  private renderRepairBanner(parent: HTMLElement, repairCount: number): void {
+    const banner = parent.createDiv({ cls: "dash-kanban-repair-banner" });
+    const copy = banner.createDiv({ cls: "dash-kanban-repair-copy" });
+    copy.createEl("strong", { text: `${repairCount} Kanban repair item${repairCount === 1 ? "" : "s"} need review` });
+    copy.createEl("p", {
+      cls: "dash-kanban-card-note",
+      text: "Open the repair report when tasks drift, mappings go stale, or older artifacts need to be compared against current board state."
+    });
+
+    const actions = banner.createDiv({ cls: "dash-kanban-detail-actions" });
+    actions.append(
+      this.createHeaderButton("wrench", "Open repair report", () => {
+        void this.plugin.generateKanbanRepairReport(true);
+      }),
+      this.createHeaderButton("refresh-cw", "Repair foundations", () => {
+        void this.plugin.repairKanbanFoundations(true);
+      })
+    );
+  }
+
+  private renderHeader(parent: HTMLElement, snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean; focusFilter: DashboardKanbanFocusFilter }): void {
     const header = parent.createDiv({ cls: "dash-kanban-header" });
+    const searchQuery = this.searchText.trim().toLowerCase();
+    const filterCounts = this.getFocusFilterCounts(this.getSearchedProjects(this.getScopedProjects(snapshot, viewState), searchQuery));
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
     const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
@@ -8874,6 +8900,13 @@ export class DashKanbanView extends ItemView {
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+    createSemanticChip(summary, viewState.focusFilter === "all"
+      ? "All work"
+      : viewState.focusFilter === "attention"
+        ? "Attention filter"
+        : viewState.focusFilter === "blocked"
+          ? "Blocked filter"
+          : "Due filter", "state");
     createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
@@ -8939,26 +8972,99 @@ export class DashKanbanView extends ItemView {
       void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
     });
     doneToggle.createSpan({ text: "Show done" });
+
+    const focusRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
+    focusRow.append(
+      this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "all" });
+      }),
+      this.createToggleButton(`Attention ${filterCounts.attention}`, viewState.focusFilter === "attention", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "attention" });
+      }),
+      this.createToggleButton(`Blocked ${filterCounts.blocked}`, viewState.focusFilter === "blocked", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "blocked" });
+      }),
+      this.createToggleButton(`Due ${filterCounts.due}`, viewState.focusFilter === "due", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "due" });
+      })
+    );
   }
 
-  private getVisibleProjects(snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): DashKanbanProjectBoard[] {
+  private getScopedProjects(snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): DashKanbanProjectBoard[] {
     const baseProjects = viewState.mode === "single-project"
       ? snapshot.projects.filter((project) => project.projectName === snapshot.selectedProjectName)
       : snapshot.projects;
 
-    const query = this.searchText.trim().toLowerCase();
-    return baseProjects
+    return baseProjects.map((project) => ({
+      ...project,
+      lanes: project.lanes
+        .filter((lane) => viewState.showDone || !lane.done)
+        .map((lane) => ({
+          ...lane,
+          cards: [...lane.cards],
+          cardCount: lane.cards.length
+        }))
+    }));
+  }
+
+  private getSearchedProjects(projects: DashKanbanProjectBoard[], query: string): DashKanbanProjectBoard[] {
+    return projects
       .map((project) => ({
         ...project,
-        lanes: project.lanes
-          .filter((lane) => viewState.showDone || !lane.done)
-          .map((lane) => ({
+        lanes: project.lanes.map((lane) => {
+          const cards = lane.cards.filter((card) => this.matchesCardSearch(project, card, query));
+          return {
             ...lane,
-            cards: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)),
-            cardCount: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)).length
-          }))
+            cards,
+            cardCount: cards.length
+          };
+        })
       }))
       .filter((project) => !query || project.projectName.toLowerCase().includes(query) || project.lanes.some((lane) => lane.cards.length > 0));
+  }
+
+  private getFocusFilterCounts(projects: DashKanbanProjectBoard[]): Record<DashboardKanbanFocusFilter, number> {
+    const cards = projects.flatMap((project) => project.lanes.flatMap((lane) => lane.cards));
+    return {
+      all: cards.length,
+      attention: cards.filter((card) => this.matchesFocusFilter(card, "attention")).length,
+      blocked: cards.filter((card) => this.matchesFocusFilter(card, "blocked")).length,
+      due: cards.filter((card) => this.matchesFocusFilter(card, "due")).length
+    };
+  }
+
+  private getVisibleProjects(snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean; focusFilter: DashboardKanbanFocusFilter }): DashKanbanProjectBoard[] {
+    const searchedProjects = this.getSearchedProjects(this.getScopedProjects(snapshot, viewState), this.searchText.trim().toLowerCase());
+
+    return searchedProjects
+      .map((project) => ({
+        ...project,
+        lanes: project.lanes.map((lane) => {
+          const cards = lane.cards.filter((card) => this.matchesFocusFilter(card, viewState.focusFilter));
+          return {
+            ...lane,
+            cards,
+            cardCount: cards.length
+          };
+        })
+      }))
+      .filter((project) => project.lanes.some((lane) => lane.cards.length > 0));
+  }
+
+  private matchesFocusFilter(card: DashKanbanCard, filter: DashboardKanbanFocusFilter): boolean {
+    if (filter === "all") {
+      return true;
+    }
+
+    if (filter === "blocked") {
+      return card.isBlocked;
+    }
+
+    if (filter === "due") {
+      return card.isDueSoon || card.isOverdue;
+    }
+
+    return card.isBlocked || card.isDueSoon || card.isOverdue;
   }
 
   private matchesCardSearch(project: DashKanbanProjectBoard, card: DashKanbanCard, query: string): boolean {

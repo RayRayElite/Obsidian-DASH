@@ -128,6 +128,7 @@
 
 .dash-kanban-action-row,
 .dash-kanban-filter-row,
+.dash-kanban-focus-row,
 .dash-kanban-project-actions,
 .dash-kanban-card-top,
 .dash-kanban-card-footer {
@@ -137,6 +138,10 @@
 }
 
 .dash-kanban-filter-row {
+  flex-wrap: wrap;
+}
+
+.dash-kanban-focus-row {
   flex-wrap: wrap;
 }
 
@@ -249,6 +254,26 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.dash-kanban-repair-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, #d46a4a 28%, var(--dash-kanban-border));
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, #e28d59 16%, transparent), transparent 34%),
+    linear-gradient(145deg, color-mix(in srgb, var(--dash-kanban-surface) 90%, transparent), color-mix(in srgb, #351a14 20%, var(--dash-kanban-surface-strong)));
+  box-shadow: var(--dash-kanban-shadow);
+}
+
+.dash-kanban-repair-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .dash-kanban-detail-header {
@@ -3460,6 +3485,11 @@ input.daily-dashboard-input {
 @media (max-width: 1080px) {
   .daily-dashboard-card {
     grid-column: span 6;
+  }
+
+  .dash-kanban-repair-banner {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .daily-dashboard-actions {

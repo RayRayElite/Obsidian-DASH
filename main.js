@@ -12740,6 +12740,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       return;
     }
     this.renderHeader(shell, snapshot, viewState);
+    if (snapshot.repairCount > 0) {
+      this.renderRepairBanner(shell, snapshot.repairCount);
+    }
     const visibleProjects = this.getVisibleProjects(snapshot, viewState);
     const selectedCard = this.getSelectedCard(visibleProjects);
     if (selectedCard) {
@@ -12858,8 +12861,28 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     field.createEl("span", { cls: "dash-kanban-detail-label", text: label });
     field.createEl("strong", { text: value });
   }
+  renderRepairBanner(parent, repairCount) {
+    const banner = parent.createDiv({ cls: "dash-kanban-repair-banner" });
+    const copy = banner.createDiv({ cls: "dash-kanban-repair-copy" });
+    copy.createEl("strong", { text: `${repairCount} Kanban repair item${repairCount === 1 ? "" : "s"} need review` });
+    copy.createEl("p", {
+      cls: "dash-kanban-card-note",
+      text: "Open the repair report when tasks drift, mappings go stale, or older artifacts need to be compared against current board state."
+    });
+    const actions = banner.createDiv({ cls: "dash-kanban-detail-actions" });
+    actions.append(
+      this.createHeaderButton("wrench", "Open repair report", () => {
+        void this.plugin.generateKanbanRepairReport(true);
+      }),
+      this.createHeaderButton("refresh-cw", "Repair foundations", () => {
+        void this.plugin.repairKanbanFoundations(true);
+      })
+    );
+  }
   renderHeader(parent, snapshot, viewState) {
     const header = parent.createDiv({ cls: "dash-kanban-header" });
+    const searchQuery = this.searchText.trim().toLowerCase();
+    const filterCounts = this.getFocusFilterCounts(this.getSearchedProjects(this.getScopedProjects(snapshot, viewState), searchQuery));
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
     const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
@@ -12872,6 +12895,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+    createSemanticChip(summary, viewState.focusFilter === "all" ? "All work" : viewState.focusFilter === "attention" ? "Attention filter" : viewState.focusFilter === "blocked" ? "Blocked filter" : "Due filter", "state");
     createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
@@ -12935,18 +12959,80 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
     });
     doneToggle.createSpan({ text: "Show done" });
+    const focusRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
+    focusRow.append(
+      this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "all" });
+      }),
+      this.createToggleButton(`Attention ${filterCounts.attention}`, viewState.focusFilter === "attention", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "attention" });
+      }),
+      this.createToggleButton(`Blocked ${filterCounts.blocked}`, viewState.focusFilter === "blocked", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "blocked" });
+      }),
+      this.createToggleButton(`Due ${filterCounts.due}`, viewState.focusFilter === "due", async () => {
+        await this.plugin.updateKanbanViewState({ focusFilter: "due" });
+      })
+    );
   }
-  getVisibleProjects(snapshot, viewState) {
+  getScopedProjects(snapshot, viewState) {
     const baseProjects = viewState.mode === "single-project" ? snapshot.projects.filter((project) => project.projectName === snapshot.selectedProjectName) : snapshot.projects;
-    const query = this.searchText.trim().toLowerCase();
     return baseProjects.map((project) => ({
       ...project,
       lanes: project.lanes.filter((lane) => viewState.showDone || !lane.done).map((lane) => ({
         ...lane,
-        cards: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)),
-        cardCount: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)).length
+        cards: [...lane.cards],
+        cardCount: lane.cards.length
       }))
+    }));
+  }
+  getSearchedProjects(projects, query) {
+    return projects.map((project) => ({
+      ...project,
+      lanes: project.lanes.map((lane) => {
+        const cards = lane.cards.filter((card) => this.matchesCardSearch(project, card, query));
+        return {
+          ...lane,
+          cards,
+          cardCount: cards.length
+        };
+      })
     })).filter((project) => !query || project.projectName.toLowerCase().includes(query) || project.lanes.some((lane) => lane.cards.length > 0));
+  }
+  getFocusFilterCounts(projects) {
+    const cards = projects.flatMap((project) => project.lanes.flatMap((lane) => lane.cards));
+    return {
+      all: cards.length,
+      attention: cards.filter((card) => this.matchesFocusFilter(card, "attention")).length,
+      blocked: cards.filter((card) => this.matchesFocusFilter(card, "blocked")).length,
+      due: cards.filter((card) => this.matchesFocusFilter(card, "due")).length
+    };
+  }
+  getVisibleProjects(snapshot, viewState) {
+    const searchedProjects = this.getSearchedProjects(this.getScopedProjects(snapshot, viewState), this.searchText.trim().toLowerCase());
+    return searchedProjects.map((project) => ({
+      ...project,
+      lanes: project.lanes.map((lane) => {
+        const cards = lane.cards.filter((card) => this.matchesFocusFilter(card, viewState.focusFilter));
+        return {
+          ...lane,
+          cards,
+          cardCount: cards.length
+        };
+      })
+    })).filter((project) => project.lanes.some((lane) => lane.cards.length > 0));
+  }
+  matchesFocusFilter(card, filter) {
+    if (filter === "all") {
+      return true;
+    }
+    if (filter === "blocked") {
+      return card.isBlocked;
+    }
+    if (filter === "due") {
+      return card.isDueSoon || card.isOverdue;
+    }
+    return card.isBlocked || card.isDueSoon || card.isOverdue;
   }
   matchesCardSearch(project, card, query) {
     if (!query) {
@@ -13416,7 +13502,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         viewState: {
           mode: "all-projects",
           selectedProjectName: "",
-          showDone: true
+          showDone: true,
+          focusFilter: "all"
         },
         lastCleanupPreviewAt: ""
       },
@@ -15424,7 +15511,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...previousState,
       ...nextState
     });
-    if (merged.mode === previousState.mode && merged.selectedProjectName === previousState.selectedProjectName && merged.showDone === previousState.showDone) {
+    if (merged.mode === previousState.mode && merged.selectedProjectName === previousState.selectedProjectName && merged.showDone === previousState.showDone && merged.focusFilter === previousState.focusFilter) {
       return;
     }
     this.data.kanbanState.viewState = merged;
@@ -18457,7 +18544,8 @@ ${context}`, resolvedModel);
     return {
       mode: (value == null ? void 0 : value.mode) === "single-project" ? "single-project" : "all-projects",
       selectedProjectName: typeof (value == null ? void 0 : value.selectedProjectName) === "string" ? value.selectedProjectName.trim() : "",
-      showDone: (value == null ? void 0 : value.showDone) !== false
+      showDone: (value == null ? void 0 : value.showDone) !== false,
+      focusFilter: (value == null ? void 0 : value.focusFilter) === "attention" || (value == null ? void 0 : value.focusFilter) === "blocked" || (value == null ? void 0 : value.focusFilter) === "due" ? value.focusFilter : "all"
     };
   }
   normalizeKanbanState(state) {

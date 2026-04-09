@@ -231,7 +231,8 @@ export default class DailyDashboardPlugin extends Plugin {
       viewState: {
         mode: "all-projects",
         selectedProjectName: "",
-        showDone: true
+        showDone: true,
+        focusFilter: "all"
       },
       lastCleanupPreviewAt: ""
     },
@@ -2661,7 +2662,8 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (merged.mode === previousState.mode
       && merged.selectedProjectName === previousState.selectedProjectName
-      && merged.showDone === previousState.showDone) {
+      && merged.showDone === previousState.showDone
+      && merged.focusFilter === previousState.focusFilter) {
       return;
     }
 
@@ -6312,7 +6314,12 @@ export default class DailyDashboardPlugin extends Plugin {
     return {
       mode: value?.mode === "single-project" ? "single-project" : "all-projects",
       selectedProjectName: typeof value?.selectedProjectName === "string" ? value.selectedProjectName.trim() : "",
-      showDone: value?.showDone !== false
+      showDone: value?.showDone !== false,
+      focusFilter: value?.focusFilter === "attention"
+        || value?.focusFilter === "blocked"
+        || value?.focusFilter === "due"
+        ? value.focusFilter
+        : "all"
     };
   }
 

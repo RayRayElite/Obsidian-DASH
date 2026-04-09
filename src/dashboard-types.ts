@@ -677,11 +677,13 @@ export interface KanbanSyncConflict {
 }
 
 export type DashboardKanbanViewMode = "all-projects" | "single-project";
+export type DashboardKanbanFocusFilter = "all" | "attention" | "blocked" | "due";
 
 export interface DashboardKanbanViewState {
   mode: DashboardKanbanViewMode;
   selectedProjectName: string;
   showDone: boolean;
+  focusFilter: DashboardKanbanFocusFilter;
 }
 
 export interface DashKanbanCard {
