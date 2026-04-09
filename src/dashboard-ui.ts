@@ -24,6 +24,7 @@ import {
   HABIT_CADENCE_OPTIONS,
   HABIT_WINDOW_OPTIONS,
   SESSION_TAG_OPTIONS,
+  VIEW_TYPE_DASH_KANBAN,
   VIEW_TYPE_DAILY_DASHBOARD,
   type ResearchGroundingMode,
   type CalendarEventOccurrence,
@@ -33,6 +34,10 @@ import {
   type CardVisualOptions,
   type CreateProjectInput,
   type DayRepairInput,
+  type DashKanbanCard,
+  type DashKanbanProjectBoard,
+  type DashKanbanWorkspaceSnapshot,
+  type DashboardKanbanViewMode,
   type ActivitySessionKind,
   type DashboardFocusDisplayItem,
   type DashboardNotificationItem,
@@ -5873,12 +5878,15 @@ export class KanbanQuickAddModal extends Modal {
   private selectedLane: string;
   private taskText: string;
 
-  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
+  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[], initial?: { projectName?: string; lane?: string }) {
     super(app);
     this.plugin = plugin;
     this.projects = projects;
-    this.selectedProjectName = projects[0]?.name ?? "";
-    this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
+    this.selectedProjectName = projects.find((project) => project.name === initial?.projectName)?.name ?? projects[0]?.name ?? "";
+    const defaultLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
+    this.selectedLane = initial?.lane && this.plugin.getKanbanLaneOptions(this.selectedProjectName).some((option) => option.targetSection === initial.lane)
+      ? initial.lane
+      : defaultLane;
     this.taskText = "";
   }
 
@@ -5964,12 +5972,12 @@ export class KanbanTaskEditModal extends Modal {
   private selectedLane: string;
   private taskText: string;
 
-  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
+  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[], initial?: { projectName?: string; taskId?: string }) {
     super(app);
     this.plugin = plugin;
     this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
-    this.selectedProjectName = this.projects[0]?.name ?? "";
-    this.selectedTaskId = "";
+    this.selectedProjectName = this.projects.find((project) => project.name === initial?.projectName)?.name ?? this.projects[0]?.name ?? "";
+    this.selectedTaskId = initial?.taskId ?? "";
     this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
     this.taskText = "";
     this.syncSelectionFromTask();
@@ -8403,6 +8411,431 @@ export class FocusCaptureModal extends Modal {
       estimateMinutes: estimateMinutes === null ? null : Math.round(estimateMinutes)
     });
     this.close();
+  }
+}
+
+export class DashKanbanView extends ItemView {
+  private plugin: DailyDashboardPlugin;
+  private searchText = "";
+  private dragCard: { projectName: string; taskId: string } | null = null;
+  private isRefreshing = false;
+
+  constructor(leaf: WorkspaceLeaf, plugin: DailyDashboardPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string {
+    return VIEW_TYPE_DASH_KANBAN;
+  }
+
+  getDisplayText(): string {
+    return "DASH Kanban";
+  }
+
+  getIcon(): string {
+    return "kanban-square";
+  }
+
+  async onOpen(): Promise<void> {
+    this.contentEl.addClass("dash-kanban-view");
+    await this.requestRefresh();
+  }
+
+  async onClose(): Promise<void> {
+    this.contentEl.empty();
+    this.contentEl.removeClass("dash-kanban-view");
+  }
+
+  async requestRefresh(): Promise<void> {
+    if (this.isRefreshing) {
+      return;
+    }
+
+    this.isRefreshing = true;
+    try {
+      await this.renderBoard();
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+
+  private async renderBoard(): Promise<void> {
+    const snapshot = await this.plugin.getDashKanbanWorkspaceSnapshot();
+    const viewState = this.plugin.getKanbanViewState();
+    this.contentEl.empty();
+    this.contentEl.addClass("dash-kanban-view");
+
+    const shell = this.contentEl.createDiv({ cls: "dash-kanban-shell" });
+    if (!snapshot || snapshot.projects.length === 0) {
+      const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state" });
+      emptyState.createEl("h2", { text: "DASH Kanban needs a Master Task Hub" });
+      emptyState.createEl("p", { text: "Point the plugin at a real Master Task Hub note before opening the board." });
+      const openButton = emptyState.createEl("button", { cls: "mod-cta", text: "Open Master Task Hub" });
+      openButton.addEventListener("click", () => {
+        void this.plugin.openMasterTodo();
+      });
+      return;
+    }
+
+    this.renderHeader(shell, snapshot, viewState);
+    const visibleProjects = this.getVisibleProjects(snapshot, viewState);
+
+    if (visibleProjects.length === 0) {
+      const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state is-filtered" });
+      emptyState.createEl("h3", { text: "No matching cards" });
+      emptyState.createEl("p", { text: "Try clearing the search or switching projects." });
+      return;
+    }
+
+    const workspace = shell.createDiv({ cls: `dash-kanban-workspace is-${viewState.mode}` });
+    visibleProjects.forEach((project) => {
+      this.renderProjectBoard(workspace, project, viewState.mode);
+    });
+  }
+
+  private renderHeader(parent: HTMLElement, snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): void {
+    const header = parent.createDiv({ cls: "dash-kanban-header" });
+    const hero = header.createDiv({ cls: "dash-kanban-hero" });
+    const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
+    copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
+    copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
+    copy.createEl("p", {
+      cls: "dash-kanban-subtitle",
+      text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
+    });
+
+    const summary = hero.createDiv({ cls: "dash-kanban-summary" });
+    createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
+    createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
+    createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+    createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
+    if (snapshot.repairCount > 0) {
+      createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
+    }
+
+    const controls = header.createDiv({ cls: "dash-kanban-controls" });
+    const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
+    actionRow.append(
+      this.createHeaderButton("plus", "Add card", () => {
+        const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
+        void this.plugin.openKanbanQuickAddFlow(targetProject);
+      }),
+      this.createHeaderButton("pen-square", "Edit card", () => {
+        const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
+        void this.plugin.openKanbanTaskEditFlow(targetProject);
+      }),
+      this.createHeaderButton("file-stack", "Open hub", () => {
+        void this.plugin.openMasterTodo();
+      })
+    );
+
+    const filterRow = controls.createDiv({ cls: "dash-kanban-filter-row" });
+    const searchWrapper = filterRow.createDiv({ cls: "dash-kanban-search" });
+    const searchIcon = searchWrapper.createSpan({ cls: "dash-kanban-search-icon" });
+    setIcon(searchIcon, "search");
+    const searchInput = searchWrapper.createEl("input", {
+      type: "search",
+      placeholder: "Search cards, tags, assignees, projects"
+    });
+    searchInput.value = this.searchText;
+    searchInput.addEventListener("input", () => {
+      this.searchText = searchInput.value;
+      void this.requestRefresh();
+    });
+
+    const modeToggle = filterRow.createDiv({ cls: "dash-kanban-mode-toggle" });
+    modeToggle.append(
+      this.createToggleButton("All Projects", viewState.mode === "all-projects", async () => {
+        await this.plugin.updateKanbanViewState({ mode: "all-projects" });
+      }),
+      this.createToggleButton("Single Project", viewState.mode === "single-project", async () => {
+        await this.plugin.updateKanbanViewState({ mode: "single-project" });
+      })
+    );
+
+    const projectSelect = filterRow.createEl("select", { cls: "dash-kanban-project-select" });
+    snapshot.projects.forEach((project) => {
+      projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
+    });
+    projectSelect.value = snapshot.selectedProjectName;
+    projectSelect.addEventListener("change", () => {
+      void this.plugin.updateKanbanViewState({ selectedProjectName: projectSelect.value });
+    });
+
+    const doneToggle = filterRow.createEl("label", { cls: "dash-kanban-checkbox" });
+    const doneInput = doneToggle.createEl("input", { type: "checkbox" });
+    doneInput.checked = viewState.showDone;
+    doneInput.addEventListener("change", () => {
+      void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
+    });
+    doneToggle.createSpan({ text: "Show done" });
+  }
+
+  private getVisibleProjects(snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): DashKanbanProjectBoard[] {
+    const baseProjects = viewState.mode === "single-project"
+      ? snapshot.projects.filter((project) => project.projectName === snapshot.selectedProjectName)
+      : snapshot.projects;
+
+    const query = this.searchText.trim().toLowerCase();
+    return baseProjects
+      .map((project) => ({
+        ...project,
+        lanes: project.lanes
+          .filter((lane) => viewState.showDone || !lane.done)
+          .map((lane) => ({
+            ...lane,
+            cards: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)),
+            cardCount: lane.cards.filter((card) => this.matchesCardSearch(project, card, query)).length
+          }))
+      }))
+      .filter((project) => !query || project.projectName.toLowerCase().includes(query) || project.lanes.some((lane) => lane.cards.length > 0));
+  }
+
+  private matchesCardSearch(project: DashKanbanProjectBoard, card: DashKanbanCard, query: string): boolean {
+    if (!query) {
+      return true;
+    }
+
+    return [
+      project.projectName,
+      project.templateName,
+      card.text,
+      card.notePreview,
+      card.assignee,
+      card.dueDate,
+      card.blockedReason,
+      card.executionContext,
+      ...card.tags
+    ].some((value) => value.toLowerCase().includes(query));
+  }
+
+  private renderProjectBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
+    const board = parent.createDiv({ cls: "dash-kanban-project-board" });
+    const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
+    const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
+    heading.createEl("h2", { text: project.projectName });
+    if (project.focus) {
+      heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.focus });
+    } else if (project.projectSummary) {
+      heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.projectSummary });
+    }
+
+    const projectMeta = boardHeader.createDiv({ cls: "dash-kanban-project-meta" });
+    createSemanticChip(projectMeta, project.templateName, "capture");
+    createSemanticChip(projectMeta, project.status || (project.projectState === "active" ? "Active" : project.projectState), project.projectState === "active" ? "focus" : "neutral");
+    createSemanticChip(projectMeta, project.healthLabel, project.healthScore >= 75 ? "done" : project.healthScore >= 50 ? "neutral" : "alert");
+    createSemanticChip(projectMeta, `${project.openCount} open`, "neutral");
+    if (project.archivedCount > 0) {
+      createSemanticChip(projectMeta, `${project.archivedCount} archived`, "done");
+    }
+
+    const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
+    boardActions.append(
+      this.createHeaderButton("plus", "Add", () => {
+        void this.plugin.openKanbanQuickAddFlow(project.projectName);
+      }),
+      this.createHeaderButton("file-text", "Hub", () => {
+        void this.plugin.openMasterTodo();
+      })
+    );
+    if (project.notePath) {
+      boardActions.append(this.createHeaderButton("folder-open", "Note", () => {
+        void this.plugin.openNoteByPath(project.notePath);
+      }));
+    }
+
+    const lanes = board.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
+    project.lanes.forEach((lane) => {
+      this.renderLane(lanes, project, lane);
+    });
+  }
+
+  private renderLane(parent: HTMLElement, project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number]): void {
+    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}` });
+    laneEl.dataset.project = project.projectName;
+    laneEl.dataset.section = lane.targetSection;
+    const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
+    header.createEl("h3", { text: lane.label });
+    header.createSpan({ cls: "dash-kanban-lane-count", text: `${lane.cardCount}` });
+    if (lane.helperText) {
+      laneEl.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
+    }
+
+    const cards = laneEl.createDiv({ cls: "dash-kanban-card-stack" });
+    laneEl.addEventListener("dragover", (event) => {
+      if (!lane.targetSection || !this.dragCard) {
+        return;
+      }
+      event.preventDefault();
+      laneEl.addClass("is-drop-target");
+    });
+    laneEl.addEventListener("dragleave", () => {
+      laneEl.removeClass("is-drop-target");
+    });
+    laneEl.addEventListener("drop", (event) => {
+      event.preventDefault();
+      laneEl.removeClass("is-drop-target");
+      const dragged = this.dragCard;
+      this.dragCard = null;
+      if (!dragged || !lane.targetSection) {
+        return;
+      }
+      if (dragged.projectName !== project.projectName) {
+        new Notice("Cross-project drag is not wired yet. This first slice supports lane moves inside a project board.");
+        return;
+      }
+      void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.targetSection);
+    });
+
+    if (lane.cards.length === 0) {
+      cards.createEl("p", { cls: "dash-kanban-lane-empty", text: lane.done ? "No completed cards here." : "Drop work here." });
+      return;
+    }
+
+    lane.cards.forEach((card) => {
+      cards.append(this.renderCard(project, card));
+    });
+  }
+
+  private renderCard(project: DashKanbanProjectBoard, card: DashKanbanCard): HTMLElement {
+    const cardEl = document.createElement("article");
+    cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}`;
+    cardEl.draggable = card.taskId.trim().length > 0;
+    cardEl.addEventListener("dragstart", (event) => {
+      this.dragCard = { projectName: project.projectName, taskId: card.taskId };
+      cardEl.addClass("is-dragging");
+      event.dataTransfer?.setData("text/plain", `${project.projectName}:${card.taskId}`);
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+      }
+    });
+    cardEl.addEventListener("dragend", () => {
+      this.dragCard = null;
+      cardEl.removeClass("is-dragging");
+    });
+    cardEl.addEventListener("dblclick", () => {
+      void this.plugin.openKanbanTaskEditFlow(project.projectName, card.taskId);
+    });
+
+    const top = document.createElement("div");
+    top.className = "dash-kanban-card-top";
+    cardEl.appendChild(top);
+    if (card.assignee) {
+      const assignee = document.createElement("span");
+      assignee.className = "dash-kanban-card-assignee";
+      assignee.textContent = card.assignee.slice(0, 2).toUpperCase();
+      top.appendChild(assignee);
+    }
+
+    const toneRow = document.createElement("div");
+    toneRow.className = "dash-kanban-card-tones";
+    top.appendChild(toneRow);
+    if (card.isOverdue) {
+      createSemanticChip(toneRow, "Overdue", "alert");
+    } else if (card.isDueSoon) {
+      createSemanticChip(toneRow, "Due soon", "capture");
+    }
+    if (card.isBlocked) {
+      createSemanticChip(toneRow, "Blocked", "alert");
+    }
+    if (card.dueDate) {
+      createSemanticChip(toneRow, card.dueDate, card.isOverdue ? "alert" : "neutral");
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "dash-kanban-card-actions";
+    cardEl.appendChild(actions);
+    actions.append(
+      this.createCardActionButton("pen-square", "Edit card", (event) => {
+        event.stopPropagation();
+        void this.plugin.openKanbanTaskEditFlow(project.projectName, card.taskId);
+      }),
+      this.createCardActionButton("plus-square", "Add sibling card", (event) => {
+        event.stopPropagation();
+        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.targetSection);
+      })
+    );
+
+    const title = document.createElement("h4");
+    title.className = "dash-kanban-card-title";
+    title.textContent = card.text;
+    cardEl.appendChild(title);
+
+    if (card.notePreview) {
+      const note = document.createElement("p");
+      note.className = "dash-kanban-card-note";
+      note.textContent = card.notePreview;
+      cardEl.appendChild(note);
+    }
+
+    const metaRow = document.createElement("div");
+    metaRow.className = "dash-kanban-card-meta";
+    cardEl.appendChild(metaRow);
+    if (card.executionContext) {
+      createSemanticChip(metaRow, card.executionContext, "neutral");
+    }
+    if (card.effort) {
+      createSemanticChip(metaRow, `Effort ${card.effort}`, "state");
+    }
+    if (card.energy) {
+      createSemanticChip(metaRow, `Energy ${card.energy}`, "health");
+    }
+    if (card.trigger) {
+      createSemanticChip(metaRow, `Trigger ${card.trigger}`, "capture");
+    }
+    card.tags.forEach((tag) => {
+      createSemanticChip(metaRow, `#${tag}`, "neutral");
+    });
+
+    const footer = document.createElement("div");
+    footer.className = "dash-kanban-card-footer";
+    cardEl.appendChild(footer);
+    const section = document.createElement("span");
+    section.textContent = card.sectionName;
+    footer.appendChild(section);
+    if (card.assignee) {
+      const assignee = document.createElement("span");
+      assignee.textContent = `@${card.assignee}`;
+      footer.appendChild(assignee);
+    }
+    return cardEl;
+  }
+
+  private createHeaderButton(icon: string, label: string, onClick: () => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = "dash-kanban-header-button";
+    button.type = "button";
+    const iconEl = document.createElement("span");
+    iconEl.className = "dash-kanban-button-icon";
+    button.appendChild(iconEl);
+    setIcon(iconEl, icon);
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    button.appendChild(labelEl);
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  private createCardActionButton(icon: string, label: string, onClick: (event: MouseEvent) => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = "dash-kanban-card-action";
+    button.type = "button";
+    button.ariaLabel = label;
+    setIcon(button, icon);
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  private createToggleButton(label: string, active: boolean, onClick: () => Promise<void>): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.className = `dash-kanban-toggle-button${active ? " is-active" : ""}`;
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      void onClick();
+    });
+    return button;
   }
 }
 

@@ -2434,6 +2434,35 @@ export function updateTaskByIdInProject(content: string, input: {
   };
 }
 
+export function moveTaskByIdInProject(content: string, input: {
+  projectName: string;
+  taskId: string;
+  sectionName: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
+  if (!location) {
+    return { content, updated: false };
+  }
+
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false };
+  }
+
+  const targetSection = input.sectionName.trim() || location.section;
+  const movedTaskText = targetSection.toLowerCase() === "waiting"
+    ? removed.taskText
+    : stripBlockingTaskAnnotations(removed.taskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, targetSection, movedTaskText);
+
+  return {
+    content: nextContent,
+    updated: nextContent !== content || location.section.toLowerCase() !== targetSection.toLowerCase()
+  };
+}
+
 function markTaskCompleteById(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; marked: boolean } {
   const lines = content.split(/\r?\n/);
   const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, false);

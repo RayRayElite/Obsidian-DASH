@@ -1,4 +1,5 @@
 export const VIEW_TYPE_DAILY_DASHBOARD = "daily-dashboard-view";
+export const VIEW_TYPE_DASH_KANBAN = "dash-kanban-view";
 export const CHECKLIST_REGEX = /^\s*-\s\[( |x|X)\]\s+(.*)$/;
 export const PROJECT_SEPARATOR_REGEX = /^\s*-{3,}\s*$/;
 export const SECTION_HEADER_REGEX = /^([A-Za-z][A-Za-z0-9 &/()'_-]+):\s*$/;
@@ -675,11 +676,82 @@ export interface KanbanSyncConflict {
   detail: string;
 }
 
+export type DashboardKanbanViewMode = "all-projects" | "single-project";
+
+export interface DashboardKanbanViewState {
+  mode: DashboardKanbanViewMode;
+  selectedProjectName: string;
+  showDone: boolean;
+}
+
+export interface DashKanbanCard {
+  taskId: string;
+  projectName: string;
+  text: string;
+  rawText: string;
+  sectionName: string;
+  laneKey: string;
+  laneLabel: string;
+  targetSection: string;
+  done: boolean;
+  dueDate: string;
+  blockedReason: string;
+  unblockDate: string;
+  effort: string;
+  energy: string;
+  executionContext: string;
+  trigger: string;
+  minimumStep: string;
+  isBlocked: boolean;
+  isDueSoon: boolean;
+  isOverdue: boolean;
+  assignee: string;
+  tags: string[];
+  notePreview: string;
+}
+
+export interface DashKanbanLane {
+  laneKey: string;
+  label: string;
+  helperText: string;
+  targetSection: string;
+  done: boolean;
+  cardCount: number;
+  cards: DashKanbanCard[];
+}
+
+export interface DashKanbanProjectBoard {
+  projectName: string;
+  templateId: string;
+  templateName: string;
+  status: string;
+  projectState: TodoProjectSummary["projectState"];
+  focus: string;
+  projectSummary: string;
+  healthLabel: string;
+  healthScore: number;
+  notePath: string;
+  openCount: number;
+  archivedCount: number;
+  lanes: DashKanbanLane[];
+}
+
+export interface DashKanbanWorkspaceSnapshot {
+  updatedAt: string;
+  mode: DashboardKanbanViewMode;
+  selectedProjectName: string;
+  totalProjects: number;
+  totalCards: number;
+  repairCount: number;
+  projects: DashKanbanProjectBoard[];
+}
+
 export interface KanbanState {
   taskRegistry: Record<string, KanbanTaskRegistryEntry>;
   boardTemplates: Record<string, KanbanBoardTemplate>;
   boardConfigurations: Record<string, KanbanBoardConfiguration>;
   repairQueue: Record<string, KanbanRepairStateRecord>;
+  viewState: DashboardKanbanViewState;
   lastCleanupPreviewAt: string;
 }
 

@@ -102,6 +102,7 @@ import {
   sanitizeFileName,
   trimLeadingBlankLines,
   trimTrailingBlankLines,
+  moveTaskByIdInProject,
   stripMarkdownExtension,
   syncKanbanBoardNoteToMasterHub,
   syncKanbanHubToMasterHub,
@@ -112,6 +113,7 @@ import {
   AskAiModal,
   AskResearchQuestionModal,
   CreateProjectModal,
+  DashKanbanView,
   DailyDashboardSettingTab,
   DailyDashboardView,
   FirstRunSetupWizardModal,
@@ -128,6 +130,7 @@ import {
   DEFAULT_BUDGET_CATEGORIES,
   DEFAULT_SETTINGS,
   IMAGE_EXTENSIONS,
+  VIEW_TYPE_DASH_KANBAN,
   VIEW_TYPE_DAILY_DASHBOARD,
   type AiArtifact,
   type AiRelevantNote,
@@ -150,10 +153,14 @@ import {
   type DailyEntry,
   type DashboardPluginData,
   type DashboardFocusDisplayItem,
+  type DashboardKanbanViewState,
   type DashboardNotificationItem,
   type DashboardNotificationSound,
   type DashboardSettings,
   type DayLifecycleState,
+  type DashKanbanCard,
+  type DashKanbanProjectBoard,
+  type DashKanbanWorkspaceSnapshot,
   type DashboardUiState,
   type AnxietyCheckIn,
   type EnergyCheckIn,
@@ -190,6 +197,7 @@ import {
   type SymptomEntry,
   type TimeAllocationBucket,
   type TimeAllocationInsights,
+  type TodoProjectSummary,
   type TodoSnapshot,
   type TodayFocusItem,
   type WeeklyAgendaDay,
@@ -215,6 +223,11 @@ export default class DailyDashboardPlugin extends Plugin {
       boardTemplates: {},
       boardConfigurations: {},
       repairQueue: {},
+      viewState: {
+        mode: "all-projects",
+        selectedProjectName: "",
+        showDone: true
+      },
       lastCleanupPreviewAt: ""
     },
     dayState: {
@@ -402,9 +415,14 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     this.registerView(VIEW_TYPE_DAILY_DASHBOARD, (leaf) => new DailyDashboardView(leaf, this));
+    this.registerView(VIEW_TYPE_DASH_KANBAN, (leaf) => new DashKanbanView(leaf, this));
 
     this.addRibbonIcon("check-square", "Open Obsidian DASH - Daily Action & System Hub", () => {
       void this.activateDashboardView();
+    });
+
+    this.addRibbonIcon("kanban-square", "Open DASH Kanban Board", () => {
+      void this.activateDashKanbanView();
     });
 
     this.addCommand({
@@ -412,6 +430,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open dashboard",
       callback: () => {
         void this.activateDashboardView();
+      }
+    });
+
+    this.addCommand({
+      id: "open-dash-kanban-board",
+      name: "Open DASH Kanban board",
+      callback: () => {
+        void this.activateDashKanbanView();
       }
     });
 
@@ -1122,6 +1148,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async onunload(): Promise<void> {
     await this.app.workspace.detachLeavesOfType(VIEW_TYPE_DAILY_DASHBOARD);
+    await this.app.workspace.detachLeavesOfType(VIEW_TYPE_DASH_KANBAN);
   }
 
   getSettings(): DashboardSettings {
@@ -2561,6 +2588,223 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     this.app.workspace.revealLeaf(leaf);
+  }
+
+  async activateDashKanbanView(): Promise<void> {
+    const existingLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_KANBAN);
+    const leaf = existingLeaves[0] ?? this.app.workspace.getLeaf(true);
+
+    await leaf.setViewState({
+      type: VIEW_TYPE_DASH_KANBAN,
+      active: true
+    });
+
+    this.app.workspace.revealLeaf(leaf);
+  }
+
+  getKanbanViewState(): DashboardKanbanViewState {
+    return { ...this.data.kanbanState.viewState };
+  }
+
+  async updateKanbanViewState(nextState: Partial<DashboardKanbanViewState>): Promise<void> {
+    const previousState = this.data.kanbanState.viewState;
+    const merged = this.normalizeKanbanViewState({
+      ...previousState,
+      ...nextState
+    });
+
+    if (merged.mode === previousState.mode
+      && merged.selectedProjectName === previousState.selectedProjectName
+      && merged.showDone === previousState.showDone) {
+      return;
+    }
+
+    this.data.kanbanState.viewState = merged;
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async getDashKanbanWorkspaceSnapshot(): Promise<DashKanbanWorkspaceSnapshot | null> {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      return null;
+    }
+
+    const candidateProjects = snapshot.projects.filter((project) => project.projectState !== "someday");
+    const currentViewState = this.data.kanbanState.viewState;
+    const selectedProjectName = candidateProjects.some((project) => project.name === currentViewState.selectedProjectName)
+      ? currentViewState.selectedProjectName
+      : candidateProjects[0]?.name ?? "";
+
+    if (selectedProjectName !== currentViewState.selectedProjectName) {
+      this.data.kanbanState.viewState.selectedProjectName = selectedProjectName;
+      void this.savePluginData();
+    }
+
+    const projects = candidateProjects
+      .filter((project) => this.data.kanbanState.boardConfigurations[project.name]?.showInHub !== false || project.name === selectedProjectName)
+      .map((project) => this.buildDashKanbanProjectBoard(project));
+
+    return {
+      updatedAt: formatDateTimeKey(new Date()),
+      mode: currentViewState.mode,
+      selectedProjectName,
+      totalProjects: projects.length,
+      totalCards: projects.reduce((sum, project) => sum + project.lanes.reduce((laneSum, lane) => laneSum + lane.cardCount, 0), 0),
+      repairCount: Object.values(this.data.kanbanState.repairQueue).filter((item) => !item.resolvedAt.trim()).length,
+      projects
+    };
+  }
+
+  async moveKanbanTask(projectName: string, taskId: string, laneSection: string): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const targetLane = laneSection.trim();
+    if (!projectName.trim() || !taskId.trim() || !targetLane) {
+      return false;
+    }
+
+    const content = await this.app.vault.read(todoFile);
+    const updated = moveTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      sectionName: targetLane,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!updated.updated) {
+      new Notice("Could not move that Kanban task in the Master Task Hub.");
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, updated.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
+    }
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async openNoteByPath(path: string): Promise<void> {
+    const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (!(target instanceof TFile)) {
+      new Notice("That note could not be found in the vault.");
+      return;
+    }
+
+    await this.openFile(target);
+  }
+
+  private buildDashKanbanProjectBoard(project: TodoProjectSummary): DashKanbanProjectBoard {
+    const configuration = this.data.kanbanState.boardConfigurations[project.name];
+    const template = this.data.kanbanState.boardTemplates[configuration?.templateId || ""]
+      ?? this.data.kanbanState.boardTemplates["execution-default"]
+      ?? Object.values(this.data.kanbanState.boardTemplates)[0]
+      ?? {
+        templateId: "execution-default",
+        name: "Execution Default",
+        description: "",
+        laneDefinitions: [],
+        builtIn: true,
+        updatedAt: ""
+      };
+    const laneOptions = this.getKanbanLaneOptions(project.name);
+    const openTasks = [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails
+    ];
+
+    const lanes = laneOptions.map((laneOption) => {
+      const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
+        .filter((task) => laneOption.done
+          ? true
+          : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase()
+            || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase())
+        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+
+      return {
+        laneKey: laneOption.laneKey,
+        label: laneOption.label,
+        helperText: laneOption.helperText,
+        targetSection: laneOption.targetSection,
+        done: laneOption.done,
+        cardCount: cards.length,
+        cards
+      };
+    });
+
+    return {
+      projectName: project.name,
+      templateId: template.templateId,
+      templateName: template.name,
+      status: project.status,
+      projectState: project.projectState,
+      focus: project.focus,
+      projectSummary: project.projectSummary,
+      healthLabel: project.healthLabel,
+      healthScore: project.healthScore,
+      notePath: project.noteLinks[0] ? `${stripMarkdownExtension(project.noteLinks[0])}.md` : "",
+      openCount: project.openCount,
+      archivedCount: project.archivedCount,
+      lanes
+    };
+  }
+
+  private buildDashKanbanCard(projectName: string, task: TodoTaskSummary, laneOption: KanbanLaneOption): DashKanbanCard {
+    return {
+      taskId: task.taskId,
+      projectName,
+      text: task.text,
+      rawText: task.rawText,
+      sectionName: task.section,
+      laneKey: laneOption.laneKey,
+      laneLabel: laneOption.label,
+      targetSection: laneOption.targetSection,
+      done: laneOption.done,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      unblockDate: task.unblockDate,
+      effort: task.effort,
+      energy: task.energy,
+      executionContext: task.executionContext,
+      trigger: task.trigger,
+      minimumStep: task.minimumStep,
+      isBlocked: task.isBlocked,
+      isDueSoon: task.isDueSoon,
+      isOverdue: task.isOverdue,
+      assignee: this.extractDashKanbanAssignee(task.rawText, task.text),
+      tags: this.extractDashKanbanTags(task.rawText),
+      notePreview: this.buildDashKanbanNotePreview(task)
+    };
+  }
+
+  private buildDashKanbanNotePreview(task: TodoTaskSummary): string {
+    return [
+      task.minimumStep ? `Minimum step: ${task.minimumStep}` : "",
+      task.blockedReason ? `Blocked: ${task.blockedReason}` : "",
+      task.executionContext ? `Context: ${task.executionContext}` : "",
+      task.trigger ? `Trigger: ${task.trigger}` : ""
+    ].filter((value) => value.length > 0).join(" • ");
+  }
+
+  private extractDashKanbanAssignee(rawText: string, fallbackText: string): string {
+    const match = `${rawText} ${fallbackText}`.match(/(?:^|\s)@([A-Za-z0-9_-]+)/);
+    return match?.[1]?.trim() ?? "";
+  }
+
+  private extractDashKanbanTags(rawText: string): string[] {
+    return Array.from(rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g))
+      .map((match) => match[1].trim())
+      .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index)
+      .slice(0, 6);
   }
 
   async updateSettings(settings: DashboardSettings): Promise<void> {
@@ -5819,6 +6063,14 @@ export default class DailyDashboardPlugin extends Plugin {
     return repairQueue;
   }
 
+  private normalizeKanbanViewState(value: Partial<DashboardKanbanViewState> | null | undefined): DashboardKanbanViewState {
+    return {
+      mode: value?.mode === "single-project" ? "single-project" : "all-projects",
+      selectedProjectName: typeof value?.selectedProjectName === "string" ? value.selectedProjectName.trim() : "",
+      showDone: value?.showDone !== false
+    };
+  }
+
   private normalizeKanbanState(state: Partial<KanbanState> | null | undefined): KanbanState {
     const taskRegistry: Record<string, KanbanTaskRegistryEntry> = {};
     if (state?.taskRegistry && typeof state.taskRegistry === "object") {
@@ -5849,6 +6101,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardTemplates: this.normalizeKanbanBoardTemplates(state?.boardTemplates),
       boardConfigurations: this.normalizeKanbanBoardConfigurations(state?.boardConfigurations),
       repairQueue: this.normalizeKanbanRepairQueue(state?.repairQueue),
+      viewState: this.normalizeKanbanViewState(state?.viewState),
       lastCleanupPreviewAt: typeof state?.lastCleanupPreviewAt === "string" ? state.lastCleanupPreviewAt.trim() : ""
     };
   }
@@ -8415,7 +8668,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new PromoteTaskModal(this.app, this, snapshot.projects).open();
   }
 
-  async openKanbanQuickAddFlow(): Promise<void> {
+  async openKanbanQuickAddFlow(initialProjectName = "", initialLane = ""): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
     const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
     if (projects.length === 0) {
@@ -8423,10 +8676,13 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    new KanbanQuickAddModal(this.app, this, projects).open();
+    new KanbanQuickAddModal(this.app, this, projects, {
+      projectName: initialProjectName,
+      lane: initialLane
+    }).open();
   }
 
-  async openKanbanTaskEditFlow(): Promise<void> {
+  async openKanbanTaskEditFlow(initialProjectName = "", initialTaskId = ""): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
     const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
     if (projects.length === 0) {
@@ -8434,7 +8690,10 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    new KanbanTaskEditModal(this.app, this, projects).open();
+    new KanbanTaskEditModal(this.app, this, projects, {
+      projectName: initialProjectName,
+      taskId: initialTaskId
+    }).open();
   }
 
   async openProjectReviewModeFlow(): Promise<void> {
@@ -8649,6 +8908,14 @@ export default class DailyDashboardPlugin extends Plugin {
     leaves.forEach((leaf) => {
       const view = leaf.view;
       if (view instanceof DailyDashboardView) {
+        void view.requestRefresh();
+      }
+    });
+
+    const kanbanLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_KANBAN);
+    kanbanLeaves.forEach((leaf) => {
+      const view = leaf.view;
+      if (view instanceof DashKanbanView) {
         void view.requestRefresh();
       }
     });
