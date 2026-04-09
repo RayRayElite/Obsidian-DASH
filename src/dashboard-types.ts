@@ -630,6 +630,15 @@ export interface KanbanLaneDefinition {
   done: boolean;
 }
 
+export interface KanbanLaneOption {
+  laneKey: string;
+  label: string;
+  helperText: string;
+  targetSection: string;
+  done: boolean;
+  unmapped: boolean;
+}
+
 export interface KanbanBoardTemplate {
   templateId: string;
   name: string;
@@ -656,6 +665,14 @@ export interface KanbanRepairStateRecord {
   reason: "ambiguous-match" | "conflict" | "orphaned-task" | "broken-source-line";
   createdAt: string;
   resolvedAt: string;
+}
+
+export interface KanbanSyncConflict {
+  projectName: string;
+  taskId: string;
+  laneLabel: string;
+  reason: "unmapped-lane" | "missing-task" | "ambiguous-match";
+  detail: string;
 }
 
 export interface KanbanState {

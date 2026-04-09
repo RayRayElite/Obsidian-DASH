@@ -4117,7 +4117,12 @@ function renderKanbanProjectBoardNote(input) {
   ].join("\n");
 }
 function syncKanbanHubToMasterHub(input) {
-  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt, input.taskRegistry);
+  return syncKanbanCardsToMasterHub(
+    input.masterContent,
+    parseKanbanHubCards(input.kanbanContent, input.boardTemplates, input.boardConfigurations),
+    input.archivedAt,
+    input.taskRegistry
+  );
 }
 function syncKanbanBoardNoteToMasterHub(input) {
   const projectName = parseKanbanBoardProjectName(input.boardContent);
@@ -4127,10 +4132,17 @@ function syncKanbanBoardNoteToMasterHub(input) {
       movedTasks: 0,
       completedTasks: 0,
       missingTasks: 0,
+      conflictedTasks: 0,
+      conflicts: [],
       projectName: ""
     };
   }
-  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt, input.taskRegistry);
+  const synced = syncKanbanCardsToMasterHub(
+    input.masterContent,
+    parseKanbanBoardCards(input.boardContent, projectName, input.boardTemplates, input.boardConfigurations),
+    input.archivedAt,
+    input.taskRegistry
+  );
   return {
     ...synced,
     projectName
@@ -4140,29 +4152,65 @@ function syncKanbanCardsToMasterHub(masterContent, cards, archivedAt, taskRegist
   let content = masterContent;
   let movedTasks = 0;
   let missingTasks = 0;
+  let conflictedTasks = 0;
+  const conflicts = [];
   cards.forEach((card) => {
     if (!card.taskId) {
       return;
     }
-    if (card.lane === "Done" || card.checked) {
+    if (card.ambiguous || !card.targetSection) {
+      conflictedTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: card.ambiguous ? "ambiguous-match" : "unmapped-lane",
+        detail: card.ambiguous ? `The lane label ${card.laneLabel} matches more than one mapping for this board.` : `The lane label ${card.laneLabel} does not map to a hub section for this board.`
+      });
+      return;
+    }
+    if (card.done || card.checked) {
       const completed = markTaskCompleteById(content, card.projectName, card.taskId, taskRegistry);
       if (completed.marked) {
         content = completed.content;
+      } else {
+        missingTasks += 1;
+        conflicts.push({
+          projectName: card.projectName,
+          taskId: card.taskId,
+          laneLabel: card.laneLabel,
+          reason: "missing-task",
+          detail: "The completed board card could not be matched back to the Master Task Hub."
+        });
       }
       return;
     }
     const location = findProjectTaskLocationById(content, card.projectName, card.taskId, taskRegistry);
     if (!location) {
       missingTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: "missing-task",
+        detail: "The board card could not be matched back to the Master Task Hub."
+      });
       return;
     }
-    const targetSection = card.lane;
+    const targetSection = card.targetSection;
     if (normalizeLegacyKanbanSectionName(location.section) === targetSection.toLowerCase()) {
       return;
     }
     const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId, taskRegistry);
     if (!removed) {
       missingTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: "missing-task",
+        detail: "The board card location changed before the lane move could be written back."
+      });
       return;
     }
     const movedTaskText = targetSection === "Waiting" ? removed.taskText : stripBlockingTaskAnnotations(removed.taskText);
@@ -4174,8 +4222,24 @@ function syncKanbanCardsToMasterHub(masterContent, cards, archivedAt, taskRegist
     content: archived.content,
     movedTasks,
     completedTasks: archived.archivedTasks.length,
-    missingTasks
+    missingTasks,
+    conflictedTasks,
+    conflicts
   };
+}
+function getKanbanLaneOptionsForProject(projectName, boardTemplates = {}, boardConfigurations = {}) {
+  const laneDefinitions = resolveKanbanLaneDefinitionsForProject(projectName, boardTemplates, boardConfigurations);
+  return laneDefinitions.map((lane) => {
+    var _a;
+    return {
+      laneKey: lane.laneKey,
+      label: lane.label,
+      helperText: lane.helperText,
+      targetSection: lane.done ? "Done" : (_a = lane.mappedSections[0]) != null ? _a : "",
+      done: lane.done,
+      unmapped: !lane.done && lane.mappedSections.length === 0
+    };
+  });
 }
 function repairMasterHubStructure(content, input) {
   const lines = content.split(/\r?\n/);
@@ -4720,7 +4784,7 @@ function renderKanbanTaskLine(task, checked) {
   ].filter((value) => value.length > 0);
   return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
-function parseKanbanHubCards(content) {
+function parseKanbanHubCards(content, boardTemplates = {}, boardConfigurations = {}) {
   if (/^---\r?\n[\s\S]*?kanban-plugin:\s*board[\s\S]*?---/i.test(content)) {
     return parseKanbanHubBoardCards(content);
   }
@@ -4729,7 +4793,7 @@ function parseKanbanHubCards(content) {
   let currentProjectName = "";
   let currentLane = null;
   lines.forEach((line) => {
-    const summaryMatch = line.trim().match(/^<summary>(.+?) • Now /);
+    const summaryMatch = line.trim().match(/^<summary>([^•<]+?)\s+• /);
     if (summaryMatch) {
       currentProjectName = summaryMatch[1].trim();
       currentLane = null;
@@ -4740,9 +4804,9 @@ function parseKanbanHubCards(content) {
       currentLane = null;
       return;
     }
-    const laneMatch = line.trim().match(/^### (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    const laneMatch = line.trim().match(/^###\s+(.+?)(?:\s+\([^)]*\))?$/);
     if (laneMatch) {
-      currentLane = laneMatch[1];
+      currentLane = resolveKanbanLaneOptionByLabel(currentProjectName, laneMatch[1].trim(), boardTemplates, boardConfigurations);
       return;
     }
     if (!currentProjectName || !currentLane) {
@@ -4758,9 +4822,12 @@ function parseKanbanHubCards(content) {
     }
     cards.push({
       projectName: currentProjectName,
-      lane: currentLane,
       taskId,
-      checked: taskMatch[1].toLowerCase() === "x"
+      checked: taskMatch[1].toLowerCase() === "x",
+      laneLabel: currentLane.label,
+      targetSection: currentLane.targetSection,
+      done: currentLane.done,
+      ambiguous: currentLane.unmapped
     });
   });
   return cards;
@@ -4814,14 +4881,14 @@ function parseKanbanBoardProjectName(content) {
   const titleMatch = content.match(/^#\s+(.+?)\s+Kanban Board\s*$/m);
   return (_c = (_b = titleMatch == null ? void 0 : titleMatch[1]) == null ? void 0 : _b.trim()) != null ? _c : "";
 }
-function parseKanbanBoardCards(content, projectName) {
+function parseKanbanBoardCards(content, projectName, boardTemplates = {}, boardConfigurations = {}) {
   const lines = content.split(/\r?\n/);
   const cards = [];
   let currentLane = null;
   lines.forEach((line) => {
-    const laneMatch = line.trim().match(/^##? (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    const laneMatch = line.trim().match(/^##?\s+(.+?)(?:\s+\([^)]*\))?$/);
     if (laneMatch) {
-      currentLane = laneMatch[1];
+      currentLane = resolveKanbanLaneOptionByLabel(projectName, laneMatch[1].trim(), boardTemplates, boardConfigurations);
       return;
     }
     if (!currentLane) {
@@ -4837,12 +4904,41 @@ function parseKanbanBoardCards(content, projectName) {
     }
     cards.push({
       projectName,
-      lane: currentLane,
       taskId,
-      checked: taskMatch[1].toLowerCase() === "x"
+      checked: taskMatch[1].toLowerCase() === "x",
+      laneLabel: currentLane.label,
+      targetSection: currentLane.targetSection,
+      done: currentLane.done,
+      ambiguous: currentLane.unmapped
     });
   });
   return cards;
+}
+function resolveKanbanLaneOptionByLabel(projectName, laneLabel, boardTemplates, boardConfigurations) {
+  const laneOptions = getKanbanLaneOptionsForProject(projectName, boardTemplates, boardConfigurations);
+  const normalizedLabel = laneLabel.trim().toLowerCase();
+  const matches = laneOptions.filter((option) => option.label.trim().toLowerCase() === normalizedLabel);
+  if (matches.length === 1) {
+    return matches[0];
+  }
+  return {
+    laneKey: normalizedLabel || "unknown",
+    label: laneLabel.trim() || "Unknown Lane",
+    helperText: matches.length > 1 ? "Ambiguous lane mapping" : "Unmapped lane",
+    targetSection: "",
+    done: false,
+    unmapped: true
+  };
+}
+function resolveKanbanLaneDefinitionsForProject(projectName, boardTemplates, boardConfigurations) {
+  var _a;
+  const configuration = boardConfigurations[projectName];
+  if (configuration == null ? void 0 : configuration.laneDefinitions.length) {
+    return configuration.laneDefinitions;
+  }
+  const templateId = (configuration == null ? void 0 : configuration.templateId) || "execution-default";
+  const template = (_a = boardTemplates[templateId]) != null ? _a : Object.values(boardTemplates)[0];
+  return (template == null ? void 0 : template.laneDefinitions.length) ? template.laneDefinitions : buildFallbackExecutionLaneDefinitions();
 }
 function findProjectTaskLocationById(content, projectName, taskId, taskRegistry = {}) {
   const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, true);
@@ -5726,7 +5822,6 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ];
-var KANBAN_EDITABLE_LANES = ["Now", "Next", "Later", "Waiting", "Parking Lot"];
 function getSubscriptionMonthlyEquivalent2(subscription) {
   if (subscription.kind !== "recurring") {
     return 0;
@@ -10668,13 +10763,16 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
 };
 var KanbanQuickAddModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, projects) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     super(app);
     this.plugin = plugin;
     this.projects = projects;
     this.selectedProjectName = (_b = (_a = projects[0]) == null ? void 0 : _a.name) != null ? _b : "";
-    this.selectedLane = "Now";
+    this.selectedLane = (_d = (_c = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _c.targetSection) != null ? _d : "Now";
     this.taskText = "";
+  }
+  getLaneOptions() {
+    return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
   onOpen() {
     this.setTitle("Kanban Quick Add Task");
@@ -10688,7 +10786,12 @@ var KanbanQuickAddModal = class extends import_obsidian3.Modal {
       });
     });
     new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("This maps directly back to the matching Master Task Hub section.").addDropdown((dropdown) => {
-      KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+      var _a, _b;
+      const laneOptions = this.getLaneOptions();
+      laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+      if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
+        this.selectedLane = ((_a = laneOptions[0]) == null ? void 0 : _a.targetSection) || ((_b = laneOptions[0]) == null ? void 0 : _b.label) || "Now";
+      }
       dropdown.setValue(this.selectedLane);
       dropdown.onChange((value) => {
         this.selectedLane = value;
@@ -10723,15 +10826,18 @@ var KanbanQuickAddModal = class extends import_obsidian3.Modal {
 };
 var KanbanTaskEditModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, projects) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     super(app);
     this.plugin = plugin;
     this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
     this.selectedProjectName = (_b = (_a = this.projects[0]) == null ? void 0 : _a.name) != null ? _b : "";
     this.selectedTaskId = "";
-    this.selectedLane = "Now";
+    this.selectedLane = (_d = (_c = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _c.targetSection) != null ? _d : "Now";
     this.taskText = "";
     this.syncSelectionFromTask();
+  }
+  getLaneOptions() {
+    return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
   getEditableTasks(project) {
     return [
@@ -10751,7 +10857,7 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
     return (_b = this.getEditableTasks((_a = this.getSelectedProject()) != null ? _a : {}).find((task) => task.taskId === this.selectedTaskId)) != null ? _b : null;
   }
   syncSelectionFromTask() {
-    var _a;
+    var _a, _b, _c, _d;
     const project = this.getSelectedProject();
     const tasks = project ? this.getEditableTasks(project) : [];
     if (tasks.length === 0) {
@@ -10763,9 +10869,11 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
     const selectedTask = (_a = tasks.find((task) => task.taskId === this.selectedTaskId)) != null ? _a : tasks[0];
     this.selectedTaskId = selectedTask.taskId;
     this.taskText = selectedTask.text;
-    this.selectedLane = selectedTask.kanbanLane || selectedTask.section;
-    if (!KANBAN_EDITABLE_LANES.includes(this.selectedLane)) {
-      this.selectedLane = "Now";
+    const laneOptions = this.getLaneOptions();
+    const matchingLane = (_b = laneOptions.find((option) => option.targetSection.toLowerCase() === selectedTask.section.toLowerCase())) != null ? _b : laneOptions.find((option) => option.label.toLowerCase() === (selectedTask.kanbanLane || selectedTask.section).toLowerCase());
+    this.selectedLane = (matchingLane == null ? void 0 : matchingLane.targetSection) || ((_c = laneOptions[0]) == null ? void 0 : _c.targetSection) || "Now";
+    if (!laneOptions.some((option) => option.targetSection === this.selectedLane)) {
+      this.selectedLane = ((_d = laneOptions[0]) == null ? void 0 : _d.targetSection) || "Now";
     }
   }
   formatTaskMeta(task) {
@@ -10825,7 +10933,12 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
       window.setTimeout(() => textArea.inputEl.focus(), 0);
     });
     new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.").addDropdown((dropdown) => {
-      KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+      var _a2, _b2;
+      const laneOptions = this.getLaneOptions();
+      laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+      if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
+        this.selectedLane = ((_a2 = laneOptions[0]) == null ? void 0 : _a2.targetSection) || ((_b2 = laneOptions[0]) == null ? void 0 : _b2.label) || "Now";
+      }
       dropdown.setValue(this.selectedLane);
       dropdown.onChange((value) => {
         this.selectedLane = value;
@@ -12923,6 +13036,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Repair broken Kanban lines in master task hub",
       callback: () => {
         void this.repairBrokenKanbanLinesInMasterTaskHub(true);
+      }
+    });
+    this.addCommand({
+      id: "repair-kanban-links",
+      name: "Repair Kanban links",
+      callback: () => {
+        void this.generateKanbanRepairReport(true);
       }
     });
     this.addCommand({
@@ -17045,6 +17165,15 @@ ${context}`, resolvedModel);
     const folder = lastSlash >= 0 ? normalizedHubPath.slice(0, lastSlash) : "";
     return folder ? `${folder}/Kanban Cleanup Preview.md` : "Kanban Cleanup Preview.md";
   }
+  getKanbanRepairReportPath() {
+    const normalizedHubPath = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanHubPath);
+    const lastSlash = normalizedHubPath.lastIndexOf("/");
+    const folder = lastSlash >= 0 ? normalizedHubPath.slice(0, lastSlash) : "";
+    return folder ? `${folder}/Kanban Link Repair.md` : "Kanban Link Repair.md";
+  }
+  getKanbanLaneOptions(projectName) {
+    return getKanbanLaneOptionsForProject(projectName, this.data.kanbanState.boardTemplates, this.data.kanbanState.boardConfigurations);
+  }
   getExistingKanbanBoardNotePaths() {
     const normalizedBoardFolder = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanBoardNotesFolder);
     return this.app.vault.getMarkdownFiles().map((file) => (0, import_obsidian4.normalizePath)(file.path)).filter((path) => normalizedBoardFolder.length > 0 && path.startsWith(`${normalizedBoardFolder}/`));
@@ -17259,6 +17388,131 @@ ${context}`, resolvedModel);
       changed += 1;
     });
     return changed;
+  }
+  syncKanbanRepairQueueFromSyncConflicts(conflicts, updatedAt) {
+    let changed = 0;
+    const activeRepairIds = /* @__PURE__ */ new Set();
+    conflicts.forEach((conflict) => {
+      const repairId = `sync-conflict:${conflict.reason}:${conflict.projectName.trim().toLowerCase()}:${conflict.taskId || conflict.laneLabel}`;
+      activeRepairIds.add(repairId);
+      const existing = this.data.kanbanState.repairQueue[repairId];
+      const nextEntry = {
+        repairId,
+        taskId: conflict.taskId,
+        projectName: conflict.projectName,
+        sectionName: conflict.laneLabel,
+        taskText: conflict.detail,
+        reason: conflict.reason === "missing-task" ? "orphaned-task" : conflict.reason === "ambiguous-match" ? "ambiguous-match" : "conflict",
+        createdAt: (existing == null ? void 0 : existing.createdAt) || updatedAt,
+        resolvedAt: ""
+      };
+      if (!existing || existing.taskId !== nextEntry.taskId || existing.projectName !== nextEntry.projectName || existing.sectionName !== nextEntry.sectionName || existing.taskText !== nextEntry.taskText || existing.reason !== nextEntry.reason || existing.resolvedAt !== nextEntry.resolvedAt) {
+        this.data.kanbanState.repairQueue[repairId] = nextEntry;
+        changed += 1;
+      }
+    });
+    Object.keys(this.data.kanbanState.repairQueue).forEach((repairId) => {
+      if (!repairId.startsWith("sync-conflict:")) {
+        return;
+      }
+      if (activeRepairIds.has(repairId)) {
+        return;
+      }
+      delete this.data.kanbanState.repairQueue[repairId];
+      changed += 1;
+    });
+    return changed;
+  }
+  collectKanbanRepairDiagnostics(snapshot) {
+    const malformedBoardConfigs = [];
+    const orphanedRegistryEntries = [];
+    const projectNames = new Set(snapshot.projects.map((project) => project.name.toLowerCase()));
+    const activeTaskKeys = /* @__PURE__ */ new Set();
+    snapshot.projects.forEach((project) => {
+      [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails,
+        ...project.dueRepeatingTaskDetails
+      ].forEach((task) => {
+        if (task.taskId.trim()) {
+          activeTaskKeys.add(task.taskId.trim());
+        }
+      });
+    });
+    Object.entries(this.data.kanbanState.boardConfigurations).forEach(([projectName, config]) => {
+      if (!this.data.kanbanState.boardTemplates[config.templateId]) {
+        malformedBoardConfigs.push(`${projectName}: missing template ${config.templateId || "(empty)"}`);
+      }
+      const laneOptions = this.getKanbanLaneOptions(projectName);
+      if (laneOptions.length === 0) {
+        malformedBoardConfigs.push(`${projectName}: no lane definitions resolved for this board.`);
+      }
+      if (laneOptions.every((option) => option.unmapped && !option.done)) {
+        malformedBoardConfigs.push(`${projectName}: every lane is currently unmapped.`);
+      }
+    });
+    Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
+      if (!projectNames.has(entry.projectName.trim().toLowerCase())) {
+        orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        return;
+      }
+      if (!activeTaskKeys.has(entry.taskId.trim())) {
+        orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+      }
+    });
+    return {
+      malformedBoardConfigs,
+      orphanedRegistryEntries
+    };
+  }
+  renderKanbanRepairReport(snapshot, generatedAt) {
+    const unresolvedRepairs = Object.values(this.data.kanbanState.repairQueue).filter((entry) => !entry.resolvedAt).sort((left, right) => left.projectName.localeCompare(right.projectName) || left.sectionName.localeCompare(right.sectionName));
+    const diagnostics = this.collectKanbanRepairDiagnostics(snapshot);
+    return [
+      "# Kanban Link Repair",
+      "",
+      `- Generated: ${formatDateTimeKey(generatedAt)}`,
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      `- Kanban Hub: [[${stripMarkdownExtension(this.data.settings.kanbanHubPath)}|Kanban Hub]]`,
+      `- Open repair entries: ${unresolvedRepairs.length}`,
+      `- Malformed board configs: ${diagnostics.malformedBoardConfigs.length}`,
+      `- Orphaned registry entries: ${diagnostics.orphanedRegistryEntries.length}`,
+      "",
+      "## Unresolved Repairs",
+      ...unresolvedRepairs.length > 0 ? unresolvedRepairs.map((entry) => `- ${entry.projectName} / ${entry.sectionName} / ${entry.reason}: ${entry.taskText}`) : ["- No unresolved Kanban repair entries are currently queued."],
+      "",
+      "## Malformed Board Configs",
+      ...diagnostics.malformedBoardConfigs.length > 0 ? diagnostics.malformedBoardConfigs.map((line) => `- ${line}`) : ["- No malformed board configs were detected."],
+      "",
+      "## Orphaned Registry Entries",
+      ...diagnostics.orphanedRegistryEntries.length > 0 ? diagnostics.orphanedRegistryEntries.map((line) => `- ${line}`) : ["- No orphaned Kanban registry entries were detected."],
+      "",
+      "## Recovery Guidance",
+      "- Refresh the Kanban Hub after direct Master Task Hub edits so generated native boards reflect the current task layout.",
+      "- If a lane label was changed to a custom unmapped label, update the board configuration before syncing that board back into the hub.",
+      "- If a registry entry is orphaned, either recreate the matching task in the Master Task Hub or remove the stale board artifact and refresh it.",
+      "- If conflicts stay unresolved, rerun Preview Kanban cleanup migration and then rerun this repair note to compare the repair queue.",
+      ""
+    ].join("\n");
+  }
+  async generateKanbanRepairReport(openAfterGenerate) {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+    const file = await this.upsertMarkdownFile(this.getKanbanRepairReportPath(), this.renderKanbanRepairReport(snapshot, /* @__PURE__ */ new Date()));
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new import_obsidian4.Notice(`Kanban repair report generated with ${Object.values(this.data.kanbanState.repairQueue).filter((entry) => !entry.resolvedAt).length} unresolved repair item${Object.values(this.data.kanbanState.repairQueue).filter((entry) => !entry.resolvedAt).length === 1 ? "" : "s"}.`);
+    }
+    return file;
   }
   renderKanbanCleanupPreview(input) {
     const previewPath = this.getKanbanCleanupPreviewPath();
@@ -17512,18 +17766,25 @@ ${context}`, resolvedModel);
       masterContent,
       kanbanContent,
       archivedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
-      taskRegistry: this.data.kanbanState.taskRegistry
+      taskRegistry: this.data.kanbanState.taskRegistry,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
+    const syncRepairChanges = this.syncKanbanRepairQueueFromSyncConflicts(synced.conflicts, formatDateTimeKey(/* @__PURE__ */ new Date()));
     if (synced.content !== masterContent) {
       this.markKanbanManagedWrite(todoFile.path);
       await this.app.vault.modify(todoFile, synced.content);
       await this.refreshMasterHubPortfolioSnapshot(false);
     }
+    if (syncRepairChanges > 0) {
+      await this.savePluginData();
+    }
     await this.refreshKanbanHub(false);
     await this.refreshKanbanBoardNotes(false);
     this.refreshDashboardViews();
-    if (synced.missingTasks > 0) {
-      new import_obsidian4.Notice(`Kanban sync skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Review the cleanup preview or run Kanban repair if the board drifted.`);
+    if (synced.conflictedTasks > 0 || synced.missingTasks > 0) {
+      const problemCount = synced.conflictedTasks + synced.missingTasks;
+      new import_obsidian4.Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"} but queued ${problemCount} repair item${problemCount === 1 ? "" : "s"}. Run Repair Kanban links for the detailed conflict report.`);
     } else if (showNotice) {
       new import_obsidian4.Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
@@ -17543,8 +17804,11 @@ ${context}`, resolvedModel);
       masterContent,
       boardContent,
       archivedAt: formatDateTimeKey(/* @__PURE__ */ new Date()),
-      taskRegistry: this.data.kanbanState.taskRegistry
+      taskRegistry: this.data.kanbanState.taskRegistry,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
+    const syncRepairChanges = this.syncKanbanRepairQueueFromSyncConflicts(synced.conflicts, formatDateTimeKey(/* @__PURE__ */ new Date()));
     if (!synced.projectName) {
       if (showNotice) {
         new import_obsidian4.Notice("That Kanban board note is missing the generated project metadata. Refresh board notes to rebuild it.");
@@ -17556,11 +17820,15 @@ ${context}`, resolvedModel);
       await this.app.vault.modify(todoFile, synced.content);
       await this.refreshMasterHubPortfolioSnapshot(false);
     }
+    if (syncRepairChanges > 0) {
+      await this.savePluginData();
+    }
     await this.refreshKanbanHub(false);
     await this.refreshKanbanBoardNotes(false);
     this.refreshDashboardViews();
-    if (synced.missingTasks > 0) {
-      new import_obsidian4.Notice(`Kanban board sync for ${synced.projectName} skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Refresh board notes or review the cleanup preview to rebuild them.`);
+    if (synced.conflictedTasks > 0 || synced.missingTasks > 0) {
+      const problemCount = synced.conflictedTasks + synced.missingTasks;
+      new import_obsidian4.Notice(`Kanban board sync for ${synced.projectName} applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"} but queued ${problemCount} repair item${problemCount === 1 ? "" : "s"}. Run Repair Kanban links for the detailed conflict report.`);
     } else if (showNotice) {
       new import_obsidian4.Notice(`${synced.projectName} board sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }

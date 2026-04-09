@@ -8,6 +8,8 @@ import {
   type KanbanBoardConfiguration,
   type KanbanBoardTemplate,
   type KanbanLaneDefinition,
+  type KanbanLaneOption,
+  type KanbanSyncConflict,
   type KanbanTaskRegistryEntry,
   type KanbanMigrationPreview,
   type KanbanMigrationTaskPreview,
@@ -1373,8 +1375,15 @@ export function syncKanbanHubToMasterHub(input: {
   kanbanContent: string;
   archivedAt: string;
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
-}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
-  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt, input.taskRegistry);
+  boardTemplates?: Record<string, KanbanBoardTemplate>;
+  boardConfigurations?: Record<string, KanbanBoardConfiguration>;
+}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; conflictedTasks: number; conflicts: KanbanSyncConflict[] } {
+  return syncKanbanCardsToMasterHub(
+    input.masterContent,
+    parseKanbanHubCards(input.kanbanContent, input.boardTemplates, input.boardConfigurations),
+    input.archivedAt,
+    input.taskRegistry
+  );
 }
 
 export function syncKanbanBoardNoteToMasterHub(input: {
@@ -1382,7 +1391,9 @@ export function syncKanbanBoardNoteToMasterHub(input: {
   boardContent: string;
   archivedAt: string;
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
-}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; projectName: string } {
+  boardTemplates?: Record<string, KanbanBoardTemplate>;
+  boardConfigurations?: Record<string, KanbanBoardConfiguration>;
+}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; conflictedTasks: number; conflicts: KanbanSyncConflict[]; projectName: string } {
   const projectName = parseKanbanBoardProjectName(input.boardContent);
   if (!projectName) {
     return {
@@ -1390,31 +1401,63 @@ export function syncKanbanBoardNoteToMasterHub(input: {
       movedTasks: 0,
       completedTasks: 0,
       missingTasks: 0,
+      conflictedTasks: 0,
+      conflicts: [],
       projectName: ""
     };
   }
 
-  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt, input.taskRegistry);
+  const synced = syncKanbanCardsToMasterHub(
+    input.masterContent,
+    parseKanbanBoardCards(input.boardContent, projectName, input.boardTemplates, input.boardConfigurations),
+    input.archivedAt,
+    input.taskRegistry
+  );
   return {
     ...synced,
     projectName
   };
 }
 
-function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }>, archivedAt: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
+function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projectName: string; taskId: string; checked: boolean; laneLabel: string; targetSection: string; done: boolean; ambiguous: boolean }>, archivedAt: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; conflictedTasks: number; conflicts: KanbanSyncConflict[] } {
   let content = masterContent;
   let movedTasks = 0;
   let missingTasks = 0;
+  let conflictedTasks = 0;
+  const conflicts: KanbanSyncConflict[] = [];
 
   cards.forEach((card) => {
     if (!card.taskId) {
       return;
     }
 
-    if (card.lane === "Done" || card.checked) {
+    if (card.ambiguous || !card.targetSection) {
+      conflictedTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: card.ambiguous ? "ambiguous-match" : "unmapped-lane",
+        detail: card.ambiguous
+          ? `The lane label ${card.laneLabel} matches more than one mapping for this board.`
+          : `The lane label ${card.laneLabel} does not map to a hub section for this board.`
+      });
+      return;
+    }
+
+    if (card.done || card.checked) {
       const completed = markTaskCompleteById(content, card.projectName, card.taskId, taskRegistry);
       if (completed.marked) {
         content = completed.content;
+      } else {
+        missingTasks += 1;
+        conflicts.push({
+          projectName: card.projectName,
+          taskId: card.taskId,
+          laneLabel: card.laneLabel,
+          reason: "missing-task",
+          detail: "The completed board card could not be matched back to the Master Task Hub."
+        });
       }
       return;
     }
@@ -1422,10 +1465,17 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
     const location = findProjectTaskLocationById(content, card.projectName, card.taskId, taskRegistry);
     if (!location) {
       missingTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: "missing-task",
+        detail: "The board card could not be matched back to the Master Task Hub."
+      });
       return;
     }
 
-    const targetSection = card.lane;
+    const targetSection = card.targetSection;
     if (normalizeLegacyKanbanSectionName(location.section) === targetSection.toLowerCase()) {
       return;
     }
@@ -1433,6 +1483,13 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
     const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId, taskRegistry);
     if (!removed) {
       missingTasks += 1;
+      conflicts.push({
+        projectName: card.projectName,
+        taskId: card.taskId,
+        laneLabel: card.laneLabel,
+        reason: "missing-task",
+        detail: "The board card location changed before the lane move could be written back."
+      });
       return;
     }
 
@@ -1448,8 +1505,26 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
     content: archived.content,
     movedTasks,
     completedTasks: archived.archivedTasks.length,
-    missingTasks
+    missingTasks,
+    conflictedTasks,
+    conflicts
   };
+}
+
+export function getKanbanLaneOptionsForProject(
+  projectName: string,
+  boardTemplates: Record<string, KanbanBoardTemplate> = {},
+  boardConfigurations: Record<string, KanbanBoardConfiguration> = {}
+): KanbanLaneOption[] {
+  const laneDefinitions = resolveKanbanLaneDefinitionsForProject(projectName, boardTemplates, boardConfigurations);
+  return laneDefinitions.map((lane) => ({
+    laneKey: lane.laneKey,
+    label: lane.label,
+    helperText: lane.helperText,
+    targetSection: lane.done ? "Done" : lane.mappedSections[0] ?? "",
+    done: lane.done,
+    unmapped: !lane.done && lane.mappedSections.length === 0
+  }));
 }
 
 export function repairMasterHubStructure(content: string, input: {
@@ -2097,18 +2172,22 @@ function renderKanbanTaskLine(task: TodoTaskSummary, checked: boolean): string {
   return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
 
-function parseKanbanHubCards(content: string): Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> {
+function parseKanbanHubCards(
+  content: string,
+  boardTemplates: Record<string, KanbanBoardTemplate> = {},
+  boardConfigurations: Record<string, KanbanBoardConfiguration> = {}
+): Array<{ projectName: string; taskId: string; checked: boolean; laneLabel: string; targetSection: string; done: boolean; ambiguous: boolean }> {
   if (/^---\r?\n[\s\S]*?kanban-plugin:\s*board[\s\S]*?---/i.test(content)) {
     return parseKanbanHubBoardCards(content);
   }
 
   const lines = content.split(/\r?\n/);
-  const cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> = [];
+  const cards: Array<{ projectName: string; taskId: string; checked: boolean; laneLabel: string; targetSection: string; done: boolean; ambiguous: boolean }> = [];
   let currentProjectName = "";
-  let currentLane: KanbanLane | null = null;
+  let currentLane: KanbanLaneOption | null = null;
 
   lines.forEach((line) => {
-    const summaryMatch = line.trim().match(/^<summary>(.+?) • Now /);
+    const summaryMatch = line.trim().match(/^<summary>([^•<]+?)\s+• /);
     if (summaryMatch) {
       currentProjectName = summaryMatch[1].trim();
       currentLane = null;
@@ -2121,9 +2200,9 @@ function parseKanbanHubCards(content: string): Array<{ projectName: string; lane
       return;
     }
 
-    const laneMatch = line.trim().match(/^### (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    const laneMatch = line.trim().match(/^###\s+(.+?)(?:\s+\([^)]*\))?$/);
     if (laneMatch) {
-      currentLane = laneMatch[1] as KanbanLane;
+      currentLane = resolveKanbanLaneOptionByLabel(currentProjectName, laneMatch[1].trim(), boardTemplates, boardConfigurations);
       return;
     }
 
@@ -2143,9 +2222,12 @@ function parseKanbanHubCards(content: string): Array<{ projectName: string; lane
 
     cards.push({
       projectName: currentProjectName,
-      lane: currentLane,
       taskId,
-      checked: taskMatch[1].toLowerCase() === "x"
+      checked: taskMatch[1].toLowerCase() === "x",
+      laneLabel: currentLane.label,
+      targetSection: currentLane.targetSection,
+      done: currentLane.done,
+      ambiguous: currentLane.unmapped
     });
   });
 
@@ -2209,15 +2291,20 @@ function parseKanbanBoardProjectName(content: string): string {
   return titleMatch?.[1]?.trim() ?? "";
 }
 
-function parseKanbanBoardCards(content: string, projectName: string): Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> {
+function parseKanbanBoardCards(
+  content: string,
+  projectName: string,
+  boardTemplates: Record<string, KanbanBoardTemplate> = {},
+  boardConfigurations: Record<string, KanbanBoardConfiguration> = {}
+): Array<{ projectName: string; taskId: string; checked: boolean; laneLabel: string; targetSection: string; done: boolean; ambiguous: boolean }> {
   const lines = content.split(/\r?\n/);
-  const cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> = [];
-  let currentLane: KanbanLane | null = null;
+  const cards: Array<{ projectName: string; taskId: string; checked: boolean; laneLabel: string; targetSection: string; done: boolean; ambiguous: boolean }> = [];
+  let currentLane: KanbanLaneOption | null = null;
 
   lines.forEach((line) => {
-    const laneMatch = line.trim().match(/^##? (Now|Next|Later|Waiting|Parking Lot|Done)$/);
+    const laneMatch = line.trim().match(/^##?\s+(.+?)(?:\s+\([^)]*\))?$/);
     if (laneMatch) {
-      currentLane = laneMatch[1] as KanbanLane;
+      currentLane = resolveKanbanLaneOptionByLabel(projectName, laneMatch[1].trim(), boardTemplates, boardConfigurations);
       return;
     }
 
@@ -2237,13 +2324,54 @@ function parseKanbanBoardCards(content: string, projectName: string): Array<{ pr
 
     cards.push({
       projectName,
-      lane: currentLane,
       taskId,
-      checked: taskMatch[1].toLowerCase() === "x"
+      checked: taskMatch[1].toLowerCase() === "x",
+      laneLabel: currentLane.label,
+      targetSection: currentLane.targetSection,
+      done: currentLane.done,
+      ambiguous: currentLane.unmapped
     });
   });
 
   return cards;
+}
+
+function resolveKanbanLaneOptionByLabel(
+  projectName: string,
+  laneLabel: string,
+  boardTemplates: Record<string, KanbanBoardTemplate>,
+  boardConfigurations: Record<string, KanbanBoardConfiguration>
+): KanbanLaneOption {
+  const laneOptions = getKanbanLaneOptionsForProject(projectName, boardTemplates, boardConfigurations);
+  const normalizedLabel = laneLabel.trim().toLowerCase();
+  const matches = laneOptions.filter((option) => option.label.trim().toLowerCase() === normalizedLabel);
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  return {
+    laneKey: normalizedLabel || "unknown",
+    label: laneLabel.trim() || "Unknown Lane",
+    helperText: matches.length > 1 ? "Ambiguous lane mapping" : "Unmapped lane",
+    targetSection: "",
+    done: false,
+    unmapped: true
+  };
+}
+
+function resolveKanbanLaneDefinitionsForProject(
+  projectName: string,
+  boardTemplates: Record<string, KanbanBoardTemplate>,
+  boardConfigurations: Record<string, KanbanBoardConfiguration>
+): KanbanLaneDefinition[] {
+  const configuration = boardConfigurations[projectName];
+  if (configuration?.laneDefinitions.length) {
+    return configuration.laneDefinitions;
+  }
+
+  const templateId = configuration?.templateId || "execution-default";
+  const template = boardTemplates[templateId] ?? Object.values(boardTemplates)[0];
+  return template?.laneDefinitions.length ? template.laneDefinitions : buildFallbackExecutionLaneDefinitions();
 }
 
 function findProjectTaskLocationById(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { section: string; checked: boolean } | null {

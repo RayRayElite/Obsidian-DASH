@@ -46,6 +46,7 @@ import {
   type IntakeEntry,
   type IntakeQuickPreset,
   type KanbanLane,
+  type KanbanLaneOption,
   type NextUpFocusItem,
   type ProjectReviewOption,
   type QuickAddState,
@@ -93,8 +94,6 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ] as const;
-
-const KANBAN_EDITABLE_LANES: KanbanLane[] = ["Now", "Next", "Later", "Waiting", "Parking Lot"];
 
 function getSubscriptionMonthlyEquivalent(subscription: FinanceSubscriptionEntry): number {
   if (subscription.kind !== "recurring") {
@@ -5871,7 +5870,7 @@ export class KanbanQuickAddModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private projects: TodoProjectSummary[];
   private selectedProjectName: string;
-  private selectedLane: KanbanLane;
+  private selectedLane: string;
   private taskText: string;
 
   constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
@@ -5879,8 +5878,12 @@ export class KanbanQuickAddModal extends Modal {
     this.plugin = plugin;
     this.projects = projects;
     this.selectedProjectName = projects[0]?.name ?? "";
-    this.selectedLane = "Now";
+    this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
     this.taskText = "";
+  }
+
+  private getLaneOptions(): KanbanLaneOption[] {
+    return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
 
   onOpen(): void {
@@ -5903,10 +5906,14 @@ export class KanbanQuickAddModal extends Modal {
       .setName("Lane")
       .setDesc("This maps directly back to the matching Master Task Hub section.")
       .addDropdown((dropdown) => {
-        KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+        const laneOptions = this.getLaneOptions();
+        laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+        if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
+          this.selectedLane = laneOptions[0]?.targetSection || laneOptions[0]?.label || "Now";
+        }
         dropdown.setValue(this.selectedLane);
         dropdown.onChange((value) => {
-          this.selectedLane = value as KanbanLane;
+          this.selectedLane = value;
         });
       });
 
@@ -5954,7 +5961,7 @@ export class KanbanTaskEditModal extends Modal {
   private projects: TodoProjectSummary[];
   private selectedProjectName: string;
   private selectedTaskId: string;
-  private selectedLane: KanbanLane;
+  private selectedLane: string;
   private taskText: string;
 
   constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[]) {
@@ -5963,9 +5970,13 @@ export class KanbanTaskEditModal extends Modal {
     this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
     this.selectedProjectName = this.projects[0]?.name ?? "";
     this.selectedTaskId = "";
-    this.selectedLane = "Now";
+    this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
     this.taskText = "";
     this.syncSelectionFromTask();
+  }
+
+  private getLaneOptions(): KanbanLaneOption[] {
+    return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
 
   private getEditableTasks(project: TodoProjectSummary): TodoTaskSummary[] {
@@ -6000,9 +6011,12 @@ export class KanbanTaskEditModal extends Modal {
     const selectedTask = tasks.find((task) => task.taskId === this.selectedTaskId) ?? tasks[0];
     this.selectedTaskId = selectedTask.taskId;
     this.taskText = selectedTask.text;
-    this.selectedLane = (selectedTask.kanbanLane || selectedTask.section) as KanbanLane;
-    if (!KANBAN_EDITABLE_LANES.includes(this.selectedLane)) {
-      this.selectedLane = "Now";
+    const laneOptions = this.getLaneOptions();
+    const matchingLane = laneOptions.find((option) => option.targetSection.toLowerCase() === selectedTask.section.toLowerCase())
+      ?? laneOptions.find((option) => option.label.toLowerCase() === (selectedTask.kanbanLane || selectedTask.section).toLowerCase());
+    this.selectedLane = matchingLane?.targetSection || laneOptions[0]?.targetSection || "Now";
+    if (!laneOptions.some((option) => option.targetSection === this.selectedLane)) {
+      this.selectedLane = laneOptions[0]?.targetSection || "Now";
     }
   }
 
@@ -6085,10 +6099,14 @@ export class KanbanTaskEditModal extends Modal {
       .setName("Lane")
       .setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.")
       .addDropdown((dropdown) => {
-        KANBAN_EDITABLE_LANES.forEach((lane) => dropdown.addOption(lane, lane));
+        const laneOptions = this.getLaneOptions();
+        laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+        if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
+          this.selectedLane = laneOptions[0]?.targetSection || laneOptions[0]?.label || "Now";
+        }
         dropdown.setValue(this.selectedLane);
         dropdown.onChange((value) => {
-          this.selectedLane = value as KanbanLane;
+          this.selectedLane = value;
         });
       });
 

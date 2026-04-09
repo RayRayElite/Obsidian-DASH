@@ -74,6 +74,7 @@ import {
   renderWeeklyReview
 } from "./src/dashboard-logs";
 import {
+  getKanbanLaneOptionsForProject,
   applyKanbanCleanupMigration as applyKanbanCleanupMigrationToContent,
   archiveCompletedTasks,
   buildKanbanBoardNotePath,
@@ -166,8 +167,10 @@ import {
   type KanbanBoardConfiguration,
   type KanbanBoardTemplate,
   type KanbanLaneDefinition,
+  type KanbanLaneOption,
   type KanbanMigrationPreview,
   type KanbanRepairStateRecord,
+  type KanbanSyncConflict,
   type KanbanState,
   type KanbanTaskRegistryEntry,
   type LogicalDayInsights,
@@ -665,6 +668,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Repair broken Kanban lines in master task hub",
       callback: () => {
         void this.repairBrokenKanbanLinesInMasterTaskHub(true);
+      }
+    });
+
+    this.addCommand({
+      id: "repair-kanban-links",
+      name: "Repair Kanban links",
+      callback: () => {
+        void this.generateKanbanRepairReport(true);
       }
     });
 
@@ -5657,6 +5668,17 @@ export default class DailyDashboardPlugin extends Plugin {
     return folder ? `${folder}/Kanban Cleanup Preview.md` : "Kanban Cleanup Preview.md";
   }
 
+  private getKanbanRepairReportPath(): string {
+    const normalizedHubPath = normalizePath(this.data.settings.kanbanHubPath);
+    const lastSlash = normalizedHubPath.lastIndexOf("/");
+    const folder = lastSlash >= 0 ? normalizedHubPath.slice(0, lastSlash) : "";
+    return folder ? `${folder}/Kanban Link Repair.md` : "Kanban Link Repair.md";
+  }
+
+  getKanbanLaneOptions(projectName: string): KanbanLaneOption[] {
+    return getKanbanLaneOptionsForProject(projectName, this.data.kanbanState.boardTemplates, this.data.kanbanState.boardConfigurations);
+  }
+
   private getExistingKanbanBoardNotePaths(): string[] {
     const normalizedBoardFolder = normalizePath(this.data.settings.kanbanBoardNotesFolder);
     return this.app.vault.getMarkdownFiles()
@@ -5944,6 +5966,168 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     return changed;
+  }
+
+  private syncKanbanRepairQueueFromSyncConflicts(conflicts: KanbanSyncConflict[], updatedAt: string): number {
+    let changed = 0;
+    const activeRepairIds = new Set<string>();
+
+    conflicts.forEach((conflict) => {
+      const repairId = `sync-conflict:${conflict.reason}:${conflict.projectName.trim().toLowerCase()}:${conflict.taskId || conflict.laneLabel}`;
+      activeRepairIds.add(repairId);
+      const existing = this.data.kanbanState.repairQueue[repairId];
+      const nextEntry: KanbanRepairStateRecord = {
+        repairId,
+        taskId: conflict.taskId,
+        projectName: conflict.projectName,
+        sectionName: conflict.laneLabel,
+        taskText: conflict.detail,
+        reason: conflict.reason === "missing-task" ? "orphaned-task" : conflict.reason === "ambiguous-match" ? "ambiguous-match" : "conflict",
+        createdAt: existing?.createdAt || updatedAt,
+        resolvedAt: ""
+      };
+
+      if (!existing
+        || existing.taskId !== nextEntry.taskId
+        || existing.projectName !== nextEntry.projectName
+        || existing.sectionName !== nextEntry.sectionName
+        || existing.taskText !== nextEntry.taskText
+        || existing.reason !== nextEntry.reason
+        || existing.resolvedAt !== nextEntry.resolvedAt) {
+        this.data.kanbanState.repairQueue[repairId] = nextEntry;
+        changed += 1;
+      }
+    });
+
+    Object.keys(this.data.kanbanState.repairQueue).forEach((repairId) => {
+      if (!repairId.startsWith("sync-conflict:")) {
+        return;
+      }
+
+      if (activeRepairIds.has(repairId)) {
+        return;
+      }
+
+      delete this.data.kanbanState.repairQueue[repairId];
+      changed += 1;
+    });
+
+    return changed;
+  }
+
+  private collectKanbanRepairDiagnostics(snapshot: TodoSnapshot): {
+    malformedBoardConfigs: string[];
+    orphanedRegistryEntries: string[];
+  } {
+    const malformedBoardConfigs: string[] = [];
+    const orphanedRegistryEntries: string[] = [];
+    const projectNames = new Set(snapshot.projects.map((project) => project.name.toLowerCase()));
+    const activeTaskKeys = new Set<string>();
+
+    snapshot.projects.forEach((project) => {
+      [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails,
+        ...project.dueRepeatingTaskDetails
+      ].forEach((task) => {
+        if (task.taskId.trim()) {
+          activeTaskKeys.add(task.taskId.trim());
+        }
+      });
+    });
+
+    Object.entries(this.data.kanbanState.boardConfigurations).forEach(([projectName, config]) => {
+      if (!this.data.kanbanState.boardTemplates[config.templateId]) {
+        malformedBoardConfigs.push(`${projectName}: missing template ${config.templateId || "(empty)"}`);
+      }
+
+      const laneOptions = this.getKanbanLaneOptions(projectName);
+      if (laneOptions.length === 0) {
+        malformedBoardConfigs.push(`${projectName}: no lane definitions resolved for this board.`);
+      }
+
+      if (laneOptions.every((option) => option.unmapped && !option.done)) {
+        malformedBoardConfigs.push(`${projectName}: every lane is currently unmapped.`);
+      }
+    });
+
+    Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
+      if (!projectNames.has(entry.projectName.trim().toLowerCase())) {
+        orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+        return;
+      }
+
+      if (!activeTaskKeys.has(entry.taskId.trim())) {
+        orphanedRegistryEntries.push(`${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`);
+      }
+    });
+
+    return {
+      malformedBoardConfigs,
+      orphanedRegistryEntries
+    };
+  }
+
+  private renderKanbanRepairReport(snapshot: TodoSnapshot, generatedAt: Date): string {
+    const unresolvedRepairs = Object.values(this.data.kanbanState.repairQueue)
+      .filter((entry) => !entry.resolvedAt)
+      .sort((left, right) => left.projectName.localeCompare(right.projectName) || left.sectionName.localeCompare(right.sectionName));
+    const diagnostics = this.collectKanbanRepairDiagnostics(snapshot);
+
+    return [
+      "# Kanban Link Repair",
+      "",
+      `- Generated: ${formatDateTimeKey(generatedAt)}`,
+      `- Master Task Hub: [[${stripMarkdownExtension(this.data.settings.masterTodoPath)}|Master Task Hub]]`,
+      `- Kanban Hub: [[${stripMarkdownExtension(this.data.settings.kanbanHubPath)}|Kanban Hub]]`,
+      `- Open repair entries: ${unresolvedRepairs.length}`,
+      `- Malformed board configs: ${diagnostics.malformedBoardConfigs.length}`,
+      `- Orphaned registry entries: ${diagnostics.orphanedRegistryEntries.length}`,
+      "",
+      "## Unresolved Repairs",
+      ...(unresolvedRepairs.length > 0
+        ? unresolvedRepairs.map((entry) => `- ${entry.projectName} / ${entry.sectionName} / ${entry.reason}: ${entry.taskText}`)
+        : ["- No unresolved Kanban repair entries are currently queued."]),
+      "",
+      "## Malformed Board Configs",
+      ...(diagnostics.malformedBoardConfigs.length > 0
+        ? diagnostics.malformedBoardConfigs.map((line) => `- ${line}`)
+        : ["- No malformed board configs were detected."]),
+      "",
+      "## Orphaned Registry Entries",
+      ...(diagnostics.orphanedRegistryEntries.length > 0
+        ? diagnostics.orphanedRegistryEntries.map((line) => `- ${line}`)
+        : ["- No orphaned Kanban registry entries were detected."]),
+      "",
+      "## Recovery Guidance",
+      "- Refresh the Kanban Hub after direct Master Task Hub edits so generated native boards reflect the current task layout.",
+      "- If a lane label was changed to a custom unmapped label, update the board configuration before syncing that board back into the hub.",
+      "- If a registry entry is orphaned, either recreate the matching task in the Master Task Hub or remove the stale board artifact and refresh it.",
+      "- If conflicts stay unresolved, rerun Preview Kanban cleanup migration and then rerun this repair note to compare the repair queue.",
+      ""
+    ].join("\n");
+  }
+
+  async generateKanbanRepairReport(openAfterGenerate: boolean): Promise<TFile | null> {
+    const snapshot = await this.getTodoSnapshot();
+    if (!snapshot) {
+      if (openAfterGenerate) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+
+    const file = await this.upsertMarkdownFile(this.getKanbanRepairReportPath(), this.renderKanbanRepairReport(snapshot, new Date()));
+    if (openAfterGenerate) {
+      await this.openFile(file);
+      new Notice(`Kanban repair report generated with ${Object.values(this.data.kanbanState.repairQueue).filter((entry) => !entry.resolvedAt).length} unresolved repair item${Object.values(this.data.kanbanState.repairQueue).filter((entry) => !entry.resolvedAt).length === 1 ? "" : "s"}.`);
+    }
+
+    return file;
   }
 
   private renderKanbanCleanupPreview(input: {
@@ -6242,20 +6426,27 @@ export default class DailyDashboardPlugin extends Plugin {
       masterContent,
       kanbanContent,
       archivedAt: formatDateTimeKey(new Date()),
-      taskRegistry: this.data.kanbanState.taskRegistry
+      taskRegistry: this.data.kanbanState.taskRegistry,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
+    const syncRepairChanges = this.syncKanbanRepairQueueFromSyncConflicts(synced.conflicts, formatDateTimeKey(new Date()));
 
     if (synced.content !== masterContent) {
       this.markKanbanManagedWrite(todoFile.path);
       await this.app.vault.modify(todoFile, synced.content);
       await this.refreshMasterHubPortfolioSnapshot(false);
     }
+    if (syncRepairChanges > 0) {
+      await this.savePluginData();
+    }
     await this.refreshKanbanHub(false);
     await this.refreshKanbanBoardNotes(false);
     this.refreshDashboardViews();
 
-    if (synced.missingTasks > 0) {
-      new Notice(`Kanban sync skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Review the cleanup preview or run Kanban repair if the board drifted.`);
+    if (synced.conflictedTasks > 0 || synced.missingTasks > 0) {
+      const problemCount = synced.conflictedTasks + synced.missingTasks;
+      new Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"} but queued ${problemCount} repair item${problemCount === 1 ? "" : "s"}. Run Repair Kanban links for the detailed conflict report.`);
     } else if (showNotice) {
       new Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
@@ -6277,8 +6468,11 @@ export default class DailyDashboardPlugin extends Plugin {
       masterContent,
       boardContent,
       archivedAt: formatDateTimeKey(new Date()),
-      taskRegistry: this.data.kanbanState.taskRegistry
+      taskRegistry: this.data.kanbanState.taskRegistry,
+      boardTemplates: this.data.kanbanState.boardTemplates,
+      boardConfigurations: this.data.kanbanState.boardConfigurations
     });
+    const syncRepairChanges = this.syncKanbanRepairQueueFromSyncConflicts(synced.conflicts, formatDateTimeKey(new Date()));
     if (!synced.projectName) {
       if (showNotice) {
         new Notice("That Kanban board note is missing the generated project metadata. Refresh board notes to rebuild it.");
@@ -6291,12 +6485,16 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.app.vault.modify(todoFile, synced.content);
       await this.refreshMasterHubPortfolioSnapshot(false);
     }
+    if (syncRepairChanges > 0) {
+      await this.savePluginData();
+    }
     await this.refreshKanbanHub(false);
     await this.refreshKanbanBoardNotes(false);
     this.refreshDashboardViews();
 
-    if (synced.missingTasks > 0) {
-      new Notice(`Kanban board sync for ${synced.projectName} skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Refresh board notes or review the cleanup preview to rebuild them.`);
+    if (synced.conflictedTasks > 0 || synced.missingTasks > 0) {
+      const problemCount = synced.conflictedTasks + synced.missingTasks;
+      new Notice(`Kanban board sync for ${synced.projectName} applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"} but queued ${problemCount} repair item${problemCount === 1 ? "" : "s"}. Run Repair Kanban links for the detailed conflict report.`);
     } else if (showNotice) {
       new Notice(`${synced.projectName} board sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
