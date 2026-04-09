@@ -1134,6 +1134,68 @@ export function inspectMasterHubKanbanMigration(content: string): KanbanMigratio
   };
 }
 
+export function applyKanbanCleanupMigration(content: string): {
+  content: string;
+  removedVisibleTaskIds: number;
+  remainingBrokenLegacyTaskLines: number;
+} {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return {
+      content,
+      removedVisibleTaskIds: 0,
+      remainingBrokenLegacyTaskLines: 0
+    };
+  }
+
+  const output = [...lines];
+  let removedVisibleTaskIds = 0;
+  let remainingBrokenLegacyTaskLines = 0;
+
+  projectRanges.forEach((project) => {
+    let currentSection = "General";
+
+    for (let index = project.start + 1; index <= project.end; index += 1) {
+      const line = output[index];
+      const sectionName = getSectionName(line);
+      if (sectionName) {
+        currentSection = sectionName;
+        continue;
+      }
+
+      if (parseBrokenLegacyKanbanTaskLine(line, currentSection)) {
+        remainingBrokenLegacyTaskLines += 1;
+        continue;
+      }
+
+      const taskMatch = line.match(CHECKLIST_REGEX);
+      if (!taskMatch) {
+        continue;
+      }
+
+      const rawTaskText = taskMatch[2];
+      if (!extractTaskAnnotation(rawTaskText, TASK_ID_ANNOTATION_KEY)) {
+        continue;
+      }
+
+      const cleanedTaskText = removeTaskAnnotation(rawTaskText, TASK_ID_ANNOTATION_KEY);
+      if (cleanedTaskText === rawTaskText.trim()) {
+        continue;
+      }
+
+      output[index] = line.replace(rawTaskText, cleanedTaskText);
+      removedVisibleTaskIds += 1;
+    }
+  });
+
+  return {
+    content: removedVisibleTaskIds > 0 ? output.join("\n") : content,
+    removedVisibleTaskIds,
+    remainingBrokenLegacyTaskLines
+  };
+}
+
 export function repairBrokenKanbanMasterHubLines(content: string): { content: string; repairedTasks: number } {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -2983,6 +3045,14 @@ function extractTaskAnnotation(value: string, key: string): string | null {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = value.match(new RegExp(`\\[${escapedKey}:\\s*([^\]]+)\\]`, "i"));
   return match?.[1]?.trim() || null;
+}
+
+function removeTaskAnnotation(value: string, key: string): string {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value
+    .replace(new RegExp(`\\s*\\[${escapedKey}:\\s*[^\]]+\\]`, "ig"), "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function stripTaskAnnotations(value: string): string {

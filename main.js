@@ -3926,6 +3926,54 @@ function inspectMasterHubKanbanMigration(content) {
     brokenLegacyTaskLines
   };
 }
+function applyKanbanCleanupMigration(content) {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return {
+      content,
+      removedVisibleTaskIds: 0,
+      remainingBrokenLegacyTaskLines: 0
+    };
+  }
+  const output = [...lines];
+  let removedVisibleTaskIds = 0;
+  let remainingBrokenLegacyTaskLines = 0;
+  projectRanges.forEach((project) => {
+    let currentSection = "General";
+    for (let index = project.start + 1; index <= project.end; index += 1) {
+      const line = output[index];
+      const sectionName = getSectionName(line);
+      if (sectionName) {
+        currentSection = sectionName;
+        continue;
+      }
+      if (parseBrokenLegacyKanbanTaskLine(line, currentSection)) {
+        remainingBrokenLegacyTaskLines += 1;
+        continue;
+      }
+      const taskMatch = line.match(CHECKLIST_REGEX);
+      if (!taskMatch) {
+        continue;
+      }
+      const rawTaskText = taskMatch[2];
+      if (!extractTaskAnnotation(rawTaskText, TASK_ID_ANNOTATION_KEY)) {
+        continue;
+      }
+      const cleanedTaskText = removeTaskAnnotation(rawTaskText, TASK_ID_ANNOTATION_KEY);
+      if (cleanedTaskText === rawTaskText.trim()) {
+        continue;
+      }
+      output[index] = line.replace(rawTaskText, cleanedTaskText);
+      removedVisibleTaskIds += 1;
+    }
+  });
+  return {
+    content: removedVisibleTaskIds > 0 ? output.join("\n") : content,
+    removedVisibleTaskIds,
+    remainingBrokenLegacyTaskLines
+  };
+}
 function repairBrokenKanbanMasterHubLines(content) {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
@@ -5484,6 +5532,10 @@ function extractTaskAnnotation(value, key) {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = value.match(new RegExp(`\\[${escapedKey}:\\s*([^]]+)\\]`, "i"));
   return ((_a = match == null ? void 0 : match[1]) == null ? void 0 : _a.trim()) || null;
+}
+function removeTaskAnnotation(value, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(new RegExp(`\\s*\\[${escapedKey}:\\s*[^]]+\\]`, "ig"), "").replace(/\s{2,}/g, " ").trim();
 }
 function stripTaskAnnotations(value) {
   return value.replace(/\s*\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
@@ -12345,6 +12397,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       },
       kanbanState: {
         taskRegistry: {},
+        boardTemplates: {},
+        boardConfigurations: {},
+        repairQueue: {},
         lastCleanupPreviewAt: ""
       },
       dayState: {
@@ -12728,6 +12783,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Preview Kanban cleanup migration",
       callback: () => {
         void this.previewKanbanCleanupMigration(true);
+      }
+    });
+    this.addCommand({
+      id: "apply-kanban-cleanup-migration",
+      name: "Apply Kanban cleanup migration",
+      callback: () => {
+        void this.applyKanbanCleanupMigration(true);
       }
     });
     this.addCommand({
@@ -16650,6 +16712,111 @@ ${context}`, resolvedModel);
     const folder = lastSlash >= 0 ? normalizedHubPath.slice(0, lastSlash) : "";
     return folder ? `${folder}/Kanban Cleanup Preview.md` : "Kanban Cleanup Preview.md";
   }
+  getExistingKanbanBoardNotePaths() {
+    const normalizedBoardFolder = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanBoardNotesFolder);
+    return this.app.vault.getMarkdownFiles().map((file) => (0, import_obsidian4.normalizePath)(file.path)).filter((path) => normalizedBoardFolder.length > 0 && path.startsWith(`${normalizedBoardFolder}/`));
+  }
+  async writeKanbanCleanupPreviewFile(generatedAt, preview) {
+    return this.upsertMarkdownFile(this.getKanbanCleanupPreviewPath(), this.renderKanbanCleanupPreview({
+      generatedAt,
+      preview,
+      boardNotePaths: this.getExistingKanbanBoardNotePaths()
+    }));
+  }
+  normalizeKanbanLaneDefinitions(value) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((entry) => Boolean(entry) && typeof entry === "object").map((entry) => {
+      const laneKey = typeof entry.laneKey === "string" ? entry.laneKey.trim() : "";
+      const label = typeof entry.label === "string" ? entry.label.trim() : laneKey;
+      const helperText = typeof entry.helperText === "string" ? entry.helperText.trim() : "";
+      const ruleType = entry.ruleType === "completion-state" || entry.ruleType === "custom" ? entry.ruleType : "hub-section";
+      const mappedSections = Array.isArray(entry.mappedSections) ? entry.mappedSections.filter((section) => typeof section === "string" && section.trim().length > 0).map((section) => section.trim()) : [];
+      return {
+        laneKey,
+        label: label || laneKey,
+        helperText,
+        ruleType,
+        mappedSections,
+        done: Boolean(entry.done)
+      };
+    }).filter((entry) => entry.laneKey.length > 0 && entry.label.length > 0);
+  }
+  normalizeKanbanBoardTemplates(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const boardTemplates = {};
+    Object.entries(value).forEach(([templateId, entry]) => {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+      const normalizedTemplateId = typeof entry.templateId === "string" && entry.templateId.trim().length > 0 ? entry.templateId.trim() : templateId.trim();
+      if (!normalizedTemplateId) {
+        return;
+      }
+      boardTemplates[normalizedTemplateId] = {
+        templateId: normalizedTemplateId,
+        name: typeof entry.name === "string" ? entry.name.trim() : normalizedTemplateId,
+        description: typeof entry.description === "string" ? entry.description.trim() : "",
+        laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        builtIn: Boolean(entry.builtIn),
+        updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
+      };
+    });
+    return boardTemplates;
+  }
+  normalizeKanbanBoardConfigurations(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const boardConfigurations = {};
+    Object.entries(value).forEach(([projectName, entry]) => {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+      const normalizedProjectName = typeof entry.projectName === "string" && entry.projectName.trim().length > 0 ? entry.projectName.trim() : projectName.trim();
+      if (!normalizedProjectName) {
+        return;
+      }
+      boardConfigurations[normalizedProjectName] = {
+        projectName: normalizedProjectName,
+        templateId: typeof entry.templateId === "string" ? entry.templateId.trim() : "",
+        showInHub: entry.showInHub !== false,
+        laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
+      };
+    });
+    return boardConfigurations;
+  }
+  normalizeKanbanRepairQueue(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    const repairQueue = {};
+    Object.entries(value).forEach(([repairId, entry]) => {
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+      const normalizedRepairId = typeof entry.repairId === "string" && entry.repairId.trim().length > 0 ? entry.repairId.trim() : repairId.trim();
+      if (!normalizedRepairId) {
+        return;
+      }
+      const reason = entry.reason === "ambiguous-match" || entry.reason === "conflict" || entry.reason === "orphaned-task" || entry.reason === "broken-source-line" ? entry.reason : "orphaned-task";
+      repairQueue[normalizedRepairId] = {
+        repairId: normalizedRepairId,
+        taskId: typeof entry.taskId === "string" ? entry.taskId.trim() : "",
+        projectName: typeof entry.projectName === "string" ? entry.projectName.trim() : "",
+        sectionName: typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General",
+        taskText: typeof entry.taskText === "string" ? entry.taskText.trim() : "",
+        reason,
+        createdAt: typeof entry.createdAt === "string" ? entry.createdAt.trim() : "",
+        resolvedAt: typeof entry.resolvedAt === "string" ? entry.resolvedAt.trim() : ""
+      };
+    });
+    return repairQueue;
+  }
   normalizeKanbanState(state) {
     const taskRegistry = {};
     if ((state == null ? void 0 : state.taskRegistry) && typeof state.taskRegistry === "object") {
@@ -16674,6 +16841,9 @@ ${context}`, resolvedModel);
     }
     return {
       taskRegistry,
+      boardTemplates: this.normalizeKanbanBoardTemplates(state == null ? void 0 : state.boardTemplates),
+      boardConfigurations: this.normalizeKanbanBoardConfigurations(state == null ? void 0 : state.boardConfigurations),
+      repairQueue: this.normalizeKanbanRepairQueue(state == null ? void 0 : state.repairQueue),
       lastCleanupPreviewAt: typeof (state == null ? void 0 : state.lastCleanupPreviewAt) === "string" ? state.lastCleanupPreviewAt.trim() : ""
     };
   }
@@ -16723,6 +16893,40 @@ ${context}`, resolvedModel);
     }
     return changed;
   }
+  syncKanbanRepairQueueFromPreview(preview, updatedAt) {
+    let changed = 0;
+    const activeRepairIds = /* @__PURE__ */ new Set();
+    preview.brokenLegacyTaskLines.forEach((task) => {
+      const repairId = task.taskId ? `legacy-broken-line:${task.taskId}` : `legacy-broken-line:${task.projectName}:${task.lineNumber}`;
+      activeRepairIds.add(repairId);
+      const existing = this.data.kanbanState.repairQueue[repairId];
+      const nextEntry = {
+        repairId,
+        taskId: task.taskId,
+        projectName: task.projectName,
+        sectionName: task.sectionName,
+        taskText: task.taskText,
+        reason: "broken-source-line",
+        createdAt: (existing == null ? void 0 : existing.createdAt) || updatedAt,
+        resolvedAt: ""
+      };
+      if (!existing || existing.taskId !== nextEntry.taskId || existing.projectName !== nextEntry.projectName || existing.sectionName !== nextEntry.sectionName || existing.taskText !== nextEntry.taskText || existing.reason !== nextEntry.reason || existing.resolvedAt !== nextEntry.resolvedAt) {
+        this.data.kanbanState.repairQueue[repairId] = nextEntry;
+        changed += 1;
+      }
+    });
+    Object.keys(this.data.kanbanState.repairQueue).forEach((repairId) => {
+      if (!repairId.startsWith("legacy-broken-line:")) {
+        return;
+      }
+      if (activeRepairIds.has(repairId)) {
+        return;
+      }
+      delete this.data.kanbanState.repairQueue[repairId];
+      changed += 1;
+    });
+    return changed;
+  }
   renderKanbanCleanupPreview(input) {
     const previewPath = this.getKanbanCleanupPreviewPath();
     const visibleByProject = /* @__PURE__ */ new Map();
@@ -16743,6 +16947,7 @@ ${context}`, resolvedModel);
     const visibleProjectLines = [...visibleByProject.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])).map(([projectName, count]) => `- ${projectName}: ${count} task${count === 1 ? "" : "s"}`);
     const missingProjectLines = [...missingByProject.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])).map(([projectName, count]) => `- ${projectName}: ${count} task${count === 1 ? "" : "s"}`);
     const brokenProjectLines = [...brokenByProject.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0])).map(([projectName, count]) => `- ${projectName}: ${count} task line${count === 1 ? "" : "s"}`);
+    const safeCleanupTaskLines = input.preview.tasksWithVisibleId.length > 0 ? input.preview.tasksWithVisibleId.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (task id ${task.taskId}, Master Task Hub line ${task.lineNumber})`) : ["- No checklist tasks currently need visible task-id cleanup."];
     const missingTaskLines = input.preview.tasksMissingVisibleId.length > 0 ? input.preview.tasksMissingVisibleId.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (Master Task Hub line ${task.lineNumber})`) : ["- No open tasks are currently missing legacy visible sync ids."];
     const brokenTaskLines = input.preview.brokenLegacyTaskLines.length > 0 ? input.preview.brokenLegacyTaskLines.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (broken line ${task.lineNumber})`) : ["- No legacy broken Kanban task lines were found."];
     const boardNoteLines = input.boardNotePaths.length > 0 ? input.boardNotePaths.map((path) => {
@@ -16757,9 +16962,11 @@ ${context}`, resolvedModel);
       `- Preview note: [[${stripMarkdownExtension(previewPath)}|Kanban Cleanup Preview]]`,
       `- Open tracked tasks inspected: ${input.preview.openTasks}`,
       `- Legacy visible task ids still present: ${input.preview.tasksWithVisibleId.length}`,
+      `- Safe checklist tasks ready for visible-id cleanup: ${input.preview.tasksWithVisibleId.length}`,
       `- Open tasks missing legacy visible ids: ${input.preview.tasksMissingVisibleId.length}`,
       `- Broken legacy Kanban task lines found: ${input.preview.brokenLegacyTaskLines.length}`,
       `- Hidden task-registry entries seeded: ${Object.keys(this.data.kanbanState.taskRegistry).length}`,
+      `- Repair queue entries currently open: ${Object.keys(this.data.kanbanState.repairQueue).length}`,
       `- Compatibility mode: ${this.data.settings.kanbanPluginCompatibilityMode ? "On" : "Off"}`,
       `- Existing generated board notes: ${input.boardNotePaths.length}`,
       "",
@@ -16772,6 +16979,10 @@ ${context}`, resolvedModel);
       "### Tasks With Legacy Visible Ids",
       ...visibleProjectLines.length > 0 ? visibleProjectLines : ["- No active legacy visible ids were found."],
       "",
+      "## Safe Cleanup Task List",
+      ...safeCleanupTaskLines,
+      ...input.preview.tasksWithVisibleId.length > 80 ? ["", `- ${input.preview.tasksWithVisibleId.length - 80} additional task${input.preview.tasksWithVisibleId.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : [],
+      "",
       "### Tasks Missing Legacy Visible Ids",
       ...missingProjectLines.length > 0 ? missingProjectLines : ["- No open tasks are currently missing legacy visible ids."],
       "",
@@ -16782,7 +16993,7 @@ ${context}`, resolvedModel);
       ...missingTaskLines,
       ...input.preview.tasksMissingVisibleId.length > 80 ? ["", `- ${input.preview.tasksMissingVisibleId.length - 80} additional task${input.preview.tasksMissingVisibleId.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : [],
       "",
-      "## Broken Legacy Task Lines",
+      "## Manual Review Before Cleanup",
       ...brokenTaskLines,
       ...input.preview.brokenLegacyTaskLines.length > 80 ? ["", `- ${input.preview.brokenLegacyTaskLines.length - 80} additional broken line${input.preview.brokenLegacyTaskLines.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : [],
       "",
@@ -16794,6 +17005,7 @@ ${context}`, resolvedModel);
       "- Generated boards can still sync legacy-id-backed tasks today.",
       "- Tasks without legacy visible ids can still appear in generated Kanban artifacts, but old bidirectional sync paths will not be reliable for them until the hidden registry migration slice is complete.",
       "- If your old Kanban bug removed checklist boxes, run Repair broken Kanban lines in master task hub before doing any manual cleanup.",
+      "- Apply Kanban cleanup migration removes visible task ids only from checklist tasks that this preview marked as safe and then regenerates the current Kanban artifacts.",
       "- Use this note as the non-destructive checkpoint before any visible task-id cleanup work.",
       ""
     ].join("\n");
@@ -16809,23 +17021,64 @@ ${context}`, resolvedModel);
     const masterContent = await this.app.vault.read(todoFile);
     const generatedAt = /* @__PURE__ */ new Date();
     const preview = inspectMasterHubKanbanMigration(masterContent);
-    const normalizedBoardFolder = (0, import_obsidian4.normalizePath)(this.data.settings.kanbanBoardNotesFolder);
-    const boardNotePaths = this.app.vault.getMarkdownFiles().map((file2) => (0, import_obsidian4.normalizePath)(file2.path)).filter((path) => normalizedBoardFolder.length > 0 && path.startsWith(`${normalizedBoardFolder}/`));
     const seededAt = formatDateTimeKey(generatedAt);
     const seededChanges = this.seedKanbanTaskRegistryFromPreview(preview, seededAt);
-    if (seededChanges > 0) {
+    const repairQueueChanges = this.syncKanbanRepairQueueFromPreview(preview, seededAt);
+    if (seededChanges > 0 || repairQueueChanges > 0) {
       await this.savePluginData();
     }
-    const file = await this.upsertMarkdownFile(this.getKanbanCleanupPreviewPath(), this.renderKanbanCleanupPreview({
-      generatedAt,
-      preview,
-      boardNotePaths
-    }));
+    const file = await this.writeKanbanCleanupPreviewFile(generatedAt, preview);
     if (openAfterGenerate) {
       await this.openFile(file);
-      new import_obsidian4.Notice(`Kanban cleanup preview generated with ${preview.tasksMissingVisibleId.length} open task${preview.tasksMissingVisibleId.length === 1 ? "" : "s"} still missing legacy visible sync ids.`);
+      new import_obsidian4.Notice(`Kanban cleanup preview generated with ${preview.tasksWithVisibleId.length} checklist task${preview.tasksWithVisibleId.length === 1 ? "" : "s"} ready for visible-id cleanup${preview.brokenLegacyTaskLines.length > 0 ? `; ${preview.brokenLegacyTaskLines.length} broken line${preview.brokenLegacyTaskLines.length === 1 ? " still needs" : "s still need"} repair first` : "."}`);
     }
     return file;
+  }
+  async applyKanbanCleanupMigration(openAfterGenerate) {
+    if (!this.data.kanbanState.lastCleanupPreviewAt) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Run Preview Kanban cleanup migration before applying cleanup.");
+      }
+      return null;
+    }
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (openAfterGenerate) {
+        new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return null;
+    }
+    const masterContent = await this.app.vault.read(todoFile);
+    const generatedAt = /* @__PURE__ */ new Date();
+    const previewBefore = inspectMasterHubKanbanMigration(masterContent);
+    const updatedAt = formatDateTimeKey(generatedAt);
+    const seededChanges = this.seedKanbanTaskRegistryFromPreview(previewBefore, updatedAt);
+    const repairQueueChanges = this.syncKanbanRepairQueueFromPreview(previewBefore, updatedAt);
+    const cleanup = applyKanbanCleanupMigration(masterContent);
+    let previewAfter = previewBefore;
+    let boardFiles = [];
+    if (cleanup.removedVisibleTaskIds > 0) {
+      await this.app.vault.modify(todoFile, cleanup.content);
+      previewAfter = inspectMasterHubKanbanMigration(cleanup.content);
+      boardFiles = await this.refreshKanbanBoardNotes(false);
+      await this.refreshKanbanHub(false);
+    }
+    const postCleanupRepairQueueChanges = this.syncKanbanRepairQueueFromPreview(previewAfter, updatedAt);
+    if (seededChanges > 0 || repairQueueChanges > 0 || postCleanupRepairQueueChanges > 0) {
+      await this.savePluginData();
+    }
+    const previewFile = await this.writeKanbanCleanupPreviewFile(generatedAt, previewAfter);
+    if (openAfterGenerate) {
+      await this.openFile(previewFile);
+      if (cleanup.removedVisibleTaskIds > 0) {
+        new import_obsidian4.Notice(`Kanban cleanup removed ${cleanup.removedVisibleTaskIds} visible task id${cleanup.removedVisibleTaskIds === 1 ? "" : "s"} and regenerated the Hub plus ${boardFiles.length} board note${boardFiles.length === 1 ? "" : "s"}${cleanup.remainingBrokenLegacyTaskLines > 0 ? `; ${cleanup.remainingBrokenLegacyTaskLines} broken line${cleanup.remainingBrokenLegacyTaskLines === 1 ? " remains" : "s remain"} in the repair queue.` : "."}`);
+      } else if (previewBefore.tasksWithVisibleId.length === 0) {
+        new import_obsidian4.Notice(previewBefore.brokenLegacyTaskLines.length > 0 ? `No checklist task ids needed cleanup. ${previewBefore.brokenLegacyTaskLines.length} broken legacy line${previewBefore.brokenLegacyTaskLines.length === 1 ? " is" : "s are"} still queued for repair.` : "No visible Kanban task ids remain to clean up.");
+      } else {
+        new import_obsidian4.Notice("Kanban cleanup preview changed, but no visible task ids were removed. Review the preview note before trying again.");
+      }
+    }
+    return previewFile;
   }
   async refreshKanbanHub(openAfterGenerate) {
     const source = await this.getKanbanSnapshotSource();

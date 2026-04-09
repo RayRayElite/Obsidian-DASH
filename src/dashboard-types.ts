@@ -621,8 +621,48 @@ export interface KanbanTaskRegistryEntry {
   updatedAt: string;
 }
 
+export interface KanbanLaneDefinition {
+  laneKey: string;
+  label: string;
+  helperText: string;
+  ruleType: "hub-section" | "completion-state" | "custom";
+  mappedSections: string[];
+  done: boolean;
+}
+
+export interface KanbanBoardTemplate {
+  templateId: string;
+  name: string;
+  description: string;
+  laneDefinitions: KanbanLaneDefinition[];
+  builtIn: boolean;
+  updatedAt: string;
+}
+
+export interface KanbanBoardConfiguration {
+  projectName: string;
+  templateId: string;
+  showInHub: boolean;
+  laneDefinitions: KanbanLaneDefinition[];
+  updatedAt: string;
+}
+
+export interface KanbanRepairStateRecord {
+  repairId: string;
+  taskId: string;
+  projectName: string;
+  sectionName: string;
+  taskText: string;
+  reason: "ambiguous-match" | "conflict" | "orphaned-task" | "broken-source-line";
+  createdAt: string;
+  resolvedAt: string;
+}
+
 export interface KanbanState {
   taskRegistry: Record<string, KanbanTaskRegistryEntry>;
+  boardTemplates: Record<string, KanbanBoardTemplate>;
+  boardConfigurations: Record<string, KanbanBoardConfiguration>;
+  repairQueue: Record<string, KanbanRepairStateRecord>;
   lastCleanupPreviewAt: string;
 }
 
