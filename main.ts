@@ -83,6 +83,7 @@ import {
   extractRepeatingTasks,
   findProjectRanges,
   findTodoCategoryRanges,
+  formatKanbanCategoryMetadataValue,
   getTodoTaskDisplayText,
   getIsoWeekRange,
   inspectMasterHubKanbanMigration,
@@ -108,6 +109,7 @@ import {
   trimLeadingBlankLines,
   trimTrailingBlankLines,
   moveTaskByIdInProject,
+  upsertProjectMetadataLine,
   stripMarkdownExtension,
   syncKanbanBoardNoteToMasterHub,
   syncKanbanHubToMasterHub,
@@ -3051,8 +3053,16 @@ export default class DailyDashboardPlugin extends Plugin {
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
       updatedAt: formatDateTimeKey(new Date())
     };
+    const categoryMetadataUpdated = await this.syncKanbanCategoryMetadataToMasterHub(projectName, normalizedLaneDefinitions);
     await this.savePluginData();
     if (hubRenameResult.updatedMasterHub) {
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      if (this.data.settings.kanbanEnabled) {
+        await this.refreshKanbanHub(false);
+        await this.refreshKanbanBoardNotes(false);
+      }
+    }
+    if (!hubRenameResult.updatedMasterHub && categoryMetadataUpdated) {
       await this.refreshMasterHubPortfolioSnapshot(false);
       if (this.data.settings.kanbanEnabled) {
         await this.refreshKanbanHub(false);
@@ -3063,6 +3073,106 @@ export default class DailyDashboardPlugin extends Plugin {
       new Notice(`Kanban rename review needed: ${hubRenameResult.collisionCount} hub section target${hubRenameResult.collisionCount === 1 ? " already exists" : "s already exist"}.`);
     }
     this.refreshDashboardViews();
+  }
+
+  private async syncKanbanCategoryMetadataToMasterHub(projectName: string, laneDefinitions: KanbanLaneDefinition[]): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      return false;
+    }
+
+    const categoryLabels = laneDefinitions.reduce<Record<string, string>>((result, lane) => {
+      const categoryKey = lane.categoryKey.trim();
+      const categoryLabel = lane.categoryLabel.trim();
+      if (categoryKey && categoryLabel && !result[categoryKey]) {
+        result[categoryKey] = categoryLabel;
+      }
+      return result;
+    }, {});
+    const nextValue = formatKanbanCategoryMetadataValue(categoryLabels);
+    const content = await this.app.vault.read(todoFile);
+    const updated = upsertProjectMetadataLine(content, {
+      projectName,
+      key: "Kanban Categories",
+      value: nextValue
+    });
+    if (!updated.updated) {
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, updated.content);
+    return true;
+  }
+
+  private ensureKanbanNamingState(snapshot: TodoSnapshot, updatedAt: string): number {
+    let changed = 0;
+
+    snapshot.projects.forEach((project) => {
+      const existing = this.getKanbanBoardConfiguration(project.name);
+      const currentLaneDefinitions = existing.laneDefinitions.length > 0
+        ? existing.laneDefinitions.map((lane) => ({ ...lane, mappedSections: [...lane.mappedSections] }))
+        : this.getKanbanLaneOptions(project.name).map((lane) => ({
+          laneKey: lane.laneKey,
+          label: lane.label,
+          helperText: lane.helperText,
+          columnKey: lane.columnKey,
+          categoryKey: lane.categoryKey,
+          categoryLabel: lane.categoryLabel,
+          categorySubtitle: lane.categorySubtitle,
+          categoryColor: lane.categoryColor,
+          categoryTag: lane.categoryTag,
+          ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+          mappedSections: lane.targetSection ? [lane.targetSection] : [],
+          done: lane.done
+        }));
+
+      let updated = false;
+      const nextLaneDefinitions = currentLaneDefinitions.map((lane) => ({ ...lane, mappedSections: [...lane.mappedSections] }));
+      if (Object.keys(project.kanbanCategoryLabels).length > 0) {
+        nextLaneDefinitions.forEach((lane) => {
+          const nextCategoryLabel = project.kanbanCategoryLabels[lane.categoryKey];
+          if (nextCategoryLabel && lane.categoryLabel !== nextCategoryLabel) {
+            lane.categoryLabel = nextCategoryLabel;
+            updated = true;
+          }
+        });
+      }
+
+      const normalizedSectionNames = new Set(project.sectionNames.map((section) => section.trim().toLowerCase()));
+      const claimedSections = new Set(nextLaneDefinitions.flatMap((lane) => lane.mappedSections.map((section) => section.trim().toLowerCase())));
+      const unmatchedSections = project.sectionNames.filter((section) => {
+        const normalized = section.trim().toLowerCase();
+        return normalized.length > 0
+          && normalized !== "completed archive"
+          && normalized !== "reference"
+          && normalized !== "resources"
+          && !claimedSections.has(normalized);
+      });
+      const renameCandidates = nextLaneDefinitions.filter((lane) => lane.ruleType === "hub-section"
+        && !lane.done
+        && lane.mappedSections.length === 1
+        && lane.label.trim().toLowerCase() === lane.mappedSections[0].trim().toLowerCase()
+        && !normalizedSectionNames.has(lane.mappedSections[0].trim().toLowerCase()));
+      if (renameCandidates.length === 1 && unmatchedSections.length === 1) {
+        renameCandidates[0].label = unmatchedSections[0];
+        renameCandidates[0].mappedSections = [unmatchedSections[0]];
+        updated = true;
+      }
+
+      if (!updated) {
+        return;
+      }
+
+      this.data.kanbanState.boardConfigurations[project.name] = {
+        ...existing,
+        projectName: project.name,
+        laneDefinitions: nextLaneDefinitions,
+        updatedAt
+      };
+      changed += 1;
+    });
+
+    return changed;
   }
 
   private async applyCleanKanbanLaneSectionRenames(
@@ -5825,7 +5935,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const snapshot = parseTodoSnapshot(content);
     const updatedAt = formatDateTimeKey(new Date());
     const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt)
-      + this.ensureKanbanBoardModelState(snapshot, updatedAt);
+      + this.ensureKanbanBoardModelState(snapshot, updatedAt)
+      + this.ensureKanbanNamingState(snapshot, updatedAt);
     if (changed > 0) {
       await this.savePluginData();
     }

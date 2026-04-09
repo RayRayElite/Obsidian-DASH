@@ -833,6 +833,8 @@ export interface TodoProjectRange {
 export interface TodoProjectSummary {
   name: string;
   categoryName: string;
+  sectionNames: string[];
+  kanbanCategoryLabels: Record<string, string>;
   status: string;
   projectState: "active" | "incubating" | "someday";
   openCount: number;

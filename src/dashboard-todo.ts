@@ -37,6 +37,7 @@ import {
 const NON_PROJECT_HUB_HEADINGS = new Set(["portfolio snapshot"]);
 const TASK_ID_ANNOTATION_KEY = "task-id";
 const KANBAN_LANE_ORDER: KanbanLane[] = ["Now", "Next", "Later", "Waiting", "Parking Lot", "Done"];
+const KANBAN_CATEGORIES_META_KEY = "kanban categories";
 
 export function parseTodoSnapshot(content: string): TodoSnapshot {
   const lines = content.split(/\r?\n/);
@@ -53,6 +54,8 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     let openCount = 0;
     let archivedCount = 0;
     let currentSection = "General";
+    const sectionNames = new Set<string>();
+    let kanbanCategoryLabels: Record<string, string> = {};
     let focus = "";
     let status = "";
     let projectSummary = "";
@@ -119,12 +122,16 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
         if (meta.key === "relationships") {
           meta.value.split(/[,;]+/).map((item) => item.trim()).filter(Boolean).forEach((item) => relationships.add(item));
         }
+        if (meta.key === KANBAN_CATEGORIES_META_KEY) {
+          kanbanCategoryLabels = parseKanbanCategoryMetadataValue(meta.value);
+        }
         extractNoteLinks(meta.value).forEach((link) => noteLinks.add(link));
       }
 
       const sectionName = getSectionName(line);
       if (sectionName) {
         currentSection = sectionName;
+        sectionNames.add(sectionName);
         emptySections.add(sectionName);
       }
 
@@ -269,6 +276,8 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     return {
       name: project.name,
       categoryName,
+      sectionNames: Array.from(sectionNames),
+      kanbanCategoryLabels,
       status: status || (projectState === "someday" ? "Someday" : projectState === "incubating" ? "Incubating" : "Active"),
       projectState,
       openCount,
@@ -1705,6 +1714,97 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 
   output.splice(insertIndex, 0, "", `### ${normalizedSection}`, taskLine);
   return output.join("\n");
+}
+
+export function formatKanbanCategoryMetadataValue(categoryLabels: Record<string, string>): string {
+  return Object.entries(categoryLabels)
+    .map(([key, value]) => ({ key: key.trim(), value: value.trim() }))
+    .filter((entry) => entry.key.length > 0 && entry.value.length > 0)
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .map((entry) => `${entry.key}=${entry.value}`)
+    .join(" | ");
+}
+
+export function parseKanbanCategoryMetadataValue(value: string): Record<string, string> {
+  return value
+    .split("|")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .reduce<Record<string, string>>((result, entry) => {
+      const separatorIndex = entry.indexOf("=");
+      if (separatorIndex === -1) {
+        return result;
+      }
+
+      const key = entry.slice(0, separatorIndex).trim();
+      const label = entry.slice(separatorIndex + 1).trim();
+      if (!key || !label) {
+        return result;
+      }
+
+      result[key] = label;
+      return result;
+    }, {});
+}
+
+export function upsertProjectMetadataLine(content: string, input: {
+  projectName: string;
+  key: string;
+  value: string;
+}): { content: string; updated: boolean } {
+  const projectName = input.projectName.trim();
+  const key = input.key.trim();
+  const value = input.value.trim();
+  if (!projectName || !key) {
+    return { content, updated: false };
+  }
+
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return { content, updated: false };
+  }
+
+  const output = [...lines];
+  const normalizedKey = key.toLowerCase();
+  let existingIndex = -1;
+  let insertIndex = project.end + 1;
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const meta = parseProjectMeta(output[index]);
+    if (meta) {
+      if (meta.key === normalizedKey) {
+        existingIndex = index;
+      }
+      continue;
+    }
+
+    if (getSectionName(output[index])) {
+      insertIndex = index;
+      break;
+    }
+  }
+
+  if (!value) {
+    if (existingIndex === -1) {
+      return { content, updated: false };
+    }
+
+    output.splice(existingIndex, 1);
+    return { content: output.join("\n"), updated: true };
+  }
+
+  const nextLine = `${key}:: ${value}`;
+  if (existingIndex >= 0) {
+    if (output[existingIndex].trim() === nextLine) {
+      return { content, updated: false };
+    }
+
+    output[existingIndex] = nextLine;
+    return { content: output.join("\n"), updated: true };
+  }
+
+  output.splice(insertIndex, 0, nextLine);
+  return { content: output.join("\n"), updated: true };
 }
 
 export function renameProjectSectionHeading(content: string, input: {
