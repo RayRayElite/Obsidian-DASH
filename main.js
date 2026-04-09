@@ -4035,19 +4035,53 @@ function renderKanbanHubBoardLane(lane, cards) {
     ""
   ];
 }
+function formatKanbanCompatibilityPriorityLabel(priority) {
+  const normalized = priority.trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)} priority`;
+}
+function getKanbanCompatibilityPriorityTone(priority) {
+  const normalized = priority.trim().toLowerCase();
+  if (normalized === "urgent" || normalized === "high" || normalized === "medium" || normalized === "low") {
+    return normalized;
+  }
+  return "none";
+}
+function renderKanbanCompatibilityPill(label, value, kind, tone = "none") {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return "";
+  }
+  const dataTone = kind === "priority" ? ` data-priority="${tone}"` : "";
+  return `<span class="daily-dashboard-kanban-compat-pill" data-kind="${kind}"${dataTone}><strong>${label}</strong><span>${trimmedValue}</span></span>`;
+}
+function renderKanbanCompatibilityMetaRow(projectName, task, includeProject) {
+  const resolvedPriority = task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
+  const resolvedDueDate = task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+  const resolvedEffort = task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
+  const pills = [
+    includeProject ? renderKanbanCompatibilityPill("Project", projectName, "project") : "",
+    resolvedPriority ? renderKanbanCompatibilityPill("Priority", formatKanbanCompatibilityPriorityLabel(resolvedPriority), "priority", getKanbanCompatibilityPriorityTone(resolvedPriority)) : "",
+    resolvedDueDate ? renderKanbanCompatibilityPill("Due", resolvedDueDate, "due") : "",
+    resolvedEffort ? renderKanbanCompatibilityPill("Effort", resolvedEffort, "effort") : ""
+  ].filter((value) => value.length > 0);
+  if (pills.length === 0) {
+    return "";
+  }
+  return `<span class="daily-dashboard-kanban-compat-meta">${pills.join("")}</span><br>`;
+}
 function renderKanbanHubBoardTaskLine(projectName, task, checked) {
   const metadata = [
-    `project ${projectName}`,
-    task.dueDate ? `due ${task.dueDate}` : "",
     task.blockedReason ? `blocked ${task.blockedReason}` : "",
     task.unblockDate ? `unblock ${task.unblockDate}` : "",
-    task.effort ? `effort ${task.effort}` : "",
     task.energy ? `energy ${task.energy}` : "",
     task.executionContext ? `context ${task.executionContext}` : "",
     task.trigger ? `trigger ${task.trigger}` : "",
     task.minimumStep ? `minimum step ${task.minimumStep}` : ""
   ].filter((value) => value.length > 0);
-  return `- [${checked ? "x" : " "}] [${projectName}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
+  return `- [${checked ? "x" : " "}] ${renderKanbanCompatibilityMetaRow(projectName, task, true)}${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
 function buildKanbanBoardNotePath(folderPath, projectName) {
   const normalizedFolder = (0, import_obsidian2.normalizePath)(folderPath.trim());
@@ -4860,16 +4894,14 @@ function renderKanbanLane(lane, tasks, options) {
 }
 function renderKanbanTaskLine(task, checked) {
   const metadata = [
-    task.dueDate ? `due ${task.dueDate}` : "",
     task.blockedReason ? `blocked ${task.blockedReason}` : "",
     task.unblockDate ? `unblock ${task.unblockDate}` : "",
-    task.effort ? `effort ${task.effort}` : "",
     task.energy ? `energy ${task.energy}` : "",
     task.executionContext ? `context ${task.executionContext}` : "",
     task.trigger ? `trigger ${task.trigger}` : "",
     task.minimumStep ? `minimum step ${task.minimumStep}` : ""
   ].filter((value) => value.length > 0);
-  return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
+  return `- [${checked ? "x" : " "}] ${renderKanbanCompatibilityMetaRow("", task, false)}${task.text}${metadata.length > 0 ? ` \u2022 ${metadata.join(" \u2022 ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
 function parseKanbanHubCards(content, boardTemplates = {}, boardConfigurations = {}) {
   if (/^---\r?\n[\s\S]*?kanban-plugin:\s*board[\s\S]*?---/i.test(content)) {

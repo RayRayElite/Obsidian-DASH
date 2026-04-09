@@ -162,6 +162,78 @@
   cursor: text;
 }
 
+.daily-dashboard-kanban-compat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.daily-dashboard-kanban-compat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 82%, white);
+  background: color-mix(in srgb, var(--background-primary-alt) 92%, transparent);
+  color: var(--text-normal);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.daily-dashboard-kanban-compat-pill strong {
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.daily-dashboard-kanban-compat-pill span {
+  font-weight: 700;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="project"] {
+  border-color: color-mix(in srgb, var(--interactive-accent) 28%, var(--background-modifier-border));
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="priority"] {
+  border-width: 2px;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="priority"][data-priority="urgent"] {
+  border-color: #ff7769;
+  background: color-mix(in srgb, #ff7769 16%, var(--background-primary-alt));
+  color: #ffd5cf;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="priority"][data-priority="high"] {
+  border-color: #ffb061;
+  background: color-mix(in srgb, #ffb061 16%, var(--background-primary-alt));
+  color: #ffe2bd;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="priority"][data-priority="medium"] {
+  border-color: #77b7ff;
+  background: color-mix(in srgb, #77b7ff 16%, var(--background-primary-alt));
+  color: #d9ecff;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="priority"][data-priority="low"] {
+  border-color: #74c98a;
+  background: color-mix(in srgb, #74c98a 16%, var(--background-primary-alt));
+  color: #dbf6e1;
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="due"] {
+  border-color: color-mix(in srgb, #77b7ff 34%, var(--background-modifier-border));
+}
+
+.daily-dashboard-kanban-compat-pill[data-kind="effort"] {
+  border-color: color-mix(in srgb, #ffb061 34%, var(--background-modifier-border));
+}
+
 .dash-kanban-subtitle,
 .dash-kanban-project-focus,
 .dash-kanban-lane-helper,
