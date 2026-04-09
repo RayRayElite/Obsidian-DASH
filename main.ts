@@ -83,6 +83,7 @@ import {
   extractRepeatingTasks,
   findProjectRanges,
   findTodoCategoryRanges,
+  getTodoTaskDisplayText,
   getIsoWeekRange,
   inspectMasterHubKanbanMigration,
   insertProjectIntoTodo,
@@ -94,12 +95,14 @@ import {
   repairMasterHubStructure,
   repairProjectNoteStructure,
   reconcileCompletedTasks,
+  completeTaskByIdInProject,
   renderKanbanHub,
   renderKanbanProjectBoardNote,
   renderExistingProjectNoteTemplate,
   renderProjectNoteTemplate,
   renderTodoProjectBlock,
   sanitizeFileName,
+  transferTaskByIdBetweenProjects,
   trimLeadingBlankLines,
   trimTrailingBlankLines,
   moveTaskByIdInProject,
@@ -112,6 +115,7 @@ import {
   AddHabitModal,
   AskAiModal,
   AskResearchQuestionModal,
+  DashKanbanBoardSettingsModal,
   CreateProjectModal,
   DashKanbanView,
   DailyDashboardSettingTab,
@@ -438,6 +442,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open DASH Kanban board",
       callback: () => {
         void this.activateDashKanbanView();
+      }
+    });
+
+    this.addCommand({
+      id: "open-dash-kanban-board-settings",
+      name: "Open DASH Kanban board settings",
+      callback: () => {
+        void this.openDashKanbanBoardSettings();
       }
     });
 
@@ -2606,6 +2618,39 @@ export default class DailyDashboardPlugin extends Plugin {
     return { ...this.data.kanbanState.viewState };
   }
 
+  getKanbanBoardTemplates(): KanbanBoardTemplate[] {
+    return Object.values(this.data.kanbanState.boardTemplates)
+      .sort((left, right) => {
+        if (left.builtIn !== right.builtIn) {
+          return left.builtIn ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name);
+      })
+      .map((template) => ({
+        ...template,
+        laneDefinitions: template.laneDefinitions.map((lane) => ({ ...lane }))
+      }));
+  }
+
+  getKanbanBoardConfiguration(projectName: string): KanbanBoardConfiguration {
+    const existing = this.data.kanbanState.boardConfigurations[projectName];
+    if (existing) {
+      return {
+        ...existing,
+        laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane }))
+      };
+    }
+
+    return {
+      projectName,
+      templateId: "execution-default",
+      showInHub: true,
+      laneDefinitions: [],
+      updatedAt: ""
+    };
+  }
+
   async updateKanbanViewState(nextState: Partial<DashboardKanbanViewState>): Promise<void> {
     const previousState = this.data.kanbanState.viewState;
     const merged = this.normalizeKanbanViewState({
@@ -2669,6 +2714,13 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const content = await this.app.vault.read(todoFile);
+    const laneOptions = this.getKanbanLaneOptions(projectName);
+    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === targetLane || lane.label === targetLane);
+
+    if (targetLaneOption?.done) {
+      return this.completeKanbanTask(projectName, taskId);
+    }
+
     const updated = moveTaskByIdInProject(content, {
       projectName,
       taskId,
@@ -2690,6 +2742,147 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
+  async transferKanbanTask(fromProjectName: string, toProjectName: string, taskId: string, laneSection: string): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const normalizedFromProject = fromProjectName.trim();
+    const normalizedToProject = toProjectName.trim();
+    const normalizedSection = laneSection.trim();
+    if (!normalizedFromProject || !normalizedToProject || !taskId.trim() || !normalizedSection) {
+      return false;
+    }
+
+    if (normalizedFromProject === normalizedToProject) {
+      return this.moveKanbanTask(normalizedToProject, taskId, normalizedSection);
+    }
+
+    const laneOptions = this.getKanbanLaneOptions(normalizedToProject);
+    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === normalizedSection || lane.label === normalizedSection);
+    const effectiveTargetSection = targetLaneOption?.done ? "Next" : normalizedSection;
+
+    const content = await this.app.vault.read(todoFile);
+    const transferred = transferTaskByIdBetweenProjects(content, {
+      fromProjectName: normalizedFromProject,
+      toProjectName: normalizedToProject,
+      taskId,
+      sectionName: effectiveTargetSection,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!transferred.updated) {
+      new Notice("Could not transfer that Kanban task between projects.");
+      return false;
+    }
+
+    const registryEntry = this.data.kanbanState.taskRegistry[taskId];
+    const timestamp = formatDateTimeKey(new Date());
+    if (registryEntry) {
+      this.data.kanbanState.taskRegistry[taskId] = {
+        ...registryEntry,
+        projectName: normalizedToProject,
+        sectionName: effectiveTargetSection,
+        taskText: transferred.taskText ? getTodoTaskDisplayText(transferred.taskText, effectiveTargetSection) : registryEntry.taskText,
+        checked: false,
+        updatedAt: timestamp
+      };
+    }
+
+    const nextContent = targetLaneOption?.done
+      ? completeTaskByIdInProject(transferred.content, {
+          projectName: normalizedToProject,
+          taskId,
+          archivedAt: timestamp,
+          taskRegistry: this.data.kanbanState.taskRegistry
+        }).content
+      : transferred.content;
+
+    if (registryEntry) {
+      this.data.kanbanState.taskRegistry[taskId] = {
+        ...this.data.kanbanState.taskRegistry[taskId],
+        sectionName: targetLaneOption?.done ? "Completed Archive" : effectiveTargetSection,
+        checked: Boolean(targetLaneOption?.done),
+        updatedAt: timestamp
+      };
+      await this.savePluginData();
+    }
+
+    await this.app.vault.modify(todoFile, nextContent);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
+    }
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async completeKanbanTask(projectName: string, taskId: string): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const content = await this.app.vault.read(todoFile);
+    const completed = completeTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      archivedAt: formatDateTimeKey(new Date()),
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!completed.updated) {
+      new Notice("Could not complete that Kanban task from the board.");
+      return false;
+    }
+
+    const registryEntry = this.data.kanbanState.taskRegistry[taskId];
+    if (registryEntry) {
+      this.data.kanbanState.taskRegistry[taskId] = {
+        ...registryEntry,
+        sectionName: "Completed Archive",
+        checked: true,
+        updatedAt: formatDateTimeKey(new Date())
+      };
+      await this.savePluginData();
+    }
+
+    await this.app.vault.modify(todoFile, completed.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
+    }
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async saveKanbanBoardConfiguration(input: {
+    projectName: string;
+    templateId: string;
+    showInHub: boolean;
+    laneDefinitions: KanbanLaneDefinition[];
+  }): Promise<void> {
+    const projectName = input.projectName.trim();
+    if (!projectName) {
+      return;
+    }
+
+    const templateId = input.templateId.trim() || "execution-default";
+    const normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
+    this.data.kanbanState.boardConfigurations[projectName] = {
+      projectName,
+      templateId,
+      showInHub: input.showInHub,
+      laneDefinitions: normalizedLaneDefinitions,
+      updatedAt: formatDateTimeKey(new Date())
+    };
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
   async openNoteByPath(path: string): Promise<void> {
     const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
     if (!(target instanceof TFile)) {
@@ -2698,6 +2891,17 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     await this.openFile(target);
+  }
+
+  async openDashKanbanBoardSettings(initialProjectName = ""): Promise<void> {
+    const snapshot = await this.getTodoSnapshot();
+    const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
+    if (projects.length === 0) {
+      new Notice("No active or incubating projects were found for Kanban settings.");
+      return;
+    }
+
+    new DashKanbanBoardSettingsModal(this.app, this, projects, initialProjectName).open();
   }
 
   private buildDashKanbanProjectBoard(project: TodoProjectSummary): DashKanbanProjectBoard {

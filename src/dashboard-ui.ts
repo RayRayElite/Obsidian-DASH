@@ -50,6 +50,8 @@ import {
   type HabitDefinition,
   type IntakeEntry,
   type IntakeQuickPreset,
+  type KanbanBoardTemplate,
+  type KanbanLaneDefinition,
   type KanbanLane,
   type KanbanLaneOption,
   type NextUpFocusItem,
@@ -5964,6 +5966,252 @@ export class KanbanQuickAddModal extends Modal {
   }
 }
 
+export class DashKanbanBoardSettingsModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private projects: TodoProjectSummary[];
+  private templates: KanbanBoardTemplate[];
+  private selectedProjectName: string;
+  private selectedTemplateId: string;
+  private showInHub = true;
+  private laneDefinitions: KanbanLaneDefinition[] = [];
+
+  constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[], initialProjectName = "") {
+    super(app);
+    this.plugin = plugin;
+    this.projects = projects;
+    this.templates = this.plugin.getKanbanBoardTemplates();
+    this.selectedProjectName = projects.find((project) => project.name === initialProjectName)?.name ?? projects[0]?.name ?? "";
+    this.selectedTemplateId = this.templates[0]?.templateId ?? "execution-default";
+    this.loadProjectDraft(this.selectedProjectName);
+  }
+
+  private loadProjectDraft(projectName: string): void {
+    const configuration = this.plugin.getKanbanBoardConfiguration(projectName);
+    const fallbackTemplate = this.templates.find((template) => template.templateId === configuration.templateId)
+      ?? this.templates[0];
+    this.selectedProjectName = projectName;
+    this.selectedTemplateId = fallbackTemplate?.templateId ?? "execution-default";
+    this.showInHub = configuration.showInHub;
+    this.laneDefinitions = this.cloneLaneDefinitions(
+      configuration.laneDefinitions.length > 0
+        ? configuration.laneDefinitions
+        : fallbackTemplate?.laneDefinitions ?? []
+    );
+  }
+
+  private getSelectedTemplate(): KanbanBoardTemplate | null {
+    return this.templates.find((template) => template.templateId === this.selectedTemplateId) ?? this.templates[0] ?? null;
+  }
+
+  private cloneLaneDefinitions(lanes: KanbanLaneDefinition[]): KanbanLaneDefinition[] {
+    return lanes.map((lane) => ({
+      laneKey: lane.laneKey,
+      label: lane.label,
+      helperText: lane.helperText,
+      ruleType: lane.ruleType,
+      mappedSections: [...lane.mappedSections],
+      done: lane.done
+    }));
+  }
+
+  private buildLaneKey(label: string, fallbackKey: string): string {
+    const normalized = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return normalized || fallbackKey || `lane-${Date.now()}`;
+  }
+
+  private normalizeDraftLanes(): KanbanLaneDefinition[] {
+    return this.laneDefinitions
+      .map((lane, index) => {
+        const label = lane.label.trim();
+        const helperText = lane.helperText.trim();
+        const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+        const done = lane.done;
+        return {
+          laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
+          label,
+          helperText,
+          ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
+          mappedSections,
+          done
+        };
+      })
+      .filter((lane) => lane.label.length > 0);
+  }
+
+  private moveLane(fromIndex: number, toIndex: number): void {
+    if (toIndex < 0 || toIndex >= this.laneDefinitions.length || fromIndex === toIndex) {
+      return;
+    }
+
+    const next = [...this.laneDefinitions];
+    const [lane] = next.splice(fromIndex, 1);
+    if (!lane) {
+      return;
+    }
+
+    next.splice(toIndex, 0, lane);
+    this.laneDefinitions = next;
+    this.onOpen();
+  }
+
+  onOpen(): void {
+    this.setTitle("DASH Kanban Board Settings");
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl)
+      .setName("Project")
+      .setDesc("Choose which project board you want to configure.")
+      .addDropdown((dropdown) => {
+        this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
+        dropdown.setValue(this.selectedProjectName);
+        dropdown.onChange((value) => {
+          this.loadProjectDraft(value);
+          this.onOpen();
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Template")
+      .setDesc("Pick a starting template. Changing it resets the current lane draft to that template.")
+      .addDropdown((dropdown) => {
+        this.templates.forEach((template) => dropdown.addOption(template.templateId, template.name));
+        dropdown.setValue(this.selectedTemplateId);
+        dropdown.onChange((value) => {
+          this.selectedTemplateId = value;
+          const template = this.getSelectedTemplate();
+          this.laneDefinitions = this.cloneLaneDefinitions(template?.laneDefinitions ?? []);
+          this.onOpen();
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Show in All Projects")
+      .setDesc("Hide project boards you do not want in the multi-project workspace.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.showInHub);
+        toggle.onChange((value) => {
+          this.showInHub = value;
+        });
+      });
+
+    const template = this.getSelectedTemplate();
+    if (template?.description) {
+      contentEl.createEl("p", { cls: "setting-item-description", text: template.description });
+    }
+
+    const lanesSection = contentEl.createDiv({ cls: "dash-kanban-settings-section" });
+    lanesSection.createEl("h3", { text: "Lane Overrides" });
+    lanesSection.createEl("p", {
+      cls: "setting-item-description",
+      text: "Edit labels, helper text, mapped Master Task Hub sections, and whether a lane counts as done. Blank mapped sections create custom lanes."
+    });
+
+    this.laneDefinitions.forEach((lane, index) => {
+      const row = lanesSection.createDiv({ cls: "dash-kanban-settings-lane" });
+      row.createEl("h4", { text: `Lane ${index + 1}` });
+
+      new Setting(row)
+        .setName("Label")
+        .addText((text) => {
+          text.setValue(lane.label).onChange((value) => {
+            this.laneDefinitions[index].label = value;
+          });
+        });
+
+      new Setting(row)
+        .setName("Helper text")
+        .addText((text) => {
+          text.setValue(lane.helperText).onChange((value) => {
+            this.laneDefinitions[index].helperText = value;
+          });
+        });
+
+      new Setting(row)
+        .setName("Mapped sections")
+        .setDesc("Comma-separated Master Task Hub section names, such as Now, Next, Waiting.")
+        .addText((text) => {
+          text.setValue(lane.mappedSections.join(", ")).onChange((value) => {
+            this.laneDefinitions[index].mappedSections = value.split(",").map((item) => item.trim()).filter(Boolean);
+          });
+        });
+
+      new Setting(row)
+        .setName("Done lane")
+        .setDesc("Dropping a card here completes and archives it through the Master Task Hub flow.")
+        .addToggle((toggle) => {
+          toggle.setValue(lane.done);
+          toggle.onChange((value) => {
+            this.laneDefinitions[index].done = value;
+          });
+        });
+
+      const actions = row.createDiv({ cls: "dash-kanban-settings-lane-actions" });
+      const upButton = actions.createEl("button", { text: "Up" });
+      upButton.addEventListener("click", () => this.moveLane(index, index - 1));
+      const downButton = actions.createEl("button", { text: "Down" });
+      downButton.addEventListener("click", () => this.moveLane(index, index + 1));
+      const removeButton = actions.createEl("button", { text: "Remove" });
+      removeButton.addEventListener("click", () => {
+        this.laneDefinitions = this.laneDefinitions.filter((_, laneIndex) => laneIndex !== index);
+        this.onOpen();
+      });
+    });
+
+    const laneButtons = lanesSection.createDiv({ cls: "dash-kanban-settings-lane-actions is-footer" });
+    const addLaneButton = laneButtons.createEl("button", { cls: "mod-cta", text: "Add lane" });
+    addLaneButton.addEventListener("click", () => {
+      this.laneDefinitions = [
+        ...this.laneDefinitions,
+        {
+          laneKey: `lane-${this.laneDefinitions.length + 1}`,
+          label: "New Lane",
+          helperText: "",
+          ruleType: "custom",
+          mappedSections: [],
+          done: false
+        }
+      ];
+      this.onOpen();
+    });
+    const resetButton = laneButtons.createEl("button", { text: "Reset to template" });
+    resetButton.addEventListener("click", () => {
+      const currentTemplate = this.getSelectedTemplate();
+      this.laneDefinitions = this.cloneLaneDefinitions(currentTemplate?.laneDefinitions ?? []);
+      this.onOpen();
+    });
+
+    new Setting(contentEl)
+      .addButton((button) => {
+        button.setButtonText("Save board settings").setCta().onClick(async () => {
+          const laneDefinitions = this.normalizeDraftLanes();
+          if (laneDefinitions.length === 0) {
+            new Notice("At least one lane is required.");
+            return;
+          }
+
+          await this.plugin.saveKanbanBoardConfiguration({
+            projectName: this.selectedProjectName,
+            templateId: this.selectedTemplateId,
+            showInHub: this.showInHub,
+            laneDefinitions
+          });
+          new Notice("Kanban board settings saved.");
+          this.close();
+        });
+      })
+      .addExtraButton((button) => {
+        button.setIcon("x").setTooltip("Cancel").onClick(() => {
+          this.close();
+        });
+      });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 export class KanbanTaskEditModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private projects: TodoProjectSummary[];
@@ -8527,6 +8775,10 @@ export class DashKanbanView extends ItemView {
       }),
       this.createHeaderButton("file-stack", "Open hub", () => {
         void this.plugin.openMasterTodo();
+      }),
+      this.createHeaderButton("sliders-horizontal", "Board settings", () => {
+        const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
+        void this.plugin.openDashKanbanBoardSettings(targetProject);
       })
     );
 
@@ -8637,6 +8889,9 @@ export class DashKanbanView extends ItemView {
       }),
       this.createHeaderButton("file-text", "Hub", () => {
         void this.plugin.openMasterTodo();
+      }),
+      this.createHeaderButton("sliders-horizontal", "Settings", () => {
+        void this.plugin.openDashKanbanBoardSettings(project.projectName);
       })
     );
     if (project.notePath) {
@@ -8682,7 +8937,7 @@ export class DashKanbanView extends ItemView {
         return;
       }
       if (dragged.projectName !== project.projectName) {
-        new Notice("Cross-project drag is not wired yet. This first slice supports lane moves inside a project board.");
+        void this.plugin.transferKanbanTask(dragged.projectName, project.projectName, dragged.taskId, lane.targetSection);
         return;
       }
       void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.targetSection);
@@ -8750,6 +9005,10 @@ export class DashKanbanView extends ItemView {
       this.createCardActionButton("pen-square", "Edit card", (event) => {
         event.stopPropagation();
         void this.plugin.openKanbanTaskEditFlow(project.projectName, card.taskId);
+      }),
+      this.createCardActionButton("check", "Complete card", (event) => {
+        event.stopPropagation();
+        void this.plugin.completeKanbanTask(project.projectName, card.taskId);
       }),
       this.createCardActionButton("plus-square", "Add sibling card", (event) => {
         event.stopPropagation();

@@ -2463,6 +2463,51 @@ export function moveTaskByIdInProject(content: string, input: {
   };
 }
 
+export function transferTaskByIdBetweenProjects(content: string, input: {
+  fromProjectName: string;
+  toProjectName: string;
+  taskId: string;
+  sectionName: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean; taskText: string } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const removed = removeTaskByIdFromProject(content, input.fromProjectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false, taskText: "" };
+  }
+
+  const targetSection = input.sectionName.trim() || "General";
+  const movedTaskText = targetSection.toLowerCase() === "waiting"
+    ? removed.taskText
+    : stripBlockingTaskAnnotations(removed.taskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.toProjectName, targetSection, movedTaskText);
+
+  return {
+    content: nextContent,
+    updated: nextContent !== content,
+    taskText: movedTaskText
+  };
+}
+
+export function completeTaskByIdInProject(content: string, input: {
+  projectName: string;
+  taskId: string;
+  archivedAt: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const completed = markTaskCompleteById(content, input.projectName, input.taskId, taskRegistry);
+  if (!completed.marked) {
+    return { content, updated: false };
+  }
+
+  const archived = archiveCompletedTasks(completed.content, input.archivedAt);
+  return {
+    content: archived.content,
+    updated: archived.content !== content
+  };
+}
+
 function markTaskCompleteById(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; marked: boolean } {
   const lines = content.split(/\r?\n/);
   const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, false);
@@ -3344,6 +3389,10 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
     isDueSoon,
     isOverdue
   };
+}
+
+export function getTodoTaskDisplayText(rawText: string, section: string): string {
+  return parseTodoTaskSummary(rawText, section, new Date()).text;
 }
 
 function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | "" {
