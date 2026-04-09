@@ -135,6 +135,7 @@ import {
   PromoteTaskModal
 } from "./src/dashboard-ui";
 import {
+  CHECKLIST_REGEX,
   ACTIVITY_SESSION_KIND_OPTIONS,
   CORE_SESSION_TRACKER_OPTIONS,
   DEFAULT_BUDGET_CATEGORIES,
@@ -218,6 +219,19 @@ import {
   type MoodCheckIn,
   type WorkSession
 } from "./src/dashboard-types";
+
+type DashKanbanLiveTaskMetadata = {
+  rawText: string;
+  priority: string;
+  dueDate: string;
+  effort: string;
+};
+
+type DashKanbanLiveTaskMetadataLookup = {
+  byTaskId: Map<string, DashKanbanLiveTaskMetadata>;
+  byProjectSectionAndText: Map<string, DashKanbanLiveTaskMetadata>;
+  byProjectAndText: Map<string, DashKanbanLiveTaskMetadata>;
+};
 
 export default class DailyDashboardPlugin extends Plugin {
   private static readonly CALENDAR_ARTIFACT_HORIZON_DAYS = 90;
@@ -2738,10 +2752,15 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async getDashKanbanWorkspaceSnapshot(): Promise<DashKanbanWorkspaceSnapshot | null> {
+    const todoFile = this.getMasterTodoFile();
     const snapshot = await this.getTodoSnapshot();
     if (!snapshot) {
       return null;
     }
+
+    const liveTaskMetadata = todoFile
+      ? this.buildDashKanbanLiveTaskMetadataLookup(await this.app.vault.read(todoFile))
+      : { byTaskId: new Map(), byProjectSectionAndText: new Map(), byProjectAndText: new Map() };
 
     const candidateProjects = snapshot.projects.filter((project) => project.projectState !== "someday");
     const currentViewState = this.data.kanbanState.viewState;
@@ -2756,7 +2775,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const projects = candidateProjects
       .filter((project) => this.data.kanbanState.boardConfigurations[project.name]?.showInHub !== false || project.name === selectedProjectName)
-      .map((project) => this.buildDashKanbanProjectBoard(project));
+      .map((project) => this.buildDashKanbanProjectBoard(project, liveTaskMetadata));
 
     return {
       updatedAt: formatDateTimeKey(new Date()),
@@ -3421,7 +3440,7 @@ export default class DailyDashboardPlugin extends Plugin {
     new DashKanbanBoardSettingsModal(this.app, this, projects, initialProjectName).open();
   }
 
-  private buildDashKanbanProjectBoard(project: TodoProjectSummary): DashKanbanProjectBoard {
+  private buildDashKanbanProjectBoard(project: TodoProjectSummary, liveTaskMetadata: DashKanbanLiveTaskMetadataLookup): DashKanbanProjectBoard {
     const configuration = this.data.kanbanState.boardConfigurations[project.name];
     const template = this.getResolvedKanbanBoardTemplate(configuration?.templateId || "");
     const laneOptions = this.getKanbanLaneOptions(project.name);
@@ -3436,7 +3455,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const lanes = laneOptions.map((laneOption) => {
       const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
         .filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions))
-        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption, liveTaskMetadata));
       const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, configuration?.laneOrder ?? {});
 
       return {
@@ -3482,21 +3501,23 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  private buildDashKanbanCard(projectName: string, task: TodoTaskSummary, laneOption: KanbanLaneOption): DashKanbanCard {
+  private buildDashKanbanCard(projectName: string, task: TodoTaskSummary, laneOption: KanbanLaneOption, liveTaskMetadata: DashKanbanLiveTaskMetadataLookup): DashKanbanCard {
     const allCategoryTags = this.getKanbanLaneOptions(projectName)
       .map((option) => option.categoryTag.trim().toLowerCase())
       .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+    const liveMetadata = this.resolveDashKanbanLiveTaskMetadata(projectName, task, liveTaskMetadata);
     const visibleTags = this.extractDashKanbanTags(task.rawText)
       .filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
-    const resolvedPriority = task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
-    const resolvedDueDate = task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
-    const resolvedEffort = task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
+    const resolvedRawText = liveMetadata?.rawText || task.rawText;
+    const resolvedPriority = liveMetadata?.priority || task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
+    const resolvedDueDate = liveMetadata?.dueDate || task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+    const resolvedEffort = liveMetadata?.effort || task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
 
     return {
       taskId: task.taskId,
       projectName,
       text: this.stripKanbanCategoryTagsFromDisplay(task.text, allCategoryTags),
-      rawText: task.rawText,
+      rawText: resolvedRawText,
       sectionName: task.section,
       laneKey: laneOption.laneKey,
       laneLabel: laneOption.label,
@@ -3515,10 +3536,83 @@ export default class DailyDashboardPlugin extends Plugin {
       isBlocked: task.isBlocked,
       isDueSoon: task.isDueSoon,
       isOverdue: task.isOverdue,
-      assignee: this.extractDashKanbanAssignee(task.rawText, task.text),
+      assignee: this.extractDashKanbanAssignee(resolvedRawText, task.text),
       tags: visibleTags,
       notePreview: this.buildDashKanbanNotePreview(task)
     };
+  }
+
+  private buildDashKanbanLiveTaskMetadataLookup(content: string): DashKanbanLiveTaskMetadataLookup {
+    const lines = content.split(/\r?\n/);
+    const byTaskId = new Map<string, DashKanbanLiveTaskMetadata>();
+    const byProjectSectionAndText = new Map<string, DashKanbanLiveTaskMetadata>();
+    const byProjectAndText = new Map<string, DashKanbanLiveTaskMetadata>();
+
+    findProjectRanges(lines).forEach((project) => {
+      let currentSection = "General";
+
+      for (let index = project.start + 1; index <= project.end; index += 1) {
+        const line = lines[index];
+        const sectionMatch = line.trim().match(/^###\s+(.+)$/);
+        if (sectionMatch) {
+          currentSection = sectionMatch[1].trim();
+          continue;
+        }
+
+        const taskMatch = line.match(CHECKLIST_REGEX);
+        if (!taskMatch) {
+          continue;
+        }
+
+        const rawText = taskMatch[2].trim();
+        if (!rawText) {
+          continue;
+        }
+
+        const displayText = getTodoTaskDisplayText(rawText, currentSection);
+        const metadata: DashKanbanLiveTaskMetadata = {
+          rawText,
+          priority: getTodoTaskAnnotationValue(rawText, "priority"),
+          dueDate: getTodoTaskAnnotationValue(rawText, "due"),
+          effort: getTodoTaskAnnotationValue(rawText, "effort")
+        };
+
+        const taskIdMatch = rawText.match(/\[task-id:\s*([^\]]+)\]/i);
+        const taskId = taskIdMatch?.[1]?.trim() ?? "";
+        if (taskId) {
+          byTaskId.set(taskId, metadata);
+        }
+
+        const normalizedText = displayText.trim().toLowerCase().replace(/\s+/g, " ");
+        if (!normalizedText) {
+          continue;
+        }
+
+        byProjectSectionAndText.set(`${project.name.trim().toLowerCase()}::${currentSection.trim().toLowerCase()}::${normalizedText}`, metadata);
+        byProjectAndText.set(`${project.name.trim().toLowerCase()}::${normalizedText}`, metadata);
+      }
+    });
+
+    return { byTaskId, byProjectSectionAndText, byProjectAndText };
+  }
+
+  private resolveDashKanbanLiveTaskMetadata(projectName: string, task: TodoTaskSummary, lookup: DashKanbanLiveTaskMetadataLookup): DashKanbanLiveTaskMetadata | null {
+    const taskId = task.taskId.trim();
+    if (taskId) {
+      const byTaskId = lookup.byTaskId.get(taskId);
+      if (byTaskId) {
+        return byTaskId;
+      }
+    }
+
+    const normalizedText = task.text.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!normalizedText) {
+      return null;
+    }
+
+    return lookup.byProjectSectionAndText.get(`${projectName.trim().toLowerCase()}::${task.section.trim().toLowerCase()}::${normalizedText}`)
+      ?? lookup.byProjectAndText.get(`${projectName.trim().toLowerCase()}::${normalizedText}`)
+      ?? null;
   }
 
   private compareDashKanbanCardPriority(left: DashKanbanCard, right: DashKanbanCard): number {
