@@ -4236,8 +4236,10 @@ function getKanbanLaneOptionsForProject(projectName, boardTemplates = {}, boardC
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      columnKey: lane.columnKey,
       categoryKey: lane.categoryKey,
       categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
       categoryColor: lane.categoryColor,
       categoryTag: lane.categoryTag,
       targetSection: lane.done ? "Done" : (_a = lane.mappedSections[0]) != null ? _a : "",
@@ -5923,9 +5925,12 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "unknown", label: "Unknown" }
 ];
 var DASH_KANBAN_THEME_LABELS = {
-  sunset: "Sunset Studio",
+  dark: "Midnight Grid",
+  light: "Paper Ledger",
   ocean: "Ocean Ledger",
-  forest: "Forest Field"
+  forest: "Forest Field",
+  rose: "Rose Workshop",
+  aurora: "Aurora Signal"
 };
 function kanbanTemplateSupportsLaneCategories(template) {
   return Boolean(template == null ? void 0 : template.laneDefinitions.some((lane) => lane.categoryLabel.trim().length > 0 || lane.categoryTag.trim().length > 0));
@@ -10477,7 +10482,7 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
       addTasks: [],
       fixTasks: [],
       kanbanTemplateId: defaultTemplateId,
-      kanbanTheme: "sunset",
+      kanbanTheme: "dark",
       kanbanShowLaneCategories: kanbanTemplateSupportsLaneCategories(defaultTemplate),
       useCustomKanban: false
     };
@@ -10994,7 +10999,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.boardHeight = 420;
     this.collapsedInHub = false;
     this.showLaneCategories = false;
-    this.theme = "sunset";
+    this.theme = "dark";
     this.laneDefinitions = [];
     this.plugin = plugin;
     this.projects = projects;
@@ -11027,8 +11032,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      columnKey: lane.columnKey,
       categoryKey: lane.categoryKey,
       categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
       categoryColor: lane.categoryColor,
       categoryTag: lane.categoryTag,
       ruleType: lane.ruleType,
@@ -11044,14 +11051,17 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     return this.laneDefinitions.map((lane, index) => {
       const label = lane.label.trim();
       const helperText = lane.helperText.trim();
+      const categoryLabel = lane.categoryLabel.trim();
       const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
       const done = lane.done;
       return {
         laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
         label,
         helperText,
-        categoryKey: this.buildLaneKey(lane.categoryLabel.trim(), lane.categoryKey || `group-${index + 1}`),
-        categoryLabel: lane.categoryLabel.trim(),
+        columnKey: this.buildLaneKey(lane.label.trim(), lane.columnKey || lane.laneKey || `lane-${index + 1}`),
+        categoryKey: this.buildLaneKey(categoryLabel, lane.categoryKey || `group-${index + 1}`),
+        categoryLabel,
+        categorySubtitle: lane.categorySubtitle.trim(),
         categoryColor: lane.categoryColor.trim(),
         categoryTag: lane.categoryTag.trim().toLowerCase(),
         ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
@@ -13434,11 +13444,64 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       groups.push({
         key,
         label: lane.categoryLabel,
+        subtitle: lane.categorySubtitle,
         color: lane.categoryColor,
         lanes: [lane]
       });
     });
     return groups;
+  }
+  getProjectLaneColumns(project) {
+    const columns = [];
+    project.lanes.forEach((lane) => {
+      const key = lane.columnKey || lane.laneKey;
+      if (columns.some((column) => column.key === key)) {
+        return;
+      }
+      columns.push({
+        key,
+        label: lane.label,
+        helperText: lane.helperText
+      });
+    });
+    return columns;
+  }
+  renderSharedColumnBoard(parent, project, mode) {
+    const matrix = parent.createDiv({ cls: `dash-kanban-matrix is-${mode}` });
+    const columns = this.getProjectLaneColumns(project);
+    const rows = this.getProjectLaneGroups(project);
+    matrix.style.setProperty("--dash-kanban-matrix-columns", `${Math.max(columns.length, 1)}`);
+    const headerSpacer = matrix.createDiv({ cls: "dash-kanban-matrix-corner" });
+    if (rows.some((row) => row.label.trim().length > 0)) {
+      headerSpacer.createSpan({ text: "Swimlane" });
+    }
+    columns.forEach((column) => {
+      const header = matrix.createDiv({ cls: "dash-kanban-matrix-column-header" });
+      header.createEl("h3", { text: column.label });
+      if (column.helperText) {
+        header.createEl("p", { text: column.helperText });
+      }
+    });
+    rows.forEach((row) => {
+      const rowHeader = matrix.createDiv({ cls: "dash-kanban-matrix-row-header" });
+      if (row.color) {
+        rowHeader.style.setProperty("--dash-kanban-category-color", row.color);
+      }
+      rowHeader.createEl("strong", { text: row.label || "Board" });
+      if (row.subtitle) {
+        rowHeader.createEl("p", { text: row.subtitle });
+      }
+      columns.forEach((column) => {
+        var _a;
+        const lane = (_a = row.lanes.find((candidate) => (candidate.columnKey || candidate.laneKey) === column.key)) != null ? _a : null;
+        if (!lane) {
+          const emptyCell = matrix.createDiv({ cls: "dash-kanban-matrix-empty-cell" });
+          emptyCell.createSpan({ text: "No lane in this row." });
+          return;
+        }
+        this.renderLane(matrix, project, lane, "is-matrix-cell");
+      });
+    });
   }
   bindProjectCollapse(header, project, mode) {
     if (mode !== "all-projects") {
@@ -13513,9 +13576,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       event.stopPropagation();
     });
     boardActions.append(
-      this.createHeaderButton("plus", "Add", () => {
-        void this.plugin.openKanbanQuickAddFlow(project.projectName);
-      }),
       this.createHeaderButton("sliders-horizontal", "Settings", () => {
         void this.plugin.openDashKanbanBoardSettings(project.projectName);
       })
@@ -13531,27 +13591,34 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       return;
     }
     const body = board.createDiv({ cls: "dash-kanban-project-body" });
-    const groups = project.showLaneCategories ? this.getProjectLaneGroups(project) : [{ key: "board", label: "", color: "", lanes: project.lanes }];
-    groups.forEach((group) => {
-      const category = body.createDiv({ cls: "dash-kanban-category-section" });
-      if (group.label) {
-        const categoryHeader = category.createDiv({ cls: "dash-kanban-category-header" });
-        if (group.color) {
-          categoryHeader.style.setProperty("--dash-kanban-category-color", group.color);
+    if (project.showLaneCategories && project.usesSharedColumnLayout) {
+      this.renderSharedColumnBoard(body, project, mode);
+    } else {
+      const groups = project.showLaneCategories ? this.getProjectLaneGroups(project) : [{ key: "board", label: "", subtitle: "", color: "", lanes: project.lanes }];
+      groups.forEach((group) => {
+        const category = body.createDiv({ cls: "dash-kanban-category-section" });
+        if (group.label) {
+          const categoryHeader = category.createDiv({ cls: "dash-kanban-category-header" });
+          if (group.color) {
+            categoryHeader.style.setProperty("--dash-kanban-category-color", group.color);
+          }
+          categoryHeader.createEl("span", { text: group.label.toUpperCase() });
+          if (group.subtitle) {
+            categoryHeader.createEl("small", { text: group.subtitle });
+          }
         }
-        categoryHeader.createEl("span", { text: group.label.toUpperCase() });
-      }
-      const lanes = category.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
-      group.lanes.forEach((lane) => {
-        this.renderLane(lanes, project, lane);
+        const lanes = category.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
+        group.lanes.forEach((lane) => {
+          this.renderLane(lanes, project, lane);
+        });
       });
-    });
+    }
     const resizeHandle = board.createDiv({ cls: "dash-kanban-board-resizer" });
     resizeHandle.createSpan({ text: "Drag to resize board height" });
     this.bindProjectResize(resizeHandle, board, project);
   }
-  renderLane(parent, project, lane) {
-    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}` });
+  renderLane(parent, project, lane, extraClass = "") {
+    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${extraClass ? ` ${extraClass}` : ""}` });
     laneEl.dataset.project = project.projectName;
     laneEl.dataset.section = lane.targetSection;
     const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
@@ -15996,7 +16063,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
-      theme: "sunset",
+      theme: "dark",
       updatedAt: ""
     };
   }
@@ -16288,7 +16355,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
-      theme: input.theme === "ocean" || input.theme === "forest" ? input.theme : "sunset",
+      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -16306,7 +16373,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: typeof input.boardHeight === "number" ? Math.min(Math.max(Math.round(input.boardHeight), 260), 900) : existing.boardHeight,
       collapsedInHub: typeof input.collapsedInHub === "boolean" ? input.collapsedInHub : existing.collapsedInHub,
       showLaneCategories: typeof input.showLaneCategories === "boolean" ? input.showLaneCategories : existing.showLaneCategories,
-      theme: input.theme === "ocean" || input.theme === "forest" || input.theme === "sunset" ? input.theme : existing.theme,
+      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark" ? input.theme : existing.theme,
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -16355,8 +16422,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         laneKey: laneOption.laneKey,
         label: laneOption.label,
         helperText: laneOption.helperText,
+        columnKey: laneOption.columnKey,
         categoryKey: laneOption.categoryKey,
         categoryLabel: laneOption.categoryLabel,
+        categorySubtitle: laneOption.categorySubtitle,
         categoryColor: laneOption.categoryColor,
         categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
@@ -16369,7 +16438,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       projectName: project.name,
       templateId: template.templateId,
       templateName: template.name,
-      theme: (configuration == null ? void 0 : configuration.theme) === "ocean" || (configuration == null ? void 0 : configuration.theme) === "forest" ? configuration.theme : "sunset",
+      theme: (configuration == null ? void 0 : configuration.theme) === "light" || (configuration == null ? void 0 : configuration.theme) === "ocean" || (configuration == null ? void 0 : configuration.theme) === "forest" || (configuration == null ? void 0 : configuration.theme) === "rose" || (configuration == null ? void 0 : configuration.theme) === "aurora" ? configuration.theme : "dark",
       status: project.status,
       projectState: project.projectState,
       focus: project.focus,
@@ -16382,6 +16451,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: typeof (configuration == null ? void 0 : configuration.boardHeight) === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
       collapsedInHub: Boolean(configuration == null ? void 0 : configuration.collapsedInHub),
       showLaneCategories: Boolean(configuration == null ? void 0 : configuration.showLaneCategories),
+      usesSharedColumnLayout: new Set(lanes.map((lane) => lane.categoryKey).filter((value) => value.length > 0)).size > 1 && new Set(lanes.map((lane) => lane.columnKey).filter((value) => value.length > 0)).size < lanes.length,
       lanes
     };
   }
@@ -18965,6 +19035,8 @@ ${context}`, resolvedModel);
         laneDefinitions: [],
         boardHeight: 420,
         collapsedInHub: false,
+        showLaneCategories: false,
+        theme: "dark",
         updatedAt
       };
       changed += 1;
@@ -18972,12 +19044,14 @@ ${context}`, resolvedModel);
     return changed;
   }
   getBuiltInKanbanBoardTemplates(updatedAt) {
-    const createLane = (laneKey, label, helperText, categoryLabel, categoryColor, categoryTag, ruleType, mappedSections, done) => ({
+    const createLane = (laneKey, label, helperText, columnKey, categoryLabel, categorySubtitle, categoryColor, categoryTag, ruleType, mappedSections, done) => ({
       laneKey,
       label,
       helperText,
+      columnKey,
       categoryKey: categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
       categoryLabel,
+      categorySubtitle,
       categoryColor,
       categoryTag,
       ruleType,
@@ -18990,12 +19064,12 @@ ${context}`, resolvedModel);
         name: "Execution Default",
         description: "Classic personal execution flow for active projects.",
         laneDefinitions: [
-          createLane("now", "Now", "Current execution", "Execution", "#d96b2b", "", "hub-section", ["Now"], false),
-          createLane("next", "Next", "Queued next actions", "Execution", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("later", "Later", "Deferred but active", "Planning", "#5d7bd8", "", "hub-section", ["Later"], false),
-          createLane("waiting", "Waiting", "Dependencies or unblockers", "Planning", "#5d7bd8", "", "hub-section", ["Waiting"], false),
-          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "Parking", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
-          createLane("done", "Done", "Recently completed", "Results", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("now", "Now", "Current execution", "now", "Execution", "", "#d96b2b", "", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "next", "Execution", "", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "later", "Planning", "", "#5d7bd8", "", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "waiting", "Planning", "", "#5d7bd8", "", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "parking-lot", "Parking", "", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "done", "Results", "", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -19005,23 +19079,23 @@ ${context}`, resolvedModel);
         name: "Support Swimlanes",
         description: "Mirrors the cloud-board example with separate expedite, defects, and feature bands across a shared workflow.",
         laneDefinitions: [
-          createLane("requested", "Requested", "New intake and demand shaping", "Expedite", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("development", "Development", "Active implementation", "Expedite", "#d63131", "expedite", "hub-section", ["Now"], false),
-          createLane("code-review", "Code Review", "Waiting for review or cleanup", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("sign-off", "Sign Off", "Awaiting approval", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("deployment", "Deployment", "Ready to ship", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("done", "Done", "Delivered work", "Expedite", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("requested-defects", "Requested", "Incoming bug reports", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("development-defects", "Development", "Defect fix in progress", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Now"], false),
-          createLane("qa-defects", "QA", "Ready to validate the fix", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
-          createLane("done-defects", "Done", "Closed defects", "Defects / Bugs", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("requested-features", "Requested", "Feature request intake", "Features", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
-          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "Features", "#7d4bc6", "feature", "hub-section", ["Next"], false),
-          createLane("development-features", "Development", "Feature implementation", "Features", "#7d4bc6", "feature", "hub-section", ["Now"], false),
-          createLane("done-features", "Done", "Completed feature work", "Features", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("requested", "Requested", "New intake and demand shaping", "requested", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "analysis", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("development", "Development", "Active implementation", "development", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Now"], false),
+          createLane("code-review", "Code Review", "Waiting for review or cleanup", "review", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "qa-ready", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "qa-active", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("sign-off", "Sign Off", "Awaiting approval", "sign-off", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to ship", "deployment", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Delivered work", "done", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-defects", "Requested", "Incoming bug reports", "requested", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development-defects", "Development", "Defect fix in progress", "development", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Now"], false),
+          createLane("qa-defects", "QA", "Ready to validate the fix", "qa-active", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
+          createLane("done-defects", "Done", "Closed defects", "done", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-features", "Requested", "Feature request intake", "requested", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "analysis", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Next"], false),
+          createLane("development-features", "Development", "Feature implementation", "development", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Now"], false),
+          createLane("done-features", "Done", "Completed feature work", "done", "Features", "Planned delivery work", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -19031,27 +19105,29 @@ ${context}`, resolvedModel);
         name: "Bugs And Features",
         description: "Matches the compact defects-plus-features board with a cleaner verification flow.",
         laneDefinitions: [
-          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("development", "Development", "Active defect work", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Now"], false),
-          createLane("verification", "Verification", "Waiting for retest", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
-          createLane("deployment", "Deployment", "Ready to release", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Later"], false),
-          createLane("done", "Done", "Resolved bugs", "Defects / Bugs", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("feature-intake", "Ready To Start", "New feature requests", "Features", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
-          createLane("feature-build", "Development", "Feature execution", "Features", "#3041d7", "feature", "hub-section", ["Now"], false),
-          createLane("feature-done", "Done", "Completed features", "Features", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "ready", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development", "Development", "Active defect work", "development", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Now"], false),
+          createLane("verification", "Verification", "Waiting for retest", "verification", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to release", "deployment", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Resolved bugs", "done", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("feature-intake", "Ready To Start", "New feature requests", "ready", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("feature-build", "Development", "Feature execution", "development", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Now"], false),
+          createLane("feature-verify", "Verification", "Feature ready for review", "verification", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Waiting"], false),
+          createLane("feature-deploy", "Deployment", "Feature ready to launch", "deployment", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Later"], false),
+          createLane("feature-done", "Done", "Completed features", "done", "Features", "Planned feature stream", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
       },
       "content-campaign": {
         templateId: "content-campaign",
-        name: "Content Campaign",
+        name: "Simple",
         description: "Matches the pastel content-marketing example with a simple queue and delivery flow.",
         laneDefinitions: [
-          createLane("to-do", "To Do", "Queued content ideas and tasks", "Content Queue", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
-          createLane("working", "Working", "Active content creation", "Content Queue", "#3ea0a0", "content", "hub-section", ["Now"], false),
-          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "Content Queue", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
-          createLane("done", "Done", "Published or delivered content", "Content Queue", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("to-do", "To Do", "Queued content ideas and tasks", "to-do", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
+          createLane("working", "Working", "Active content creation", "working", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Now"], false),
+          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "waiting", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
+          createLane("done", "Done", "Published or delivered content", "done", "Content Queue", "", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -19061,25 +19137,11 @@ ${context}`, resolvedModel);
         name: "Bug Triage",
         description: "Maintenance-oriented board vocabulary for fixes and verification.",
         laneDefinitions: [
-          createLane("inbox", "Inbox", "Fresh defects or change requests", "Defects", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("fixing", "Fixing", "Work actively being solved", "Defects", "#ef8a17", "", "hub-section", ["Now"], false),
-          createLane("verify", "Verify", "Waiting on test or confirmation", "Defects", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("backlog", "Backlog", "Deferred maintenance", "Triage", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("shipped", "Shipped", "Completed fixes", "Release", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
-        ],
-        builtIn: true,
-        updatedAt
-      },
-      "creative-pipeline": {
-        templateId: "creative-pipeline",
-        name: "Creative Pipeline",
-        description: "Idea-to-finish flow for assets, content, and polish work.",
-        laneDefinitions: [
-          createLane("ideas", "Ideas", "Loose concepts and captures", "Concept", "#7d4bc6", "", "hub-section", ["Parking Lot"], false),
-          createLane("drafting", "Drafting", "Active concept shaping", "Concept", "#7d4bc6", "", "hub-section", ["Next"], false),
-          createLane("building", "Building", "Current production work", "Production", "#ef8a17", "", "hub-section", ["Now"], false),
-          createLane("polish", "Polish", "Blocked on review or final pass", "Production", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("archive", "Published", "Completed outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "inbox", "Defects", "", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "fixing", "Defects", "", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "verify", "Defects", "", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "backlog", "Triage", "", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "shipped", "Release", "", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -19089,11 +19151,11 @@ ${context}`, resolvedModel);
         name: "Research / Publishing",
         description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
         laneDefinitions: [
-          createLane("backlog", "Backlog", "Queued research topics", "Research", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("active", "Active", "Current deep work", "Research", "#5d7bd8", "", "hub-section", ["Now"], false),
-          createLane("review", "Review", "Ready for feedback or unblock", "Review", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("ready", "Ready", "Prepared next actions", "Review", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("published", "Published", "Completed notes or outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("backlog", "Backlog", "Queued research topics", "backlog", "Research", "", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "active", "Research", "", "#5d7bd8", "", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "review", "Review", "", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "ready", "Review", "", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "published", "Release", "", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -19104,9 +19166,6 @@ ${context}`, resolvedModel);
     const haystack = [project.name, project.categoryName, project.status, project.projectSummary, project.focus].join(" ").toLowerCase();
     if (/(bug|fix|patch|maintenance|qa|verify|defect)/.test(haystack)) {
       return "bug-triage";
-    }
-    if (/(art|asset|creative|design|music|level|animation|visual)/.test(haystack)) {
-      return "creative-pipeline";
     }
     if (/(research|docs|documentation|wiki|article|guide|writing|publish|content)/.test(haystack)) {
       return "research-publishing";
@@ -19147,7 +19206,9 @@ ${context}`, resolvedModel);
       const laneKey = typeof entry.laneKey === "string" ? entry.laneKey.trim() : "";
       const label = typeof entry.label === "string" ? entry.label.trim() : laneKey;
       const helperText = typeof entry.helperText === "string" ? entry.helperText.trim() : "";
+      const columnKey = typeof entry.columnKey === "string" && entry.columnKey.trim().length > 0 ? entry.columnKey.trim() : laneKey;
       const categoryLabel = typeof entry.categoryLabel === "string" ? entry.categoryLabel.trim() : "";
+      const categorySubtitle = typeof entry.categorySubtitle === "string" ? entry.categorySubtitle.trim() : "";
       const categoryKey = typeof entry.categoryKey === "string" && entry.categoryKey.trim().length > 0 ? entry.categoryKey.trim() : categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const categoryColor = typeof entry.categoryColor === "string" ? entry.categoryColor.trim() : "";
       const categoryTag = typeof entry.categoryTag === "string" ? entry.categoryTag.trim().toLowerCase() : "";
@@ -19157,8 +19218,10 @@ ${context}`, resolvedModel);
         laneKey,
         label: label || laneKey,
         helperText,
+        columnKey,
         categoryKey,
         categoryLabel,
+        categorySubtitle,
         categoryColor,
         categoryTag,
         ruleType,
@@ -19212,7 +19275,7 @@ ${context}`, resolvedModel);
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
-        theme: entry.theme === "ocean" || entry.theme === "forest" ? entry.theme : "sunset",
+        theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });

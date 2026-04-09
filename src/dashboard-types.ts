@@ -630,8 +630,10 @@ export interface KanbanLaneDefinition {
   laneKey: string;
   label: string;
   helperText: string;
+  columnKey: string;
   categoryKey: string;
   categoryLabel: string;
+  categorySubtitle: string;
   categoryColor: string;
   categoryTag: string;
   ruleType: "hub-section" | "completion-state" | "custom";
@@ -643,8 +645,10 @@ export interface KanbanLaneOption {
   laneKey: string;
   label: string;
   helperText: string;
+  columnKey: string;
   categoryKey: string;
   categoryLabel: string;
+  categorySubtitle: string;
   categoryColor: string;
   categoryTag: string;
   targetSection: string;
@@ -695,7 +699,7 @@ export interface KanbanSyncConflict {
 export type DashboardKanbanViewMode = "all-projects" | "single-project";
 export type DashboardKanbanFocusFilter = "all" | "attention" | "blocked" | "due";
 export type DashboardKanbanDensity = "comfortable" | "compact";
-export type DashboardKanbanTheme = "sunset" | "ocean" | "forest";
+export type DashboardKanbanTheme = "dark" | "light" | "ocean" | "forest" | "rose" | "aurora";
 
 export interface DashboardKanbanViewState {
   mode: DashboardKanbanViewMode;
@@ -737,8 +741,10 @@ export interface DashKanbanLane {
   laneKey: string;
   label: string;
   helperText: string;
+  columnKey: string;
   categoryKey: string;
   categoryLabel: string;
+  categorySubtitle: string;
   categoryColor: string;
   categoryTag: string;
   targetSection: string;
@@ -764,6 +770,7 @@ export interface DashKanbanProjectBoard {
   boardHeight: number;
   collapsedInHub: boolean;
   showLaneCategories: boolean;
+  usesSharedColumnLayout: boolean;
   lanes: DashKanbanLane[];
 }
 

@@ -2665,7 +2665,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
-      theme: "sunset",
+      theme: "dark",
       updatedAt: ""
     };
   }
@@ -3021,7 +3021,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
-      theme: input.theme === "ocean" || input.theme === "forest" ? input.theme : "sunset",
+      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
@@ -3047,7 +3047,7 @@ export default class DailyDashboardPlugin extends Plugin {
       showLaneCategories: typeof input.showLaneCategories === "boolean"
         ? input.showLaneCategories
         : existing.showLaneCategories,
-      theme: input.theme === "ocean" || input.theme === "forest" || input.theme === "sunset"
+      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark"
         ? input.theme
         : existing.theme,
       updatedAt: formatDateTimeKey(new Date())
@@ -3108,8 +3108,10 @@ export default class DailyDashboardPlugin extends Plugin {
         laneKey: laneOption.laneKey,
         label: laneOption.label,
         helperText: laneOption.helperText,
+        columnKey: laneOption.columnKey,
         categoryKey: laneOption.categoryKey,
         categoryLabel: laneOption.categoryLabel,
+        categorySubtitle: laneOption.categorySubtitle,
         categoryColor: laneOption.categoryColor,
         categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
@@ -3123,7 +3125,7 @@ export default class DailyDashboardPlugin extends Plugin {
       projectName: project.name,
       templateId: template.templateId,
       templateName: template.name,
-      theme: configuration?.theme === "ocean" || configuration?.theme === "forest" ? configuration.theme : "sunset",
+      theme: configuration?.theme === "light" || configuration?.theme === "ocean" || configuration?.theme === "forest" || configuration?.theme === "rose" || configuration?.theme === "aurora" ? configuration.theme : "dark",
       status: project.status,
       projectState: project.projectState,
       focus: project.focus,
@@ -3136,6 +3138,8 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: typeof configuration?.boardHeight === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
       collapsedInHub: Boolean(configuration?.collapsedInHub),
       showLaneCategories: Boolean(configuration?.showLaneCategories),
+      usesSharedColumnLayout: new Set(lanes.map((lane) => lane.categoryKey).filter((value) => value.length > 0)).size > 1
+        && new Set(lanes.map((lane) => lane.columnKey).filter((value) => value.length > 0)).size < lanes.length,
       lanes
     };
   }
@@ -6247,6 +6251,8 @@ export default class DailyDashboardPlugin extends Plugin {
         laneDefinitions: [],
         boardHeight: 420,
         collapsedInHub: false,
+        showLaneCategories: false,
+        theme: "dark",
         updatedAt
       };
       changed += 1;
@@ -6260,7 +6266,9 @@ export default class DailyDashboardPlugin extends Plugin {
       laneKey: string,
       label: string,
       helperText: string,
+      columnKey: string,
       categoryLabel: string,
+      categorySubtitle: string,
       categoryColor: string,
       categoryTag: string,
       ruleType: KanbanLaneDefinition["ruleType"],
@@ -6270,8 +6278,10 @@ export default class DailyDashboardPlugin extends Plugin {
       laneKey,
       label,
       helperText,
+      columnKey,
       categoryKey: categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
       categoryLabel,
+      categorySubtitle,
       categoryColor,
       categoryTag,
       ruleType,
@@ -6285,12 +6295,12 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Execution Default",
         description: "Classic personal execution flow for active projects.",
         laneDefinitions: [
-          createLane("now", "Now", "Current execution", "Execution", "#d96b2b", "", "hub-section", ["Now"], false),
-          createLane("next", "Next", "Queued next actions", "Execution", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("later", "Later", "Deferred but active", "Planning", "#5d7bd8", "", "hub-section", ["Later"], false),
-          createLane("waiting", "Waiting", "Dependencies or unblockers", "Planning", "#5d7bd8", "", "hub-section", ["Waiting"], false),
-          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "Parking", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
-          createLane("done", "Done", "Recently completed", "Results", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("now", "Now", "Current execution", "now", "Execution", "", "#d96b2b", "", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "next", "Execution", "", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "later", "Planning", "", "#5d7bd8", "", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "waiting", "Planning", "", "#5d7bd8", "", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "parking-lot", "Parking", "", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "done", "Results", "", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6300,23 +6310,23 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Support Swimlanes",
         description: "Mirrors the cloud-board example with separate expedite, defects, and feature bands across a shared workflow.",
         laneDefinitions: [
-          createLane("requested", "Requested", "New intake and demand shaping", "Expedite", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("development", "Development", "Active implementation", "Expedite", "#d63131", "expedite", "hub-section", ["Now"], false),
-          createLane("code-review", "Code Review", "Waiting for review or cleanup", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("sign-off", "Sign Off", "Awaiting approval", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
-          createLane("deployment", "Deployment", "Ready to ship", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
-          createLane("done", "Done", "Delivered work", "Expedite", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("requested-defects", "Requested", "Incoming bug reports", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("development-defects", "Development", "Defect fix in progress", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Now"], false),
-          createLane("qa-defects", "QA", "Ready to validate the fix", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
-          createLane("done-defects", "Done", "Closed defects", "Defects / Bugs", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("requested-features", "Requested", "Feature request intake", "Features", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
-          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "Features", "#7d4bc6", "feature", "hub-section", ["Next"], false),
-          createLane("development-features", "Development", "Feature implementation", "Features", "#7d4bc6", "feature", "hub-section", ["Now"], false),
-          createLane("done-features", "Done", "Completed feature work", "Features", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("requested", "Requested", "New intake and demand shaping", "requested", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "analysis", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("development", "Development", "Active implementation", "development", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Now"], false),
+          createLane("code-review", "Code Review", "Waiting for review or cleanup", "review", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "qa-ready", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "qa-active", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("sign-off", "Sign Off", "Awaiting approval", "sign-off", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to ship", "deployment", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Delivered work", "done", "Expedite", "Highest-priority interrupts", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-defects", "Requested", "Incoming bug reports", "requested", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development-defects", "Development", "Defect fix in progress", "development", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Now"], false),
+          createLane("qa-defects", "QA", "Ready to validate the fix", "qa-active", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
+          createLane("done-defects", "Done", "Closed defects", "done", "Defects / Bugs", "Customer-facing issues and regressions", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-features", "Requested", "Feature request intake", "requested", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "analysis", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Next"], false),
+          createLane("development-features", "Development", "Feature implementation", "development", "Features", "Planned delivery work", "#7d4bc6", "feature", "hub-section", ["Now"], false),
+          createLane("done-features", "Done", "Completed feature work", "done", "Features", "Planned delivery work", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6326,27 +6336,29 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Bugs And Features",
         description: "Matches the compact defects-plus-features board with a cleaner verification flow.",
         laneDefinitions: [
-          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("development", "Development", "Active defect work", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Now"], false),
-          createLane("verification", "Verification", "Waiting for retest", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
-          createLane("deployment", "Deployment", "Ready to release", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Later"], false),
-          createLane("done", "Done", "Resolved bugs", "Defects / Bugs", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
-          createLane("feature-intake", "Ready To Start", "New feature requests", "Features", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
-          createLane("feature-build", "Development", "Feature execution", "Features", "#3041d7", "feature", "hub-section", ["Now"], false),
-          createLane("feature-done", "Done", "Completed features", "Features", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "ready", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development", "Development", "Active defect work", "development", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Now"], false),
+          createLane("verification", "Verification", "Waiting for retest", "verification", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to release", "deployment", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Resolved bugs", "done", "Defects / Bugs", "Critical bug stream", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("feature-intake", "Ready To Start", "New feature requests", "ready", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("feature-build", "Development", "Feature execution", "development", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Now"], false),
+          createLane("feature-verify", "Verification", "Feature ready for review", "verification", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Waiting"], false),
+          createLane("feature-deploy", "Deployment", "Feature ready to launch", "deployment", "Features", "Planned feature stream", "#3041d7", "feature", "hub-section", ["Later"], false),
+          createLane("feature-done", "Done", "Completed features", "done", "Features", "Planned feature stream", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
       },
       "content-campaign": {
         templateId: "content-campaign",
-        name: "Content Campaign",
+        name: "Simple",
         description: "Matches the pastel content-marketing example with a simple queue and delivery flow.",
         laneDefinitions: [
-          createLane("to-do", "To Do", "Queued content ideas and tasks", "Content Queue", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
-          createLane("working", "Working", "Active content creation", "Content Queue", "#3ea0a0", "content", "hub-section", ["Now"], false),
-          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "Content Queue", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
-          createLane("done", "Done", "Published or delivered content", "Content Queue", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("to-do", "To Do", "Queued content ideas and tasks", "to-do", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
+          createLane("working", "Working", "Active content creation", "working", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Now"], false),
+          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "waiting", "Content Queue", "", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
+          createLane("done", "Done", "Published or delivered content", "done", "Content Queue", "", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6356,25 +6368,11 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Bug Triage",
         description: "Maintenance-oriented board vocabulary for fixes and verification.",
         laneDefinitions: [
-          createLane("inbox", "Inbox", "Fresh defects or change requests", "Defects", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("fixing", "Fixing", "Work actively being solved", "Defects", "#ef8a17", "", "hub-section", ["Now"], false),
-          createLane("verify", "Verify", "Waiting on test or confirmation", "Defects", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("backlog", "Backlog", "Deferred maintenance", "Triage", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("shipped", "Shipped", "Completed fixes", "Release", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
-        ],
-        builtIn: true,
-        updatedAt
-      },
-      "creative-pipeline": {
-        templateId: "creative-pipeline",
-        name: "Creative Pipeline",
-        description: "Idea-to-finish flow for assets, content, and polish work.",
-        laneDefinitions: [
-          createLane("ideas", "Ideas", "Loose concepts and captures", "Concept", "#7d4bc6", "", "hub-section", ["Parking Lot"], false),
-          createLane("drafting", "Drafting", "Active concept shaping", "Concept", "#7d4bc6", "", "hub-section", ["Next"], false),
-          createLane("building", "Building", "Current production work", "Production", "#ef8a17", "", "hub-section", ["Now"], false),
-          createLane("polish", "Polish", "Blocked on review or final pass", "Production", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("archive", "Published", "Completed outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "inbox", "Defects", "", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "fixing", "Defects", "", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "verify", "Defects", "", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "backlog", "Triage", "", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "shipped", "Release", "", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6384,11 +6382,11 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Research / Publishing",
         description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
         laneDefinitions: [
-          createLane("backlog", "Backlog", "Queued research topics", "Research", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("active", "Active", "Current deep work", "Research", "#5d7bd8", "", "hub-section", ["Now"], false),
-          createLane("review", "Review", "Ready for feedback or unblock", "Review", "#ef8a17", "", "hub-section", ["Waiting"], false),
-          createLane("ready", "Ready", "Prepared next actions", "Review", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("published", "Published", "Completed notes or outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("backlog", "Backlog", "Queued research topics", "backlog", "Research", "", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "active", "Research", "", "#5d7bd8", "", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "review", "Review", "", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "ready", "Review", "", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "published", "Release", "", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6403,10 +6401,6 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (/(bug|fix|patch|maintenance|qa|verify|defect)/.test(haystack)) {
       return "bug-triage";
-    }
-
-    if (/(art|asset|creative|design|music|level|animation|visual)/.test(haystack)) {
-      return "creative-pipeline";
     }
 
     if (/(research|docs|documentation|wiki|article|guide|writing|publish|content)/.test(haystack)) {
@@ -6460,7 +6454,11 @@ export default class DailyDashboardPlugin extends Plugin {
         const laneKey = typeof entry.laneKey === "string" ? entry.laneKey.trim() : "";
         const label = typeof entry.label === "string" ? entry.label.trim() : laneKey;
         const helperText = typeof entry.helperText === "string" ? entry.helperText.trim() : "";
+        const columnKey = typeof entry.columnKey === "string" && entry.columnKey.trim().length > 0
+          ? entry.columnKey.trim()
+          : laneKey;
         const categoryLabel = typeof entry.categoryLabel === "string" ? entry.categoryLabel.trim() : "";
+        const categorySubtitle = typeof entry.categorySubtitle === "string" ? entry.categorySubtitle.trim() : "";
         const categoryKey = typeof entry.categoryKey === "string" && entry.categoryKey.trim().length > 0
           ? entry.categoryKey.trim()
           : categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -6477,8 +6475,10 @@ export default class DailyDashboardPlugin extends Plugin {
           laneKey,
           label: label || laneKey,
           helperText,
+          columnKey,
           categoryKey,
           categoryLabel,
+          categorySubtitle,
           categoryColor,
           categoryTag,
           ruleType,
@@ -6542,7 +6542,7 @@ export default class DailyDashboardPlugin extends Plugin {
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
-        theme: entry.theme === "ocean" || entry.theme === "forest" ? entry.theme : "sunset",
+        theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });

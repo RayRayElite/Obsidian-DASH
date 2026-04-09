@@ -106,9 +106,12 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
 ] as const;
 
 const DASH_KANBAN_THEME_LABELS: Record<DashboardKanbanTheme, string> = {
-  sunset: "Sunset Studio",
+  dark: "Midnight Grid",
+  light: "Paper Ledger",
   ocean: "Ocean Ledger",
-  forest: "Forest Field"
+  forest: "Forest Field",
+  rose: "Rose Workshop",
+  aurora: "Aurora Signal"
 };
 
 function kanbanTemplateSupportsLaneCategories(template: KanbanBoardTemplate | null | undefined): boolean {
@@ -5367,7 +5370,7 @@ export class CreateProjectModal extends Modal {
       addTasks: [],
       fixTasks: [],
       kanbanTemplateId: defaultTemplateId,
-      kanbanTheme: "sunset",
+      kanbanTheme: "dark",
       kanbanShowLaneCategories: kanbanTemplateSupportsLaneCategories(defaultTemplate),
       useCustomKanban: false
     };
@@ -6058,7 +6061,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
   private boardHeight = 420;
   private collapsedInHub = false;
   private showLaneCategories = false;
-  private theme: DashboardKanbanTheme = "sunset";
+  private theme: DashboardKanbanTheme = "dark";
   private laneDefinitions: KanbanLaneDefinition[] = [];
 
   constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[], initialProjectName = "") {
@@ -6098,8 +6101,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      columnKey: lane.columnKey,
       categoryKey: lane.categoryKey,
       categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
       categoryColor: lane.categoryColor,
       categoryTag: lane.categoryTag,
       ruleType: lane.ruleType,
@@ -6118,14 +6123,17 @@ export class DashKanbanBoardSettingsModal extends Modal {
       .map((lane, index) => {
         const label = lane.label.trim();
         const helperText = lane.helperText.trim();
+        const categoryLabel = lane.categoryLabel.trim();
         const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
         const done = lane.done;
         return {
           laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
           label,
           helperText,
-          categoryKey: this.buildLaneKey(lane.categoryLabel.trim(), lane.categoryKey || `group-${index + 1}`),
-          categoryLabel: lane.categoryLabel.trim(),
+          columnKey: this.buildLaneKey(lane.label.trim(), lane.columnKey || lane.laneKey || `lane-${index + 1}`),
+          categoryKey: this.buildLaneKey(categoryLabel, lane.categoryKey || `group-${index + 1}`),
+          categoryLabel,
+          categorySubtitle: lane.categorySubtitle.trim(),
           categoryColor: lane.categoryColor.trim(),
           categoryTag: lane.categoryTag.trim().toLowerCase(),
           ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
@@ -9501,8 +9509,8 @@ export class DashKanbanView extends ItemView {
     ].some((value) => value.toLowerCase().includes(query));
   }
 
-  private getProjectLaneGroups(project: DashKanbanProjectBoard): Array<{ key: string; label: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> {
-    const groups: Array<{ key: string; label: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> = [];
+  private getProjectLaneGroups(project: DashKanbanProjectBoard): Array<{ key: string; label: string; subtitle: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> {
+    const groups: Array<{ key: string; label: string; subtitle: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> = [];
     project.lanes.forEach((lane) => {
       const key = lane.categoryKey || lane.laneKey;
       const existing = groups.find((group) => group.key === key);
@@ -9514,11 +9522,71 @@ export class DashKanbanView extends ItemView {
       groups.push({
         key,
         label: lane.categoryLabel,
+        subtitle: lane.categorySubtitle,
         color: lane.categoryColor,
         lanes: [lane]
       });
     });
     return groups;
+  }
+
+  private getProjectLaneColumns(project: DashKanbanProjectBoard): Array<{ key: string; label: string; helperText: string }> {
+    const columns: Array<{ key: string; label: string; helperText: string }> = [];
+    project.lanes.forEach((lane) => {
+      const key = lane.columnKey || lane.laneKey;
+      if (columns.some((column) => column.key === key)) {
+        return;
+      }
+
+      columns.push({
+        key,
+        label: lane.label,
+        helperText: lane.helperText
+      });
+    });
+    return columns;
+  }
+
+  private renderSharedColumnBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
+    const matrix = parent.createDiv({ cls: `dash-kanban-matrix is-${mode}` });
+    const columns = this.getProjectLaneColumns(project);
+    const rows = this.getProjectLaneGroups(project);
+    matrix.style.setProperty("--dash-kanban-matrix-columns", `${Math.max(columns.length, 1)}`);
+
+    const headerSpacer = matrix.createDiv({ cls: "dash-kanban-matrix-corner" });
+    if (rows.some((row) => row.label.trim().length > 0)) {
+      headerSpacer.createSpan({ text: "Swimlane" });
+    }
+
+    columns.forEach((column) => {
+      const header = matrix.createDiv({ cls: "dash-kanban-matrix-column-header" });
+      header.createEl("h3", { text: column.label });
+      if (column.helperText) {
+        header.createEl("p", { text: column.helperText });
+      }
+    });
+
+    rows.forEach((row) => {
+      const rowHeader = matrix.createDiv({ cls: "dash-kanban-matrix-row-header" });
+      if (row.color) {
+        rowHeader.style.setProperty("--dash-kanban-category-color", row.color);
+      }
+      rowHeader.createEl("strong", { text: row.label || "Board" });
+      if (row.subtitle) {
+        rowHeader.createEl("p", { text: row.subtitle });
+      }
+
+      columns.forEach((column) => {
+        const lane = row.lanes.find((candidate) => (candidate.columnKey || candidate.laneKey) === column.key) ?? null;
+        if (!lane) {
+          const emptyCell = matrix.createDiv({ cls: "dash-kanban-matrix-empty-cell" });
+          emptyCell.createSpan({ text: "No lane in this row." });
+          return;
+        }
+
+        this.renderLane(matrix, project, lane, "is-matrix-cell");
+      });
+    });
   }
 
   private bindProjectCollapse(header: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
@@ -9604,9 +9672,6 @@ export class DashKanbanView extends ItemView {
       event.stopPropagation();
     });
     boardActions.append(
-      this.createHeaderButton("plus", "Add", () => {
-        void this.plugin.openKanbanQuickAddFlow(project.projectName);
-      }),
       this.createHeaderButton("sliders-horizontal", "Settings", () => {
         void this.plugin.openDashKanbanBoardSettings(project.projectName);
       })
@@ -9625,9 +9690,12 @@ export class DashKanbanView extends ItemView {
     }
 
     const body = board.createDiv({ cls: "dash-kanban-project-body" });
-    const groups = project.showLaneCategories
-      ? this.getProjectLaneGroups(project)
-      : [{ key: "board", label: "", color: "", lanes: project.lanes }];
+    if (project.showLaneCategories && project.usesSharedColumnLayout) {
+      this.renderSharedColumnBoard(body, project, mode);
+    } else {
+      const groups = project.showLaneCategories
+        ? this.getProjectLaneGroups(project)
+        : [{ key: "board", label: "", subtitle: "", color: "", lanes: project.lanes }];
     groups.forEach((group) => {
       const category = body.createDiv({ cls: "dash-kanban-category-section" });
       if (group.label) {
@@ -9636,6 +9704,9 @@ export class DashKanbanView extends ItemView {
           categoryHeader.style.setProperty("--dash-kanban-category-color", group.color);
         }
         categoryHeader.createEl("span", { text: group.label.toUpperCase() });
+        if (group.subtitle) {
+          categoryHeader.createEl("small", { text: group.subtitle });
+        }
       }
 
       const lanes = category.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
@@ -9643,14 +9714,15 @@ export class DashKanbanView extends ItemView {
         this.renderLane(lanes, project, lane);
       });
     });
+    }
 
     const resizeHandle = board.createDiv({ cls: "dash-kanban-board-resizer" });
     resizeHandle.createSpan({ text: "Drag to resize board height" });
     this.bindProjectResize(resizeHandle, board, project);
   }
 
-  private renderLane(parent: HTMLElement, project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number]): void {
-    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}` });
+  private renderLane(parent: HTMLElement, project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], extraClass = ""): void {
+    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${extraClass ? ` ${extraClass}` : ""}` });
     laneEl.dataset.project = project.projectName;
     laneEl.dataset.section = lane.targetSection;
     const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
