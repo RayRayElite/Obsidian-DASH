@@ -683,7 +683,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;
+  overflow: visible;
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--dash-kanban-board-accent) 9%, transparent), transparent 34%),
     linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-board-surface) 90%, transparent), color-mix(in srgb, var(--dash-kanban-board-surface-strong) 92%, transparent));
@@ -851,16 +851,17 @@
     var(--dash-kanban-card-surface);
   box-shadow: var(--dash-kanban-card-shadow);
   cursor: grab;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease, opacity 120ms ease;
 }
 
 .dash-kanban-card:hover {
-  transform: translateY(-1px);
   box-shadow: 0 18px 32px rgba(0, 0, 0, 0.22);
 }
 
 .dash-kanban-card.is-dragging {
   opacity: 0.62;
   cursor: grabbing;
+  transform: none;
 }
 
 .dash-kanban-card.is-selected {
@@ -890,32 +891,35 @@
 }
 
 .dash-kanban-card[data-priority="urgent"] {
-  border-color: color-mix(in srgb, #ff7769 54%, var(--dash-kanban-card-border));
+  border-color: color-mix(in srgb, #ff7769 78%, var(--dash-kanban-card-border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, #ff7769 10%, transparent), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, #ff7769 18%, transparent), transparent 34%),
     var(--dash-kanban-card-surface);
-  box-shadow: 0 0 0 1px color-mix(in srgb, #ff7769 12%, transparent), var(--dash-kanban-card-shadow);
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ff7769 18%, transparent), var(--dash-kanban-card-shadow);
 }
 
 .dash-kanban-card[data-priority="high"] {
-  border-color: color-mix(in srgb, #ffb061 48%, var(--dash-kanban-card-border));
+  border-color: color-mix(in srgb, #ffb061 68%, var(--dash-kanban-card-border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, #ffb061 9%, transparent), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, #ffb061 15%, transparent), transparent 34%),
     var(--dash-kanban-card-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #ffb061 14%, transparent), var(--dash-kanban-card-shadow);
 }
 
 .dash-kanban-card[data-priority="medium"] {
-  border-color: color-mix(in srgb, #77b7ff 42%, var(--dash-kanban-card-border));
+  border-color: color-mix(in srgb, #77b7ff 60%, var(--dash-kanban-card-border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, #77b7ff 8%, transparent), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, #77b7ff 13%, transparent), transparent 34%),
     var(--dash-kanban-card-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #77b7ff 12%, transparent), var(--dash-kanban-card-shadow);
 }
 
 .dash-kanban-card[data-priority="low"] {
-  border-color: color-mix(in srgb, #74c98a 40%, var(--dash-kanban-card-border));
+  border-color: color-mix(in srgb, #74c98a 58%, var(--dash-kanban-card-border));
   background:
-    linear-gradient(180deg, color-mix(in srgb, #74c98a 8%, transparent), transparent 28%),
+    linear-gradient(180deg, color-mix(in srgb, #74c98a 12%, transparent), transparent 34%),
     var(--dash-kanban-card-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #74c98a 10%, transparent), var(--dash-kanban-card-shadow);
 }
 
 .dash-kanban-card.is-blocked {
@@ -969,11 +973,11 @@
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  min-height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--dash-kanban-card-border);
+  min-height: 28px;
+  padding: 0 12px;
+  border: 2px solid var(--dash-kanban-card-border);
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1040,14 +1044,39 @@
   gap: 8px;
 }
 
-.dash-kanban-card-footer-info span {
+.dash-kanban-card-meta-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--background-primary) 74%, transparent);
-  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 10%, var(--dash-kanban-border));
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
+  color: var(--text-normal);
+}
+
+.dash-kanban-card-meta-pill strong {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.dash-kanban-card-meta-pill[data-kind="priority"] {
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 36%, var(--dash-kanban-border));
+}
+
+.dash-kanban-card-meta-pill[data-kind="due"] {
+  border-color: color-mix(in srgb, #77b7ff 24%, var(--dash-kanban-border));
+}
+
+.dash-kanban-card-meta-pill[data-kind="effort"] {
+  border-color: color-mix(in srgb, #ffb061 24%, var(--dash-kanban-border));
+}
+
+.dash-kanban-card-meta-pill[data-kind="done"] {
+  border-color: color-mix(in srgb, #74c98a 24%, var(--dash-kanban-border));
 }
 
 .dash-kanban-card-footer-tools {
@@ -1081,6 +1110,11 @@
   border-radius: 14px;
   background: color-mix(in srgb, var(--background-primary) 92%, transparent);
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
+}
+
+.dash-kanban-card-popover.is-below {
+  bottom: auto;
+  top: calc(100% + 8px);
 }
 
 .dash-kanban-meta-popover {

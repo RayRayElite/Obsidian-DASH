@@ -6027,6 +6027,28 @@ function getKanbanPriorityTone(priority) {
   const normalized = priority.trim().toLowerCase();
   return normalized === "urgent" || normalized === "high" || normalized === "medium" || normalized === "low" ? normalized : "none";
 }
+function formatKanbanDueDateDraft(value) {
+  const digits = value.replace(/\D/g, "").slice(0, 12);
+  const month = digits.slice(0, 2);
+  const day = digits.slice(2, 4);
+  const year = digits.slice(4, 8);
+  const hour = digits.slice(8, 10);
+  const minute = digits.slice(10, 12);
+  let formatted = month;
+  if (digits.length > 2) {
+    formatted += `/${day}`;
+  }
+  if (digits.length > 4) {
+    formatted += `/${year}`;
+  }
+  if (digits.length > 8) {
+    formatted += ` ${hour}`;
+  }
+  if (digits.length > 10) {
+    formatted += `:${minute}`;
+  }
+  return formatted;
+}
 var KANBAN_PRIORITY_OPTIONS = [
   { value: "", label: "None" },
   { value: "low", label: "Low" },
@@ -13130,6 +13152,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.searchText = "";
     this.dragCard = null;
     this.suppressCardClickUntil = 0;
+    this.activeLaneDropTarget = null;
+    this.activeCardDropTarget = null;
     this.selectedCardKey = null;
     this.quickAddDraft = null;
     this.priorityPickerKey = null;
@@ -13166,6 +13190,43 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.priorityPickerKey = null;
     this.duePickerKey = null;
     this.effortPickerKey = null;
+  }
+  setLaneDropTarget(target) {
+    var _a, _b;
+    if (this.activeLaneDropTarget === target) {
+      return;
+    }
+    (_a = this.activeLaneDropTarget) == null ? void 0 : _a.removeClass("is-drop-target");
+    this.activeLaneDropTarget = target;
+    (_b = this.activeLaneDropTarget) == null ? void 0 : _b.addClass("is-drop-target");
+  }
+  setCardDropTarget(target) {
+    var _a, _b;
+    if (this.activeCardDropTarget === target) {
+      return;
+    }
+    (_a = this.activeCardDropTarget) == null ? void 0 : _a.removeClass("is-drop-target");
+    this.activeCardDropTarget = target;
+    (_b = this.activeCardDropTarget) == null ? void 0 : _b.addClass("is-drop-target");
+  }
+  clearDragTargets() {
+    this.setLaneDropTarget(null);
+    this.setCardDropTarget(null);
+  }
+  appendCardFooterPill(parent, label, value, kind = "neutral") {
+    if (!value.trim()) {
+      return;
+    }
+    const pill = document.createElement("span");
+    pill.className = "dash-kanban-card-meta-pill";
+    pill.dataset.kind = kind;
+    const labelEl = document.createElement("strong");
+    labelEl.textContent = label;
+    pill.appendChild(labelEl);
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    pill.appendChild(valueEl);
+    parent.appendChild(pill);
   }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
@@ -14198,14 +14259,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         return;
       }
       event.preventDefault();
-      laneEl.addClass("is-drop-target");
-    });
-    laneEl.addEventListener("dragleave", () => {
-      laneEl.removeClass("is-drop-target");
+      this.setLaneDropTarget(laneEl);
     });
     laneEl.addEventListener("drop", (event) => {
       event.preventDefault();
-      laneEl.removeClass("is-drop-target");
+      this.clearDragTargets();
       const dragged = this.dragCard;
       this.dragCard = null;
       if (!dragged || !lane.targetSection) {
@@ -14229,6 +14287,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     const priorityTone = getKanbanPriorityTone(card.priority);
+    const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
+    const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.dataset.priority = priorityTone;
     cardEl.draggable = card.taskId.trim().length > 0 && !this.isCardEditing(project.projectName, card.taskId);
@@ -14256,6 +14316,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     cardEl.addEventListener("dragstart", (event) => {
       var _a;
       this.suppressCardClickUntil = Date.now() + 250;
+      this.clearDragTargets();
       this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
       (_a = event.dataTransfer) == null ? void 0 : _a.setData("text/plain", `${project.projectName}:${card.taskId}`);
@@ -14266,6 +14327,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     cardEl.addEventListener("dragend", () => {
       this.dragCard = null;
       this.suppressCardClickUntil = Date.now() + 250;
+      this.clearDragTargets();
       cardEl.removeClass("is-dragging");
     });
     cardEl.addEventListener("dragover", (event) => {
@@ -14277,10 +14339,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       event.preventDefault();
       event.stopPropagation();
-      cardEl.addClass("is-drop-target");
-    });
-    cardEl.addEventListener("dragleave", () => {
-      cardEl.removeClass("is-drop-target");
+      this.setCardDropTarget(cardEl);
     });
     cardEl.addEventListener("drop", (event) => {
       if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
@@ -14293,7 +14352,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       event.stopPropagation();
       const dragged = this.dragCard;
       this.dragCard = null;
-      cardEl.removeClass("is-drop-target");
+      this.clearDragTargets();
       void this.reorderCardWithinLane(project, lane, dragged.taskId, card.taskId);
     });
     const top = document.createElement("div");
@@ -14391,7 +14450,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         const priorityBadge = document.createElement("div");
         priorityBadge.className = "dash-kanban-card-priority";
         priorityBadge.dataset.priority = priorityTone;
-        priorityBadge.textContent = formatKanbanPriorityLabel(card.priority);
+        priorityBadge.textContent = `Priority: ${card.priority.trim().charAt(0).toUpperCase()}${card.priority.trim().slice(1).toLowerCase()}`;
         content.appendChild(priorityBadge);
       }
       if (card.notePreview) {
@@ -14422,29 +14481,22 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const footerInfo = document.createElement("div");
     footerInfo.className = "dash-kanban-card-footer-info";
     footer.appendChild(footerInfo);
-    const section = document.createElement("span");
-    section.textContent = card.sectionName;
-    footerInfo.appendChild(section);
+    this.appendCardFooterPill(footerInfo, "Lane", card.sectionName);
+    if (card.priority) {
+      this.appendCardFooterPill(footerInfo, "Priority", card.priority.trim(), "priority");
+    }
     if (card.done && card.completedAt) {
-      const completed = document.createElement("span");
-      completed.textContent = `Finished ${card.completedAt}`;
-      footerInfo.appendChild(completed);
+      this.appendCardFooterPill(footerInfo, "Finished", card.completedAt, "done");
     } else {
       if (card.dueDate) {
-        const due = document.createElement("span");
-        due.textContent = `Due ${card.dueDate}`;
-        footerInfo.appendChild(due);
+        this.appendCardFooterPill(footerInfo, "Due", card.dueDate, "due");
       }
       if (card.effort) {
-        const effort = document.createElement("span");
-        effort.textContent = `Effort ${card.effort}`;
-        footerInfo.appendChild(effort);
+        this.appendCardFooterPill(footerInfo, "Effort", card.effort, "effort");
       }
     }
     if (card.assignee) {
-      const assignee = document.createElement("span");
-      assignee.textContent = `@${card.assignee}`;
-      footerInfo.appendChild(assignee);
+      this.appendCardFooterPill(footerInfo, "Owner", `@${card.assignee}`);
     }
     const actionWrap = document.createElement("div");
     actionWrap.className = "dash-kanban-card-footer-tools";
@@ -14501,7 +14553,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     );
     if (this.matchesCardKey(this.priorityPickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
-      picker.className = "dash-kanban-card-popover dash-kanban-priority-picker";
+      picker.className = `dash-kanban-card-popover dash-kanban-priority-picker${preferPopoverBelow ? " is-below" : ""}`;
       picker.addEventListener("click", (event) => event.stopPropagation());
       KANBAN_PRIORITY_OPTIONS.forEach(({ value, label }) => {
         var _a, _b;
@@ -14520,7 +14572,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
-      picker.className = "dash-kanban-card-popover dash-kanban-meta-popover";
+      picker.className = `dash-kanban-card-popover dash-kanban-meta-popover${preferPopoverBelow ? " is-below" : ""}`;
       picker.addEventListener("click", (event) => event.stopPropagation());
       const label = document.createElement("span");
       label.className = "dash-kanban-detail-label";
@@ -14531,7 +14583,16 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       input.type = "text";
       input.placeholder = "mm/dd/yyyy HH:MM";
       input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : card.dueDate;
+      input.inputMode = "numeric";
       picker.appendChild(input);
+      input.addEventListener("input", () => {
+        const formatted = formatKanbanDueDateDraft(input.value);
+        if (input.value !== formatted) {
+          input.value = formatted;
+        }
+        const position = input.value.length;
+        window.setTimeout(() => input.setSelectionRange(position, position), 0);
+      });
       const pickerActions = document.createElement("div");
       pickerActions.className = "dash-kanban-popover-actions";
       picker.appendChild(pickerActions);
@@ -14559,7 +14620,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     if (this.matchesCardKey(this.effortPickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
-      picker.className = "dash-kanban-card-popover dash-kanban-meta-popover";
+      picker.className = `dash-kanban-card-popover dash-kanban-meta-popover${preferPopoverBelow ? " is-below" : ""}`;
       picker.addEventListener("click", (event) => event.stopPropagation());
       const label = document.createElement("span");
       label.className = "dash-kanban-detail-label";
