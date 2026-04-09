@@ -4919,7 +4919,12 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const content = await this.app.vault.read(todoFile);
-    return parseTodoSnapshot(content);
+    const snapshot = parseTodoSnapshot(content);
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(new Date()));
+    if (changed > 0) {
+      await this.savePluginData();
+    }
+    return snapshot;
   }
 
   isFirstRunSetupPending(): boolean {
@@ -5386,12 +5391,130 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const activeContent = await this.app.vault.read(todoFile);
+    const snapshot = parseTodoSnapshot(activeContent);
+    const changed = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, formatDateTimeKey(new Date()));
+    if (changed > 0) {
+      await this.savePluginData();
+    }
 
     return {
       todoFile,
-      snapshot: parseTodoSnapshot(activeContent),
+      snapshot,
       preview: inspectMasterHubKanbanMigration(activeContent)
     };
+  }
+
+  private hydrateKanbanTaskRegistryFromSnapshot(snapshot: TodoSnapshot, updatedAt: string): number {
+    let changed = 0;
+
+    const assignTaskId = (projectName: string, sectionName: string, task: { taskId: string; text: string }, checked: boolean): void => {
+      const repairId = `ambiguous-match:${projectName.trim().toLowerCase()}:${sectionName.trim().toLowerCase()}:${task.text.trim().toLowerCase()}`;
+      const normalizedProjectName = projectName.trim();
+      const normalizedSectionName = sectionName.trim() || "General";
+      const normalizedTaskText = task.text.trim();
+
+      if (!normalizedProjectName || !normalizedTaskText) {
+        return;
+      }
+
+      let taskId = task.taskId.trim();
+      if (!taskId) {
+        const candidates = Object.values(this.data.kanbanState.taskRegistry).filter((entry) =>
+          entry.projectName.trim().toLowerCase() === normalizedProjectName.toLowerCase()
+          && entry.taskText.trim().toLowerCase() === normalizedTaskText.toLowerCase()
+          && entry.checked === checked);
+        const exactSectionMatches = candidates.filter((entry) => this.normalizeKanbanSectionKey(entry.sectionName) === this.normalizeKanbanSectionKey(normalizedSectionName));
+
+        if (exactSectionMatches.length === 1) {
+          taskId = exactSectionMatches[0].taskId;
+        } else if (candidates.length === 1) {
+          taskId = candidates[0].taskId;
+        } else {
+          taskId = this.createKanbanHiddenTaskId(`${normalizedProjectName}-${normalizedSectionName}-${normalizedTaskText}`);
+
+          if (candidates.length > 1) {
+            const existingRepair = this.data.kanbanState.repairQueue[repairId];
+            const nextRepair: KanbanRepairStateRecord = {
+              repairId,
+              taskId,
+              projectName: normalizedProjectName,
+              sectionName: normalizedSectionName,
+              taskText: normalizedTaskText,
+              reason: "ambiguous-match",
+              createdAt: existingRepair?.createdAt || updatedAt,
+              resolvedAt: ""
+            };
+
+            if (!existingRepair
+              || existingRepair.taskId !== nextRepair.taskId
+              || existingRepair.sectionName !== nextRepair.sectionName
+              || existingRepair.taskText !== nextRepair.taskText
+              || existingRepair.resolvedAt !== nextRepair.resolvedAt) {
+              this.data.kanbanState.repairQueue[repairId] = nextRepair;
+              changed += 1;
+            }
+          } else if (this.data.kanbanState.repairQueue[repairId]) {
+            delete this.data.kanbanState.repairQueue[repairId];
+            changed += 1;
+          }
+        }
+      } else if (this.data.kanbanState.repairQueue[repairId]) {
+        delete this.data.kanbanState.repairQueue[repairId];
+        changed += 1;
+      }
+
+      task.taskId = taskId;
+      const existing = this.data.kanbanState.taskRegistry[taskId];
+      const nextEntry: KanbanTaskRegistryEntry = {
+        taskId,
+        projectName: normalizedProjectName,
+        sectionName: normalizedSectionName,
+        taskText: normalizedTaskText,
+        checked,
+        source: existing?.source === "visible-task-id" || task.taskId.trim().length > 0 && existing?.source === "visible-task-id"
+          ? "visible-task-id"
+          : existing?.source ?? "hidden-registry",
+        updatedAt
+      };
+
+      if (!existing
+        || existing.projectName !== nextEntry.projectName
+        || existing.sectionName !== nextEntry.sectionName
+        || existing.taskText !== nextEntry.taskText
+        || existing.checked !== nextEntry.checked
+        || existing.source !== nextEntry.source
+        || existing.updatedAt !== nextEntry.updatedAt) {
+        this.data.kanbanState.taskRegistry[taskId] = nextEntry;
+        changed += 1;
+      }
+    };
+
+    snapshot.projects.forEach((project) => {
+      [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails,
+        ...project.dueRepeatingTaskDetails
+      ].forEach((task) => assignTaskId(project.name, task.section, task, task.kanbanLane === "Done" || task.section.trim().toLowerCase() === "completed archive"));
+    });
+
+    return changed;
+  }
+
+  private normalizeKanbanSectionKey(sectionName: string): string {
+    const normalized = sectionName.trim().toLowerCase();
+    if (normalized === "add" || normalized === "fix") {
+      return "next";
+    }
+    return normalized;
+  }
+
+  private createKanbanHiddenTaskId(seed: string): string {
+    const normalizedSeed = seed.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
+    return `${normalizedSeed}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   private getKanbanCleanupPreviewPath(): string {
@@ -5696,6 +5819,8 @@ export default class DailyDashboardPlugin extends Plugin {
     boardNotePaths: string[];
   }): string {
     const previewPath = this.getKanbanCleanupPreviewPath();
+    const ambiguousRepairs = Object.values(this.data.kanbanState.repairQueue)
+      .filter((entry) => entry.reason === "ambiguous-match" && !entry.resolvedAt);
     const visibleByProject = new Map<string, number>();
     const missingByProject = new Map<string, number>();
     const brokenByProject = new Map<string, number>();
@@ -5719,6 +5844,9 @@ export default class DailyDashboardPlugin extends Plugin {
     const brokenProjectLines = [...brokenByProject.entries()]
       .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .map(([projectName, count]) => `- ${projectName}: ${count} task line${count === 1 ? "" : "s"}`);
+    const ambiguousRepairLines = ambiguousRepairs.length > 0
+      ? ambiguousRepairs.slice(0, 80).map((entry) => `- ${entry.projectName} / ${entry.sectionName} / ${entry.taskText}`)
+      : ["- No ambiguous hidden-id matches are currently queued."];
     const safeCleanupTaskLines = input.preview.tasksWithVisibleId.length > 0
       ? input.preview.tasksWithVisibleId.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (task id ${task.taskId}, Master Task Hub line ${task.lineNumber})`)
       : ["- No checklist tasks currently need visible task-id cleanup."];
@@ -5743,6 +5871,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `- Safe checklist tasks ready for visible-id cleanup: ${input.preview.tasksWithVisibleId.length}`,
       `- Open tasks missing legacy visible ids: ${input.preview.tasksMissingVisibleId.length}`,
       `- Broken legacy Kanban task lines found: ${input.preview.brokenLegacyTaskLines.length}`,
+      `- Ambiguous hidden-id matches queued for review: ${ambiguousRepairs.length}`,
       `- Hidden task-registry entries seeded: ${Object.keys(this.data.kanbanState.taskRegistry).length}`,
       `- Repair queue entries currently open: ${Object.keys(this.data.kanbanState.repairQueue).length}`,
       `- Compatibility mode: ${this.data.settings.kanbanPluginCompatibilityMode ? "On" : "Off"}`,
@@ -5766,6 +5895,10 @@ export default class DailyDashboardPlugin extends Plugin {
       "",
       "### Broken Legacy Task Lines",
       ...(brokenProjectLines.length > 0 ? brokenProjectLines : ["- No broken legacy Kanban task lines were found."]),
+      "",
+      "### Ambiguous Hidden Matches",
+      ...ambiguousRepairLines,
+      ...(ambiguousRepairs.length > 80 ? ["", `- ${ambiguousRepairs.length - 80} additional ambiguous task${ambiguousRepairs.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : []),
       "",
       "## Missing-Id Task List",
       ...missingTaskLines,
@@ -5800,11 +5933,13 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const masterContent = await this.app.vault.read(todoFile);
     const generatedAt = new Date();
+    const snapshot = parseTodoSnapshot(masterContent);
     const preview = inspectMasterHubKanbanMigration(masterContent);
     const seededAt = formatDateTimeKey(generatedAt);
+    const hydratedChanges = this.hydrateKanbanTaskRegistryFromSnapshot(snapshot, seededAt);
     const seededChanges = this.seedKanbanTaskRegistryFromPreview(preview, seededAt);
     const repairQueueChanges = this.syncKanbanRepairQueueFromPreview(preview, seededAt);
-    if (seededChanges > 0 || repairQueueChanges > 0) {
+    if (hydratedChanges > 0 || seededChanges > 0 || repairQueueChanges > 0) {
       await this.savePluginData();
     }
 
@@ -5836,8 +5971,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const masterContent = await this.app.vault.read(todoFile);
     const generatedAt = new Date();
+    const snapshotBefore = parseTodoSnapshot(masterContent);
     const previewBefore = inspectMasterHubKanbanMigration(masterContent);
     const updatedAt = formatDateTimeKey(generatedAt);
+    const hydratedChanges = this.hydrateKanbanTaskRegistryFromSnapshot(snapshotBefore, updatedAt);
     const seededChanges = this.seedKanbanTaskRegistryFromPreview(previewBefore, updatedAt);
     const repairQueueChanges = this.syncKanbanRepairQueueFromPreview(previewBefore, updatedAt);
     const cleanup = applyKanbanCleanupMigrationToContent(masterContent);
@@ -5852,7 +5989,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const postCleanupRepairQueueChanges = this.syncKanbanRepairQueueFromPreview(previewAfter, updatedAt);
-    if (seededChanges > 0 || repairQueueChanges > 0 || postCleanupRepairQueueChanges > 0) {
+    if (hydratedChanges > 0 || seededChanges > 0 || repairQueueChanges > 0 || postCleanupRepairQueueChanges > 0) {
       await this.savePluginData();
     }
 
@@ -5967,7 +6104,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const synced = syncKanbanHubToMasterHub({
       masterContent,
       kanbanContent,
-      archivedAt: formatDateTimeKey(new Date())
+      archivedAt: formatDateTimeKey(new Date()),
+      taskRegistry: this.data.kanbanState.taskRegistry
     });
 
     if (synced.content !== masterContent) {
@@ -5980,7 +6118,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
 
     if (synced.missingTasks > 0) {
-      new Notice(`Kanban sync skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because task ids no longer matched the Master Task Hub. Run Repair Kanban foundations and refresh hub if the board drifted.`);
+      new Notice(`Kanban sync skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Review the cleanup preview or run Kanban repair if the board drifted.`);
     } else if (showNotice) {
       new Notice(`Kanban sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
@@ -6001,7 +6139,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const synced = syncKanbanBoardNoteToMasterHub({
       masterContent,
       boardContent,
-      archivedAt: formatDateTimeKey(new Date())
+      archivedAt: formatDateTimeKey(new Date()),
+      taskRegistry: this.data.kanbanState.taskRegistry
     });
     if (!synced.projectName) {
       if (showNotice) {
@@ -6020,7 +6159,7 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
 
     if (synced.missingTasks > 0) {
-      new Notice(`Kanban board sync for ${synced.projectName} skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because task ids no longer matched the Master Task Hub. Refresh board notes or run Kanban repair to rebuild them.`);
+      new Notice(`Kanban board sync for ${synced.projectName} skipped ${synced.missingTasks} card${synced.missingTasks === 1 ? "" : "s"} because their hidden Kanban links no longer matched the Master Task Hub. Refresh board notes or review the cleanup preview to rebuild them.`);
     } else if (showNotice) {
       new Notice(`${synced.projectName} board sync applied ${synced.movedTasks} lane move${synced.movedTasks === 1 ? "" : "s"}${synced.completedTasks > 0 ? ` and archived ${synced.completedTasks} completed task${synced.completedTasks === 1 ? "" : "s"}` : ""}.`);
     }
@@ -6341,7 +6480,8 @@ export default class DailyDashboardPlugin extends Plugin {
       projectName,
       taskId,
       taskText: trimmedTask,
-      sectionName: trimmedLane
+      sectionName: trimmedLane,
+      taskRegistry: this.data.kanbanState.taskRegistry
     });
     if (!updated.updated) {
       new Notice("Could not find that Kanban task in the master task hub.");

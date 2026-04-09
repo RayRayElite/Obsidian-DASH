@@ -5,6 +5,7 @@ import {
   type CleanupSuggestion,
   type ArchiveMaintenanceResult,
   CHECKLIST_REGEX,
+  type KanbanTaskRegistryEntry,
   type KanbanMigrationPreview,
   type KanbanMigrationTaskPreview,
   NOTE_LINK_REGEX,
@@ -1305,11 +1306,10 @@ function renderKanbanHubBoardTaskLine(projectName: string, task: TodoTaskSummary
     task.energy ? `energy ${task.energy}` : "",
     task.executionContext ? `context ${task.executionContext}` : "",
     task.trigger ? `trigger ${task.trigger}` : "",
-    task.minimumStep ? `minimum step ${task.minimumStep}` : "",
-    task.taskId ? `id ${task.taskId}` : ""
+    task.minimumStep ? `minimum step ${task.minimumStep}` : ""
   ].filter((value) => value.length > 0);
 
-  return `- [${checked ? "x" : " "}] [${projectName}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}`;
+  return `- [${checked ? "x" : " "}] [${projectName}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
 
 export function buildKanbanBoardNotePath(folderPath: string, projectName: string): string {
@@ -1362,14 +1362,16 @@ export function syncKanbanHubToMasterHub(input: {
   masterContent: string;
   kanbanContent: string;
   archivedAt: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
-  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt);
+  return syncKanbanCardsToMasterHub(input.masterContent, parseKanbanHubCards(input.kanbanContent), input.archivedAt, input.taskRegistry);
 }
 
 export function syncKanbanBoardNoteToMasterHub(input: {
   masterContent: string;
   boardContent: string;
   archivedAt: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; movedTasks: number; completedTasks: number; missingTasks: number; projectName: string } {
   const projectName = parseKanbanBoardProjectName(input.boardContent);
   if (!projectName) {
@@ -1382,14 +1384,14 @@ export function syncKanbanBoardNoteToMasterHub(input: {
     };
   }
 
-  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt);
+  const synced = syncKanbanCardsToMasterHub(input.masterContent, parseKanbanBoardCards(input.boardContent, projectName), input.archivedAt, input.taskRegistry);
   return {
     ...synced,
     projectName
   };
 }
 
-function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }>, archivedAt: string): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
+function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }>, archivedAt: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; movedTasks: number; completedTasks: number; missingTasks: number } {
   let content = masterContent;
   let movedTasks = 0;
   let missingTasks = 0;
@@ -1400,14 +1402,14 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
     }
 
     if (card.lane === "Done" || card.checked) {
-      const completed = markTaskCompleteById(content, card.projectName, card.taskId);
+      const completed = markTaskCompleteById(content, card.projectName, card.taskId, taskRegistry);
       if (completed.marked) {
         content = completed.content;
       }
       return;
     }
 
-    const location = findProjectTaskLocationById(content, card.projectName, card.taskId);
+    const location = findProjectTaskLocationById(content, card.projectName, card.taskId, taskRegistry);
     if (!location) {
       missingTasks += 1;
       return;
@@ -1418,7 +1420,7 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
       return;
     }
 
-    const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
+    const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId, taskRegistry);
     if (!removed) {
       missingTasks += 1;
       return;
@@ -1563,7 +1565,7 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 
   const output = [...lines];
   const normalizedSection = sectionName.trim();
-  const taskLine = `- [ ] ${ensureTaskIdOnTaskText(taskText.trim(), `${projectName}-${normalizedSection}-${taskText}`)}`;
+  const taskLine = `- [ ] ${taskText.trim()}`;
   let sectionStart = -1;
   let sectionEnd = project.end;
 
@@ -1964,11 +1966,10 @@ function renderKanbanTaskLine(task: TodoTaskSummary, checked: boolean): string {
     task.energy ? `energy ${task.energy}` : "",
     task.executionContext ? `context ${task.executionContext}` : "",
     task.trigger ? `trigger ${task.trigger}` : "",
-    task.minimumStep ? `minimum step ${task.minimumStep}` : "",
-    task.taskId ? `id ${task.taskId}` : ""
+    task.minimumStep ? `minimum step ${task.minimumStep}` : ""
   ].filter((value) => value.length > 0);
 
-  return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}`;
+  return `- [${checked ? "x" : " "}] ${task.text}${metadata.length > 0 ? ` • ${metadata.join(" • ")}` : ""}${renderKanbanTaskIdComment(task.taskId)}`;
 }
 
 function parseKanbanHubCards(content: string): Array<{ projectName: string; lane: KanbanLane; taskId: string; checked: boolean }> {
@@ -2010,15 +2011,15 @@ function parseKanbanHubCards(content: string): Array<{ projectName: string; lane
       return;
     }
 
-    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
-    if (!taskIdMatch) {
+    const taskId = extractRenderedKanbanTaskId(taskMatch[2]);
+    if (!taskId) {
       return;
     }
 
     cards.push({
       projectName: currentProjectName,
       lane: currentLane,
-      taskId: taskIdMatch[1].trim(),
+      taskId,
       checked: taskMatch[1].toLowerCase() === "x"
     });
   });
@@ -2047,10 +2048,10 @@ function parseKanbanHubBoardCards(content: string): Array<{ projectName: string;
       return;
     }
 
-    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+    const taskId = extractRenderedKanbanTaskId(taskMatch[2]);
     const projectMetaMatch = taskMatch[2].match(/(?:^| • )project (.+?)(?: •|$)/i);
     const projectPrefixMatch = taskMatch[2].match(/^\[([^\]]+)\]\s+/);
-    if (!taskIdMatch) {
+    if (!taskId) {
       return;
     }
 
@@ -2062,7 +2063,7 @@ function parseKanbanHubBoardCards(content: string): Array<{ projectName: string;
     cards.push({
       projectName,
       lane: currentLane,
-      taskId: taskIdMatch[1].trim(),
+      taskId,
       checked: taskMatch[1].toLowerCase() === "x"
     });
   });
@@ -2104,15 +2105,15 @@ function parseKanbanBoardCards(content: string, projectName: string): Array<{ pr
       return;
     }
 
-    const taskIdMatch = taskMatch[2].match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
-    if (!taskIdMatch) {
+    const taskId = extractRenderedKanbanTaskId(taskMatch[2]);
+    if (!taskId) {
       return;
     }
 
     cards.push({
       projectName,
       lane: currentLane,
-      taskId: taskIdMatch[1].trim(),
+      taskId,
       checked: taskMatch[1].toLowerCase() === "x"
     });
   });
@@ -2120,38 +2121,17 @@ function parseKanbanBoardCards(content: string, projectName: string): Array<{ pr
   return cards;
 }
 
-function findProjectTaskLocationById(content: string, projectName: string, taskId: string): { section: string; checked: boolean } | null {
-  const lines = content.split(/\r?\n/);
-  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
-  if (!project) {
-    return null;
-  }
-
-  let currentSection = "General";
-  for (let index = project.start + 1; index <= project.end; index += 1) {
-    const sectionName = getSectionName(lines[index]);
-    if (sectionName) {
-      currentSection = sectionName;
-      continue;
+function findProjectTaskLocationById(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { section: string; checked: boolean } | null {
+  const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, true);
+  return match
+    ? {
+      section: match.section,
+      checked: match.checked
     }
-
-    const taskMatch = lines[index].match(CHECKLIST_REGEX);
-    if (!taskMatch) {
-      continue;
-    }
-
-    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
-      return {
-        section: currentSection,
-        checked: taskMatch[1].toLowerCase() === "x"
-      };
-    }
-  }
-
-  return null;
+    : null;
 }
 
-function removeTaskByIdFromProject(content: string, projectName: string, taskId: string): { content: string; taskText: string } | null {
+function removeTaskByIdFromProject(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; taskText: string } | null {
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
   if (!project) {
@@ -2159,24 +2139,16 @@ function removeTaskByIdFromProject(content: string, projectName: string, taskId:
   }
 
   const output = [...lines];
-  for (let index = project.start + 1; index <= project.end; index += 1) {
-    const taskMatch = output[index].match(CHECKLIST_REGEX);
-    if (!taskMatch) {
-      continue;
-    }
-
-    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
-      continue;
-    }
-
-    output.splice(index, 1);
-    return {
-      content: output.join("\n"),
-      taskText: taskMatch[2].trim()
-    };
+  const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, true);
+  if (!match) {
+    return null;
   }
 
-  return null;
+  output.splice(match.index, 1);
+  return {
+    content: output.join("\n"),
+    taskText: match.taskText
+  };
 }
 
 export function updateTaskByIdInProject(content: string, input: {
@@ -2184,13 +2156,15 @@ export function updateTaskByIdInProject(content: string, input: {
   taskId: string;
   taskText: string;
   sectionName: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; updated: boolean } {
-  const location = findProjectTaskLocationById(content, input.projectName, input.taskId);
+  const taskRegistry = input.taskRegistry ?? {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
   if (!location) {
     return { content, updated: false };
   }
 
-  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId);
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
   if (!removed) {
     return { content, updated: false };
   }
@@ -2207,36 +2181,120 @@ export function updateTaskByIdInProject(content: string, input: {
   };
 }
 
-function markTaskCompleteById(content: string, projectName: string, taskId: string): { content: string; marked: boolean } {
+function markTaskCompleteById(content: string, projectName: string, taskId: string, taskRegistry: Record<string, KanbanTaskRegistryEntry> = {}): { content: string; marked: boolean } {
   const lines = content.split(/\r?\n/);
-  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
-  if (!project) {
+  const match = findProjectTaskMatch(content, projectName, taskId, taskRegistry, false);
+  if (!match) {
     return { content, marked: false };
   }
 
   const output = [...lines];
+  output[match.index] = output[match.index].replace(/^(\t| )*- \[ \]/, (value) => value.replace("[ ]", "[x]"));
+  return { content: output.join("\n"), marked: true };
+}
+
+function findProjectTaskMatch(
+  content: string,
+  projectName: string,
+  taskId: string,
+  taskRegistry: Record<string, KanbanTaskRegistryEntry>,
+  allowCompleted: boolean
+): { index: number; section: string; checked: boolean; taskText: string } | null {
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return null;
+  }
+
   let currentSection = "General";
+  const fallbackCandidates: Array<{ index: number; section: string; checked: boolean; taskText: string; sectionMatches: boolean; checkedMatches: boolean }> = [];
+  const registryEntry = taskRegistry[taskId];
+  const normalizedRegistryText = registryEntry ? normalizeKanbanTaskMatchText(registryEntry.taskText) : "";
+  const normalizedRegistrySection = registryEntry ? normalizeLegacyKanbanSectionName(registryEntry.sectionName) : "";
+
   for (let index = project.start + 1; index <= project.end; index += 1) {
-    const sectionName = getSectionName(output[index]);
+    const sectionName = getSectionName(lines[index]);
     if (sectionName) {
       currentSection = sectionName;
       continue;
     }
 
-    const taskMatch = output[index].match(CHECKLIST_REGEX);
-    if (!taskMatch || currentSection.trim().toLowerCase() === "completed archive") {
+    const taskMatch = lines[index].match(CHECKLIST_REGEX);
+    if (!taskMatch) {
       continue;
     }
 
-    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) !== taskId) {
+    const checked = taskMatch[1].toLowerCase() === "x";
+    if (!allowCompleted && (checked || currentSection.trim().toLowerCase() === "completed archive")) {
       continue;
     }
 
-    output[index] = output[index].replace(/^(	| )*- \[ \]/, (match) => match.replace("[ ]", "[x]"));
-    return { content: output.join("\n"), marked: true };
+    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
+      return {
+        index,
+        section: currentSection,
+        checked,
+        taskText: taskMatch[2].trim()
+      };
+    }
+
+    if (!registryEntry || registryEntry.projectName.trim().toLowerCase() !== projectName.trim().toLowerCase()) {
+      continue;
+    }
+
+    const parsedText = parseTodoTaskSummary(taskMatch[2].trim(), currentSection, new Date()).text;
+    if (normalizeKanbanTaskMatchText(parsedText) !== normalizedRegistryText) {
+      continue;
+    }
+
+    fallbackCandidates.push({
+      index,
+      section: currentSection,
+      checked,
+      taskText: taskMatch[2].trim(),
+      sectionMatches: normalizeLegacyKanbanSectionName(currentSection) === normalizedRegistrySection,
+      checkedMatches: checked === registryEntry.checked
+    });
   }
 
-  return { content, marked: false };
+  const exactMatches = fallbackCandidates.filter((candidate) => candidate.sectionMatches && candidate.checkedMatches);
+  if (exactMatches.length === 1) {
+    return exactMatches[0];
+  }
+
+  const sectionMatches = fallbackCandidates.filter((candidate) => candidate.sectionMatches);
+  if (sectionMatches.length === 1) {
+    return sectionMatches[0];
+  }
+
+  const checkedMatches = fallbackCandidates.filter((candidate) => candidate.checkedMatches);
+  if (checkedMatches.length === 1) {
+    return checkedMatches[0];
+  }
+
+  if (fallbackCandidates.length === 1) {
+    return fallbackCandidates[0];
+  }
+
+  return null;
+}
+
+function normalizeKanbanTaskMatchText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function extractRenderedKanbanTaskId(value: string): string {
+  const hiddenMatch = value.match(/<!--\s*daily-dashboard-task-id:\s*([a-z0-9-]+)\s*-->/i);
+  if (hiddenMatch?.[1]?.trim()) {
+    return hiddenMatch[1].trim();
+  }
+
+  const visibleMatch = value.match(/(?:^| • )id ([a-z0-9-]+)(?: •|$)/i);
+  return visibleMatch?.[1]?.trim() ?? "";
+}
+
+function renderKanbanTaskIdComment(taskId: string): string {
+  return taskId.trim().length > 0 ? ` <!-- daily-dashboard-task-id: ${taskId.trim()} -->` : "";
 }
 
 function replaceTaskDisplayText(taskText: string, nextText: string): string {
