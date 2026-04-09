@@ -1707,6 +1707,53 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
   return output.join("\n");
 }
 
+export function renameProjectSectionHeading(content: string, input: {
+  projectName: string;
+  currentSectionName: string;
+  nextSectionName: string;
+}): { content: string; updated: boolean } {
+  const projectName = input.projectName.trim();
+  const currentSectionName = input.currentSectionName.trim();
+  const nextSectionName = input.nextSectionName.trim();
+  if (!projectName || !currentSectionName || !nextSectionName || currentSectionName.toLowerCase() === nextSectionName.toLowerCase()) {
+    return { content, updated: false };
+  }
+
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return { content, updated: false };
+  }
+
+  let currentSectionIndex = -1;
+  let targetAlreadyExists = false;
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(lines[index]);
+    if (!sectionName) {
+      continue;
+    }
+
+    if (sectionName.toLowerCase() === nextSectionName.toLowerCase()) {
+      targetAlreadyExists = true;
+    }
+    if (currentSectionIndex === -1 && sectionName.toLowerCase() === currentSectionName.toLowerCase()) {
+      currentSectionIndex = index;
+    }
+  }
+
+  if (currentSectionIndex === -1 || targetAlreadyExists) {
+    return { content, updated: false };
+  }
+
+  const output = [...lines];
+  const headingPrefix = output[currentSectionIndex].match(/^\s*#+/)?.[0] ?? "###";
+  output[currentSectionIndex] = `${headingPrefix} ${nextSectionName}`;
+  return {
+    content: output.join("\n"),
+    updated: true
+  };
+}
+
 function repairMasterHubProjectLines(projectLines: string[], input: {
   masterTodoPath: string;
   projectNotesFolder: string;

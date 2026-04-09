@@ -4399,6 +4399,44 @@ function insertTaskIntoProjectSection(content, projectName, sectionName, taskTex
   output.splice(insertIndex, 0, "", `### ${normalizedSection}`, taskLine);
   return output.join("\n");
 }
+function renameProjectSectionHeading(content, input) {
+  var _a, _b;
+  const projectName = input.projectName.trim();
+  const currentSectionName = input.currentSectionName.trim();
+  const nextSectionName = input.nextSectionName.trim();
+  if (!projectName || !currentSectionName || !nextSectionName || currentSectionName.toLowerCase() === nextSectionName.toLowerCase()) {
+    return { content, updated: false };
+  }
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
+  if (!project) {
+    return { content, updated: false };
+  }
+  let currentSectionIndex = -1;
+  let targetAlreadyExists = false;
+  for (let index = project.start + 1; index <= project.end; index += 1) {
+    const sectionName = getSectionName(lines[index]);
+    if (!sectionName) {
+      continue;
+    }
+    if (sectionName.toLowerCase() === nextSectionName.toLowerCase()) {
+      targetAlreadyExists = true;
+    }
+    if (currentSectionIndex === -1 && sectionName.toLowerCase() === currentSectionName.toLowerCase()) {
+      currentSectionIndex = index;
+    }
+  }
+  if (currentSectionIndex === -1 || targetAlreadyExists) {
+    return { content, updated: false };
+  }
+  const output = [...lines];
+  const headingPrefix = (_b = (_a = output[currentSectionIndex].match(/^\s*#+/)) == null ? void 0 : _a[0]) != null ? _b : "###";
+  output[currentSectionIndex] = `${headingPrefix} ${nextSectionName}`;
+  return {
+    content: output.join("\n"),
+    updated: true
+  };
+}
 function repairMasterHubProjectLines(projectLines, input) {
   var _a, _b, _c, _d, _e;
   const brokenTaskRepair = repairBrokenKanbanTaskLinesInProject(projectLines);
@@ -8135,6 +8173,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         intakeAmount.value = "1";
         syncDefaultIntakeUnit();
         intakeNote.value = "";
+        await this.render();
       }, false, "plus-circle");
       createButton(intakeButtons, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       createButton(intakeButtons, "Save preset", async () => {
@@ -8165,6 +8204,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
           createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
             await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
+            await this.render();
           }, false, getIntakePresetIcon(preset.kind));
           const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button daily-dashboard-consumable-remove-button" });
           removeButton.type = "button";
@@ -8185,9 +8225,18 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No consumables logged yet today. Use one flow for drinks, food, meds, and supplements so totals stay analyzable." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Water", async () => this.plugin.addIntakeEntry("drink", "Water", measurementSystem === "metric" ? 250 : 8, getDefaultIntakeUnit("drink", measurementSystem)), false, "glass-water");
-        createButton(emptyActions, "Meal", async () => this.plugin.addIntakeEntry("food", "Meal", 1, "serving"), false, "utensils-crossed");
-        createButton(emptyActions, "Medication", async () => this.plugin.addIntakeEntry("medication", "Medication", 1, "pill"), false, "pill");
+        createButton(emptyActions, "Water", async () => {
+          await this.plugin.addIntakeEntry("drink", "Water", measurementSystem === "metric" ? 250 : 8, getDefaultIntakeUnit("drink", measurementSystem));
+          await this.render();
+        }, false, "glass-water");
+        createButton(emptyActions, "Meal", async () => {
+          await this.plugin.addIntakeEntry("food", "Meal", 1, "serving");
+          await this.render();
+        }, false, "utensils-crossed");
+        createButton(emptyActions, "Medication", async () => {
+          await this.plugin.addIntakeEntry("medication", "Medication", 1, "pill");
+          await this.render();
+        }, false, "pill");
       } else {
         intakeEntries.slice(0, 18).forEach((item, index) => {
           const row = intakeList.createDiv({ cls: "daily-dashboard-food-row" });
@@ -16857,7 +16906,23 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const existing = this.getKanbanBoardConfiguration(projectName);
     const templateId = input.templateId.trim() || "execution-default";
-    const normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
+    let normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
+    const previousLaneDefinitions = existing.laneDefinitions.length > 0 ? existing.laneDefinitions.map((lane) => ({ ...lane, mappedSections: [...lane.mappedSections] })) : this.getKanbanLaneOptions(projectName).map((lane) => ({
+      laneKey: lane.laneKey,
+      label: lane.label,
+      helperText: lane.helperText,
+      columnKey: lane.columnKey,
+      categoryKey: lane.categoryKey,
+      categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
+      categoryColor: lane.categoryColor,
+      categoryTag: lane.categoryTag,
+      ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+      mappedSections: lane.targetSection ? [lane.targetSection] : [],
+      done: lane.done
+    }));
+    const hubRenameResult = await this.applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, normalizedLaneDefinitions);
+    normalizedLaneDefinitions = hubRenameResult.laneDefinitions;
     this.data.kanbanState.boardConfigurations[projectName] = {
       projectName,
       templateId,
@@ -16871,7 +16936,87 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
+    if (hubRenameResult.updatedMasterHub) {
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      if (this.data.settings.kanbanEnabled) {
+        await this.refreshKanbanHub(false);
+        await this.refreshKanbanBoardNotes(false);
+      }
+    }
     this.refreshDashboardViews();
+  }
+  async applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, nextLaneDefinitions) {
+    var _a;
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile || previousLaneDefinitions.length === 0 || nextLaneDefinitions.length === 0) {
+      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false };
+    }
+    const previousByLaneKey = new Map(previousLaneDefinitions.map((lane) => [lane.laneKey, lane]));
+    const previousSingleSectionCounts = /* @__PURE__ */ new Map();
+    previousLaneDefinitions.forEach((lane) => {
+      var _a2;
+      const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      if (lane.ruleType === "hub-section" && !lane.done && mappedSections.length === 1) {
+        const key = mappedSections[0].toLowerCase();
+        previousSingleSectionCounts.set(key, ((_a2 = previousSingleSectionCounts.get(key)) != null ? _a2 : 0) + 1);
+      }
+    });
+    let content = null;
+    let updatedMasterHub = false;
+    const adjustedLaneDefinitions = nextLaneDefinitions.map((lane) => ({
+      ...lane,
+      mappedSections: [...lane.mappedSections]
+    }));
+    for (const lane of adjustedLaneDefinitions) {
+      const previousLane = previousByLaneKey.get(lane.laneKey);
+      if (!previousLane) {
+        continue;
+      }
+      const previousLabel = previousLane.label.trim();
+      const nextLabel = lane.label.trim();
+      const previousMappedSections = previousLane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      const nextMappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      if (!previousLabel || !nextLabel || previousLabel.toLowerCase() === nextLabel.toLowerCase()) {
+        continue;
+      }
+      if (previousLane.ruleType !== "hub-section" || lane.ruleType !== "hub-section" || previousLane.done || lane.done) {
+        continue;
+      }
+      if (previousMappedSections.length !== 1 || nextMappedSections.length !== 1) {
+        continue;
+      }
+      const previousSectionName = previousMappedSections[0];
+      if (previousSectionName.toLowerCase() !== previousLabel.toLowerCase()) {
+        continue;
+      }
+      if (nextMappedSections[0].toLowerCase() !== previousSectionName.toLowerCase()) {
+        continue;
+      }
+      if (((_a = previousSingleSectionCounts.get(previousSectionName.toLowerCase())) != null ? _a : 0) !== 1) {
+        continue;
+      }
+      if (content === null) {
+        content = await this.app.vault.read(todoFile);
+      }
+      const renamed = renameProjectSectionHeading(content, {
+        projectName,
+        currentSectionName: previousSectionName,
+        nextSectionName: nextLabel
+      });
+      if (!renamed.updated) {
+        continue;
+      }
+      content = renamed.content;
+      lane.mappedSections = [nextLabel];
+      updatedMasterHub = true;
+    }
+    if (updatedMasterHub && content !== null) {
+      await this.app.vault.modify(todoFile, content);
+    }
+    return {
+      laneDefinitions: adjustedLaneDefinitions,
+      updatedMasterHub
+    };
   }
   async updateKanbanBoardPresentation(projectName, input) {
     const normalizedProjectName = projectName.trim();

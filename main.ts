@@ -101,6 +101,7 @@ import {
   renderKanbanProjectBoardNote,
   renderExistingProjectNoteTemplate,
   renderProjectNoteTemplate,
+  renameProjectSectionHeading,
   renderTodoProjectBlock,
   sanitizeFileName,
   transferTaskByIdBetweenProjects,
@@ -3019,7 +3020,25 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const existing = this.getKanbanBoardConfiguration(projectName);
     const templateId = input.templateId.trim() || "execution-default";
-    const normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
+    let normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
+    const previousLaneDefinitions = existing.laneDefinitions.length > 0
+      ? existing.laneDefinitions.map((lane) => ({ ...lane, mappedSections: [...lane.mappedSections] }))
+      : this.getKanbanLaneOptions(projectName).map((lane) => ({
+        laneKey: lane.laneKey,
+        label: lane.label,
+        helperText: lane.helperText,
+        columnKey: lane.columnKey,
+        categoryKey: lane.categoryKey,
+        categoryLabel: lane.categoryLabel,
+        categorySubtitle: lane.categorySubtitle,
+        categoryColor: lane.categoryColor,
+        categoryTag: lane.categoryTag,
+        ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+        mappedSections: lane.targetSection ? [lane.targetSection] : [],
+        done: lane.done
+      }));
+    const hubRenameResult = await this.applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, normalizedLaneDefinitions);
+    normalizedLaneDefinitions = hubRenameResult.laneDefinitions;
     this.data.kanbanState.boardConfigurations[projectName] = {
       projectName,
       templateId,
@@ -3033,7 +3052,99 @@ export default class DailyDashboardPlugin extends Plugin {
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
+    if (hubRenameResult.updatedMasterHub) {
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      if (this.data.settings.kanbanEnabled) {
+        await this.refreshKanbanHub(false);
+        await this.refreshKanbanBoardNotes(false);
+      }
+    }
     this.refreshDashboardViews();
+  }
+
+  private async applyCleanKanbanLaneSectionRenames(
+    projectName: string,
+    previousLaneDefinitions: KanbanLaneDefinition[],
+    nextLaneDefinitions: KanbanLaneDefinition[]
+  ): Promise<{ laneDefinitions: KanbanLaneDefinition[]; updatedMasterHub: boolean }> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile || previousLaneDefinitions.length === 0 || nextLaneDefinitions.length === 0) {
+      return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false };
+    }
+
+    const previousByLaneKey = new Map(previousLaneDefinitions.map((lane) => [lane.laneKey, lane]));
+    const previousSingleSectionCounts = new Map<string, number>();
+    previousLaneDefinitions.forEach((lane) => {
+      const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      if (lane.ruleType === "hub-section" && !lane.done && mappedSections.length === 1) {
+        const key = mappedSections[0].toLowerCase();
+        previousSingleSectionCounts.set(key, (previousSingleSectionCounts.get(key) ?? 0) + 1);
+      }
+    });
+
+    let content: string | null = null;
+    let updatedMasterHub = false;
+    const adjustedLaneDefinitions = nextLaneDefinitions.map((lane) => ({
+      ...lane,
+      mappedSections: [...lane.mappedSections]
+    }));
+
+    for (const lane of adjustedLaneDefinitions) {
+      const previousLane = previousByLaneKey.get(lane.laneKey);
+      if (!previousLane) {
+        continue;
+      }
+
+      const previousLabel = previousLane.label.trim();
+      const nextLabel = lane.label.trim();
+      const previousMappedSections = previousLane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      const nextMappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      if (!previousLabel || !nextLabel || previousLabel.toLowerCase() === nextLabel.toLowerCase()) {
+        continue;
+      }
+      if (previousLane.ruleType !== "hub-section" || lane.ruleType !== "hub-section" || previousLane.done || lane.done) {
+        continue;
+      }
+      if (previousMappedSections.length !== 1 || nextMappedSections.length !== 1) {
+        continue;
+      }
+
+      const previousSectionName = previousMappedSections[0];
+      if (previousSectionName.toLowerCase() !== previousLabel.toLowerCase()) {
+        continue;
+      }
+      if (nextMappedSections[0].toLowerCase() !== previousSectionName.toLowerCase()) {
+        continue;
+      }
+      if ((previousSingleSectionCounts.get(previousSectionName.toLowerCase()) ?? 0) !== 1) {
+        continue;
+      }
+
+      if (content === null) {
+        content = await this.app.vault.read(todoFile);
+      }
+      const renamed = renameProjectSectionHeading(content, {
+        projectName,
+        currentSectionName: previousSectionName,
+        nextSectionName: nextLabel
+      });
+      if (!renamed.updated) {
+        continue;
+      }
+
+      content = renamed.content;
+      lane.mappedSections = [nextLabel];
+      updatedMasterHub = true;
+    }
+
+    if (updatedMasterHub && content !== null) {
+      await this.app.vault.modify(todoFile, content);
+    }
+
+    return {
+      laneDefinitions: adjustedLaneDefinitions,
+      updatedMasterHub
+    };
   }
 
   async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean; showLaneCategories?: boolean; theme?: DashboardKanbanTheme }): Promise<void> {

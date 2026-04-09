@@ -2545,6 +2545,7 @@ export class DailyDashboardView extends ItemView {
         intakeAmount.value = "1";
         syncDefaultIntakeUnit();
         intakeNote.value = "";
+        await this.render();
       }, false, "plus-circle");
       createButton(intakeButtons, aiStatus.busy ? "Analyzing..." : "Analyze diet", async () => this.plugin.generateDailyDietInsight(), true, "sparkles");
       createButton(intakeButtons, "Save preset", async () => {
@@ -2576,6 +2577,7 @@ export class DailyDashboardView extends ItemView {
           const presetWrap = intakePresetRow.createDiv({ cls: "daily-dashboard-inline-action-pair" });
           createButton(presetWrap, formatIntakeQuickPresetButtonLabel(preset), async () => {
             await this.plugin.addIntakeEntry(preset.kind, preset.label, preset.amount, preset.unit);
+            await this.render();
           }, false, getIntakePresetIcon(preset.kind));
           const removeButton = presetWrap.createEl("button", { cls: "daily-dashboard-icon-button daily-dashboard-inline-remove-button daily-dashboard-consumable-remove-button" });
           removeButton.type = "button";
@@ -2596,9 +2598,18 @@ export class DailyDashboardView extends ItemView {
         const emptyState = intakeList.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
         emptyState.createEl("span", { text: "No consumables logged yet today. Use one flow for drinks, food, meds, and supplements so totals stay analyzable." });
         const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-        createButton(emptyActions, "Water", async () => this.plugin.addIntakeEntry("drink", "Water", measurementSystem === "metric" ? 250 : 8, getDefaultIntakeUnit("drink", measurementSystem)), false, "glass-water");
-        createButton(emptyActions, "Meal", async () => this.plugin.addIntakeEntry("food", "Meal", 1, "serving"), false, "utensils-crossed");
-        createButton(emptyActions, "Medication", async () => this.plugin.addIntakeEntry("medication", "Medication", 1, "pill"), false, "pill");
+        createButton(emptyActions, "Water", async () => {
+          await this.plugin.addIntakeEntry("drink", "Water", measurementSystem === "metric" ? 250 : 8, getDefaultIntakeUnit("drink", measurementSystem));
+          await this.render();
+        }, false, "glass-water");
+        createButton(emptyActions, "Meal", async () => {
+          await this.plugin.addIntakeEntry("food", "Meal", 1, "serving");
+          await this.render();
+        }, false, "utensils-crossed");
+        createButton(emptyActions, "Medication", async () => {
+          await this.plugin.addIntakeEntry("medication", "Medication", 1, "pill");
+          await this.render();
+        }, false, "pill");
       } else {
         intakeEntries.slice(0, 18).forEach((item, index) => {
           const row = intakeList.createDiv({ cls: "daily-dashboard-food-row" });
