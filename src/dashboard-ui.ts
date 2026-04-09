@@ -10677,7 +10677,7 @@ export class DashKanbanView extends ItemView {
     actions.className = "dash-kanban-card-actions";
     actionWrap.appendChild(actions);
     actions.append(
-      this.createCardActionButton("flag", formatKanbanPriorityLabel(card.priority), (event) => {
+      this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
         event.stopPropagation();
         this.priorityPickerKey = this.priorityPickerKey?.projectName === project.projectName && this.priorityPickerKey.taskId === card.taskId
           ? null
@@ -10687,7 +10687,7 @@ export class DashKanbanView extends ItemView {
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
-      this.createCardActionButton("calendar", card.dueDate ? `Due ${card.dueDate}` : "Set due date", (event) => {
+      this.createCardActionButton("calendar", resolvedDueDate ? `Due ${resolvedDueDate}` : "Set due date", (event) => {
         event.stopPropagation();
         this.duePickerKey = this.duePickerKey?.projectName === project.projectName && this.duePickerKey.taskId === card.taskId
           ? null
@@ -10697,7 +10697,7 @@ export class DashKanbanView extends ItemView {
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
-      this.createCardActionButton("timer", card.effort ? `Effort ${card.effort}` : "Set effort", (event) => {
+      this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
         event.stopPropagation();
         this.effortPickerKey = this.effortPickerKey?.projectName === project.projectName && this.effortPickerKey.taskId === card.taskId
           ? null
@@ -10732,7 +10732,7 @@ export class DashKanbanView extends ItemView {
       picker.addEventListener("click", (event) => event.stopPropagation());
       KANBAN_PRIORITY_OPTIONS.forEach(({ value, label }) => {
         const button = document.createElement("button");
-        button.className = `dash-kanban-priority-option${(this.detailEditState?.projectName === project.projectName && this.detailEditState?.taskId === card.taskId ? this.detailEditState.priority : card.priority) === value ? " is-active" : ""}`;
+        button.className = `dash-kanban-priority-option${(this.detailEditState?.projectName === project.projectName && this.detailEditState?.taskId === card.taskId ? this.detailEditState.priority : resolvedPriority) === value ? " is-active" : ""}`;
         button.type = "button";
         button.dataset.priority = value || "none";
         button.textContent = label;
@@ -10758,7 +10758,7 @@ export class DashKanbanView extends ItemView {
       input.className = "dash-kanban-popover-input";
       input.type = "text";
       input.placeholder = "MM/DD/YYYY HH:MM AM";
-      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : card.dueDate;
+      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : resolvedDueDate;
       input.inputMode = "text";
       picker.appendChild(input);
       input.addEventListener("input", () => {
@@ -10816,7 +10816,7 @@ export class DashKanbanView extends ItemView {
       input.className = "dash-kanban-popover-input";
       input.type = "text";
       input.placeholder = "15m, 1h, 2h";
-      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.effort : card.effort;
+      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.effort : resolvedEffort;
       picker.appendChild(input);
       const pickerActions = document.createElement("div");
       pickerActions.className = "dash-kanban-popover-actions";

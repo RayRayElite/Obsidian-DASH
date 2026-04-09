@@ -42,3 +42,4 @@ try {
 }
 
 console.log(`Deployed plugin files to ${targetDir}`);
+console.log("Reload or re-enable the Daily Dashboard plugin in Obsidian before testing the deployed build.");

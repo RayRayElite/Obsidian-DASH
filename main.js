@@ -14593,7 +14593,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     actions.className = "dash-kanban-card-actions";
     actionWrap.appendChild(actions);
     actions.append(
-      this.createCardActionButton("flag", formatKanbanPriorityLabel(card.priority), (event) => {
+      this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
         var _a;
         event.stopPropagation();
         this.priorityPickerKey = ((_a = this.priorityPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
@@ -14602,7 +14602,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
-      this.createCardActionButton("calendar", card.dueDate ? `Due ${card.dueDate}` : "Set due date", (event) => {
+      this.createCardActionButton("calendar", resolvedDueDate ? `Due ${resolvedDueDate}` : "Set due date", (event) => {
         var _a;
         event.stopPropagation();
         this.duePickerKey = ((_a = this.duePickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.duePickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
@@ -14611,7 +14611,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
-      this.createCardActionButton("timer", card.effort ? `Effort ${card.effort}` : "Set effort", (event) => {
+      this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
         var _a;
         event.stopPropagation();
         this.effortPickerKey = ((_a = this.effortPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.effortPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
@@ -14646,7 +14646,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       KANBAN_PRIORITY_OPTIONS.forEach(({ value, label }) => {
         var _a, _b;
         const button = document.createElement("button");
-        button.className = `dash-kanban-priority-option${(((_a = this.detailEditState) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.detailEditState) == null ? void 0 : _b.taskId) === card.taskId ? this.detailEditState.priority : card.priority) === value ? " is-active" : ""}`;
+        button.className = `dash-kanban-priority-option${(((_a = this.detailEditState) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.detailEditState) == null ? void 0 : _b.taskId) === card.taskId ? this.detailEditState.priority : resolvedPriority) === value ? " is-active" : ""}`;
         button.type = "button";
         button.dataset.priority = value || "none";
         button.textContent = label;
@@ -14671,7 +14671,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       input.className = "dash-kanban-popover-input";
       input.type = "text";
       input.placeholder = "MM/DD/YYYY HH:MM AM";
-      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : card.dueDate;
+      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : resolvedDueDate;
       input.inputMode = "text";
       picker.appendChild(input);
       input.addEventListener("input", () => {
@@ -14728,7 +14728,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       input.className = "dash-kanban-popover-input";
       input.type = "text";
       input.placeholder = "15m, 1h, 2h";
-      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.effort : card.effort;
+      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.effort : resolvedEffort;
       picker.appendChild(input);
       const pickerActions = document.createElement("div");
       pickerActions.className = "dash-kanban-popover-actions";
