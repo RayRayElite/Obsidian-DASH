@@ -11027,6 +11027,16 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     var _a, _b;
     return (_b = (_a = this.templates.find((template) => template.templateId === this.selectedTemplateId)) != null ? _a : this.templates[0]) != null ? _b : null;
   }
+  laneDefinitionsMatch(left, right) {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+  isCurrentTemplateCustom() {
+    const template = this.getSelectedTemplate();
+    if (!template || this.laneDefinitions.length === 0) {
+      return false;
+    }
+    return !this.laneDefinitionsMatch(this.normalizeDraftLanes(), template.laneDefinitions);
+  }
   cloneLaneDefinitions(lanes) {
     return lanes.map((lane) => ({
       laneKey: lane.laneKey,
@@ -11097,9 +11107,17 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     });
     new import_obsidian3.Setting(contentEl).setName("Template").setDesc("Pick a starting template. Changing it resets the current lane draft to that template.").addDropdown((dropdown) => {
       this.templates.forEach((template2) => dropdown.addOption(template2.templateId, template2.name));
-      dropdown.setValue(this.selectedTemplateId);
+      if (this.isCurrentTemplateCustom()) {
+        dropdown.addOption("custom", "Custom");
+        dropdown.setValue("custom");
+      } else {
+        dropdown.setValue(this.selectedTemplateId);
+      }
       dropdown.onChange((value) => {
         var _a;
+        if (value === "custom") {
+          return;
+        }
         this.selectedTemplateId = value;
         const template2 = this.getSelectedTemplate();
         this.laneDefinitions = this.cloneLaneDefinitions((_a = template2 == null ? void 0 : template2.laneDefinitions) != null ? _a : []);
@@ -16801,7 +16819,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     new DashKanbanBoardSettingsModal(this.app, this, projects, initialProjectName).open();
   }
   buildDashKanbanProjectBoard(project) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const configuration = this.data.kanbanState.boardConfigurations[project.name];
     const template = (_c = (_b = (_a = this.data.kanbanState.boardTemplates[(configuration == null ? void 0 : configuration.templateId) || ""]) != null ? _a : this.data.kanbanState.boardTemplates["execution-default"]) != null ? _b : Object.values(this.data.kanbanState.boardTemplates)[0]) != null ? _c : {
       templateId: "execution-default",
@@ -16839,10 +16857,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         cards: sortedCards
       };
     });
+    const usesCustomTemplate = Boolean(configuration == null ? void 0 : configuration.laneDefinitions.length) && JSON.stringify((_d = configuration == null ? void 0 : configuration.laneDefinitions) != null ? _d : []) !== JSON.stringify(template.laneDefinitions);
     return {
       projectName: project.name,
-      templateId: template.templateId,
-      templateName: template.name,
+      templateId: usesCustomTemplate ? "custom" : template.templateId,
+      templateName: usesCustomTemplate ? "Custom" : template.name,
       theme: (configuration == null ? void 0 : configuration.theme) === "light" || (configuration == null ? void 0 : configuration.theme) === "ocean" || (configuration == null ? void 0 : configuration.theme) === "forest" || (configuration == null ? void 0 : configuration.theme) === "rose" || (configuration == null ? void 0 : configuration.theme) === "aurora" ? configuration.theme : "dark",
       status: project.status,
       projectState: project.projectState,

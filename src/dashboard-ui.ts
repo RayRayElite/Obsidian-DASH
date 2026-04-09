@@ -6096,6 +6096,19 @@ export class DashKanbanBoardSettingsModal extends Modal {
     return this.templates.find((template) => template.templateId === this.selectedTemplateId) ?? this.templates[0] ?? null;
   }
 
+  private laneDefinitionsMatch(left: KanbanLaneDefinition[], right: KanbanLaneDefinition[]): boolean {
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  private isCurrentTemplateCustom(): boolean {
+    const template = this.getSelectedTemplate();
+    if (!template || this.laneDefinitions.length === 0) {
+      return false;
+    }
+
+    return !this.laneDefinitionsMatch(this.normalizeDraftLanes(), template.laneDefinitions);
+  }
+
   private cloneLaneDefinitions(lanes: KanbanLaneDefinition[]): KanbanLaneDefinition[] {
     return lanes.map((lane) => ({
       laneKey: lane.laneKey,
@@ -6182,8 +6195,16 @@ export class DashKanbanBoardSettingsModal extends Modal {
       .setDesc("Pick a starting template. Changing it resets the current lane draft to that template.")
       .addDropdown((dropdown) => {
         this.templates.forEach((template) => dropdown.addOption(template.templateId, template.name));
-        dropdown.setValue(this.selectedTemplateId);
+        if (this.isCurrentTemplateCustom()) {
+          dropdown.addOption("custom", "Custom");
+          dropdown.setValue("custom");
+        } else {
+          dropdown.setValue(this.selectedTemplateId);
+        }
         dropdown.onChange((value) => {
+          if (value === "custom") {
+            return;
+          }
           this.selectedTemplateId = value;
           const template = this.getSelectedTemplate();
           this.laneDefinitions = this.cloneLaneDefinitions(template?.laneDefinitions ?? []);

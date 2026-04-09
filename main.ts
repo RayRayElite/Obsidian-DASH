@@ -3153,11 +3153,13 @@ export default class DailyDashboardPlugin extends Plugin {
         cards: sortedCards
       };
     });
+    const usesCustomTemplate = Boolean(configuration?.laneDefinitions.length)
+      && JSON.stringify(configuration?.laneDefinitions ?? []) !== JSON.stringify(template.laneDefinitions);
 
     return {
       projectName: project.name,
-      templateId: template.templateId,
-      templateName: template.name,
+      templateId: usesCustomTemplate ? "custom" : template.templateId,
+      templateName: usesCustomTemplate ? "Custom" : template.name,
       theme: configuration?.theme === "light" || configuration?.theme === "ocean" || configuration?.theme === "forest" || configuration?.theme === "rose" || configuration?.theme === "aurora" ? configuration.theme : "dark",
       status: project.status,
       projectState: project.projectState,
