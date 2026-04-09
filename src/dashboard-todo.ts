@@ -131,6 +131,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
   const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
   const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
+      const normalizedKanbanSection = normalizeLegacyKanbanSectionName(currentSection);
       const isComplete = taskMatch[1].toLowerCase() === "x";
 
       emptySections.delete(currentSection);
@@ -168,15 +169,15 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       }
 
       openCount += 1;
-      if (sectionKey === "now") {
+      if (normalizedKanbanSection === "now") {
         nowTasks.push(taskSummary.text);
         nowTaskDetails.push(taskSummary);
       }
-      if (sectionKey === "next") {
+      if (normalizedKanbanSection === "next") {
         nextTasks.push(taskSummary.text);
         nextTaskDetails.push(taskSummary);
       }
-      if (sectionKey === "later") {
+      if (normalizedKanbanSection === "later") {
         laterTasks.push(taskSummary.text);
         laterTaskDetails.push(taskSummary);
       }
@@ -1351,7 +1352,7 @@ function syncKanbanCardsToMasterHub(masterContent: string, cards: Array<{ projec
     }
 
     const targetSection = card.lane;
-    if (location.section.toLowerCase() === targetSection.toLowerCase()) {
+    if (normalizeLegacyKanbanSectionName(location.section) === targetSection.toLowerCase()) {
       return;
     }
 
@@ -2932,11 +2933,11 @@ function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | ""
     return "Waiting";
   }
 
-  const normalized = section.trim().toLowerCase();
+  const normalized = normalizeLegacyKanbanSectionName(section);
   if (normalized === "now") {
     return "Now";
   }
-  if (normalized === "next" || normalized === "add" || normalized === "fix") {
+  if (normalized === "next") {
     return "Next";
   }
   if (normalized === "later") {
@@ -2952,6 +2953,14 @@ function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | ""
     return "Done";
   }
   return "";
+}
+
+function normalizeLegacyKanbanSectionName(section: string): string {
+  const normalized = section.trim().toLowerCase();
+  if (normalized === "add" || normalized === "fix") {
+    return "next";
+  }
+  return normalized;
 }
 
 function extractTaskAnnotation(value: string, key: string): string | null {

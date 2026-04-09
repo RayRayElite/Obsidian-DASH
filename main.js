@@ -3060,6 +3060,7 @@ function parseTodoSnapshot(content) {
       const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
       const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
+      const normalizedKanbanSection = normalizeLegacyKanbanSectionName(currentSection);
       const isComplete = taskMatch[1].toLowerCase() === "x";
       emptySections.delete(currentSection);
       seenTasks.set(normalizedTask, ((_a = seenTasks.get(normalizedTask)) != null ? _a : 0) + 1);
@@ -3094,15 +3095,15 @@ function parseTodoSnapshot(content) {
         continue;
       }
       openCount += 1;
-      if (sectionKey === "now") {
+      if (normalizedKanbanSection === "now") {
         nowTasks.push(taskSummary.text);
         nowTaskDetails.push(taskSummary);
       }
-      if (sectionKey === "next") {
+      if (normalizedKanbanSection === "next") {
         nextTasks.push(taskSummary.text);
         nextTaskDetails.push(taskSummary);
       }
-      if (sectionKey === "later") {
+      if (normalizedKanbanSection === "later") {
         laterTasks.push(taskSummary.text);
         laterTaskDetails.push(taskSummary);
       }
@@ -4109,7 +4110,7 @@ function syncKanbanCardsToMasterHub(masterContent, cards, archivedAt) {
       return;
     }
     const targetSection = card.lane;
-    if (location.section.toLowerCase() === targetSection.toLowerCase()) {
+    if (normalizeLegacyKanbanSectionName(location.section) === targetSection.toLowerCase()) {
       return;
     }
     const removed = removeTaskByIdFromProject(content, card.projectName, card.taskId);
@@ -5436,11 +5437,11 @@ function resolveKanbanLane(section, isBlocked) {
   if (isBlocked) {
     return "Waiting";
   }
-  const normalized = section.trim().toLowerCase();
+  const normalized = normalizeLegacyKanbanSectionName(section);
   if (normalized === "now") {
     return "Now";
   }
-  if (normalized === "next" || normalized === "add" || normalized === "fix") {
+  if (normalized === "next") {
     return "Next";
   }
   if (normalized === "later") {
@@ -5456,6 +5457,13 @@ function resolveKanbanLane(section, isBlocked) {
     return "Done";
   }
   return "";
+}
+function normalizeLegacyKanbanSectionName(section) {
+  const normalized = section.trim().toLowerCase();
+  if (normalized === "add" || normalized === "fix") {
+    return "next";
+  }
+  return normalized;
 }
 function extractTaskAnnotation(value, key) {
   var _a;
