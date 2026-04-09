@@ -12886,6 +12886,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.searchText = "";
     this.dragCard = null;
     this.selectedCardKey = null;
+    this.quickAddDraft = null;
+    this.priorityPickerKey = null;
     this.detailEditState = null;
     this.isRefreshing = false;
     this.plugin = plugin;
@@ -12923,7 +12925,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const viewState = this.plugin.getKanbanViewState();
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
-    const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density}` });
+    const shell = this.contentEl.createDiv({ cls: "dash-kanban-shell is-compact" });
     if (!snapshot || snapshot.projects.length === 0) {
       const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state" });
       emptyState.createEl("h2", { text: "DASH Kanban needs a Master Task Hub" });
@@ -12939,10 +12941,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       this.renderRepairBanner(shell, snapshot.repairCount);
     }
     const visibleProjects = this.getVisibleProjects(snapshot, viewState);
-    const selectedCard = this.getSelectedCard(visibleProjects);
-    if (selectedCard) {
-      this.renderDetailPanel(shell, selectedCard.project, selectedCard.card);
-    }
+    this.getSelectedCard(visibleProjects);
     if (visibleProjects.length === 0) {
       const emptyState = shell.createDiv({ cls: "dash-kanban-empty-state is-filtered" });
       emptyState.createEl("h3", { text: "No matching cards" });
@@ -13001,6 +13000,61 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       choices.unshift({ value: currentLane, label: currentLane });
     }
     return choices;
+  }
+  getDefaultQuickAddLane(projectName) {
+    var _a, _b;
+    return (_b = (_a = this.plugin.getKanbanLaneOptions(projectName).find((option) => !option.done)) == null ? void 0 : _a.laneKey) != null ? _b : "next";
+  }
+  openInlineQuickAdd(projectName, laneKey = "") {
+    const normalizedProject = projectName.trim();
+    if (!normalizedProject) {
+      return;
+    }
+    this.quickAddDraft = {
+      projectName: normalizedProject,
+      laneKey: laneKey.trim() || this.getDefaultQuickAddLane(normalizedProject),
+      taskText: ""
+    };
+    void this.requestRefresh();
+  }
+  async submitInlineQuickAdd() {
+    const draft = this.quickAddDraft;
+    if (!draft || !draft.taskText.trim()) {
+      return;
+    }
+    await this.plugin.addKanbanTask(draft.projectName, draft.laneKey, draft.taskText);
+    this.quickAddDraft = null;
+    await this.requestRefresh();
+  }
+  async saveCardDraft(project, card, overrides = {}) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const draft = this.detailEditState && this.detailEditState.projectName === project.projectName && this.detailEditState.taskId === card.taskId ? this.detailEditState : {
+      projectName: project.projectName,
+      taskId: card.taskId,
+      taskText: card.text,
+      lane: card.laneKey,
+      priority: card.priority,
+      dueDate: card.dueDate,
+      blockedReason: card.blockedReason,
+      effort: card.effort,
+      executionContext: card.executionContext
+    };
+    const payload = {
+      taskText: (_a = overrides.taskText) != null ? _a : draft.taskText,
+      lane: (_b = overrides.lane) != null ? _b : draft.lane,
+      priority: (_c = overrides.priority) != null ? _c : draft.priority,
+      dueDate: (_d = overrides.dueDate) != null ? _d : draft.dueDate,
+      blockedReason: (_e = overrides.blockedReason) != null ? _e : draft.blockedReason,
+      effort: (_f = overrides.effort) != null ? _f : draft.effort,
+      executionContext: (_g = overrides.executionContext) != null ? _g : draft.executionContext
+    };
+    const saved = await this.plugin.updateKanbanTaskDetails(project.projectName, card.taskId, payload);
+    if (!saved) {
+      return;
+    }
+    this.priorityPickerKey = null;
+    this.detailEditState = null;
+    await this.requestRefresh();
   }
   renderDetailPanel(parent, project, card) {
     this.syncDetailEditState(project, card);
@@ -13246,40 +13300,45 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
     copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
-    copy.createEl("p", {
-      cls: "dash-kanban-subtitle",
-      text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
-    });
+    if (!viewState.headerCollapsed) {
+      copy.createEl("p", {
+        cls: "dash-kanban-subtitle",
+        text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
+      });
+    }
     const summary = hero.createDiv({ cls: "dash-kanban-summary" });
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
     createSemanticChip(summary, viewState.focusFilter === "all" ? "All work" : viewState.focusFilter === "attention" ? "Attention filter" : viewState.focusFilter === "blocked" ? "Blocked filter" : "Due filter", "state");
-    createSemanticChip(summary, viewState.density === "compact" ? "Compact density" : "Comfortable density", "neutral");
     createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
     }
     const headerMeta = hero.createDiv({ cls: "dash-kanban-summary" });
     headerMeta.append(
-      this.createHeaderButton(viewState.headerCollapsed ? "chevrons-down" : "chevrons-up", viewState.headerCollapsed ? "Expand controls" : "Collapse controls", () => {
+      this.createHeaderButton(viewState.headerCollapsed ? "chevron-down" : "chevron-up", viewState.headerCollapsed ? "Expand header" : "Collapse header", () => {
         void this.plugin.updateKanbanViewState({ headerCollapsed: !viewState.headerCollapsed });
       })
     );
     const controls = header.createDiv({ cls: "dash-kanban-controls" });
     if (viewState.headerCollapsed) {
-      controls.addClass("is-hidden");
+      controls.addClass("is-collapsed");
     }
     const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
     actionRow.append(
       this.createHeaderButton("plus", "Add card", () => {
         var _a;
         const targetProject = snapshot.selectedProjectName || ((_a = snapshot.projects[0]) == null ? void 0 : _a.projectName) || "";
-        void this.plugin.openKanbanQuickAddFlow(targetProject);
+        this.openInlineQuickAdd(targetProject);
       }),
       this.createHeaderButton("pen-square", "Edit card", () => {
-        var _a;
-        const targetProject = snapshot.selectedProjectName || ((_a = snapshot.projects[0]) == null ? void 0 : _a.projectName) || "";
+        var _a, _b, _c;
+        const targetProject = ((_a = this.selectedCardKey) == null ? void 0 : _a.projectName) || snapshot.selectedProjectName || ((_b = snapshot.projects[0]) == null ? void 0 : _b.projectName) || "";
+        if ((_c = this.selectedCardKey) == null ? void 0 : _c.taskId) {
+          void this.plugin.openKanbanTaskEditFlow(targetProject, this.selectedCardKey.taskId);
+          return;
+        }
         void this.plugin.openKanbanTaskEditFlow(targetProject);
       }),
       this.createHeaderButton("file-stack", "Open hub", () => {
@@ -13294,6 +13353,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         void this.plugin.pruneStaleKanbanRegistryEntries(true);
       })
     );
+    if (viewState.headerCollapsed) {
+      return;
+    }
     const filterRow = controls.createDiv({ cls: "dash-kanban-filter-row" });
     const searchWrapper = filterRow.createDiv({ cls: "dash-kanban-search" });
     const searchIcon = searchWrapper.createSpan({ cls: "dash-kanban-search-icon" });
@@ -13344,15 +13406,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }),
       this.createToggleButton(`Due ${filterCounts.due}`, viewState.focusFilter === "due", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "due" });
-      })
-    );
-    const densityRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
-    densityRow.append(
-      this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
-        await this.plugin.updateKanbanViewState({ density: "comfortable" });
-      }),
-      this.createToggleButton("Compact", viewState.density === "compact", async () => {
-        await this.plugin.updateKanbanViewState({ density: "compact" });
       })
     );
   }
@@ -13503,6 +13556,69 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       });
     });
   }
+  activateLaneRename(titleButton, project, lane) {
+    const header = titleButton.parentElement;
+    if (!header || header.querySelector(".dash-kanban-lane-rename")) {
+      return;
+    }
+    titleButton.remove();
+    const form = document.createElement("div");
+    form.className = "dash-kanban-lane-rename";
+    header.prepend(form);
+    const input = document.createElement("input");
+    input.className = "dash-kanban-lane-rename-input";
+    input.type = "text";
+    input.value = lane.label;
+    form.appendChild(input);
+    const saveButton = document.createElement("button");
+    saveButton.className = "dash-kanban-card-action dash-kanban-lane-rename-action";
+    saveButton.type = "button";
+    saveButton.ariaLabel = "Save lane title";
+    saveButton.title = "Save lane title";
+    (0, import_obsidian3.setIcon)(saveButton, "check");
+    form.appendChild(saveButton);
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "dash-kanban-card-action dash-kanban-lane-rename-action";
+    cancelButton.type = "button";
+    cancelButton.ariaLabel = "Cancel lane rename";
+    cancelButton.title = "Cancel lane rename";
+    (0, import_obsidian3.setIcon)(cancelButton, "x");
+    form.appendChild(cancelButton);
+    const submit = () => {
+      const nextLabel = input.value.trim();
+      if (!nextLabel || nextLabel === lane.label) {
+        void this.requestRefresh();
+        return;
+      }
+      void (async () => {
+        await this.plugin.renameKanbanLane(project.projectName, lane.laneKey, nextLabel);
+        await this.requestRefresh();
+      })();
+    };
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void this.requestRefresh();
+      }
+    });
+    saveButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      submit();
+    });
+    cancelButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.requestRefresh();
+    });
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
   bindProjectCollapse(header, project, mode) {
     if (mode !== "all-projects") {
       return;
@@ -13548,19 +13664,20 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
   }
   renderProjectBoard(parent, project, mode) {
-    const board = parent.createDiv({ cls: `dash-kanban-project-board${project.collapsedInHub && mode === "all-projects" ? " is-collapsed" : ""}` });
+    const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
+    const board = parent.createDiv({ cls: `dash-kanban-project-board${isCollapsedInWorkspace ? " is-collapsed" : ""}` });
     board.dataset.theme = project.theme;
     board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
     this.bindProjectCollapse(boardHeader, project, mode);
     const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
     heading.createEl("h2", { text: project.projectName });
-    if (project.focus) {
+    if (!isCollapsedInWorkspace && project.focus) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.focus });
-    } else if (project.projectSummary) {
+    } else if (!isCollapsedInWorkspace && project.projectSummary) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.projectSummary });
     }
-    if (mode === "all-projects") {
+    if (mode === "all-projects" && !isCollapsedInWorkspace) {
       heading.createEl("p", { cls: "dash-kanban-project-hint", text: project.collapsedInHub ? "Collapsed. Click header to expand." : "Click header to collapse." });
     }
     const projectMeta = boardHeader.createDiv({ cls: "dash-kanban-project-meta" });
@@ -13571,23 +13688,25 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (project.archivedCount > 0) {
       createSemanticChip(projectMeta, `${project.archivedCount} archived`, "done");
     }
-    const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
-    boardActions.addEventListener("click", (event) => {
-      event.stopPropagation();
-    });
-    boardActions.append(
-      this.createHeaderButton("sliders-horizontal", "Settings", () => {
-        void this.plugin.openDashKanbanBoardSettings(project.projectName);
-      })
-    );
-    if (project.notePath) {
-      boardActions.append(this.createHeaderButton("folder-open", "Note", () => {
-        void this.plugin.openNoteByPath(project.notePath);
-      }));
+    if (!isCollapsedInWorkspace) {
+      const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
+      boardActions.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+      boardActions.append(
+        this.createHeaderButton("sliders-horizontal", "Settings", () => {
+          void this.plugin.openDashKanbanBoardSettings(project.projectName);
+        })
+      );
+      if (project.notePath) {
+        boardActions.append(this.createHeaderButton("folder-open", "Note", () => {
+          void this.plugin.openNoteByPath(project.notePath);
+        }));
+      }
     }
     const collapseChip = boardHeader.createDiv({ cls: "dash-kanban-project-collapse" });
     (0, import_obsidian3.setIcon)(collapseChip, project.collapsedInHub && mode === "all-projects" ? "chevron-right" : "chevron-down");
-    if (project.collapsedInHub && mode === "all-projects") {
+    if (isCollapsedInWorkspace) {
       return;
     }
     const body = board.createDiv({ cls: "dash-kanban-project-body" });
@@ -13618,30 +13737,71 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.bindProjectResize(resizeHandle, board, project);
   }
   renderLane(parent, project, lane, extraClass = "") {
+    var _a;
     const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${extraClass ? ` ${extraClass}` : ""}` });
     laneEl.dataset.project = project.projectName;
     laneEl.dataset.section = lane.targetSection;
     const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
     const titleButton = header.createEl("button", { cls: "dash-kanban-lane-title", text: lane.label });
     titleButton.type = "button";
-    titleButton.addEventListener("click", () => {
-      var _a;
-      const nextLabel = (_a = window.prompt("Rename lane", lane.label)) != null ? _a : "";
-      if (!nextLabel.trim() || nextLabel.trim() === lane.label) {
-        return;
-      }
-      void this.plugin.renameKanbanLane(project.projectName, lane.laneKey, nextLabel.trim());
+    titleButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.activateLaneRename(titleButton, project, lane);
     });
     const laneTools = header.createDiv({ cls: "dash-kanban-lane-tools" });
     const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action", attr: { "aria-label": `Add card to ${lane.label}` } });
     addButton.type = "button";
     (0, import_obsidian3.setIcon)(addButton, "plus");
-    addButton.addEventListener("click", () => {
-      void this.plugin.openKanbanQuickAddFlow(project.projectName, lane.laneKey);
+    addButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.openInlineQuickAdd(project.projectName, lane.laneKey);
     });
     laneTools.createSpan({ cls: "dash-kanban-lane-count", text: `${lane.cardCount}` });
     if (lane.helperText) {
       laneEl.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
+    }
+    if (((_a = this.quickAddDraft) == null ? void 0 : _a.projectName) === project.projectName && this.quickAddDraft.laneKey === lane.laneKey) {
+      const composer = laneEl.createDiv({ cls: "dash-kanban-quick-add" });
+      const input = composer.createEl("textarea", {
+        cls: "dash-kanban-quick-add-input",
+        attr: { placeholder: `Add a card to ${lane.label}` }
+      });
+      input.value = this.quickAddDraft.taskText;
+      input.addEventListener("click", (event) => event.stopPropagation());
+      input.addEventListener("input", () => {
+        if (!this.quickAddDraft) {
+          return;
+        }
+        this.quickAddDraft.taskText = input.value;
+        input.style.height = "auto";
+        input.style.height = `${Math.max(input.scrollHeight, 42)}px`;
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          void this.submitInlineQuickAdd();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          this.quickAddDraft = null;
+          void this.requestRefresh();
+        }
+      });
+      const composerActions = composer.createDiv({ cls: "dash-kanban-quick-add-actions" });
+      composerActions.append(
+        this.createInlineEditorButton("Add", () => {
+          void this.submitInlineQuickAdd();
+        }, true),
+        this.createInlineEditorButton("Cancel", () => {
+          this.quickAddDraft = null;
+          void this.requestRefresh();
+        })
+      );
+      window.setTimeout(() => {
+        input.focus();
+        input.style.height = "auto";
+        input.style.height = `${Math.max(input.scrollHeight, 42)}px`;
+      }, 0);
     }
     const cards = laneEl.createDiv({ cls: "dash-kanban-card-stack" });
     laneEl.addEventListener("dragover", (event) => {
@@ -13677,14 +13837,18 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
   }
   renderCard(project, card) {
-    var _a, _b;
+    var _a, _b, _c;
     const cardEl = document.createElement("article");
     const isSelected = ((_a = this.selectedCardKey) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.selectedCardKey) == null ? void 0 : _b.taskId) === card.taskId;
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.draggable = card.taskId.trim().length > 0;
     cardEl.addEventListener("click", () => {
+      if (isSelected) {
+        return;
+      }
       this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
-      this.detailEditState = null;
+      this.priorityPickerKey = null;
+      this.syncDetailEditState(project, card);
       void this.requestRefresh();
     });
     cardEl.addEventListener("dragstart", (event) => {
@@ -13700,9 +13864,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       this.dragCard = null;
       cardEl.removeClass("is-dragging");
     });
-    cardEl.addEventListener("dblclick", () => {
-      void this.plugin.openKanbanTaskEditFlow(project.projectName, card.taskId);
-    });
+    if (isSelected) {
+      this.syncDetailEditState(project, card);
+    }
     const top = document.createElement("div");
     top.className = "dash-kanban-card-top";
     cardEl.appendChild(top);
@@ -13726,45 +13890,138 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (card.dueDate) {
       createSemanticChip(toneRow, card.dueDate, card.isOverdue ? "alert" : "neutral");
     }
-    const actions = document.createElement("div");
-    actions.className = "dash-kanban-card-actions";
-    cardEl.appendChild(actions);
-    actions.append(
-      this.createCardActionButton("pen-square", "Edit card", (event) => {
-        event.stopPropagation();
-        void this.plugin.openKanbanTaskEditFlow(project.projectName, card.taskId);
-      }),
-      this.createCardActionButton("flag", formatKanbanPriorityLabel(card.priority), (event) => {
-        event.stopPropagation();
-        void this.plugin.cycleKanbanTaskPriority(project.projectName, card.taskId);
-      }),
-      this.createCardActionButton("check", "Complete card", (event) => {
-        event.stopPropagation();
-        void this.plugin.completeKanbanTask(project.projectName, card.taskId);
-      }),
-      this.createCardActionButton("trash-2", "Delete card", (event) => {
-        var _a2, _b2;
-        event.stopPropagation();
-        const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
-        if (!confirmed) {
+    if (isSelected && this.detailEditState && this.detailEditState.projectName === project.projectName && this.detailEditState.taskId === card.taskId) {
+      const editor = document.createElement("div");
+      editor.className = "dash-kanban-inline-editor is-card-editor";
+      cardEl.appendChild(editor);
+      const textArea = document.createElement("textarea");
+      textArea.className = "dash-kanban-inline-textarea dash-kanban-card-editor-text";
+      textArea.value = this.detailEditState.taskText;
+      textArea.addEventListener("click", (event) => event.stopPropagation());
+      textArea.addEventListener("input", () => {
+        if (!this.detailEditState) {
           return;
         }
-        if (((_a2 = this.selectedCardKey) == null ? void 0 : _a2.projectName) === project.projectName && ((_b2 = this.selectedCardKey) == null ? void 0 : _b2.taskId) === card.taskId) {
-          this.selectedCardKey = null;
+        this.detailEditState.taskText = textArea.value;
+        textArea.style.height = "auto";
+        textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
+      });
+      editor.appendChild(textArea);
+      if (card.notePreview) {
+        const note = document.createElement("p");
+        note.className = "dash-kanban-card-note";
+        note.textContent = card.notePreview;
+        editor.appendChild(note);
+      }
+      const editorGrid = document.createElement("div");
+      editorGrid.className = "dash-kanban-inline-editor-grid is-card-grid";
+      editor.appendChild(editorGrid);
+      const laneField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      laneField.createEl("span", { cls: "dash-kanban-detail-label", text: "Lane" });
+      const laneSelect = laneField.createEl("select", { cls: "dash-kanban-inline-select" });
+      this.getEditableLaneChoices(project.projectName, this.detailEditState.lane).forEach((choice) => {
+        var _a2, _b2;
+        laneSelect.add(new Option(choice.label, choice.value, choice.value === ((_a2 = this.detailEditState) == null ? void 0 : _a2.lane), choice.value === ((_b2 = this.detailEditState) == null ? void 0 : _b2.lane)));
+      });
+      laneSelect.value = this.detailEditState.lane;
+      laneSelect.addEventListener("click", (event) => event.stopPropagation());
+      laneSelect.addEventListener("change", () => {
+        if (!this.detailEditState) {
+          return;
         }
-        this.detailEditState = null;
-        void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
-      })
-    );
-    const title = document.createElement("h4");
-    title.className = "dash-kanban-card-title";
-    title.textContent = card.text;
-    cardEl.appendChild(title);
-    if (card.notePreview) {
-      const note = document.createElement("p");
-      note.className = "dash-kanban-card-note";
-      note.textContent = card.notePreview;
-      cardEl.appendChild(note);
+        this.detailEditState.lane = laneSelect.value;
+      });
+      const dueField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      dueField.createEl("span", { cls: "dash-kanban-detail-label", text: "Due" });
+      const dueInput = dueField.createEl("input", { cls: "dash-kanban-inline-select", type: "date" });
+      dueInput.value = this.detailEditState.dueDate;
+      dueInput.addEventListener("click", (event) => event.stopPropagation());
+      dueInput.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.dueDate = dueInput.value;
+      });
+      const blockedField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      blockedField.createEl("span", { cls: "dash-kanban-detail-label", text: "Blocked" });
+      const blockedInput = blockedField.createEl("input", { cls: "dash-kanban-inline-select", type: "text" });
+      blockedInput.value = this.detailEditState.blockedReason;
+      blockedInput.placeholder = "Waiting on asset, approval, reply";
+      blockedInput.addEventListener("click", (event) => event.stopPropagation());
+      blockedInput.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.blockedReason = blockedInput.value;
+      });
+      const effortField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      effortField.createEl("span", { cls: "dash-kanban-detail-label", text: "Effort" });
+      const effortInput = effortField.createEl("input", { cls: "dash-kanban-inline-select", type: "text" });
+      effortInput.value = this.detailEditState.effort;
+      effortInput.placeholder = "15m, 1h, small";
+      effortInput.addEventListener("click", (event) => event.stopPropagation());
+      effortInput.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.effort = effortInput.value;
+      });
+      const contextField = editorGrid.createDiv({ cls: "dash-kanban-inline-field" });
+      contextField.createEl("span", { cls: "dash-kanban-detail-label", text: "Context" });
+      const contextInput = contextField.createEl("input", { cls: "dash-kanban-inline-select", type: "text" });
+      contextInput.value = this.detailEditState.executionContext;
+      contextInput.placeholder = "Desk, phone, writing, coding";
+      contextInput.addEventListener("click", (event) => event.stopPropagation());
+      contextInput.addEventListener("input", () => {
+        if (!this.detailEditState) {
+          return;
+        }
+        this.detailEditState.executionContext = contextInput.value;
+      });
+      const editorActions = document.createElement("div");
+      editorActions.className = "dash-kanban-quick-add-actions";
+      editor.appendChild(editorActions);
+      editorActions.append(
+        this.createInlineEditorButton("Save", () => {
+          void this.saveCardDraft(project, card);
+        }, true),
+        this.createInlineEditorButton("Reset", () => {
+          this.detailEditState = {
+            projectName: project.projectName,
+            taskId: card.taskId,
+            taskText: card.text,
+            lane: card.laneKey,
+            priority: card.priority,
+            dueDate: card.dueDate,
+            blockedReason: card.blockedReason,
+            effort: card.effort,
+            executionContext: card.executionContext
+          };
+          void this.requestRefresh();
+        }),
+        this.createInlineEditorButton("Close", () => {
+          this.selectedCardKey = null;
+          this.detailEditState = null;
+          this.priorityPickerKey = null;
+          void this.requestRefresh();
+        })
+      );
+      window.setTimeout(() => {
+        textArea.focus();
+        textArea.style.height = "auto";
+        textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
+      }, 0);
+    } else {
+      const title = document.createElement("h4");
+      title.className = "dash-kanban-card-title";
+      title.textContent = card.text;
+      cardEl.appendChild(title);
+      if (card.notePreview) {
+        const note = document.createElement("p");
+        note.className = "dash-kanban-card-note";
+        note.textContent = card.notePreview;
+        cardEl.appendChild(note);
+      }
     }
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
@@ -13790,13 +14047,69 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const footer = document.createElement("div");
     footer.className = "dash-kanban-card-footer";
     cardEl.appendChild(footer);
+    const footerInfo = document.createElement("div");
+    footerInfo.className = "dash-kanban-card-footer-info";
+    footer.appendChild(footerInfo);
     const section = document.createElement("span");
     section.textContent = card.sectionName;
-    footer.appendChild(section);
+    footerInfo.appendChild(section);
     if (card.assignee) {
       const assignee = document.createElement("span");
       assignee.textContent = `@${card.assignee}`;
-      footer.appendChild(assignee);
+      footerInfo.appendChild(assignee);
+    }
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "dash-kanban-card-footer-tools";
+    footer.appendChild(actionWrap);
+    const actions = document.createElement("div");
+    actions.className = "dash-kanban-card-actions";
+    actionWrap.appendChild(actions);
+    actions.append(
+      this.createCardActionButton("flag", formatKanbanPriorityLabel(card.priority), (event) => {
+        var _a2;
+        event.stopPropagation();
+        this.priorityPickerKey = ((_a2 = this.priorityPickerKey) == null ? void 0 : _a2.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
+        if (!this.selectedCardKey || this.selectedCardKey.projectName !== project.projectName || this.selectedCardKey.taskId !== card.taskId) {
+          this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+          this.syncDetailEditState(project, card);
+        }
+        void this.requestRefresh();
+      }),
+      this.createCardActionButton("check", "Complete card", (event) => {
+        event.stopPropagation();
+        void this.plugin.completeKanbanTask(project.projectName, card.taskId);
+      }),
+      this.createCardActionButton("trash-2", "Delete card", (event) => {
+        var _a2, _b2;
+        event.stopPropagation();
+        const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
+        if (!confirmed) {
+          return;
+        }
+        if (((_a2 = this.selectedCardKey) == null ? void 0 : _a2.projectName) === project.projectName && ((_b2 = this.selectedCardKey) == null ? void 0 : _b2.taskId) === card.taskId) {
+          this.selectedCardKey = null;
+        }
+        this.priorityPickerKey = null;
+        this.detailEditState = null;
+        void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
+      })
+    );
+    if (((_c = this.priorityPickerKey) == null ? void 0 : _c.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId) {
+      const picker = document.createElement("div");
+      picker.className = "dash-kanban-priority-picker";
+      [["", "None"], ["low", "Low"], ["medium", "Medium"], ["high", "High"], ["urgent", "Urgent"]].forEach(([value, label]) => {
+        var _a2, _b2;
+        const button = document.createElement("button");
+        button.className = `dash-kanban-priority-option${(((_a2 = this.detailEditState) == null ? void 0 : _a2.projectName) === project.projectName && ((_b2 = this.detailEditState) == null ? void 0 : _b2.taskId) === card.taskId ? this.detailEditState.priority : card.priority) === value ? " is-active" : ""}`;
+        button.type = "button";
+        button.textContent = label;
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          void this.saveCardDraft(project, card, { priority: value });
+        });
+        picker.appendChild(button);
+      });
+      actionWrap.appendChild(picker);
     }
     return cardEl;
   }
@@ -13822,6 +14135,17 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     button.title = label;
     (0, import_obsidian3.setIcon)(button, icon);
     button.addEventListener("click", onClick);
+    return button;
+  }
+  createInlineEditorButton(label, onClick, cta = false) {
+    const button = document.createElement("button");
+    button.className = `dash-kanban-inline-button${cta ? " mod-cta" : ""}`;
+    button.type = "button";
+    button.textContent = label;
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onClick();
+    });
     return button;
   }
   createToggleButton(label, active, onClick) {
@@ -14053,7 +14377,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           selectedProjectName: "",
           showDone: true,
           focusFilter: "all",
-          density: "comfortable",
+          density: "compact",
           headerCollapsed: false
         },
         lastCleanupPreviewAt: ""
@@ -16417,7 +16741,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...project.parkingLotTaskDetails
     ];
     const lanes = laneOptions.map((laneOption) => {
-      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions)).map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions)).map((task) => this.buildDashKanbanCard(project.name, task, laneOption)).sort((left, right) => this.compareDashKanbanCardPriority(left, right));
       return {
         laneKey: laneOption.laneKey,
         label: laneOption.label,
@@ -16484,6 +16808,23 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       tags: visibleTags,
       notePreview: this.buildDashKanbanNotePreview(task)
     };
+  }
+  compareDashKanbanCardPriority(left, right) {
+    const priorityWeight = (priority) => {
+      switch (priority.trim().toLowerCase()) {
+        case "urgent":
+          return 0;
+        case "high":
+          return 1;
+        case "medium":
+          return 2;
+        case "low":
+          return 3;
+        default:
+          return 4;
+      }
+    };
+    return priorityWeight(left.priority) - priorityWeight(right.priority);
   }
   matchesDashKanbanLaneTask(projectName, laneOption, task, laneOptions) {
     var _a;
@@ -19314,7 +19655,7 @@ ${context}`, resolvedModel);
       selectedProjectName: typeof (value == null ? void 0 : value.selectedProjectName) === "string" ? value.selectedProjectName.trim() : "",
       showDone: (value == null ? void 0 : value.showDone) !== false,
       focusFilter: (value == null ? void 0 : value.focusFilter) === "attention" || (value == null ? void 0 : value.focusFilter) === "blocked" || (value == null ? void 0 : value.focusFilter) === "due" ? value.focusFilter : "all",
-      density: (value == null ? void 0 : value.density) === "compact" ? "compact" : "comfortable",
+      density: "compact",
       headerCollapsed: Boolean(value == null ? void 0 : value.headerCollapsed)
     };
   }

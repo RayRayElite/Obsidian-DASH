@@ -236,7 +236,7 @@ export default class DailyDashboardPlugin extends Plugin {
         selectedProjectName: "",
         showDone: true,
         focusFilter: "all",
-        density: "comfortable",
+        density: "compact",
         headerCollapsed: false
       },
       lastCleanupPreviewAt: ""
@@ -3102,7 +3102,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const lanes = laneOptions.map((laneOption) => {
       const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
         .filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions))
-        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption))
+        .sort((left, right) => this.compareDashKanbanCardPriority(left, right));
 
       return {
         laneKey: laneOption.laneKey,
@@ -3177,6 +3178,25 @@ export default class DailyDashboardPlugin extends Plugin {
       tags: visibleTags,
       notePreview: this.buildDashKanbanNotePreview(task)
     };
+  }
+
+  private compareDashKanbanCardPriority(left: DashKanbanCard, right: DashKanbanCard): number {
+    const priorityWeight = (priority: string): number => {
+      switch (priority.trim().toLowerCase()) {
+        case "urgent":
+          return 0;
+        case "high":
+          return 1;
+        case "medium":
+          return 2;
+        case "low":
+          return 3;
+        default:
+          return 4;
+      }
+    };
+
+    return priorityWeight(left.priority) - priorityWeight(right.priority);
   }
 
   private matchesDashKanbanLaneTask(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary, laneOptions: KanbanLaneOption[]): boolean {
@@ -6598,7 +6618,7 @@ export default class DailyDashboardPlugin extends Plugin {
         || value?.focusFilter === "due"
         ? value.focusFilter
         : "all",
-      density: value?.density === "compact" ? "compact" : "comfortable",
+      density: "compact",
       headerCollapsed: Boolean(value?.headerCollapsed)
     };
   }
