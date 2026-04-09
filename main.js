@@ -15438,6 +15438,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     });
     this.addCommand({
+      id: "write-dash-kanban-debug-snapshot",
+      name: "Write DASH Kanban debug snapshot",
+      callback: () => {
+        void this.writeDashKanbanDebugSnapshot(true);
+      }
+    });
+    this.addCommand({
       id: "repair-kanban-sync-foundations",
       name: "Repair Kanban foundations and refresh hub",
       callback: () => {
@@ -17131,6 +17138,73 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       repairCount: Object.values(this.data.kanbanState.repairQueue).filter((item) => !item.resolvedAt.trim()).length,
       projects
     };
+  }
+  async writeDashKanbanDebugSnapshot(openAfterGenerate) {
+    const todoFile = this.getMasterTodoFile();
+    const snapshot = await this.getTodoSnapshot();
+    if (!todoFile || !snapshot) {
+      new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      return null;
+    }
+    const content = await this.app.vault.read(todoFile);
+    const liveTaskMetadata = this.buildDashKanbanLiveTaskMetadataLookup(content);
+    const viewState = this.getKanbanViewState();
+    const selectedProjectName = viewState.selectedProjectName.trim();
+    const projects = snapshot.projects.filter((project) => project.projectState !== "someday");
+    const scopedProjects = selectedProjectName ? projects.filter((project) => project.name === selectedProjectName) : projects;
+    const lines = [
+      "# DASH Kanban Debug Snapshot",
+      "",
+      `- Generated: ${formatDateTimeKey(/* @__PURE__ */ new Date())}`,
+      `- Selected project: ${selectedProjectName || "<none>"}`,
+      `- Master task hub: ${todoFile.path}`,
+      ""
+    ];
+    scopedProjects.forEach((project) => {
+      lines.push(`## ${project.name}`);
+      lines.push("");
+      const board = this.buildDashKanbanProjectBoard(project, liveTaskMetadata);
+      board.lanes.forEach((lane) => {
+        lines.push(`### ${lane.label}`);
+        if (lane.cards.length === 0) {
+          lines.push("- No cards");
+          lines.push("");
+          return;
+        }
+        lane.cards.forEach((card) => {
+          const task = [
+            ...project.nowTaskDetails,
+            ...project.nextTaskDetails,
+            ...project.laterTaskDetails,
+            ...project.waitingTaskDetails,
+            ...project.parkingLotTaskDetails,
+            ...project.completedTaskDetails
+          ].find((candidate) => candidate.taskId === card.taskId || candidate.text === card.text);
+          const liveMetadata = task ? this.resolveDashKanbanLiveTaskMetadata(project.name, task, liveTaskMetadata) : null;
+          lines.push(`#### ${card.text}`);
+          lines.push(`- Card task id: ${card.taskId || "<none>"}`);
+          lines.push(`- Card priority: ${card.priority || "<empty>"}`);
+          lines.push(`- Card due: ${card.dueDate || "<empty>"}`);
+          lines.push(`- Card effort: ${card.effort || "<empty>"}`);
+          lines.push(`- Card raw text: ${card.rawText || "<empty>"}`);
+          lines.push(`- Snapshot priority: ${(task == null ? void 0 : task.priority) || "<empty>"}`);
+          lines.push(`- Snapshot due: ${(task == null ? void 0 : task.dueDate) || "<empty>"}`);
+          lines.push(`- Snapshot effort: ${(task == null ? void 0 : task.effort) || "<empty>"}`);
+          lines.push(`- Snapshot raw text: ${(task == null ? void 0 : task.rawText) || "<empty>"}`);
+          lines.push(`- Live match priority: ${(liveMetadata == null ? void 0 : liveMetadata.priority) || "<empty>"}`);
+          lines.push(`- Live match due: ${(liveMetadata == null ? void 0 : liveMetadata.dueDate) || "<empty>"}`);
+          lines.push(`- Live match effort: ${(liveMetadata == null ? void 0 : liveMetadata.effort) || "<empty>"}`);
+          lines.push(`- Live match raw text: ${(liveMetadata == null ? void 0 : liveMetadata.rawText) || "<empty>"}`);
+          lines.push("");
+        });
+      });
+    });
+    const file = await this.upsertMarkdownFile("Dashboard Kanban/Debug/DASH Kanban Debug Snapshot.md", lines.join("\n"));
+    if (openAfterGenerate) {
+      await this.openFile(file);
+    }
+    new import_obsidian4.Notice("Wrote DASH Kanban debug snapshot.");
+    return file;
   }
   resolveKanbanLaneOption(projectName, laneKeyOrSection) {
     var _a, _b;
