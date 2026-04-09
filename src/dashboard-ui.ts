@@ -191,6 +191,8 @@ function getDaysUntilDate(dateText: string, referenceDate: Date = new Date()): n
 
 export class DailyDashboardView extends ItemView {
   private static readonly AUTO_REFRESH_MS = 30 * 60 * 1000;
+  private static readonly TIMELINE_RESULTS_PER_PAGE = 10;
+  private static readonly CLEANUP_RESULTS_PER_PAGE = 10;
 
   private plugin: DailyDashboardPlugin;
   private hasDeferredRefreshListeners = false;
@@ -207,6 +209,8 @@ export class DailyDashboardView extends ItemView {
   };
   private autoRefreshHandle: number | null = null;
   private lastRenderAt = 0;
+  private timelinePage = 1;
+  private cleanupPage = 1;
   private draggedHabitIndex: number | null = null;
   private quickAddState: QuickAddState = {
     projectName: "",
@@ -497,6 +501,79 @@ export class DailyDashboardView extends ItemView {
     this.quickAddState.taskText = "";
     this.quickAddPanelOpen = false;
     await this.render();
+  }
+
+  private updateTimelineFilters(nextFilters: TimelineSearchFilters): void {
+    this.timelineFilters = nextFilters;
+    this.timelinePage = 1;
+  }
+
+  private setTimelinePage(nextPage: number): void {
+    this.timelinePage = Math.max(1, nextPage);
+  }
+
+  private setCleanupPage(nextPage: number): void {
+    this.cleanupPage = Math.max(1, nextPage);
+  }
+
+  private getPaginatedItems<T>(items: T[], requestedPage: number, pageSize: number): {
+    items: T[];
+    page: number;
+    totalPages: number;
+    totalItems: number;
+    startItem: number;
+    endItem: number;
+  } {
+    const totalItems = items.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    const page = Math.min(Math.max(1, requestedPage), totalPages);
+    const startIndex = (page - 1) * pageSize;
+    const pageItems = items.slice(startIndex, startIndex + pageSize);
+
+    return {
+      items: pageItems,
+      page,
+      totalPages,
+      totalItems,
+      startItem: totalItems === 0 ? 0 : startIndex + 1,
+      endItem: totalItems === 0 ? 0 : startIndex + pageItems.length
+    };
+  }
+
+  private renderPaginationControls(
+    parent: HTMLElement,
+    pagination: { page: number; totalPages: number; totalItems: number; startItem: number; endItem: number },
+    onNavigate: (page: number) => Promise<void>
+  ): void {
+    if (pagination.totalItems === 0 || pagination.totalPages <= 1) {
+      return;
+    }
+
+    const footer = parent.createDiv({ cls: "daily-dashboard-pagination" });
+    const chips = footer.createDiv({ cls: "daily-dashboard-chip-row" });
+    createSemanticChip(chips, `Page ${pagination.page} of ${pagination.totalPages}`, "focus");
+    createSemanticChip(chips, `${pagination.startItem}-${pagination.endItem} of ${pagination.totalItems}`, "neutral");
+
+    const actions = footer.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    const previousButton = actions.createEl("button", { cls: "daily-dashboard-secondary-button" });
+    previousButton.type = "button";
+    previousButton.disabled = pagination.page <= 1;
+    const previousIcon = previousButton.createSpan({ cls: "daily-dashboard-button-icon" });
+    setIcon(previousIcon, "chevron-left");
+    previousButton.createSpan({ cls: "daily-dashboard-button-label", text: "Previous" });
+    previousButton.addEventListener("click", () => {
+      void onNavigate(pagination.page - 1);
+    });
+
+    const nextButton = actions.createEl("button", { cls: "daily-dashboard-secondary-button" });
+    nextButton.type = "button";
+    nextButton.disabled = pagination.page >= pagination.totalPages;
+    nextButton.createSpan({ cls: "daily-dashboard-button-label", text: "Next" });
+    const nextIcon = nextButton.createSpan({ cls: "daily-dashboard-button-icon" });
+    setIcon(nextIcon, "chevron-right");
+    nextButton.addEventListener("click", () => {
+      void onNavigate(pagination.page + 1);
+    });
   }
 
   private async handleNotificationAction(notification: DashboardNotificationItem): Promise<void> {
@@ -907,6 +984,12 @@ export class DailyDashboardView extends ItemView {
       const cleanupProjects = projects.filter((project) => project.staleDays !== null || project.duplicateTasks.length > 0 || project.emptySections.length > 0 || project.breakdownTasks.length > 0);
       const gamificationSummary = this.plugin.getGamificationSummary(todoSnapshot);
       const timelineResults = this.getTimelineSearchResults();
+      const paginatedTimelineResults = this.getPaginatedItems(
+        timelineResults,
+        this.timelinePage,
+        DailyDashboardView.TIMELINE_RESULTS_PER_PAGE
+      );
+      this.timelinePage = paginatedTimelineResults.page;
       const savedDashboardFilters = getSavedDashboardFilters();
       const layoutCards = getDashboardCardLayoutState();
       const layoutByKey = new Map(layoutCards.map((card) => [card.key, card]));
@@ -2787,7 +2870,10 @@ export class DailyDashboardView extends ItemView {
 
       const timelineFilterGrid = timelineCard.createDiv({ cls: "daily-dashboard-stacked-form" });
       this.createFilterInput(timelineFilterGrid, "Keyword", this.timelineFilters.keyword, (value) => {
-        this.timelineFilters.keyword = value;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          keyword: value
+        });
         void this.render();
       });
       const timelineProjectFilter = timelineFilterGrid.createEl("select", { cls: "daily-dashboard-input" });
@@ -2799,7 +2885,10 @@ export class DailyDashboardView extends ItemView {
         option.selected = project.name === this.timelineFilters.project;
       });
       timelineProjectFilter.addEventListener("change", () => {
-        this.timelineFilters.project = timelineProjectFilter.value;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          project: timelineProjectFilter.value
+        });
         void this.render();
       });
       const timelineTagFilter = timelineFilterGrid.createEl("select", { cls: "daily-dashboard-input" });
@@ -2811,22 +2900,34 @@ export class DailyDashboardView extends ItemView {
         option.selected = tag === this.timelineFilters.tag;
       });
       timelineTagFilter.addEventListener("change", () => {
-        this.timelineFilters.tag = timelineTagFilter.value;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          tag: timelineTagFilter.value
+        });
         void this.render();
       });
       this.createFilterInput(timelineFilterGrid, "From date (YYYY-MM-DD)", this.timelineFilters.fromDate, (value) => {
-        this.timelineFilters.fromDate = value;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          fromDate: value
+        });
         void this.render();
       });
       this.createFilterInput(timelineFilterGrid, "To date (YYYY-MM-DD)", this.timelineFilters.toDate, (value) => {
-        this.timelineFilters.toDate = value;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          toDate: value
+        });
         void this.render();
       });
       const notesOnlyLabel = timelineFilterGrid.createEl("label", { cls: "daily-dashboard-row-meta" });
       const notesOnlyCheckbox = notesOnlyLabel.createEl("input", { attr: { type: "checkbox" } });
       notesOnlyCheckbox.checked = this.timelineFilters.onlyWithNotes;
       notesOnlyCheckbox.addEventListener("change", () => {
-        this.timelineFilters.onlyWithNotes = notesOnlyCheckbox.checked;
+        this.updateTimelineFilters({
+          ...this.timelineFilters,
+          onlyWithNotes: notesOnlyCheckbox.checked
+        });
         void this.render();
       });
       notesOnlyLabel.appendText(" Only show items with notes or descriptive detail");
@@ -2843,13 +2944,20 @@ export class DailyDashboardView extends ItemView {
         });
         button.type = "button";
         button.addEventListener("click", () => {
+          const nextKinds = this.timelineFilters.kinds.includes(item.key)
+            ? this.timelineFilters.kinds.filter((candidate) => candidate !== item.key)
+            : [...this.timelineFilters.kinds, item.key];
+
           if (this.timelineFilters.kinds.includes(item.key)) {
-            this.timelineFilters.kinds = this.timelineFilters.kinds.filter((candidate) => candidate !== item.key);
+            this.updateTimelineFilters({
+              ...this.timelineFilters,
+              kinds: nextKinds.length > 0 ? nextKinds : ["task", "session", "calendar", "log"]
+            });
           } else {
-            this.timelineFilters.kinds = [...this.timelineFilters.kinds, item.key];
-          }
-          if (this.timelineFilters.kinds.length === 0) {
-            this.timelineFilters.kinds = ["task", "session", "calendar", "log"];
+            this.updateTimelineFilters({
+              ...this.timelineFilters,
+              kinds: nextKinds
+            });
           }
           void this.render();
         });
@@ -2866,7 +2974,7 @@ export class DailyDashboardView extends ItemView {
       if (timelineResults.length === 0) {
         timelineList.createDiv({ cls: "daily-dashboard-empty-state", text: "No timeline entries match the current filters." });
       } else {
-        timelineResults.slice(0, 60).forEach((result) => {
+        paginatedTimelineResults.items.forEach((result) => {
           const row = timelineList.createDiv({ cls: "daily-dashboard-project-row" });
           const copy = row.createDiv({ cls: "daily-dashboard-stack" });
           const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
@@ -2885,6 +2993,10 @@ export class DailyDashboardView extends ItemView {
           }
         });
       }
+      this.renderPaginationControls(timelineCard, paginatedTimelineResults, async (page) => {
+        this.setTimelinePage(page);
+        await this.render();
+      });
 
       const heatmapCard = createGridCard("Heatmaps", "See work, sleep, and habit density across recent days instead of inferring patterns from memory.", {
         icon: "layout-grid",
@@ -3098,71 +3210,94 @@ export class DailyDashboardView extends ItemView {
         ...staleProjects.slice(0, 5).map((project) => `Stale project: ${project.name} (${project.staleDays} days)`),
         ...breakdownCandidates.slice(0, 5).map((item) => `Needs breakdown: ${item.project} -> ${item.task}`)
       ];
+      const cleanupRenderers: Array<(parent: HTMLElement) => void> = [];
       if (alertLines.length === 0 && cleanupProjects.length === 0 && cleanupSuggestions.length === 0) {
         alertsList.createDiv({ cls: "daily-dashboard-empty-state", text: "No stale-work or cleanup issues detected right now." });
       } else {
         cleanupSuggestions.slice(0, alertsExpanded ? cleanupSuggestions.length : 3).forEach((item) => {
-          const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
-          const copy = row.createDiv({ cls: "daily-dashboard-stack" });
-          const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
-          createSemanticChip(chipRow, item.projectName, "neutral");
-          createSemanticChip(chipRow, item.kind.replace(/-/g, " "), item.kind === "stale-project" || item.kind === "overdue-tasks" ? "alert" : "state");
-          copy.createEl("strong", { text: item.summary });
-          if (item.detail) {
-            copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.detail });
-          }
-          const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-          createButton(actions, item.actionLabel, async () => this.handleCleanupSuggestionAction(item.action), false, item.action === "open-cleanup-note" ? "sparkles" : "file-text");
-          createButton(actions, "Dismiss", async () => this.plugin.dismissCleanupSuggestion(item.id), false, "x");
+          cleanupRenderers.push((parent) => {
+            const row = parent.createDiv({ cls: "daily-dashboard-project-row" });
+            const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+            const chipRow = copy.createDiv({ cls: "daily-dashboard-chip-row" });
+            createSemanticChip(chipRow, item.projectName, "neutral");
+            createSemanticChip(chipRow, item.kind.replace(/-/g, " "), item.kind === "stale-project" || item.kind === "overdue-tasks" ? "alert" : "state");
+            copy.createEl("strong", { text: item.summary });
+            if (item.detail) {
+              copy.createEl("span", { cls: "daily-dashboard-row-meta", text: item.detail });
+            }
+            const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+            createButton(actions, item.actionLabel, async () => this.handleCleanupSuggestionAction(item.action), false, item.action === "open-cleanup-note" ? "sparkles" : "file-text");
+            createButton(actions, "Dismiss", async () => this.plugin.dismissCleanupSuggestion(item.id), false, "x");
+          });
         });
 
         if (alertsExpanded && cleanupProjects.length > 0) {
-        cleanupProjects
-          .sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left))
-          .slice(0, 10)
-          .forEach((project) => {
-            const row = alertsList.createDiv({ cls: "daily-dashboard-project-row" });
-            const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
-            createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
-            createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
-            createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
-            row.createEl("strong", { text: project.name });
-            row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
-            if (project.projectSummary) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
-            }
-            if (project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
-            }
-            if (project.staleDays !== null) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
-            }
-            if (project.breakdownTasks.length > 0) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" • ")}` });
-            }
-            if (project.duplicateTasks.length > 0) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" • ")}` });
-            }
-            if (project.emptySections.length > 0) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" • ")}` });
-            }
-            if (project.overdueTasks.length > 0) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" • ")}` });
-            }
-            if (project.blockedTasks.length > 0) {
-              row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
-            }
-          });
+          cleanupProjects
+            .sort((left, right) => getProjectIssueCount(right) - getProjectIssueCount(left))
+            .forEach((project) => {
+              cleanupRenderers.push((parent) => {
+                const row = parent.createDiv({ cls: "daily-dashboard-project-row" });
+                const chipRow = row.createDiv({ cls: "daily-dashboard-chip-row" });
+                createSemanticChip(chipRow, `${getProjectIssueCount(project)} issue${getProjectIssueCount(project) === 1 ? "" : "s"}`, getProjectIssueCount(project) >= 4 ? "alert" : "state");
+                createSemanticChip(chipRow, project.healthLabel, project.healthScore >= 50 ? "state" : "alert");
+                createSemanticChip(chipRow, project.projectState === "active" ? "Active" : project.projectState === "incubating" ? "Incubating" : "Someday", project.projectState === "active" ? "neutral" : "log");
+                row.createEl("strong", { text: project.name });
+                row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Next action: ${project.nextAction}` });
+                if (project.projectSummary) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Summary: ${project.projectSummary}` });
+                }
+                if (project.waitingOn && project.waitingOn.toLowerCase() !== "none") {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Waiting on: ${project.waitingOn}` });
+                }
+                if (project.staleDays !== null) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Stale: ${project.staleDays} day${project.staleDays === 1 ? "" : "s"} since completion` });
+                }
+                if (project.breakdownTasks.length > 0) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Needs breakdown: ${project.breakdownTasks.slice(0, 3).join(" • ")}` });
+                }
+                if (project.duplicateTasks.length > 0) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Duplicates: ${project.duplicateTasks.slice(0, 3).join(" • ")}` });
+                }
+                if (project.emptySections.length > 0) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Empty sections: ${project.emptySections.join(" • ")}` });
+                }
+                if (project.overdueTasks.length > 0) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Overdue: ${project.overdueTasks.slice(0, 2).map((task) => task.text).join(" • ")}` });
+                }
+                if (project.blockedTasks.length > 0) {
+                  row.createEl("span", { cls: "daily-dashboard-row-meta", text: `Blocked: ${project.blockedTasks.slice(0, 2).map((task) => task.blockedReason ? `${task.text} (${task.blockedReason})` : task.text).join(" • ")}` });
+                }
+              });
+            });
         } else {
-        alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
-          const row = alertsList.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
-          row.createEl("span", { text: line });
-        });
+          alertLines.slice(0, alertsExpanded ? alertLines.length : 6).forEach((line) => {
+            cleanupRenderers.push((parent) => {
+              const row = parent.createDiv({ cls: alertsExpanded ? "daily-dashboard-project-row" : "daily-dashboard-project-row daily-dashboard-project-row--dense" });
+              row.createEl("span", { text: line });
+            });
+          });
         }
+
+        const paginatedCleanupRows = this.getPaginatedItems(
+          cleanupRenderers,
+          this.cleanupPage,
+          DailyDashboardView.CLEANUP_RESULTS_PER_PAGE
+        );
+        this.cleanupPage = paginatedCleanupRows.page;
+        paginatedCleanupRows.items.forEach((renderRow) => {
+          renderRow(alertsList);
+        });
+        this.renderPaginationControls(alertsCard, paginatedCleanupRows, async (page) => {
+          this.setCleanupPage(page);
+          await this.render();
+        });
       }
       const alertActions = alertsCard.createDiv({ cls: "daily-dashboard-actions-inline" });
       if (alertLines.length > 6 || cleanupSuggestions.length > 3 || cleanupProjects.length > 0) {
-        createButton(alertActions, alertsExpanded ? "Show summary" : "Show details", async () => this.toggleSectionExpanded("cleanup-details"), false, alertsExpanded ? "chevrons-up" : "chevrons-down");
+        createButton(alertActions, alertsExpanded ? "Show summary" : "Show details", async () => {
+          this.cleanupPage = 1;
+          await this.toggleSectionExpanded("cleanup-details");
+        }, false, alertsExpanded ? "chevrons-up" : "chevrons-down");
       }
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
@@ -3877,7 +4012,7 @@ export class DailyDashboardView extends ItemView {
   }
 
   private resetDashboardFilters(): void {
-    this.timelineFilters = {
+    this.updateTimelineFilters({
       keyword: "",
       project: "",
       tag: "",
@@ -3885,7 +4020,7 @@ export class DailyDashboardView extends ItemView {
       fromDate: "",
       toDate: "",
       onlyWithNotes: false
-    };
+    });
     this.selectedSavedFilterName = "";
     setDashboardSelectedFilterName("");
   }
@@ -3922,14 +4057,14 @@ export class DailyDashboardView extends ItemView {
       return;
     }
 
-    this.timelineFilters = {
+    this.updateTimelineFilters({
       ...filter.timelineFilters,
       keyword: filter.timelineFilters.keyword || filter.workLogFilters.keyword,
       project: filter.timelineFilters.project || filter.workLogFilters.project,
       fromDate: filter.timelineFilters.fromDate || filter.workLogFilters.fromDate,
       toDate: filter.timelineFilters.toDate || filter.workLogFilters.toDate,
       kinds: filter.timelineFilters.kinds.length > 0 ? [...filter.timelineFilters.kinds] : ["task", "session", "calendar", "log"]
-    };
+    });
     this.selectedSavedFilterName = filter.name;
     setDashboardSelectedFilterName(filter.name);
   }

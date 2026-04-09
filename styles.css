@@ -1073,7 +1073,7 @@
 
 .daily-dashboard-hero-footer {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
@@ -1200,7 +1200,7 @@
   align-items: center;
   justify-content: center;
   min-width: 22px;
-  min-height: 200px;
+  min-height: 22px;
   padding: 0 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--daily-dashboard-accent) 22%, var(--background-primary));
@@ -1210,9 +1210,6 @@
 }
 
 .daily-dashboard-hero-popover,
-  .dash-kanban-project-header {
-    grid-template-columns: 1fr;
-  }
 .daily-dashboard-notification-popover {
   position: absolute;
   top: calc(100% + 10px);
@@ -1232,6 +1229,15 @@
 
 .daily-dashboard-quick-add-popover {
   width: min(360px, calc(100vw - 56px));
+}
+
+.daily-dashboard-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .daily-dashboard-notification-popover-header {
