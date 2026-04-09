@@ -9201,6 +9201,9 @@ export class DashKanbanView extends ItemView {
     const pill = document.createElement("span");
     pill.className = "dash-kanban-card-label";
     pill.dataset.kind = kind;
+    if (kind === "priority") {
+      pill.dataset.priority = getKanbanPriorityTone(value);
+    }
     const labelEl = document.createElement("strong");
     labelEl.textContent = label;
     pill.appendChild(labelEl);
@@ -9208,6 +9211,42 @@ export class DashKanbanView extends ItemView {
     valueEl.textContent = value;
     pill.appendChild(valueEl);
     parent.appendChild(pill);
+  }
+
+  private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean): void {
+    window.setTimeout(() => {
+      if (!popover.isConnected || !anchor.isConnected) {
+        return;
+      }
+
+      popover.style.visibility = "hidden";
+      popover.style.position = "fixed";
+      popover.style.left = "0px";
+      popover.style.top = "0px";
+
+      const anchorRect = anchor.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      const horizontalPadding = 12;
+      const verticalGap = 8;
+      const width = Math.min(popoverRect.width || 240, window.innerWidth - horizontalPadding * 2);
+      const left = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, anchorRect.right - width));
+
+      let top = preferBelow
+        ? anchorRect.bottom + verticalGap
+        : anchorRect.top - popoverRect.height - verticalGap;
+
+      if (top < horizontalPadding) {
+        top = anchorRect.bottom + verticalGap;
+      }
+      if (top + popoverRect.height > window.innerHeight - horizontalPadding) {
+        top = Math.max(horizontalPadding, anchorRect.top - popoverRect.height - verticalGap);
+      }
+
+      popover.style.width = `${width}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      popover.style.visibility = "visible";
+    }, 0);
   }
 
   private closeInlineCardEditor(): void {
@@ -10573,14 +10612,6 @@ export class DashKanbanView extends ItemView {
       title.textContent = card.text;
       content.appendChild(title);
 
-      if (card.priority) {
-        const priorityBadge = document.createElement("div");
-        priorityBadge.className = "dash-kanban-card-priority";
-        priorityBadge.dataset.priority = priorityTone;
-        priorityBadge.textContent = `Priority: ${card.priority.trim().charAt(0).toUpperCase()}${card.priority.trim().slice(1).toLowerCase()}`;
-        content.appendChild(priorityBadge);
-      }
-
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
@@ -10709,6 +10740,7 @@ export class DashKanbanView extends ItemView {
         picker.appendChild(button);
       });
       actionWrap.appendChild(picker);
+      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
     }
 
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
@@ -10757,6 +10789,7 @@ export class DashKanbanView extends ItemView {
         }
       });
       actionWrap.appendChild(picker);
+      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
       window.setTimeout(() => input.focus(), 0);
     }
 
@@ -10805,6 +10838,7 @@ export class DashKanbanView extends ItemView {
         }
       });
       actionWrap.appendChild(picker);
+      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
       window.setTimeout(() => input.focus(), 0);
     }
 
