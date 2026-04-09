@@ -4236,6 +4236,10 @@ function getKanbanLaneOptionsForProject(projectName, boardTemplates = {}, boardC
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      categoryKey: lane.categoryKey,
+      categoryLabel: lane.categoryLabel,
+      categoryColor: lane.categoryColor,
+      categoryTag: lane.categoryTag,
       targetSection: lane.done ? "Done" : (_a = lane.mappedSections[0]) != null ? _a : "",
       done: lane.done,
       unmapped: !lane.done && lane.mappedSections.length === 0
@@ -4984,34 +4988,16 @@ function updateTaskByIdInProject(content, input) {
     updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase()
   };
 }
-function moveTaskByIdInProject(content, input) {
-  var _a;
-  const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
-  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
-  if (!location) {
-    return { content, updated: false };
-  }
-  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
-  if (!removed) {
-    return { content, updated: false };
-  }
-  const targetSection = input.sectionName.trim() || location.section;
-  const movedTaskText = targetSection.toLowerCase() === "waiting" ? removed.taskText : stripBlockingTaskAnnotations(removed.taskText);
-  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, targetSection, movedTaskText);
-  return {
-    content: nextContent,
-    updated: nextContent !== content || location.section.toLowerCase() !== targetSection.toLowerCase()
-  };
-}
 function transferTaskByIdBetweenProjects(content, input) {
-  var _a;
+  var _a, _b;
   const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
   const removed = removeTaskByIdFromProject(content, input.fromProjectName, input.taskId, taskRegistry);
   if (!removed) {
     return { content, updated: false, taskText: "" };
   }
   const targetSection = input.sectionName.trim() || "General";
-  const movedTaskText = targetSection.toLowerCase() === "waiting" ? removed.taskText : stripBlockingTaskAnnotations(removed.taskText);
+  const nextTaskText = ((_b = input.taskText) == null ? void 0 : _b.trim().length) ? input.taskText.trim() : removed.taskText;
+  const movedTaskText = targetSection.toLowerCase() === "waiting" ? nextTaskText : stripBlockingTaskAnnotations(nextTaskText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.toProjectName, targetSection, movedTaskText);
   return {
     content: nextContent,
@@ -10828,13 +10814,13 @@ var PromoteTaskModal = class extends import_obsidian3.Modal {
 };
 var KanbanQuickAddModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, projects, initial) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     super(app);
     this.plugin = plugin;
     this.projects = projects;
     this.selectedProjectName = (_d = (_c = (_a = projects.find((project) => project.name === (initial == null ? void 0 : initial.projectName))) == null ? void 0 : _a.name) != null ? _c : (_b = projects[0]) == null ? void 0 : _b.name) != null ? _d : "";
-    const defaultLane = (_f = (_e = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _e.targetSection) != null ? _f : "Now";
-    this.selectedLane = (initial == null ? void 0 : initial.lane) && this.plugin.getKanbanLaneOptions(this.selectedProjectName).some((option) => option.targetSection === initial.lane) ? initial.lane : defaultLane;
+    const defaultLane = (_f = (_e = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _e.laneKey) != null ? _f : "now";
+    this.selectedLane = (initial == null ? void 0 : initial.lane) && this.plugin.getKanbanLaneOptions(this.selectedProjectName).some((option) => option.laneKey === initial.lane || option.targetSection === initial.lane) ? (_h = (_g = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => option.laneKey === initial.lane || option.targetSection === initial.lane)) == null ? void 0 : _g.laneKey) != null ? _h : defaultLane : defaultLane;
     this.taskText = "";
   }
   getLaneOptions() {
@@ -10849,14 +10835,15 @@ var KanbanQuickAddModal = class extends import_obsidian3.Modal {
       dropdown.setValue(this.selectedProjectName);
       dropdown.onChange((value) => {
         this.selectedProjectName = value;
+        this.onOpen();
       });
     });
     new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("This maps directly back to the matching Master Task Hub section.").addDropdown((dropdown) => {
-      var _a, _b;
+      var _a;
       const laneOptions = this.getLaneOptions();
-      laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
-      if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
-        this.selectedLane = ((_a = laneOptions[0]) == null ? void 0 : _a.targetSection) || ((_b = laneOptions[0]) == null ? void 0 : _b.label) || "Now";
+      laneOptions.forEach((lane) => dropdown.addOption(lane.laneKey, lane.categoryLabel ? `${lane.categoryLabel} \u2022 ${lane.label}` : lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+      if (!laneOptions.some((lane) => lane.laneKey === this.selectedLane)) {
+        this.selectedLane = ((_a = laneOptions[0]) == null ? void 0 : _a.laneKey) || "now";
       }
       dropdown.setValue(this.selectedLane);
       dropdown.onChange((value) => {
@@ -10876,7 +10863,7 @@ var KanbanQuickAddModal = class extends import_obsidian3.Modal {
           new import_obsidian3.Notice("Project and task text are required.");
           return;
         }
-        await this.plugin.addTaskToProject(this.selectedProjectName, this.selectedLane, this.taskText);
+        await this.plugin.addKanbanTask(this.selectedProjectName, this.selectedLane, this.taskText);
         new import_obsidian3.Notice("Kanban task added.");
         this.close();
       });
@@ -10895,6 +10882,8 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     var _a, _b, _c, _d, _e, _f;
     super(app);
     this.showInHub = true;
+    this.boardHeight = 420;
+    this.collapsedInHub = false;
     this.laneDefinitions = [];
     this.plugin = plugin;
     this.projects = projects;
@@ -10910,6 +10899,8 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.selectedProjectName = projectName;
     this.selectedTemplateId = (_b = fallbackTemplate == null ? void 0 : fallbackTemplate.templateId) != null ? _b : "execution-default";
     this.showInHub = configuration.showInHub;
+    this.boardHeight = configuration.boardHeight;
+    this.collapsedInHub = configuration.collapsedInHub;
     this.laneDefinitions = this.cloneLaneDefinitions(
       configuration.laneDefinitions.length > 0 ? configuration.laneDefinitions : (_c = fallbackTemplate == null ? void 0 : fallbackTemplate.laneDefinitions) != null ? _c : []
     );
@@ -10923,6 +10914,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      categoryKey: lane.categoryKey,
+      categoryLabel: lane.categoryLabel,
+      categoryColor: lane.categoryColor,
+      categoryTag: lane.categoryTag,
       ruleType: lane.ruleType,
       mappedSections: [...lane.mappedSections],
       done: lane.done
@@ -10942,6 +10937,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
         label,
         helperText,
+        categoryKey: this.buildLaneKey(lane.categoryLabel.trim(), lane.categoryKey || `group-${index + 1}`),
+        categoryLabel: lane.categoryLabel.trim(),
+        categoryColor: lane.categoryColor.trim(),
+        categoryTag: lane.categoryTag.trim().toLowerCase(),
         ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
         mappedSections,
         done
@@ -10990,6 +10989,21 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         this.showInHub = value;
       });
     });
+    new import_obsidian3.Setting(contentEl).setName("Board height").setDesc("Sets the lane viewport height before cards begin scrolling inside each lane.").addText((text) => {
+      text.setValue(`${this.boardHeight}`).onChange((value) => {
+        this.boardHeight = Math.min(Math.max(Math.round(Number(value || 420)), 260), 900);
+      });
+      text.inputEl.type = "number";
+      text.inputEl.min = "260";
+      text.inputEl.max = "900";
+      text.inputEl.step = "10";
+    });
+    new import_obsidian3.Setting(contentEl).setName("Collapsed in All Projects").setDesc("Use this as the default collapsed state when the board appears in the multi-project workspace.").addToggle((toggle) => {
+      toggle.setValue(this.collapsedInHub);
+      toggle.onChange((value) => {
+        this.collapsedInHub = value;
+      });
+    });
     const template = this.getSelectedTemplate();
     if (template == null ? void 0 : template.description) {
       contentEl.createEl("p", { cls: "setting-item-description", text: template.description });
@@ -11011,6 +11025,21 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
       new import_obsidian3.Setting(row).setName("Helper text").addText((text) => {
         text.setValue(lane.helperText).onChange((value) => {
           this.laneDefinitions[index].helperText = value;
+        });
+      });
+      new import_obsidian3.Setting(row).setName("Category band").setDesc("Lanes with the same category render together under one colored board band.").addText((text) => {
+        text.setValue(lane.categoryLabel).onChange((value) => {
+          this.laneDefinitions[index].categoryLabel = value;
+        });
+      });
+      new import_obsidian3.Setting(row).setName("Category color").setDesc("Hex color for the category band, such as #d63131 or #3041d7.").addText((text) => {
+        text.setValue(lane.categoryColor).onChange((value) => {
+          this.laneDefinitions[index].categoryColor = value;
+        });
+      });
+      new import_obsidian3.Setting(row).setName("Category tag").setDesc("Optional hashtag used to assign tasks into this swimlane band, such as bug, feature, or expedite.").addText((text) => {
+        text.setValue(lane.categoryTag).onChange((value) => {
+          this.laneDefinitions[index].categoryTag = value.replace(/^#/, "");
         });
       });
       new import_obsidian3.Setting(row).setName("Mapped sections").setDesc("Comma-separated Master Task Hub section names, such as Now, Next, Waiting.").addText((text) => {
@@ -11044,6 +11073,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
           laneKey: `lane-${this.laneDefinitions.length + 1}`,
           label: "New Lane",
           helperText: "",
+          categoryKey: "",
+          categoryLabel: "Workflow",
+          categoryColor: "",
+          categoryTag: "",
           ruleType: "custom",
           mappedSections: [],
           done: false
@@ -11069,7 +11102,9 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
           projectName: this.selectedProjectName,
           templateId: this.selectedTemplateId,
           showInHub: this.showInHub,
-          laneDefinitions
+          laneDefinitions,
+          boardHeight: this.boardHeight,
+          collapsedInHub: this.collapsedInHub
         });
         new import_obsidian3.Notice("Kanban board settings saved.");
         this.close();
@@ -11092,7 +11127,7 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
     this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
     this.selectedProjectName = (_d = (_c = (_a = this.projects.find((project) => project.name === (initial == null ? void 0 : initial.projectName))) == null ? void 0 : _a.name) != null ? _c : (_b = this.projects[0]) == null ? void 0 : _b.name) != null ? _d : "";
     this.selectedTaskId = (_e = initial == null ? void 0 : initial.taskId) != null ? _e : "";
-    this.selectedLane = (_g = (_f = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _f.targetSection) != null ? _g : "Now";
+    this.selectedLane = (_g = (_f = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)) == null ? void 0 : _f.laneKey) != null ? _g : "now";
     this.taskText = "";
     this.syncSelectionFromTask();
   }
@@ -11116,24 +11151,45 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
     var _a, _b;
     return (_b = this.getEditableTasks((_a = this.getSelectedProject()) != null ? _a : {}).find((task) => task.taskId === this.selectedTaskId)) != null ? _b : null;
   }
+  findLaneOptionForTask(task) {
+    var _a;
+    const laneOptions = this.getLaneOptions();
+    const taskTags = Array.from(task.rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g)).map((match) => match[1].trim().toLowerCase());
+    return (_a = laneOptions.find((option) => {
+      var _a2;
+      const matchesSection = option.targetSection.toLowerCase() === task.section.toLowerCase() || option.label.toLowerCase() === (task.kanbanLane || task.section).toLowerCase();
+      if (!matchesSection) {
+        return false;
+      }
+      const peerTaggedLanes = laneOptions.filter((candidate) => candidate.targetSection.toLowerCase() === option.targetSection.toLowerCase() && candidate.categoryTag.trim().length > 0);
+      if (!option.categoryTag.trim()) {
+        return !peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+      }
+      if (taskTags.includes(option.categoryTag.trim().toLowerCase())) {
+        return true;
+      }
+      const taskHasPeerTag = peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+      return !taskHasPeerTag && ((_a2 = peerTaggedLanes[0]) == null ? void 0 : _a2.laneKey) === option.laneKey;
+    })) != null ? _a : null;
+  }
   syncSelectionFromTask() {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     const project = this.getSelectedProject();
     const tasks = project ? this.getEditableTasks(project) : [];
     if (tasks.length === 0) {
       this.selectedTaskId = "";
       this.taskText = "";
-      this.selectedLane = "Now";
+      this.selectedLane = "now";
       return;
     }
     const selectedTask = (_a = tasks.find((task) => task.taskId === this.selectedTaskId)) != null ? _a : tasks[0];
     this.selectedTaskId = selectedTask.taskId;
     this.taskText = selectedTask.text;
     const laneOptions = this.getLaneOptions();
-    const matchingLane = (_b = laneOptions.find((option) => option.targetSection.toLowerCase() === selectedTask.section.toLowerCase())) != null ? _b : laneOptions.find((option) => option.label.toLowerCase() === (selectedTask.kanbanLane || selectedTask.section).toLowerCase());
-    this.selectedLane = (matchingLane == null ? void 0 : matchingLane.targetSection) || ((_c = laneOptions[0]) == null ? void 0 : _c.targetSection) || "Now";
-    if (!laneOptions.some((option) => option.targetSection === this.selectedLane)) {
-      this.selectedLane = ((_d = laneOptions[0]) == null ? void 0 : _d.targetSection) || "Now";
+    const matchingLane = this.findLaneOptionForTask(selectedTask);
+    this.selectedLane = (matchingLane == null ? void 0 : matchingLane.laneKey) || ((_b = laneOptions[0]) == null ? void 0 : _b.laneKey) || "now";
+    if (!laneOptions.some((option) => option.laneKey === this.selectedLane)) {
+      this.selectedLane = ((_c = laneOptions[0]) == null ? void 0 : _c.laneKey) || "now";
     }
   }
   formatTaskMeta(task) {
@@ -11193,11 +11249,11 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
       window.setTimeout(() => textArea.inputEl.focus(), 0);
     });
     new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.").addDropdown((dropdown) => {
-      var _a2, _b2;
+      var _a2;
       const laneOptions = this.getLaneOptions();
-      laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
-      if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
-        this.selectedLane = ((_a2 = laneOptions[0]) == null ? void 0 : _a2.targetSection) || ((_b2 = laneOptions[0]) == null ? void 0 : _b2.label) || "Now";
+      laneOptions.forEach((lane) => dropdown.addOption(lane.laneKey, lane.categoryLabel ? `${lane.categoryLabel} \u2022 ${lane.label}` : lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+      if (!laneOptions.some((lane) => lane.laneKey === this.selectedLane)) {
+        this.selectedLane = ((_a2 = laneOptions[0]) == null ? void 0 : _a2.laneKey) || "now";
       }
       dropdown.setValue(this.selectedLane);
       dropdown.onChange((value) => {
@@ -12790,13 +12846,13 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       projectName: project.projectName,
       taskId: card.taskId,
       taskText: card.text,
-      lane: card.targetSection
+      lane: card.laneKey
     };
   }
   getEditableLaneChoices(projectName, currentLane) {
     const choices = this.plugin.getKanbanLaneOptions(projectName).filter((option) => !option.done).map((option) => ({
-      value: option.targetSection || option.label,
-      label: option.helperText ? `${option.label} (${option.helperText})` : option.label
+      value: option.laneKey,
+      label: option.categoryLabel ? `${option.categoryLabel} \u2022 ${option.label}` : option.helperText ? `${option.label} (${option.helperText})` : option.label
     }));
     if (!choices.some((choice) => choice.value === currentLane) && currentLane.trim()) {
       choices.unshift({ value: currentLane, label: currentLane });
@@ -12855,7 +12911,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         void this.plugin.completeKanbanTask(project.projectName, card.taskId);
       }),
       this.createHeaderButton("plus-square", "Add sibling", () => {
-        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.targetSection);
+        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.laneKey);
       }),
       this.createHeaderButton("trash-2", "Delete", () => {
         const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
@@ -12921,7 +12977,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
             projectName: project.projectName,
             taskId: card.taskId,
             taskText: card.text,
-            lane: card.targetSection
+            lane: card.laneKey
           };
           void this.requestRefresh();
         })
@@ -13149,15 +13205,82 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       ...card.tags
     ].some((value) => value.toLowerCase().includes(query));
   }
+  getProjectLaneGroups(project) {
+    const groups = [];
+    project.lanes.forEach((lane) => {
+      const key = lane.categoryKey || lane.laneKey;
+      const existing = groups.find((group) => group.key === key);
+      if (existing) {
+        existing.lanes.push(lane);
+        return;
+      }
+      groups.push({
+        key,
+        label: lane.categoryLabel,
+        color: lane.categoryColor,
+        lanes: [lane]
+      });
+    });
+    return groups;
+  }
+  bindProjectCollapse(header, project, mode) {
+    if (mode !== "all-projects") {
+      return;
+    }
+    const toggle = () => {
+      void this.plugin.updateKanbanBoardPresentation(project.projectName, { collapsedInHub: !project.collapsedInHub });
+    };
+    header.addClass("is-clickable");
+    header.tabIndex = 0;
+    header.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target == null ? void 0 : target.closest("button, a, input, select, textarea, label")) {
+        return;
+      }
+      toggle();
+    });
+    header.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      toggle();
+    });
+  }
+  bindProjectResize(handle, board, project) {
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const startY = event.clientY;
+      const startHeight = project.boardHeight;
+      const onMove = (moveEvent) => {
+        const nextHeight = Math.min(Math.max(Math.round(startHeight + (moveEvent.clientY - startY)), 260), 900);
+        board.style.setProperty("--dash-kanban-board-height", `${nextHeight}px`);
+      };
+      const onUp = (upEvent) => {
+        const nextHeight = Math.min(Math.max(Math.round(startHeight + (upEvent.clientY - startY)), 260), 900);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        void this.plugin.updateKanbanBoardPresentation(project.projectName, { boardHeight: nextHeight });
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+  }
   renderProjectBoard(parent, project, mode) {
-    const board = parent.createDiv({ cls: "dash-kanban-project-board" });
+    const board = parent.createDiv({ cls: `dash-kanban-project-board${project.collapsedInHub && mode === "all-projects" ? " is-collapsed" : ""}` });
+    board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
+    this.bindProjectCollapse(boardHeader, project, mode);
     const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
     heading.createEl("h2", { text: project.projectName });
     if (project.focus) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.focus });
     } else if (project.projectSummary) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.projectSummary });
+    }
+    if (mode === "all-projects") {
+      heading.createEl("p", { cls: "dash-kanban-project-hint", text: project.collapsedInHub ? "Collapsed. Click header to expand." : "Click header to collapse." });
     }
     const projectMeta = boardHeader.createDiv({ cls: "dash-kanban-project-meta" });
     createSemanticChip(projectMeta, project.templateName, "capture");
@@ -13168,6 +13291,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       createSemanticChip(projectMeta, `${project.archivedCount} archived`, "done");
     }
     const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
+    boardActions.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
     boardActions.append(
       this.createHeaderButton("plus", "Add", () => {
         void this.plugin.openKanbanQuickAddFlow(project.projectName);
@@ -13184,10 +13310,29 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         void this.plugin.openNoteByPath(project.notePath);
       }));
     }
-    const lanes = board.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
-    project.lanes.forEach((lane) => {
-      this.renderLane(lanes, project, lane);
+    const collapseChip = boardHeader.createDiv({ cls: "dash-kanban-project-collapse" });
+    (0, import_obsidian3.setIcon)(collapseChip, project.collapsedInHub && mode === "all-projects" ? "chevron-right" : "chevron-down");
+    if (project.collapsedInHub && mode === "all-projects") {
+      return;
+    }
+    const body = board.createDiv({ cls: "dash-kanban-project-body" });
+    this.getProjectLaneGroups(project).forEach((group) => {
+      const category = body.createDiv({ cls: "dash-kanban-category-section" });
+      if (group.label) {
+        const categoryHeader = category.createDiv({ cls: "dash-kanban-category-header" });
+        if (group.color) {
+          categoryHeader.style.setProperty("--dash-kanban-category-color", group.color);
+        }
+        categoryHeader.createEl("span", { text: group.label.toUpperCase() });
+      }
+      const lanes = category.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
+      group.lanes.forEach((lane) => {
+        this.renderLane(lanes, project, lane);
+      });
     });
+    const resizeHandle = board.createDiv({ cls: "dash-kanban-board-resizer" });
+    resizeHandle.createSpan({ text: "Drag to resize board height" });
+    this.bindProjectResize(resizeHandle, board, project);
   }
   renderLane(parent, project, lane) {
     const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}` });
@@ -13219,10 +13364,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         return;
       }
       if (dragged.projectName !== project.projectName) {
-        void this.plugin.transferKanbanTask(dragged.projectName, project.projectName, dragged.taskId, lane.targetSection);
+        void this.plugin.transferKanbanTask(dragged.projectName, project.projectName, dragged.taskId, lane.laneKey);
         return;
       }
-      void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.targetSection);
+      void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.laneKey);
     });
     if (lane.cards.length === 0) {
       cards.createEl("p", { cls: "dash-kanban-lane-empty", text: lane.done ? "No completed cards here." : "Drop work here." });
@@ -13309,7 +13454,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }),
       this.createCardActionButton("plus-square", "Add sibling card", (event) => {
         event.stopPropagation();
-        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.targetSection);
+        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.laneKey);
       })
     );
     const title = document.createElement("h4");
@@ -15611,6 +15756,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       templateId: "execution-default",
       showInHub: true,
       laneDefinitions: [],
+      boardHeight: 420,
+      collapsedInHub: false,
       updatedAt: ""
     };
   }
@@ -15654,7 +15801,51 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       projects
     };
   }
+  resolveKanbanLaneOption(projectName, laneKeyOrSection) {
+    var _a, _b;
+    const normalized = laneKeyOrSection.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    return (_b = (_a = this.getKanbanLaneOptions(projectName).find((lane) => lane.laneKey.trim().toLowerCase() === normalized)) != null ? _a : this.getKanbanLaneOptions(projectName).find((lane) => lane.targetSection.trim().toLowerCase() === normalized || lane.label.trim().toLowerCase() === normalized)) != null ? _b : null;
+  }
+  stripKanbanCategoryTagsFromTaskText(taskText, categoryTags) {
+    let nextText = taskText;
+    categoryTags.forEach((tag) => {
+      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
+    });
+    return nextText.replace(/\s{2,}/g, " ").trim();
+  }
+  formatTaskTextForKanbanLane(projectName, laneKeyOrSection, taskText) {
+    const laneOption = this.resolveKanbanLaneOption(projectName, laneKeyOrSection);
+    const laneOptions = this.getKanbanLaneOptions(projectName);
+    const categoryTags = laneOptions.map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+    let nextText = this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags);
+    if (laneOption == null ? void 0 : laneOption.categoryTag.trim()) {
+      nextText = `${nextText} #${laneOption.categoryTag.trim()}`.trim();
+    }
+    return nextText.replace(/\s{2,}/g, " ").trim();
+  }
+  async getKanbanTaskDisplayById(projectName, taskId) {
+    var _a, _b;
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
+    const task = project ? [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails,
+      ...project.completedTaskDetails
+    ].find((candidate) => candidate.taskId === taskId) : null;
+    if (task) {
+      return getTodoTaskDisplayText(task.rawText, task.section);
+    }
+    return (_b = (_a = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _a.taskText) != null ? _b : null;
+  }
   async moveKanbanTask(projectName, taskId, laneSection) {
+    var _a;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -15664,32 +15855,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (!projectName.trim() || !taskId.trim() || !targetLane) {
       return false;
     }
-    const content = await this.app.vault.read(todoFile);
-    const laneOptions = this.getKanbanLaneOptions(projectName);
-    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === targetLane || lane.label === targetLane);
+    const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
     if (targetLaneOption == null ? void 0 : targetLaneOption.done) {
       return this.completeKanbanTask(projectName, taskId);
     }
-    const updated = moveTaskByIdInProject(content, {
-      projectName,
-      taskId,
-      sectionName: targetLane,
-      taskRegistry: this.data.kanbanState.taskRegistry
-    });
-    if (!updated.updated) {
-      new import_obsidian4.Notice("Could not move that Kanban task in the Master Task Hub.");
+    const currentTaskText = await this.getKanbanTaskDisplayById(projectName, taskId);
+    if (!currentTaskText) {
+      new import_obsidian4.Notice("Could not find that Kanban task in the Master Task Hub.");
       return false;
     }
-    await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
-    return true;
+    return this.editKanbanTask(projectName, taskId, currentTaskText, (_a = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _a : targetLane);
   }
   async transferKanbanTask(fromProjectName, toProjectName, taskId, laneSection) {
+    var _a;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -15704,15 +15882,21 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (normalizedFromProject === normalizedToProject) {
       return this.moveKanbanTask(normalizedToProject, taskId, normalizedSection);
     }
-    const laneOptions = this.getKanbanLaneOptions(normalizedToProject);
-    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === normalizedSection || lane.label === normalizedSection);
-    const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.done) ? "Next" : normalizedSection;
+    const targetLaneOption = this.resolveKanbanLaneOption(normalizedToProject, normalizedSection);
+    const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.done) ? "Next" : (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || normalizedSection;
+    const currentTaskText = await this.getKanbanTaskDisplayById(normalizedFromProject, taskId);
+    if (!currentTaskText) {
+      new import_obsidian4.Notice("Could not find that Kanban task to transfer.");
+      return false;
+    }
+    const nextTaskText = this.formatTaskTextForKanbanLane(normalizedToProject, (_a = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _a : normalizedSection, currentTaskText);
     const content = await this.app.vault.read(todoFile);
     const transferred = transferTaskByIdBetweenProjects(content, {
       fromProjectName: normalizedFromProject,
       toProjectName: normalizedToProject,
       taskId,
       sectionName: effectiveTargetSection,
+      taskText: nextTaskText,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
     if (!transferred.updated) {
@@ -15862,6 +16046,24 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       templateId,
       showInHub: input.showInHub,
       laneDefinitions: normalizedLaneDefinitions,
+      boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
+      collapsedInHub: Boolean(input.collapsedInHub),
+      updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    };
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async updateKanbanBoardPresentation(projectName, input) {
+    const normalizedProjectName = projectName.trim();
+    if (!normalizedProjectName) {
+      return;
+    }
+    const existing = this.getKanbanBoardConfiguration(normalizedProjectName);
+    this.data.kanbanState.boardConfigurations[normalizedProjectName] = {
+      ...existing,
+      projectName: normalizedProjectName,
+      boardHeight: typeof input.boardHeight === "number" ? Math.min(Math.max(Math.round(input.boardHeight), 260), 900) : existing.boardHeight,
+      collapsedInHub: typeof input.collapsedInHub === "boolean" ? input.collapsedInHub : existing.collapsedInHub,
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -15905,11 +16107,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...project.parkingLotTaskDetails
     ];
     const lanes = laneOptions.map((laneOption) => {
-      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => laneOption.done ? true : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase()).map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions)).map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
       return {
         laneKey: laneOption.laneKey,
         label: laneOption.label,
         helperText: laneOption.helperText,
+        categoryKey: laneOption.categoryKey,
+        categoryLabel: laneOption.categoryLabel,
+        categoryColor: laneOption.categoryColor,
+        categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
         done: laneOption.done,
         cardCount: cards.length,
@@ -15929,14 +16135,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       notePath: project.noteLinks[0] ? `${stripMarkdownExtension(project.noteLinks[0])}.md` : "",
       openCount: project.openCount,
       archivedCount: project.archivedCount,
+      boardHeight: typeof (configuration == null ? void 0 : configuration.boardHeight) === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
+      collapsedInHub: Boolean(configuration == null ? void 0 : configuration.collapsedInHub),
       lanes
     };
   }
   buildDashKanbanCard(projectName, task, laneOption) {
+    const allCategoryTags = this.getKanbanLaneOptions(projectName).map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+    const visibleTags = this.extractDashKanbanTags(task.rawText).filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
     return {
       taskId: task.taskId,
       projectName,
-      text: task.text,
+      text: this.stripKanbanCategoryTagsFromDisplay(task.text, allCategoryTags),
       rawText: task.rawText,
       sectionName: task.section,
       laneKey: laneOption.laneKey,
@@ -15955,9 +16165,34 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       isDueSoon: task.isDueSoon,
       isOverdue: task.isOverdue,
       assignee: this.extractDashKanbanAssignee(task.rawText, task.text),
-      tags: this.extractDashKanbanTags(task.rawText),
+      tags: visibleTags,
       notePreview: this.buildDashKanbanNotePreview(task)
     };
+  }
+  matchesDashKanbanLaneTask(projectName, laneOption, task, laneOptions) {
+    var _a;
+    const matchesSection = laneOption.done ? true : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
+    if (!matchesSection) {
+      return false;
+    }
+    const taskTags = this.extractDashKanbanTags(task.rawText).map((tag) => tag.toLowerCase());
+    const peerTaggedLanes = laneOptions.filter((candidate) => candidate.targetSection.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() && candidate.categoryTag.trim().length > 0);
+    if (laneOption.categoryTag.trim().length === 0) {
+      return !peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+    }
+    if (taskTags.includes(laneOption.categoryTag.trim().toLowerCase())) {
+      return true;
+    }
+    const taskHasAnyTaggedLane = peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+    return !taskHasAnyTaggedLane && ((_a = peerTaggedLanes[0]) == null ? void 0 : _a.laneKey) === laneOption.laneKey;
+  }
+  stripKanbanCategoryTagsFromDisplay(text, categoryTags) {
+    let nextText = text;
+    categoryTags.forEach((tag) => {
+      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
+    });
+    return nextText.replace(/\s{2,}/g, " ").trim();
   }
   buildDashKanbanNotePreview(task) {
     return [
@@ -18466,6 +18701,8 @@ ${context}`, resolvedModel);
         templateId: this.inferKanbanBoardTemplateId(project),
         showInHub: project.projectState !== "someday",
         laneDefinitions: [],
+        boardHeight: 420,
+        collapsedInHub: false,
         updatedAt
       };
       changed += 1;
@@ -18473,10 +18710,14 @@ ${context}`, resolvedModel);
     return changed;
   }
   getBuiltInKanbanBoardTemplates(updatedAt) {
-    const createLane = (laneKey, label, helperText, ruleType, mappedSections, done) => ({
+    const createLane = (laneKey, label, helperText, categoryLabel, categoryColor, categoryTag, ruleType, mappedSections, done) => ({
       laneKey,
       label,
       helperText,
+      categoryKey: categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+      categoryLabel,
+      categoryColor,
+      categoryTag,
       ruleType,
       mappedSections,
       done
@@ -18487,12 +18728,68 @@ ${context}`, resolvedModel);
         name: "Execution Default",
         description: "Classic personal execution flow for active projects.",
         laneDefinitions: [
-          createLane("now", "Now", "Current execution", "hub-section", ["Now"], false),
-          createLane("next", "Next", "Queued next actions", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("later", "Later", "Deferred but active", "hub-section", ["Later"], false),
-          createLane("waiting", "Waiting", "Dependencies or unblockers", "hub-section", ["Waiting"], false),
-          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "hub-section", ["Parking Lot"], false),
-          createLane("done", "Done", "Recently completed", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("now", "Now", "Current execution", "Execution", "#d96b2b", "", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "Execution", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "Planning", "#5d7bd8", "", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "Planning", "#5d7bd8", "", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "Parking", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "Results", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "support-swimlanes": {
+        templateId: "support-swimlanes",
+        name: "Support Swimlanes",
+        description: "Mirrors the cloud-board example with separate expedite, defects, and feature bands across a shared workflow.",
+        laneDefinitions: [
+          createLane("requested", "Requested", "New intake and demand shaping", "Expedite", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("development", "Development", "Active implementation", "Expedite", "#d63131", "expedite", "hub-section", ["Now"], false),
+          createLane("code-review", "Code Review", "Waiting for review or cleanup", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("sign-off", "Sign Off", "Awaiting approval", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to ship", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Delivered work", "Expedite", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-defects", "Requested", "Incoming bug reports", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development-defects", "Development", "Defect fix in progress", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Now"], false),
+          createLane("qa-defects", "QA", "Ready to validate the fix", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
+          createLane("done-defects", "Done", "Closed defects", "Defects / Bugs", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-features", "Requested", "Feature request intake", "Features", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "Features", "#7d4bc6", "feature", "hub-section", ["Next"], false),
+          createLane("development-features", "Development", "Feature implementation", "Features", "#7d4bc6", "feature", "hub-section", ["Now"], false),
+          createLane("done-features", "Done", "Completed feature work", "Features", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "bugs-and-features": {
+        templateId: "bugs-and-features",
+        name: "Bugs And Features",
+        description: "Matches the compact defects-plus-features board with a cleaner verification flow.",
+        laneDefinitions: [
+          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development", "Development", "Active defect work", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Now"], false),
+          createLane("verification", "Verification", "Waiting for retest", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to release", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Resolved bugs", "Defects / Bugs", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("feature-intake", "Ready To Start", "New feature requests", "Features", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("feature-build", "Development", "Feature execution", "Features", "#3041d7", "feature", "hub-section", ["Now"], false),
+          createLane("feature-done", "Done", "Completed features", "Features", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "content-campaign": {
+        templateId: "content-campaign",
+        name: "Content Campaign",
+        description: "Matches the pastel content-marketing example with a simple queue and delivery flow.",
+        laneDefinitions: [
+          createLane("to-do", "To Do", "Queued content ideas and tasks", "Content Queue", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
+          createLane("working", "Working", "Active content creation", "Content Queue", "#3ea0a0", "content", "hub-section", ["Now"], false),
+          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "Content Queue", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
+          createLane("done", "Done", "Published or delivered content", "Content Queue", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -18502,11 +18799,11 @@ ${context}`, resolvedModel);
         name: "Bug Triage",
         description: "Maintenance-oriented board vocabulary for fixes and verification.",
         laneDefinitions: [
-          createLane("inbox", "Inbox", "Fresh defects or change requests", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("fixing", "Fixing", "Work actively being solved", "hub-section", ["Now"], false),
-          createLane("verify", "Verify", "Waiting on test or confirmation", "hub-section", ["Waiting"], false),
-          createLane("backlog", "Backlog", "Deferred maintenance", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("shipped", "Shipped", "Completed fixes", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "Defects", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "Defects", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "Defects", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "Triage", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "Release", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -18516,11 +18813,11 @@ ${context}`, resolvedModel);
         name: "Creative Pipeline",
         description: "Idea-to-finish flow for assets, content, and polish work.",
         laneDefinitions: [
-          createLane("ideas", "Ideas", "Loose concepts and captures", "hub-section", ["Parking Lot"], false),
-          createLane("drafting", "Drafting", "Active concept shaping", "hub-section", ["Next"], false),
-          createLane("building", "Building", "Current production work", "hub-section", ["Now"], false),
-          createLane("polish", "Polish", "Blocked on review or final pass", "hub-section", ["Waiting"], false),
-          createLane("archive", "Published", "Completed outputs", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("ideas", "Ideas", "Loose concepts and captures", "Concept", "#7d4bc6", "", "hub-section", ["Parking Lot"], false),
+          createLane("drafting", "Drafting", "Active concept shaping", "Concept", "#7d4bc6", "", "hub-section", ["Next"], false),
+          createLane("building", "Building", "Current production work", "Production", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("polish", "Polish", "Blocked on review or final pass", "Production", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("archive", "Published", "Completed outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -18530,11 +18827,11 @@ ${context}`, resolvedModel);
         name: "Research / Publishing",
         description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
         laneDefinitions: [
-          createLane("backlog", "Backlog", "Queued research topics", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("active", "Active", "Current deep work", "hub-section", ["Now"], false),
-          createLane("review", "Review", "Ready for feedback or unblock", "hub-section", ["Waiting"], false),
-          createLane("ready", "Ready", "Prepared next actions", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("published", "Published", "Completed notes or outputs", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("backlog", "Backlog", "Queued research topics", "Research", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "Research", "#5d7bd8", "", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "Review", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "Review", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -18588,12 +18885,20 @@ ${context}`, resolvedModel);
       const laneKey = typeof entry.laneKey === "string" ? entry.laneKey.trim() : "";
       const label = typeof entry.label === "string" ? entry.label.trim() : laneKey;
       const helperText = typeof entry.helperText === "string" ? entry.helperText.trim() : "";
+      const categoryLabel = typeof entry.categoryLabel === "string" ? entry.categoryLabel.trim() : "";
+      const categoryKey = typeof entry.categoryKey === "string" && entry.categoryKey.trim().length > 0 ? entry.categoryKey.trim() : categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const categoryColor = typeof entry.categoryColor === "string" ? entry.categoryColor.trim() : "";
+      const categoryTag = typeof entry.categoryTag === "string" ? entry.categoryTag.trim().toLowerCase() : "";
       const ruleType = entry.ruleType === "completion-state" || entry.ruleType === "custom" ? entry.ruleType : "hub-section";
       const mappedSections = Array.isArray(entry.mappedSections) ? entry.mappedSections.filter((section) => typeof section === "string" && section.trim().length > 0).map((section) => section.trim()) : [];
       return {
         laneKey,
         label: label || laneKey,
         helperText,
+        categoryKey,
+        categoryLabel,
+        categoryColor,
+        categoryTag,
         ruleType,
         mappedSections,
         done: Boolean(entry.done)
@@ -18642,6 +18947,8 @@ ${context}`, resolvedModel);
         templateId: typeof entry.templateId === "string" ? entry.templateId.trim() : "",
         showInHub: entry.showInHub !== false,
         laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
+        collapsedInHub: Boolean(entry.collapsedInHub),
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });
@@ -19477,23 +19784,33 @@ ${context}`, resolvedModel);
     }
     this.refreshDashboardViews();
   }
+  async addKanbanTask(projectName, laneKey, taskText) {
+    var _a;
+    const laneOption = this.resolveKanbanLaneOption(projectName, laneKey);
+    const targetSection = (laneOption == null ? void 0 : laneOption.done) ? "Next" : (laneOption == null ? void 0 : laneOption.targetSection) || laneKey;
+    const nextTaskText = this.formatTaskTextForKanbanLane(projectName, (_a = laneOption == null ? void 0 : laneOption.laneKey) != null ? _a : laneKey, taskText);
+    await this.addTaskToProject(projectName, targetSection, nextTaskText);
+  }
   async editKanbanTask(projectName, taskId, taskText, lane) {
+    var _a;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
       return false;
     }
     const trimmedTask = taskText.trim();
-    const trimmedLane = lane.trim();
+    const targetLaneOption = this.resolveKanbanLaneOption(projectName, lane);
+    const trimmedLane = ((targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || lane).trim();
     if (!trimmedTask || !trimmedLane) {
       new import_obsidian4.Notice("Task text and lane are required.");
       return false;
     }
+    const formattedTaskText = this.formatTaskTextForKanbanLane(projectName, (_a = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _a : lane, trimmedTask);
     const content = await this.app.vault.read(todoFile);
     const updated = updateTaskByIdInProject(content, {
       projectName,
       taskId,
-      taskText: trimmedTask,
+      taskText: formattedTaskText,
       sectionName: trimmedLane,
       taskRegistry: this.data.kanbanState.taskRegistry
     });

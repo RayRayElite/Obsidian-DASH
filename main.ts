@@ -2658,6 +2658,8 @@ export default class DailyDashboardPlugin extends Plugin {
       templateId: "execution-default",
       showInHub: true,
       laneDefinitions: [],
+      boardHeight: 420,
+      collapsedInHub: false,
       updatedAt: ""
     };
   }
@@ -2714,6 +2716,59 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
+  private resolveKanbanLaneOption(projectName: string, laneKeyOrSection: string): KanbanLaneOption | null {
+    const normalized = laneKeyOrSection.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    return this.getKanbanLaneOptions(projectName).find((lane) => lane.laneKey.trim().toLowerCase() === normalized)
+      ?? this.getKanbanLaneOptions(projectName).find((lane) => lane.targetSection.trim().toLowerCase() === normalized || lane.label.trim().toLowerCase() === normalized)
+      ?? null;
+  }
+
+  private stripKanbanCategoryTagsFromTaskText(taskText: string, categoryTags: string[]): string {
+    let nextText = taskText;
+    categoryTags.forEach((tag) => {
+      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
+    });
+    return nextText.replace(/\s{2,}/g, " ").trim();
+  }
+
+  private formatTaskTextForKanbanLane(projectName: string, laneKeyOrSection: string, taskText: string): string {
+    const laneOption = this.resolveKanbanLaneOption(projectName, laneKeyOrSection);
+    const laneOptions = this.getKanbanLaneOptions(projectName);
+    const categoryTags = laneOptions
+      .map((option) => option.categoryTag.trim().toLowerCase())
+      .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+    let nextText = this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags);
+    if (laneOption?.categoryTag.trim()) {
+      nextText = `${nextText} #${laneOption.categoryTag.trim()}`.trim();
+    }
+    return nextText.replace(/\s{2,}/g, " ").trim();
+  }
+
+  private async getKanbanTaskDisplayById(projectName: string, taskId: string): Promise<string | null> {
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot?.projects.find((candidate) => candidate.name === projectName);
+    const task = project
+      ? [
+          ...project.nowTaskDetails,
+          ...project.nextTaskDetails,
+          ...project.laterTaskDetails,
+          ...project.waitingTaskDetails,
+          ...project.parkingLotTaskDetails,
+          ...project.completedTaskDetails
+        ].find((candidate) => candidate.taskId === taskId)
+      : null;
+    if (task) {
+      return getTodoTaskDisplayText(task.rawText, task.section);
+    }
+
+    return this.data.kanbanState.taskRegistry[taskId]?.taskText ?? null;
+  }
+
   async moveKanbanTask(projectName: string, taskId: string, laneSection: string): Promise<boolean> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -2726,33 +2781,19 @@ export default class DailyDashboardPlugin extends Plugin {
       return false;
     }
 
-    const content = await this.app.vault.read(todoFile);
-    const laneOptions = this.getKanbanLaneOptions(projectName);
-    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === targetLane || lane.label === targetLane);
+    const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
 
     if (targetLaneOption?.done) {
       return this.completeKanbanTask(projectName, taskId);
     }
 
-    const updated = moveTaskByIdInProject(content, {
-      projectName,
-      taskId,
-      sectionName: targetLane,
-      taskRegistry: this.data.kanbanState.taskRegistry
-    });
-    if (!updated.updated) {
-      new Notice("Could not move that Kanban task in the Master Task Hub.");
+    const currentTaskText = await this.getKanbanTaskDisplayById(projectName, taskId);
+    if (!currentTaskText) {
+      new Notice("Could not find that Kanban task in the Master Task Hub.");
       return false;
     }
 
-    await this.app.vault.modify(todoFile, updated.content);
-    await this.refreshMasterHubPortfolioSnapshot(false);
-    if (this.data.settings.kanbanEnabled) {
-      await this.refreshKanbanHub(false);
-      await this.refreshKanbanBoardNotes(false);
-    }
-    this.refreshDashboardViews();
-    return true;
+    return this.editKanbanTask(projectName, taskId, currentTaskText, targetLaneOption?.laneKey ?? targetLane);
   }
 
   async transferKanbanTask(fromProjectName: string, toProjectName: string, taskId: string, laneSection: string): Promise<boolean> {
@@ -2773,9 +2814,14 @@ export default class DailyDashboardPlugin extends Plugin {
       return this.moveKanbanTask(normalizedToProject, taskId, normalizedSection);
     }
 
-    const laneOptions = this.getKanbanLaneOptions(normalizedToProject);
-    const targetLaneOption = laneOptions.find((lane) => lane.targetSection === normalizedSection || lane.label === normalizedSection);
-    const effectiveTargetSection = targetLaneOption?.done ? "Next" : normalizedSection;
+    const targetLaneOption = this.resolveKanbanLaneOption(normalizedToProject, normalizedSection);
+    const effectiveTargetSection = targetLaneOption?.done ? "Next" : targetLaneOption?.targetSection || normalizedSection;
+    const currentTaskText = await this.getKanbanTaskDisplayById(normalizedFromProject, taskId);
+    if (!currentTaskText) {
+      new Notice("Could not find that Kanban task to transfer.");
+      return false;
+    }
+    const nextTaskText = this.formatTaskTextForKanbanLane(normalizedToProject, targetLaneOption?.laneKey ?? normalizedSection, currentTaskText);
 
     const content = await this.app.vault.read(todoFile);
     const transferred = transferTaskByIdBetweenProjects(content, {
@@ -2783,6 +2829,7 @@ export default class DailyDashboardPlugin extends Plugin {
       toProjectName: normalizedToProject,
       taskId,
       sectionName: effectiveTargetSection,
+      taskText: nextTaskText,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
     if (!transferred.updated) {
@@ -2947,6 +2994,8 @@ export default class DailyDashboardPlugin extends Plugin {
     templateId: string;
     showInHub: boolean;
     laneDefinitions: KanbanLaneDefinition[];
+    boardHeight: number;
+    collapsedInHub: boolean;
   }): Promise<void> {
     const projectName = input.projectName.trim();
     if (!projectName) {
@@ -2960,6 +3009,30 @@ export default class DailyDashboardPlugin extends Plugin {
       templateId,
       showInHub: input.showInHub,
       laneDefinitions: normalizedLaneDefinitions,
+      boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
+      collapsedInHub: Boolean(input.collapsedInHub),
+      updatedAt: formatDateTimeKey(new Date())
+    };
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean }): Promise<void> {
+    const normalizedProjectName = projectName.trim();
+    if (!normalizedProjectName) {
+      return;
+    }
+
+    const existing = this.getKanbanBoardConfiguration(normalizedProjectName);
+    this.data.kanbanState.boardConfigurations[normalizedProjectName] = {
+      ...existing,
+      projectName: normalizedProjectName,
+      boardHeight: typeof input.boardHeight === "number"
+        ? Math.min(Math.max(Math.round(input.boardHeight), 260), 900)
+        : existing.boardHeight,
+      collapsedInHub: typeof input.collapsedInHub === "boolean"
+        ? input.collapsedInHub
+        : existing.collapsedInHub,
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
@@ -3011,16 +3084,17 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const lanes = laneOptions.map((laneOption) => {
       const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
-        .filter((task) => laneOption.done
-          ? true
-          : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase()
-            || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase())
+        .filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions))
         .map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
 
       return {
         laneKey: laneOption.laneKey,
         label: laneOption.label,
         helperText: laneOption.helperText,
+        categoryKey: laneOption.categoryKey,
+        categoryLabel: laneOption.categoryLabel,
+        categoryColor: laneOption.categoryColor,
+        categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
         done: laneOption.done,
         cardCount: cards.length,
@@ -3041,15 +3115,23 @@ export default class DailyDashboardPlugin extends Plugin {
       notePath: project.noteLinks[0] ? `${stripMarkdownExtension(project.noteLinks[0])}.md` : "",
       openCount: project.openCount,
       archivedCount: project.archivedCount,
+      boardHeight: typeof configuration?.boardHeight === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
+      collapsedInHub: Boolean(configuration?.collapsedInHub),
       lanes
     };
   }
 
   private buildDashKanbanCard(projectName: string, task: TodoTaskSummary, laneOption: KanbanLaneOption): DashKanbanCard {
+    const allCategoryTags = this.getKanbanLaneOptions(projectName)
+      .map((option) => option.categoryTag.trim().toLowerCase())
+      .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
+    const visibleTags = this.extractDashKanbanTags(task.rawText)
+      .filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
+
     return {
       taskId: task.taskId,
       projectName,
-      text: task.text,
+      text: this.stripKanbanCategoryTagsFromDisplay(task.text, allCategoryTags),
       rawText: task.rawText,
       sectionName: task.section,
       laneKey: laneOption.laneKey,
@@ -3068,9 +3150,42 @@ export default class DailyDashboardPlugin extends Plugin {
       isDueSoon: task.isDueSoon,
       isOverdue: task.isOverdue,
       assignee: this.extractDashKanbanAssignee(task.rawText, task.text),
-      tags: this.extractDashKanbanTags(task.rawText),
+      tags: visibleTags,
       notePreview: this.buildDashKanbanNotePreview(task)
     };
+  }
+
+  private matchesDashKanbanLaneTask(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary, laneOptions: KanbanLaneOption[]): boolean {
+    const matchesSection = laneOption.done
+      ? true
+      : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase()
+        || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
+    if (!matchesSection) {
+      return false;
+    }
+
+    const taskTags = this.extractDashKanbanTags(task.rawText).map((tag) => tag.toLowerCase());
+    const peerTaggedLanes = laneOptions.filter((candidate) => candidate.targetSection.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() && candidate.categoryTag.trim().length > 0);
+    if (laneOption.categoryTag.trim().length === 0) {
+      return !peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+    }
+
+    if (taskTags.includes(laneOption.categoryTag.trim().toLowerCase())) {
+      return true;
+    }
+
+    const taskHasAnyTaggedLane = peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+    return !taskHasAnyTaggedLane && peerTaggedLanes[0]?.laneKey === laneOption.laneKey;
+  }
+
+  private stripKanbanCategoryTagsFromDisplay(text: string, categoryTags: string[]): string {
+    let nextText = text;
+    categoryTags.forEach((tag) => {
+      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
+    });
+
+    return nextText.replace(/\s{2,}/g, " ").trim();
   }
 
   private buildDashKanbanNotePreview(task: TodoTaskSummary): string {
@@ -6093,6 +6208,8 @@ export default class DailyDashboardPlugin extends Plugin {
         templateId: this.inferKanbanBoardTemplateId(project),
         showInHub: project.projectState !== "someday",
         laneDefinitions: [],
+        boardHeight: 420,
+        collapsedInHub: false,
         updatedAt
       };
       changed += 1;
@@ -6102,10 +6219,24 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private getBuiltInKanbanBoardTemplates(updatedAt: string): Record<string, KanbanBoardTemplate> {
-    const createLane = (laneKey: string, label: string, helperText: string, ruleType: KanbanLaneDefinition["ruleType"], mappedSections: string[], done: boolean): KanbanLaneDefinition => ({
+    const createLane = (
+      laneKey: string,
+      label: string,
+      helperText: string,
+      categoryLabel: string,
+      categoryColor: string,
+      categoryTag: string,
+      ruleType: KanbanLaneDefinition["ruleType"],
+      mappedSections: string[],
+      done: boolean
+    ): KanbanLaneDefinition => ({
       laneKey,
       label,
       helperText,
+      categoryKey: categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""),
+      categoryLabel,
+      categoryColor,
+      categoryTag,
       ruleType,
       mappedSections,
       done
@@ -6117,12 +6248,68 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Execution Default",
         description: "Classic personal execution flow for active projects.",
         laneDefinitions: [
-          createLane("now", "Now", "Current execution", "hub-section", ["Now"], false),
-          createLane("next", "Next", "Queued next actions", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("later", "Later", "Deferred but active", "hub-section", ["Later"], false),
-          createLane("waiting", "Waiting", "Dependencies or unblockers", "hub-section", ["Waiting"], false),
-          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "hub-section", ["Parking Lot"], false),
-          createLane("done", "Done", "Recently completed", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("now", "Now", "Current execution", "Execution", "#d96b2b", "", "hub-section", ["Now"], false),
+          createLane("next", "Next", "Queued next actions", "Execution", "#d96b2b", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("later", "Later", "Deferred but active", "Planning", "#5d7bd8", "", "hub-section", ["Later"], false),
+          createLane("waiting", "Waiting", "Dependencies or unblockers", "Planning", "#5d7bd8", "", "hub-section", ["Waiting"], false),
+          createLane("parking-lot", "Parking Lot", "Ideas and parked work", "Parking", "#4ca86a", "", "hub-section", ["Parking Lot"], false),
+          createLane("done", "Done", "Recently completed", "Results", "#8b5fd1", "", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "support-swimlanes": {
+        templateId: "support-swimlanes",
+        name: "Support Swimlanes",
+        description: "Mirrors the cloud-board example with separate expedite, defects, and feature bands across a shared workflow.",
+        laneDefinitions: [
+          createLane("requested", "Requested", "New intake and demand shaping", "Expedite", "#d63131", "expedite", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("design-analysis", "Design / Analysis", "Clarify the work before execution", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("development", "Development", "Active implementation", "Expedite", "#d63131", "expedite", "hub-section", ["Now"], false),
+          createLane("code-review", "Code Review", "Waiting for review or cleanup", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("ready-for-testing", "Ready For Testing", "Prepared for QA handoff", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("testing-in-progress", "Testing In Progress", "Validation in motion", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("sign-off", "Sign Off", "Awaiting approval", "Expedite", "#d63131", "expedite", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to ship", "Expedite", "#d63131", "expedite", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Delivered work", "Expedite", "#d63131", "expedite", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-defects", "Requested", "Incoming bug reports", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development-defects", "Development", "Defect fix in progress", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Now"], false),
+          createLane("qa-defects", "QA", "Ready to validate the fix", "Defects / Bugs", "#ef8a17", "bug", "hub-section", ["Waiting"], false),
+          createLane("done-defects", "Done", "Closed defects", "Defects / Bugs", "#ef8a17", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("requested-features", "Requested", "Feature request intake", "Features", "#7d4bc6", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("analysis-features", "Design / Analysis", "Shape and scope the feature", "Features", "#7d4bc6", "feature", "hub-section", ["Next"], false),
+          createLane("development-features", "Development", "Feature implementation", "Features", "#7d4bc6", "feature", "hub-section", ["Now"], false),
+          createLane("done-features", "Done", "Completed feature work", "Features", "#7d4bc6", "feature", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "bugs-and-features": {
+        templateId: "bugs-and-features",
+        name: "Bugs And Features",
+        description: "Matches the compact defects-plus-features board with a cleaner verification flow.",
+        laneDefinitions: [
+          createLane("ready-to-start", "Ready To Start", "Queued work waiting for pickup", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("development", "Development", "Active defect work", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Now"], false),
+          createLane("verification", "Verification", "Waiting for retest", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Waiting"], false),
+          createLane("deployment", "Deployment", "Ready to release", "Defects / Bugs", "#f0cb59", "bug", "hub-section", ["Later"], false),
+          createLane("done", "Done", "Resolved bugs", "Defects / Bugs", "#f0cb59", "bug", "completion-state", ["Done", "Completed Archive"], true),
+          createLane("feature-intake", "Ready To Start", "New feature requests", "Features", "#3041d7", "feature", "hub-section", ["Parking Lot"], false),
+          createLane("feature-build", "Development", "Feature execution", "Features", "#3041d7", "feature", "hub-section", ["Now"], false),
+          createLane("feature-done", "Done", "Completed features", "Features", "#3041d7", "feature", "completion-state", ["Done", "Completed Archive"], true)
+        ],
+        builtIn: true,
+        updatedAt
+      },
+      "content-campaign": {
+        templateId: "content-campaign",
+        name: "Content Campaign",
+        description: "Matches the pastel content-marketing example with a simple queue and delivery flow.",
+        laneDefinitions: [
+          createLane("to-do", "To Do", "Queued content ideas and tasks", "Content Queue", "#3ea0a0", "content", "hub-section", ["Next", "Parking Lot"], false),
+          createLane("working", "Working", "Active content creation", "Content Queue", "#3ea0a0", "content", "hub-section", ["Now"], false),
+          createLane("waiting", "Waiting", "Needs review or dependency follow-up", "Content Queue", "#3ea0a0", "content", "hub-section", ["Waiting"], false),
+          createLane("done", "Done", "Published or delivered content", "Content Queue", "#3ea0a0", "content", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6132,11 +6319,11 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Bug Triage",
         description: "Maintenance-oriented board vocabulary for fixes and verification.",
         laneDefinitions: [
-          createLane("inbox", "Inbox", "Fresh defects or change requests", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("fixing", "Fixing", "Work actively being solved", "hub-section", ["Now"], false),
-          createLane("verify", "Verify", "Waiting on test or confirmation", "hub-section", ["Waiting"], false),
-          createLane("backlog", "Backlog", "Deferred maintenance", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("shipped", "Shipped", "Completed fixes", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("inbox", "Inbox", "Fresh defects or change requests", "Defects", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("fixing", "Fixing", "Work actively being solved", "Defects", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("verify", "Verify", "Waiting on test or confirmation", "Defects", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("backlog", "Backlog", "Deferred maintenance", "Triage", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("shipped", "Shipped", "Completed fixes", "Release", "#7d4bc6", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6146,11 +6333,11 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Creative Pipeline",
         description: "Idea-to-finish flow for assets, content, and polish work.",
         laneDefinitions: [
-          createLane("ideas", "Ideas", "Loose concepts and captures", "hub-section", ["Parking Lot"], false),
-          createLane("drafting", "Drafting", "Active concept shaping", "hub-section", ["Next"], false),
-          createLane("building", "Building", "Current production work", "hub-section", ["Now"], false),
-          createLane("polish", "Polish", "Blocked on review or final pass", "hub-section", ["Waiting"], false),
-          createLane("archive", "Published", "Completed outputs", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("ideas", "Ideas", "Loose concepts and captures", "Concept", "#7d4bc6", "", "hub-section", ["Parking Lot"], false),
+          createLane("drafting", "Drafting", "Active concept shaping", "Concept", "#7d4bc6", "", "hub-section", ["Next"], false),
+          createLane("building", "Building", "Current production work", "Production", "#ef8a17", "", "hub-section", ["Now"], false),
+          createLane("polish", "Polish", "Blocked on review or final pass", "Production", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("archive", "Published", "Completed outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6160,11 +6347,11 @@ export default class DailyDashboardPlugin extends Plugin {
         name: "Research / Publishing",
         description: "Backlog-to-publish flow for notes, docs, and knowledge work.",
         laneDefinitions: [
-          createLane("backlog", "Backlog", "Queued research topics", "hub-section", ["Later", "Parking Lot"], false),
-          createLane("active", "Active", "Current deep work", "hub-section", ["Now"], false),
-          createLane("review", "Review", "Ready for feedback or unblock", "hub-section", ["Waiting"], false),
-          createLane("ready", "Ready", "Prepared next actions", "hub-section", ["Next", "Add", "Fix"], false),
-          createLane("published", "Published", "Completed notes or outputs", "completion-state", ["Done", "Completed Archive"], true)
+          createLane("backlog", "Backlog", "Queued research topics", "Research", "#5d7bd8", "", "hub-section", ["Later", "Parking Lot"], false),
+          createLane("active", "Active", "Current deep work", "Research", "#5d7bd8", "", "hub-section", ["Now"], false),
+          createLane("review", "Review", "Ready for feedback or unblock", "Review", "#ef8a17", "", "hub-section", ["Waiting"], false),
+          createLane("ready", "Ready", "Prepared next actions", "Review", "#ef8a17", "", "hub-section", ["Next", "Add", "Fix"], false),
+          createLane("published", "Published", "Completed notes or outputs", "Release", "#3ea0a0", "", "completion-state", ["Done", "Completed Archive"], true)
         ],
         builtIn: true,
         updatedAt
@@ -6236,6 +6423,12 @@ export default class DailyDashboardPlugin extends Plugin {
         const laneKey = typeof entry.laneKey === "string" ? entry.laneKey.trim() : "";
         const label = typeof entry.label === "string" ? entry.label.trim() : laneKey;
         const helperText = typeof entry.helperText === "string" ? entry.helperText.trim() : "";
+        const categoryLabel = typeof entry.categoryLabel === "string" ? entry.categoryLabel.trim() : "";
+        const categoryKey = typeof entry.categoryKey === "string" && entry.categoryKey.trim().length > 0
+          ? entry.categoryKey.trim()
+          : categoryLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        const categoryColor = typeof entry.categoryColor === "string" ? entry.categoryColor.trim() : "";
+        const categoryTag = typeof entry.categoryTag === "string" ? entry.categoryTag.trim().toLowerCase() : "";
         const ruleType = entry.ruleType === "completion-state" || entry.ruleType === "custom" ? entry.ruleType : "hub-section";
         const mappedSections = Array.isArray(entry.mappedSections)
           ? entry.mappedSections
@@ -6247,6 +6440,10 @@ export default class DailyDashboardPlugin extends Plugin {
           laneKey,
           label: label || laneKey,
           helperText,
+          categoryKey,
+          categoryLabel,
+          categoryColor,
+          categoryTag,
           ruleType,
           mappedSections,
           done: Boolean(entry.done)
@@ -6305,6 +6502,8 @@ export default class DailyDashboardPlugin extends Plugin {
         templateId: typeof entry.templateId === "string" ? entry.templateId.trim() : "",
         showInHub: entry.showInHub !== false,
         laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
+        collapsedInHub: Boolean(entry.collapsedInHub),
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });
@@ -7347,6 +7546,13 @@ export default class DailyDashboardPlugin extends Plugin {
     this.refreshDashboardViews();
   }
 
+  async addKanbanTask(projectName: string, laneKey: string, taskText: string): Promise<void> {
+    const laneOption = this.resolveKanbanLaneOption(projectName, laneKey);
+    const targetSection = laneOption?.done ? "Next" : laneOption?.targetSection || laneKey;
+    const nextTaskText = this.formatTaskTextForKanbanLane(projectName, laneOption?.laneKey ?? laneKey, taskText);
+    await this.addTaskToProject(projectName, targetSection, nextTaskText);
+  }
+
   async editKanbanTask(projectName: string, taskId: string, taskText: string, lane: string): Promise<boolean> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -7355,17 +7561,20 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const trimmedTask = taskText.trim();
-    const trimmedLane = lane.trim();
+    const targetLaneOption = this.resolveKanbanLaneOption(projectName, lane);
+    const trimmedLane = (targetLaneOption?.targetSection || lane).trim();
     if (!trimmedTask || !trimmedLane) {
       new Notice("Task text and lane are required.");
       return false;
     }
 
+    const formattedTaskText = this.formatTaskTextForKanbanLane(projectName, targetLaneOption?.laneKey ?? lane, trimmedTask);
+
     const content = await this.app.vault.read(todoFile);
     const updated = updateTaskByIdInProject(content, {
       projectName,
       taskId,
-      taskText: trimmedTask,
+      taskText: formattedTaskText,
       sectionName: trimmedLane,
       taskRegistry: this.data.kanbanState.taskRegistry
     });

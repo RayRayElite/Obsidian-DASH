@@ -1521,6 +1521,10 @@ export function getKanbanLaneOptionsForProject(
     laneKey: lane.laneKey,
     label: lane.label,
     helperText: lane.helperText,
+    categoryKey: lane.categoryKey,
+    categoryLabel: lane.categoryLabel,
+    categoryColor: lane.categoryColor,
+    categoryTag: lane.categoryTag,
     targetSection: lane.done ? "Done" : lane.mappedSections[0] ?? "",
     done: lane.done,
     unmapped: !lane.done && lane.mappedSections.length === 0
@@ -2468,6 +2472,7 @@ export function transferTaskByIdBetweenProjects(content: string, input: {
   toProjectName: string;
   taskId: string;
   sectionName: string;
+  taskText?: string;
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; updated: boolean; taskText: string } {
   const taskRegistry = input.taskRegistry ?? {};
@@ -2477,9 +2482,10 @@ export function transferTaskByIdBetweenProjects(content: string, input: {
   }
 
   const targetSection = input.sectionName.trim() || "General";
+  const nextTaskText = input.taskText?.trim().length ? input.taskText.trim() : removed.taskText;
   const movedTaskText = targetSection.toLowerCase() === "waiting"
-    ? removed.taskText
-    : stripBlockingTaskAnnotations(removed.taskText);
+    ? nextTaskText
+    : stripBlockingTaskAnnotations(nextTaskText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.toProjectName, targetSection, movedTaskText);
 
   return {

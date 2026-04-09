@@ -294,7 +294,7 @@
   padding: 6px 12px;
   border: 1px solid var(--dash-kanban-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  --dash-kanban-board-height: 420px;
 }
 
 .dash-kanban-detail-chips,
@@ -386,7 +386,7 @@
 }
 
 .dash-kanban-project-heading h2 {
-  margin: 0 0 4px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   font-family: "Aptos Serif", "Iowan Old Style", Georgia, serif;
   letter-spacing: -0.03em;
 }
@@ -443,7 +443,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
+  min-height: 220px;
+  max-height: var(--dash-kanban-board-height);
   height: 28px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--dash-kanban-accent) 18%, var(--background-primary));
@@ -454,6 +455,10 @@
   flex-direction: column;
   gap: 10px;
 }
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 
 .dash-kanban-card {
   position: relative;
@@ -868,7 +873,7 @@
   align-items: center;
   justify-content: center;
   min-width: 22px;
-  height: 22px;
+  min-height: 200px;
   padding: 0 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--daily-dashboard-accent) 22%, var(--background-primary));
@@ -878,6 +883,9 @@
 }
 
 .daily-dashboard-hero-popover,
+  .dash-kanban-project-header {
+    grid-template-columns: 1fr;
+  }
 .daily-dashboard-notification-popover {
   position: absolute;
   top: calc(100% + 10px);

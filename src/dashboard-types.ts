@@ -626,6 +626,10 @@ export interface KanbanLaneDefinition {
   laneKey: string;
   label: string;
   helperText: string;
+  categoryKey: string;
+  categoryLabel: string;
+  categoryColor: string;
+  categoryTag: string;
   ruleType: "hub-section" | "completion-state" | "custom";
   mappedSections: string[];
   done: boolean;
@@ -635,6 +639,10 @@ export interface KanbanLaneOption {
   laneKey: string;
   label: string;
   helperText: string;
+  categoryKey: string;
+  categoryLabel: string;
+  categoryColor: string;
+  categoryTag: string;
   targetSection: string;
   done: boolean;
   unmapped: boolean;
@@ -654,6 +662,8 @@ export interface KanbanBoardConfiguration {
   templateId: string;
   showInHub: boolean;
   laneDefinitions: KanbanLaneDefinition[];
+  boardHeight: number;
+  collapsedInHub: boolean;
   updatedAt: string;
 }
 
@@ -718,6 +728,10 @@ export interface DashKanbanLane {
   laneKey: string;
   label: string;
   helperText: string;
+  categoryKey: string;
+  categoryLabel: string;
+  categoryColor: string;
+  categoryTag: string;
   targetSection: string;
   done: boolean;
   cardCount: number;
@@ -737,6 +751,8 @@ export interface DashKanbanProjectBoard {
   notePath: string;
   openCount: number;
   archivedCount: number;
+  boardHeight: number;
+  collapsedInHub: boolean;
   lanes: DashKanbanLane[];
 }
 

@@ -5887,9 +5887,9 @@ export class KanbanQuickAddModal extends Modal {
     this.plugin = plugin;
     this.projects = projects;
     this.selectedProjectName = projects.find((project) => project.name === initial?.projectName)?.name ?? projects[0]?.name ?? "";
-    const defaultLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
-    this.selectedLane = initial?.lane && this.plugin.getKanbanLaneOptions(this.selectedProjectName).some((option) => option.targetSection === initial.lane)
-      ? initial.lane
+    const defaultLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.laneKey ?? "now";
+    this.selectedLane = initial?.lane && this.plugin.getKanbanLaneOptions(this.selectedProjectName).some((option) => option.laneKey === initial.lane || option.targetSection === initial.lane)
+      ? (this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => option.laneKey === initial.lane || option.targetSection === initial.lane)?.laneKey ?? defaultLane)
       : defaultLane;
     this.taskText = "";
   }
@@ -5911,6 +5911,7 @@ export class KanbanQuickAddModal extends Modal {
         dropdown.setValue(this.selectedProjectName);
         dropdown.onChange((value) => {
           this.selectedProjectName = value;
+          this.onOpen();
         });
       });
 
@@ -5919,9 +5920,9 @@ export class KanbanQuickAddModal extends Modal {
       .setDesc("This maps directly back to the matching Master Task Hub section.")
       .addDropdown((dropdown) => {
         const laneOptions = this.getLaneOptions();
-        laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
-        if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
-          this.selectedLane = laneOptions[0]?.targetSection || laneOptions[0]?.label || "Now";
+        laneOptions.forEach((lane) => dropdown.addOption(lane.laneKey, lane.categoryLabel ? `${lane.categoryLabel} • ${lane.label}` : lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+        if (!laneOptions.some((lane) => lane.laneKey === this.selectedLane)) {
+          this.selectedLane = laneOptions[0]?.laneKey || "now";
         }
         dropdown.setValue(this.selectedLane);
         dropdown.onChange((value) => {
@@ -5951,7 +5952,7 @@ export class KanbanQuickAddModal extends Modal {
             return;
           }
 
-          await this.plugin.addTaskToProject(this.selectedProjectName, this.selectedLane, this.taskText);
+          await this.plugin.addKanbanTask(this.selectedProjectName, this.selectedLane, this.taskText);
           new Notice("Kanban task added.");
           this.close();
         });
@@ -5975,6 +5976,8 @@ export class DashKanbanBoardSettingsModal extends Modal {
   private selectedProjectName: string;
   private selectedTemplateId: string;
   private showInHub = true;
+  private boardHeight = 420;
+  private collapsedInHub = false;
   private laneDefinitions: KanbanLaneDefinition[] = [];
 
   constructor(app: App, plugin: DailyDashboardPlugin, projects: TodoProjectSummary[], initialProjectName = "") {
@@ -5994,6 +5997,8 @@ export class DashKanbanBoardSettingsModal extends Modal {
     this.selectedProjectName = projectName;
     this.selectedTemplateId = fallbackTemplate?.templateId ?? "execution-default";
     this.showInHub = configuration.showInHub;
+    this.boardHeight = configuration.boardHeight;
+    this.collapsedInHub = configuration.collapsedInHub;
     this.laneDefinitions = this.cloneLaneDefinitions(
       configuration.laneDefinitions.length > 0
         ? configuration.laneDefinitions
@@ -6010,6 +6015,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      categoryKey: lane.categoryKey,
+      categoryLabel: lane.categoryLabel,
+      categoryColor: lane.categoryColor,
+      categoryTag: lane.categoryTag,
       ruleType: lane.ruleType,
       mappedSections: [...lane.mappedSections],
       done: lane.done
@@ -6032,6 +6041,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
           laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
           label,
           helperText,
+          categoryKey: this.buildLaneKey(lane.categoryLabel.trim(), lane.categoryKey || `group-${index + 1}`),
+          categoryLabel: lane.categoryLabel.trim(),
+          categoryColor: lane.categoryColor.trim(),
+          categoryTag: lane.categoryTag.trim().toLowerCase(),
           ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
           mappedSections,
           done
@@ -6097,6 +6110,29 @@ export class DashKanbanBoardSettingsModal extends Modal {
         });
       });
 
+    new Setting(contentEl)
+      .setName("Board height")
+      .setDesc("Sets the lane viewport height before cards begin scrolling inside each lane.")
+      .addText((text) => {
+        text.setValue(`${this.boardHeight}`).onChange((value) => {
+          this.boardHeight = Math.min(Math.max(Math.round(Number(value || 420)), 260), 900);
+        });
+        text.inputEl.type = "number";
+        text.inputEl.min = "260";
+        text.inputEl.max = "900";
+        text.inputEl.step = "10";
+      });
+
+    new Setting(contentEl)
+      .setName("Collapsed in All Projects")
+      .setDesc("Use this as the default collapsed state when the board appears in the multi-project workspace.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.collapsedInHub);
+        toggle.onChange((value) => {
+          this.collapsedInHub = value;
+        });
+      });
+
     const template = this.getSelectedTemplate();
     if (template?.description) {
       contentEl.createEl("p", { cls: "setting-item-description", text: template.description });
@@ -6126,6 +6162,33 @@ export class DashKanbanBoardSettingsModal extends Modal {
         .addText((text) => {
           text.setValue(lane.helperText).onChange((value) => {
             this.laneDefinitions[index].helperText = value;
+          });
+        });
+
+      new Setting(row)
+        .setName("Category band")
+        .setDesc("Lanes with the same category render together under one colored board band.")
+        .addText((text) => {
+          text.setValue(lane.categoryLabel).onChange((value) => {
+            this.laneDefinitions[index].categoryLabel = value;
+          });
+        });
+
+      new Setting(row)
+        .setName("Category color")
+        .setDesc("Hex color for the category band, such as #d63131 or #3041d7.")
+        .addText((text) => {
+          text.setValue(lane.categoryColor).onChange((value) => {
+            this.laneDefinitions[index].categoryColor = value;
+          });
+        });
+
+      new Setting(row)
+        .setName("Category tag")
+        .setDesc("Optional hashtag used to assign tasks into this swimlane band, such as bug, feature, or expedite.")
+        .addText((text) => {
+          text.setValue(lane.categoryTag).onChange((value) => {
+            this.laneDefinitions[index].categoryTag = value.replace(/^#/, "");
           });
         });
 
@@ -6169,6 +6232,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
           laneKey: `lane-${this.laneDefinitions.length + 1}`,
           label: "New Lane",
           helperText: "",
+          categoryKey: "",
+          categoryLabel: "Workflow",
+          categoryColor: "",
+          categoryTag: "",
           ruleType: "custom",
           mappedSections: [],
           done: false
@@ -6196,7 +6263,9 @@ export class DashKanbanBoardSettingsModal extends Modal {
             projectName: this.selectedProjectName,
             templateId: this.selectedTemplateId,
             showInHub: this.showInHub,
-            laneDefinitions
+            laneDefinitions,
+            boardHeight: this.boardHeight,
+            collapsedInHub: this.collapsedInHub
           });
           new Notice("Kanban board settings saved.");
           this.close();
@@ -6228,7 +6297,7 @@ export class KanbanTaskEditModal extends Modal {
     this.projects = projects.filter((project) => this.getEditableTasks(project).length > 0);
     this.selectedProjectName = this.projects.find((project) => project.name === initial?.projectName)?.name ?? this.projects[0]?.name ?? "";
     this.selectedTaskId = initial?.taskId ?? "";
-    this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.targetSection ?? "Now";
+    this.selectedLane = this.plugin.getKanbanLaneOptions(this.selectedProjectName).find((option) => !option.done && !option.unmapped)?.laneKey ?? "now";
     this.taskText = "";
     this.syncSelectionFromTask();
   }
@@ -6256,13 +6325,38 @@ export class KanbanTaskEditModal extends Modal {
       .find((task) => task.taskId === this.selectedTaskId) ?? null;
   }
 
+  private findLaneOptionForTask(task: TodoTaskSummary): KanbanLaneOption | null {
+    const laneOptions = this.getLaneOptions();
+    const taskTags = Array.from(task.rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g)).map((match) => match[1].trim().toLowerCase());
+
+    return laneOptions.find((option) => {
+      const matchesSection = option.targetSection.toLowerCase() === task.section.toLowerCase()
+        || option.label.toLowerCase() === (task.kanbanLane || task.section).toLowerCase();
+      if (!matchesSection) {
+        return false;
+      }
+
+      const peerTaggedLanes = laneOptions.filter((candidate) => candidate.targetSection.toLowerCase() === option.targetSection.toLowerCase() && candidate.categoryTag.trim().length > 0);
+      if (!option.categoryTag.trim()) {
+        return !peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+      }
+
+      if (taskTags.includes(option.categoryTag.trim().toLowerCase())) {
+        return true;
+      }
+
+      const taskHasPeerTag = peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+      return !taskHasPeerTag && peerTaggedLanes[0]?.laneKey === option.laneKey;
+    }) ?? null;
+  }
+
   private syncSelectionFromTask(): void {
     const project = this.getSelectedProject();
     const tasks = project ? this.getEditableTasks(project) : [];
     if (tasks.length === 0) {
       this.selectedTaskId = "";
       this.taskText = "";
-      this.selectedLane = "Now";
+      this.selectedLane = "now";
       return;
     }
 
@@ -6270,11 +6364,10 @@ export class KanbanTaskEditModal extends Modal {
     this.selectedTaskId = selectedTask.taskId;
     this.taskText = selectedTask.text;
     const laneOptions = this.getLaneOptions();
-    const matchingLane = laneOptions.find((option) => option.targetSection.toLowerCase() === selectedTask.section.toLowerCase())
-      ?? laneOptions.find((option) => option.label.toLowerCase() === (selectedTask.kanbanLane || selectedTask.section).toLowerCase());
-    this.selectedLane = matchingLane?.targetSection || laneOptions[0]?.targetSection || "Now";
-    if (!laneOptions.some((option) => option.targetSection === this.selectedLane)) {
-      this.selectedLane = laneOptions[0]?.targetSection || "Now";
+    const matchingLane = this.findLaneOptionForTask(selectedTask);
+    this.selectedLane = matchingLane?.laneKey || laneOptions[0]?.laneKey || "now";
+    if (!laneOptions.some((option) => option.laneKey === this.selectedLane)) {
+      this.selectedLane = laneOptions[0]?.laneKey || "now";
     }
   }
 
@@ -6358,9 +6451,9 @@ export class KanbanTaskEditModal extends Modal {
       .setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.")
       .addDropdown((dropdown) => {
         const laneOptions = this.getLaneOptions();
-        laneOptions.forEach((lane) => dropdown.addOption(lane.targetSection || lane.label, lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
-        if (!laneOptions.some((lane) => (lane.targetSection || lane.label) === this.selectedLane)) {
-          this.selectedLane = laneOptions[0]?.targetSection || laneOptions[0]?.label || "Now";
+        laneOptions.forEach((lane) => dropdown.addOption(lane.laneKey, lane.categoryLabel ? `${lane.categoryLabel} • ${lane.label}` : lane.helperText ? `${lane.label} (${lane.helperText})` : lane.label));
+        if (!laneOptions.some((lane) => lane.laneKey === this.selectedLane)) {
+          this.selectedLane = laneOptions[0]?.laneKey || "now";
         }
         dropdown.setValue(this.selectedLane);
         dropdown.onChange((value) => {
@@ -8788,7 +8881,7 @@ export class DashKanbanView extends ItemView {
       projectName: project.projectName,
       taskId: card.taskId,
       taskText: card.text,
-      lane: card.targetSection
+      lane: card.laneKey
     };
   }
 
@@ -8796,8 +8889,8 @@ export class DashKanbanView extends ItemView {
     const choices = this.plugin.getKanbanLaneOptions(projectName)
       .filter((option) => !option.done)
       .map((option) => ({
-        value: option.targetSection || option.label,
-        label: option.helperText ? `${option.label} (${option.helperText})` : option.label
+        value: option.laneKey,
+        label: option.categoryLabel ? `${option.categoryLabel} • ${option.label}` : option.helperText ? `${option.label} (${option.helperText})` : option.label
       }));
 
     if (!choices.some((choice) => choice.value === currentLane) && currentLane.trim()) {
@@ -8863,7 +8956,7 @@ export class DashKanbanView extends ItemView {
         void this.plugin.completeKanbanTask(project.projectName, card.taskId);
       }),
       this.createHeaderButton("plus-square", "Add sibling", () => {
-        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.targetSection);
+        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.laneKey);
       }),
       this.createHeaderButton("trash-2", "Delete", () => {
         const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
@@ -8932,7 +9025,7 @@ export class DashKanbanView extends ItemView {
             projectName: project.projectName,
             taskId: card.taskId,
             taskText: card.text,
-            lane: card.targetSection
+              lane: card.laneKey
           };
           void this.requestRefresh();
         })
@@ -9198,15 +9291,92 @@ export class DashKanbanView extends ItemView {
     ].some((value) => value.toLowerCase().includes(query));
   }
 
+  private getProjectLaneGroups(project: DashKanbanProjectBoard): Array<{ key: string; label: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> {
+    const groups: Array<{ key: string; label: string; color: string; lanes: DashKanbanProjectBoard["lanes"] }> = [];
+    project.lanes.forEach((lane) => {
+      const key = lane.categoryKey || lane.laneKey;
+      const existing = groups.find((group) => group.key === key);
+      if (existing) {
+        existing.lanes.push(lane);
+        return;
+      }
+
+      groups.push({
+        key,
+        label: lane.categoryLabel,
+        color: lane.categoryColor,
+        lanes: [lane]
+      });
+    });
+    return groups;
+  }
+
+  private bindProjectCollapse(header: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
+    if (mode !== "all-projects") {
+      return;
+    }
+
+    const toggle = () => {
+      void this.plugin.updateKanbanBoardPresentation(project.projectName, { collapsedInHub: !project.collapsedInHub });
+    };
+
+    header.addClass("is-clickable");
+    header.tabIndex = 0;
+    header.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("button, a, input, select, textarea, label")) {
+        return;
+      }
+      toggle();
+    });
+    header.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      toggle();
+    });
+  }
+
+  private bindProjectResize(handle: HTMLElement, board: HTMLElement, project: DashKanbanProjectBoard): void {
+    handle.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const startY = event.clientY;
+      const startHeight = project.boardHeight;
+
+      const onMove = (moveEvent: MouseEvent) => {
+        const nextHeight = Math.min(Math.max(Math.round(startHeight + (moveEvent.clientY - startY)), 260), 900);
+        board.style.setProperty("--dash-kanban-board-height", `${nextHeight}px`);
+      };
+
+      const onUp = (upEvent: MouseEvent) => {
+        const nextHeight = Math.min(Math.max(Math.round(startHeight + (upEvent.clientY - startY)), 260), 900);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        void this.plugin.updateKanbanBoardPresentation(project.projectName, { boardHeight: nextHeight });
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+  }
+
   private renderProjectBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
-    const board = parent.createDiv({ cls: "dash-kanban-project-board" });
+    const board = parent.createDiv({ cls: `dash-kanban-project-board${project.collapsedInHub && mode === "all-projects" ? " is-collapsed" : ""}` });
+    board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
+    this.bindProjectCollapse(boardHeader, project, mode);
     const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
     heading.createEl("h2", { text: project.projectName });
     if (project.focus) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.focus });
     } else if (project.projectSummary) {
       heading.createEl("p", { cls: "dash-kanban-project-focus", text: project.projectSummary });
+    }
+
+    if (mode === "all-projects") {
+      heading.createEl("p", { cls: "dash-kanban-project-hint", text: project.collapsedInHub ? "Collapsed. Click header to expand." : "Click header to collapse." });
     }
 
     const projectMeta = boardHeader.createDiv({ cls: "dash-kanban-project-meta" });
@@ -9219,6 +9389,9 @@ export class DashKanbanView extends ItemView {
     }
 
     const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
+    boardActions.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
     boardActions.append(
       this.createHeaderButton("plus", "Add", () => {
         void this.plugin.openKanbanQuickAddFlow(project.projectName);
@@ -9236,10 +9409,33 @@ export class DashKanbanView extends ItemView {
       }));
     }
 
-    const lanes = board.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
-    project.lanes.forEach((lane) => {
-      this.renderLane(lanes, project, lane);
+    const collapseChip = boardHeader.createDiv({ cls: "dash-kanban-project-collapse" });
+    setIcon(collapseChip, project.collapsedInHub && mode === "all-projects" ? "chevron-right" : "chevron-down");
+
+    if (project.collapsedInHub && mode === "all-projects") {
+      return;
+    }
+
+    const body = board.createDiv({ cls: "dash-kanban-project-body" });
+    this.getProjectLaneGroups(project).forEach((group) => {
+      const category = body.createDiv({ cls: "dash-kanban-category-section" });
+      if (group.label) {
+        const categoryHeader = category.createDiv({ cls: "dash-kanban-category-header" });
+        if (group.color) {
+          categoryHeader.style.setProperty("--dash-kanban-category-color", group.color);
+        }
+        categoryHeader.createEl("span", { text: group.label.toUpperCase() });
+      }
+
+      const lanes = category.createDiv({ cls: `dash-kanban-lanes is-${mode}` });
+      group.lanes.forEach((lane) => {
+        this.renderLane(lanes, project, lane);
+      });
     });
+
+    const resizeHandle = board.createDiv({ cls: "dash-kanban-board-resizer" });
+    resizeHandle.createSpan({ text: "Drag to resize board height" });
+    this.bindProjectResize(resizeHandle, board, project);
   }
 
   private renderLane(parent: HTMLElement, project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number]): void {
@@ -9273,10 +9469,10 @@ export class DashKanbanView extends ItemView {
         return;
       }
       if (dragged.projectName !== project.projectName) {
-        void this.plugin.transferKanbanTask(dragged.projectName, project.projectName, dragged.taskId, lane.targetSection);
+        void this.plugin.transferKanbanTask(dragged.projectName, project.projectName, dragged.taskId, lane.laneKey);
         return;
       }
-      void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.targetSection);
+      void this.plugin.moveKanbanTask(project.projectName, dragged.taskId, lane.laneKey);
     });
 
     if (lane.cards.length === 0) {
@@ -9366,7 +9562,7 @@ export class DashKanbanView extends ItemView {
       }),
       this.createCardActionButton("plus-square", "Add sibling card", (event) => {
         event.stopPropagation();
-        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.targetSection);
+        void this.plugin.openKanbanQuickAddFlow(project.projectName, card.laneKey);
       })
     );
 
