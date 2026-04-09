@@ -4337,11 +4337,17 @@ function repairMasterHubProjectLines(projectLines, input) {
 function repairBrokenKanbanTaskLinesInProject(projectLines) {
   const output = [...projectLines];
   let repairedTasks = 0;
+  let currentSection = "General";
   output.forEach((line, index) => {
     if (index === 0) {
       return;
     }
-    const brokenTask = parseBrokenLegacyKanbanTaskLine(line);
+    const sectionName = getSectionName(line);
+    if (sectionName) {
+      currentSection = sectionName;
+      return;
+    }
+    const brokenTask = parseBrokenLegacyKanbanTaskLine(line, currentSection);
     if (!brokenTask) {
       return;
     }
@@ -4353,7 +4359,7 @@ function repairBrokenKanbanTaskLinesInProject(projectLines) {
     repairedTasks
   };
 }
-function parseBrokenLegacyKanbanTaskLine(line) {
+function parseBrokenLegacyKanbanTaskLine(line, sectionName = "General") {
   if (!line.includes(`[${TASK_ID_ANNOTATION_KEY}:`)) {
     return null;
   }
@@ -4361,7 +4367,11 @@ function parseBrokenLegacyKanbanTaskLine(line) {
     return null;
   }
   const trimmed = line.trim();
+  const normalizedSection = sectionName.trim().toLowerCase();
   if (!trimmed || parseProjectMeta(line) || getSectionName(line) || PROJECT_SEPARATOR_REGEX.test(trimmed) || /^##+\s+/.test(trimmed)) {
+    return null;
+  }
+  if (normalizedSection === "completed archive" || normalizedSection.includes("reference")) {
     return null;
   }
   const taskId = extractTaskAnnotation(trimmed, TASK_ID_ANNOTATION_KEY);
@@ -4382,7 +4392,11 @@ function parseBrokenLegacyKanbanTaskLine(line) {
       taskId
     };
   }
-  return null;
+  return {
+    rawText: trimmed,
+    checked: false,
+    taskId
+  };
 }
 function ensureTaskIdsInProjectLines(projectLines, projectName) {
   const output = [...projectLines];
