@@ -2438,6 +2438,49 @@ export function updateTaskByIdInProject(content: string, input: {
   };
 }
 
+export function updateTaskByIdInProjectWithMetadata(content: string, input: {
+  projectName: string;
+  taskId: string;
+  taskText: string;
+  sectionName: string;
+  priority?: string;
+  dueDate?: string;
+  blockedReason?: string;
+  effort?: string;
+  executionContext?: string;
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean; taskText: string } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
+  if (!location) {
+    return { content, updated: false, taskText: "" };
+  }
+
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false, taskText: "" };
+  }
+
+  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
+  const annotatedTaskText = applyTaskAnnotationOverrides(nextTaskText, {
+    priority: input.priority,
+    dueDate: input.dueDate,
+    blockedReason: input.blockedReason,
+    effort: input.effort,
+    executionContext: input.executionContext
+  });
+  const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting"
+    ? annotatedTaskText
+    : stripBlockingTaskAnnotations(annotatedTaskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
+
+  return {
+    content: nextContent,
+    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase() || normalizedTaskText !== removed.taskText,
+    taskText: normalizedTaskText
+  };
+}
+
 export function moveTaskByIdInProject(content: string, input: {
   projectName: string;
   taskId: string;
@@ -2655,12 +2698,39 @@ function replaceTaskDisplayText(taskText: string, nextText: string): string {
     return trimmedNextText || trimmedTaskText;
   }
 
-  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):/i);
+  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):/i);
   if (!annotationMatch || typeof annotationMatch.index !== "number") {
     return trimmedNextText;
   }
 
   return `${trimmedNextText}${trimmedTaskText.slice(annotationMatch.index)}`;
+}
+
+function upsertTaskAnnotation(value: string, key: string, nextValue: string | undefined): string {
+  const trimmedValue = value.trim();
+  const withoutAnnotation = removeTaskAnnotation(trimmedValue, key);
+  const normalizedNextValue = nextValue?.trim() ?? "";
+  if (!normalizedNextValue) {
+    return withoutAnnotation;
+  }
+  return `${withoutAnnotation} [${key}: ${normalizedNextValue}]`.trim();
+}
+
+function applyTaskAnnotationOverrides(taskText: string, input: {
+  priority?: string;
+  dueDate?: string;
+  blockedReason?: string;
+  effort?: string;
+  executionContext?: string;
+}): string {
+  let nextText = taskText.trim();
+  nextText = upsertTaskAnnotation(nextText, "priority", input.priority);
+  nextText = upsertTaskAnnotation(nextText, "due", input.dueDate);
+  nextText = upsertTaskAnnotation(nextText, "blocked", input.blockedReason);
+  nextText = upsertTaskAnnotation(nextText, "effort", input.effort);
+  nextText = upsertTaskAnnotation(nextText, "context", input.executionContext);
+  nextText = removeTaskAnnotation(nextText, "mode");
+  return nextText.replace(/\s{2,}/g, " ").trim();
 }
 
 function stripBlockingTaskAnnotations(value: string): string {
@@ -3381,6 +3451,7 @@ function extractTrackedDate(value: string): string | null {
 
 function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
   const taskId = extractTaskAnnotation(rawText, TASK_ID_ANNOTATION_KEY);
+  const priority = extractTaskAnnotation(rawText, "priority");
   const dueDate = extractTaskAnnotation(rawText, "due");
   const blockedReason = extractTaskAnnotation(rawText, "blocked");
   const unblockDate = extractTaskAnnotation(rawText, "unblock") || extractTaskAnnotation(rawText, "blocked-until");
@@ -3401,6 +3472,7 @@ function parseTodoTaskSummary(rawText: string, section: string, now: Date): Todo
     rawText,
     section,
     kanbanLane: resolveKanbanLane(section, isBlocked),
+    priority: priority ?? "",
     dueDate: dueDate ?? "",
     blockedReason: blockedReason ?? "",
     unblockDate: unblockDate ?? "",
@@ -3470,7 +3542,7 @@ function removeTaskAnnotation(value: string, key: string): string {
 
 function stripTaskAnnotations(value: string): string {
   return value
-    .replace(/\s*\[(?:task-id|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }

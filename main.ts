@@ -110,7 +110,8 @@ import {
   stripMarkdownExtension,
   syncKanbanBoardNoteToMasterHub,
   syncKanbanHubToMasterHub,
-  updateTaskByIdInProject
+  updateTaskByIdInProject,
+  updateTaskByIdInProjectWithMetadata
 } from "./src/dashboard-todo";
 import {
   AddHabitModal,
@@ -159,6 +160,7 @@ import {
   type DashboardPluginData,
   type DashboardFocusDisplayItem,
   type DashboardKanbanViewState,
+  type DashboardKanbanTheme,
   type DashboardNotificationItem,
   type DashboardNotificationSound,
   type DashboardSettings,
@@ -204,6 +206,7 @@ import {
   type TimeAllocationInsights,
   type TodoProjectSummary,
   type TodoSnapshot,
+  type TodoTaskSummary,
   type TodayFocusItem,
   type WeeklyAgendaDay,
   type WallpaperOption,
@@ -233,7 +236,8 @@ export default class DailyDashboardPlugin extends Plugin {
         selectedProjectName: "",
         showDone: true,
         focusFilter: "all",
-        density: "comfortable"
+        density: "comfortable",
+        headerCollapsed: false
       },
       lastCleanupPreviewAt: ""
     },
@@ -2660,6 +2664,8 @@ export default class DailyDashboardPlugin extends Plugin {
       laneDefinitions: [],
       boardHeight: 420,
       collapsedInHub: false,
+      showLaneCategories: false,
+      theme: "sunset",
       updatedAt: ""
     };
   }
@@ -2675,7 +2681,8 @@ export default class DailyDashboardPlugin extends Plugin {
       && merged.selectedProjectName === previousState.selectedProjectName
       && merged.showDone === previousState.showDone
       && merged.focusFilter === previousState.focusFilter
-      && merged.density === previousState.density) {
+      && merged.density === previousState.density
+      && merged.headerCollapsed === previousState.headerCollapsed) {
       return;
     }
 
@@ -2996,6 +3003,8 @@ export default class DailyDashboardPlugin extends Plugin {
     laneDefinitions: KanbanLaneDefinition[];
     boardHeight: number;
     collapsedInHub: boolean;
+    showLaneCategories: boolean;
+    theme: DashboardKanbanTheme;
   }): Promise<void> {
     const projectName = input.projectName.trim();
     if (!projectName) {
@@ -3011,13 +3020,15 @@ export default class DailyDashboardPlugin extends Plugin {
       laneDefinitions: normalizedLaneDefinitions,
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
+      showLaneCategories: Boolean(input.showLaneCategories),
+      theme: input.theme === "ocean" || input.theme === "forest" ? input.theme : "sunset",
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
     this.refreshDashboardViews();
   }
 
-  async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean }): Promise<void> {
+  async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean; showLaneCategories?: boolean; theme?: DashboardKanbanTheme }): Promise<void> {
     const normalizedProjectName = projectName.trim();
     if (!normalizedProjectName) {
       return;
@@ -3033,6 +3044,12 @@ export default class DailyDashboardPlugin extends Plugin {
       collapsedInHub: typeof input.collapsedInHub === "boolean"
         ? input.collapsedInHub
         : existing.collapsedInHub,
+      showLaneCategories: typeof input.showLaneCategories === "boolean"
+        ? input.showLaneCategories
+        : existing.showLaneCategories,
+      theme: input.theme === "ocean" || input.theme === "forest" || input.theme === "sunset"
+        ? input.theme
+        : existing.theme,
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
@@ -3106,6 +3123,7 @@ export default class DailyDashboardPlugin extends Plugin {
       projectName: project.name,
       templateId: template.templateId,
       templateName: template.name,
+      theme: configuration?.theme === "ocean" || configuration?.theme === "forest" ? configuration.theme : "sunset",
       status: project.status,
       projectState: project.projectState,
       focus: project.focus,
@@ -3117,6 +3135,7 @@ export default class DailyDashboardPlugin extends Plugin {
       archivedCount: project.archivedCount,
       boardHeight: typeof configuration?.boardHeight === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
       collapsedInHub: Boolean(configuration?.collapsedInHub),
+      showLaneCategories: Boolean(configuration?.showLaneCategories),
       lanes
     };
   }
@@ -3138,6 +3157,7 @@ export default class DailyDashboardPlugin extends Plugin {
       laneLabel: laneOption.label,
       targetSection: laneOption.targetSection,
       done: laneOption.done,
+      priority: task.priority,
       dueDate: task.dueDate,
       blockedReason: task.blockedReason,
       unblockDate: task.unblockDate,
@@ -3162,6 +3182,10 @@ export default class DailyDashboardPlugin extends Plugin {
         || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
     if (!matchesSection) {
       return false;
+    }
+
+    if (!this.getKanbanBoardConfiguration(projectName).showLaneCategories) {
+      return true;
     }
 
     const taskTags = this.extractDashKanbanTags(task.rawText).map((tag) => tag.toLowerCase());
@@ -5906,9 +5930,22 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const updatedContent = insertProjectIntoTodo(todoContent, categoryName, projectBlock);
     await this.app.vault.modify(todoFile, updatedContent);
+    await this.saveKanbanBoardConfiguration({
+      projectName,
+      templateId: input.kanbanTemplateId.trim() || "execution-default",
+      showInHub: true,
+      laneDefinitions: [],
+      boardHeight: 420,
+      collapsedInHub: false,
+      showLaneCategories: input.kanbanShowLaneCategories,
+      theme: input.kanbanTheme
+    });
     await this.refreshMasterHubPortfolioSnapshot(false);
     await this.openFile(projectNote);
     this.refreshDashboardViews();
+    if (input.useCustomKanban) {
+      void this.openDashKanbanBoardSettings(projectName);
+    }
     new Notice(`Created ${projectName} in the master todo and generated its project note.`);
   }
 
@@ -6504,6 +6541,8 @@ export default class DailyDashboardPlugin extends Plugin {
         laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
+        showLaneCategories: Boolean(entry.showLaneCategories),
+        theme: entry.theme === "ocean" || entry.theme === "forest" ? entry.theme : "sunset",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });
@@ -6559,7 +6598,8 @@ export default class DailyDashboardPlugin extends Plugin {
         || value?.focusFilter === "due"
         ? value.focusFilter
         : "all",
-      density: value?.density === "compact" ? "compact" : "comfortable"
+      density: value?.density === "compact" ? "compact" : "comfortable",
+      headerCollapsed: Boolean(value?.headerCollapsed)
     };
   }
 
@@ -7590,6 +7630,132 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.refreshKanbanBoardNotes(false);
     }
     this.refreshDashboardViews();
+    return true;
+  }
+
+  async updateKanbanTaskDetails(projectName: string, taskId: string, input: {
+    taskText: string;
+    lane: string;
+    priority: string;
+    dueDate: string;
+    blockedReason: string;
+    effort: string;
+    executionContext: string;
+  }): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const trimmedTask = input.taskText.trim();
+    const targetLaneOption = this.resolveKanbanLaneOption(projectName, input.lane);
+    const waitingLaneOption = this.getKanbanLaneOptions(projectName).find((option) => option.targetSection.trim().toLowerCase() === "waiting" || option.label.trim().toLowerCase() === "waiting");
+    const effectiveLaneOption = input.blockedReason.trim().length > 0 && waitingLaneOption ? waitingLaneOption : targetLaneOption;
+    const trimmedLane = (effectiveLaneOption?.targetSection || input.lane).trim();
+    if (!trimmedTask || !trimmedLane) {
+      new Notice("Task text and lane are required.");
+      return false;
+    }
+
+    const formattedTaskText = this.formatTaskTextForKanbanLane(projectName, effectiveLaneOption?.laneKey ?? input.lane, trimmedTask);
+    const content = await this.app.vault.read(todoFile);
+    const updated = updateTaskByIdInProjectWithMetadata(content, {
+      projectName,
+      taskId,
+      taskText: formattedTaskText,
+      sectionName: trimmedLane,
+      priority: input.priority,
+      dueDate: input.dueDate,
+      blockedReason: input.blockedReason,
+      effort: input.effort,
+      executionContext: input.executionContext,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!updated.updated) {
+      new Notice("Could not find that Kanban task in the master task hub.");
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, updated.content);
+    await this.refreshMasterHubPortfolioSnapshot(false);
+    if (this.data.settings.kanbanEnabled) {
+      await this.refreshKanbanHub(false);
+      await this.refreshKanbanBoardNotes(false);
+    }
+    this.refreshDashboardViews();
+    return true;
+  }
+
+  async cycleKanbanTaskPriority(projectName: string, taskId: string): Promise<boolean> {
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot?.projects.find((candidate) => candidate.name === projectName);
+    const task = project
+      ? [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails
+      ].find((candidate) => candidate.taskId === taskId)
+      : null;
+    if (!task || task.section.trim().toLowerCase() === "completed archive") {
+      return false;
+    }
+
+    const priorityOrder = ["", "low", "medium", "high", "urgent"];
+    const currentIndex = priorityOrder.indexOf(task.priority.trim().toLowerCase());
+    const nextPriority = priorityOrder[(currentIndex + 1) % priorityOrder.length] ?? "";
+
+    return this.updateKanbanTaskDetails(projectName, taskId, {
+      taskText: task.text,
+      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      priority: nextPriority,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      effort: task.effort,
+      executionContext: task.executionContext
+    });
+  }
+
+  async renameKanbanLane(projectName: string, laneKey: string, nextLabel: string): Promise<boolean> {
+    const normalizedProjectName = projectName.trim();
+    const normalizedLaneKey = laneKey.trim();
+    const normalizedLabel = nextLabel.trim();
+    if (!normalizedProjectName || !normalizedLaneKey || !normalizedLabel) {
+      return false;
+    }
+
+    const configuration = this.getKanbanBoardConfiguration(normalizedProjectName);
+    const baseLaneDefinitions = configuration.laneDefinitions.length > 0
+      ? configuration.laneDefinitions
+      : this.getKanbanLaneOptions(normalizedProjectName).map((lane) => ({
+        laneKey: lane.laneKey,
+        label: lane.label,
+        helperText: lane.helperText,
+        categoryKey: lane.categoryKey,
+        categoryLabel: lane.categoryLabel,
+        categoryColor: lane.categoryColor,
+        categoryTag: lane.categoryTag,
+        ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+        mappedSections: lane.targetSection ? [lane.targetSection] : [],
+        done: lane.done
+      }));
+    if (!baseLaneDefinitions.some((lane) => lane.laneKey === normalizedLaneKey)) {
+      return false;
+    }
+
+    await this.saveKanbanBoardConfiguration({
+      projectName: normalizedProjectName,
+      templateId: configuration.templateId,
+      showInHub: configuration.showInHub,
+      laneDefinitions: baseLaneDefinitions.map((lane) => lane.laneKey === normalizedLaneKey ? { ...lane, label: normalizedLabel } : lane),
+      boardHeight: configuration.boardHeight,
+      collapsedInHub: configuration.collapsedInHub,
+      showLaneCategories: configuration.showLaneCategories,
+      theme: configuration.theme
+    });
     return true;
   }
 

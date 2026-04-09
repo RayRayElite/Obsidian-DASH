@@ -589,6 +589,10 @@ export interface CreateProjectInput {
   focus: string;
   addTasks: string[];
   fixTasks: string[];
+  kanbanTemplateId: string;
+  kanbanTheme: DashboardKanbanTheme;
+  kanbanShowLaneCategories: boolean;
+  useCustomKanban: boolean;
 }
 
 export interface ExistingProjectDefinition {
@@ -664,6 +668,8 @@ export interface KanbanBoardConfiguration {
   laneDefinitions: KanbanLaneDefinition[];
   boardHeight: number;
   collapsedInHub: boolean;
+  showLaneCategories: boolean;
+  theme: DashboardKanbanTheme;
   updatedAt: string;
 }
 
@@ -689,6 +695,7 @@ export interface KanbanSyncConflict {
 export type DashboardKanbanViewMode = "all-projects" | "single-project";
 export type DashboardKanbanFocusFilter = "all" | "attention" | "blocked" | "due";
 export type DashboardKanbanDensity = "comfortable" | "compact";
+export type DashboardKanbanTheme = "sunset" | "ocean" | "forest";
 
 export interface DashboardKanbanViewState {
   mode: DashboardKanbanViewMode;
@@ -696,6 +703,7 @@ export interface DashboardKanbanViewState {
   showDone: boolean;
   focusFilter: DashboardKanbanFocusFilter;
   density: DashboardKanbanDensity;
+  headerCollapsed: boolean;
 }
 
 export interface DashKanbanCard {
@@ -708,6 +716,7 @@ export interface DashKanbanCard {
   laneLabel: string;
   targetSection: string;
   done: boolean;
+  priority: string;
   dueDate: string;
   blockedReason: string;
   unblockDate: string;
@@ -742,6 +751,7 @@ export interface DashKanbanProjectBoard {
   projectName: string;
   templateId: string;
   templateName: string;
+  theme: DashboardKanbanTheme;
   status: string;
   projectState: TodoProjectSummary["projectState"];
   focus: string;
@@ -753,6 +763,7 @@ export interface DashKanbanProjectBoard {
   archivedCount: number;
   boardHeight: number;
   collapsedInHub: boolean;
+  showLaneCategories: boolean;
   lanes: DashKanbanLane[];
 }
 
@@ -912,6 +923,7 @@ export interface TodoTaskSummary {
   rawText: string;
   section: string;
   kanbanLane: KanbanLane | "";
+  priority: string;
   dueDate: string;
   blockedReason: string;
   unblockDate: string;
