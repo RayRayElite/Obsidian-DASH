@@ -2653,7 +2653,8 @@ export default class DailyDashboardPlugin extends Plugin {
     if (existing) {
       return {
         ...existing,
-        laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane }))
+        laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane })),
+        laneOrder: Object.fromEntries(Object.entries(existing.laneOrder ?? {}).map(([laneKey, taskIds]) => [laneKey, [...taskIds]]))
       };
     }
 
@@ -2662,6 +2663,7 @@ export default class DailyDashboardPlugin extends Plugin {
       templateId: "execution-default",
       showInHub: true,
       laneDefinitions: [],
+      laneOrder: {},
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
@@ -2873,6 +2875,8 @@ export default class DailyDashboardPlugin extends Plugin {
         checked: Boolean(targetLaneOption?.done),
         updatedAt: timestamp
       };
+      this.removeTaskFromKanbanLaneOrder(normalizedFromProject, taskId);
+      this.removeTaskFromKanbanLaneOrder(normalizedToProject, taskId);
       await this.savePluginData();
     }
 
@@ -2913,6 +2917,7 @@ export default class DailyDashboardPlugin extends Plugin {
         checked: true,
         updatedAt: formatDateTimeKey(new Date())
       };
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
 
@@ -2949,6 +2954,7 @@ export default class DailyDashboardPlugin extends Plugin {
     if (this.data.kanbanState.taskRegistry[taskId]) {
       delete this.data.kanbanState.taskRegistry[taskId];
     }
+    this.removeTaskFromKanbanLaneOrder(projectName, taskId);
 
     Object.entries(this.data.kanbanState.repairQueue).forEach(([repairId, repair]) => {
       if (repair.taskId === taskId) {
@@ -3011,6 +3017,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
+    const existing = this.getKanbanBoardConfiguration(projectName);
     const templateId = input.templateId.trim() || "execution-default";
     const normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
     this.data.kanbanState.boardConfigurations[projectName] = {
@@ -3018,6 +3025,7 @@ export default class DailyDashboardPlugin extends Plugin {
       templateId,
       showInHub: input.showInHub,
       laneDefinitions: normalizedLaneDefinitions,
+      laneOrder: existing.laneOrder,
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
@@ -3050,6 +3058,30 @@ export default class DailyDashboardPlugin extends Plugin {
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark"
         ? input.theme
         : existing.theme,
+      updatedAt: formatDateTimeKey(new Date())
+    };
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+
+  async updateKanbanLaneCardOrder(projectName: string, laneKey: string, orderedTaskIds: string[]): Promise<void> {
+    const normalizedProjectName = projectName.trim();
+    const normalizedLaneKey = laneKey.trim();
+    if (!normalizedProjectName || !normalizedLaneKey) {
+      return;
+    }
+
+    const existing = this.getKanbanBoardConfiguration(normalizedProjectName);
+    const normalizedTaskIds = orderedTaskIds
+      .map((taskId) => taskId.trim())
+      .filter((taskId, index, array) => taskId.length > 0 && array.indexOf(taskId) === index);
+    const preservedTaskIds = (existing.laneOrder[normalizedLaneKey] ?? []).filter((taskId) => !normalizedTaskIds.includes(taskId));
+    this.data.kanbanState.boardConfigurations[normalizedProjectName] = {
+      ...existing,
+      laneOrder: {
+        ...existing.laneOrder,
+        [normalizedLaneKey]: [...preservedTaskIds, ...normalizedTaskIds]
+      },
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
@@ -3102,8 +3134,8 @@ export default class DailyDashboardPlugin extends Plugin {
     const lanes = laneOptions.map((laneOption) => {
       const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
         .filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions))
-        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption))
-        .sort((left, right) => this.compareDashKanbanCardPriority(left, right));
+        .map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+      const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, configuration?.laneOrder ?? {});
 
       return {
         laneKey: laneOption.laneKey,
@@ -3117,8 +3149,8 @@ export default class DailyDashboardPlugin extends Plugin {
         categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
         done: laneOption.done,
-        cardCount: cards.length,
-        cards
+        cardCount: sortedCards.length,
+        cards: sortedCards
       };
     });
 
@@ -3181,22 +3213,66 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private compareDashKanbanCardPriority(left: DashKanbanCard, right: DashKanbanCard): number {
-    const priorityWeight = (priority: string): number => {
-      switch (priority.trim().toLowerCase()) {
-        case "urgent":
-          return 0;
-        case "high":
-          return 1;
-        case "medium":
-          return 2;
-        case "low":
-          return 3;
-        default:
-          return 4;
-      }
-    };
+    return this.getDashKanbanCardPriorityWeight(left.priority) - this.getDashKanbanCardPriorityWeight(right.priority);
+  }
 
-    return priorityWeight(left.priority) - priorityWeight(right.priority);
+  private getDashKanbanCardPriorityWeight(priority: string): number {
+    switch (priority.trim().toLowerCase()) {
+      case "urgent":
+        return 0;
+      case "high":
+        return 1;
+      case "medium":
+        return 2;
+      case "low":
+        return 3;
+      default:
+        return 4;
+    }
+  }
+
+  private sortDashKanbanLaneCards(cards: DashKanbanCard[], laneKey: string, laneOrder: Record<string, string[]>): DashKanbanCard[] {
+    const manualPositions = new Map((laneOrder[laneKey] ?? []).map((taskId, index) => [taskId, index]));
+    const groupedByPriority = new Map<number, DashKanbanCard[]>();
+
+    cards.forEach((card) => {
+      const bucket = this.getDashKanbanCardPriorityWeight(card.priority);
+      const current = groupedByPriority.get(bucket) ?? [];
+      current.push(card);
+      groupedByPriority.set(bucket, current);
+    });
+
+    return Array.from(groupedByPriority.entries())
+      .sort(([leftBucket], [rightBucket]) => leftBucket - rightBucket)
+      .flatMap(([, group]) => group.sort((left, right) => {
+        const leftPosition = manualPositions.get(left.taskId);
+        const rightPosition = manualPositions.get(right.taskId);
+        if (leftPosition === undefined && rightPosition === undefined) {
+          return 0;
+        }
+        if (leftPosition === undefined) {
+          return 1;
+        }
+        if (rightPosition === undefined) {
+          return -1;
+        }
+        return leftPosition - rightPosition;
+      }));
+  }
+
+  private removeTaskFromKanbanLaneOrder(projectName: string, taskId: string): void {
+    const configuration = this.data.kanbanState.boardConfigurations[projectName];
+    if (!configuration) {
+      return;
+    }
+
+    this.data.kanbanState.boardConfigurations[projectName] = {
+      ...configuration,
+      laneOrder: Object.fromEntries(Object.entries(configuration.laneOrder ?? {}).map(([laneKey, orderedTaskIds]) => [
+        laneKey,
+        orderedTaskIds.filter((candidate) => candidate !== taskId)
+      ]))
+    };
   }
 
   private matchesDashKanbanLaneTask(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary, laneOptions: KanbanLaneOption[]): boolean {
@@ -6538,6 +6614,19 @@ export default class DailyDashboardPlugin extends Plugin {
     return boardTemplates;
   }
 
+  private normalizeKanbanLaneOrder(value: unknown): Record<string, string[]> {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([laneKey, taskIds]) => [
+      laneKey,
+      Array.isArray(taskIds)
+        ? taskIds.filter((taskId): taskId is string => typeof taskId === "string" && taskId.trim().length > 0)
+        : []
+    ]));
+  }
+
   private normalizeKanbanBoardConfigurations(value: unknown): Record<string, KanbanBoardConfiguration> {
     if (!value || typeof value !== "object") {
       return {};
@@ -6559,6 +6648,7 @@ export default class DailyDashboardPlugin extends Plugin {
         templateId: typeof entry.templateId === "string" ? entry.templateId.trim() : "",
         showInHub: entry.showInHub !== false,
         laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        laneOrder: this.normalizeKanbanLaneOrder(entry.laneOrder),
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
@@ -7621,6 +7711,18 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const trimmedTask = taskText.trim();
+    const snapshot = await this.getTodoSnapshot();
+    const currentProject = snapshot?.projects.find((project) => project.name === projectName);
+    const currentTask = currentProject
+      ? [
+        ...currentProject.nowTaskDetails,
+        ...currentProject.nextTaskDetails,
+        ...currentProject.laterTaskDetails,
+        ...currentProject.waitingTaskDetails,
+        ...currentProject.parkingLotTaskDetails,
+        ...currentProject.completedTaskDetails
+      ].find((candidate) => candidate.taskId === taskId)
+      : null;
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, lane);
     const trimmedLane = (targetLaneOption?.targetSection || lane).trim();
     if (!trimmedTask || !trimmedLane) {
@@ -7641,6 +7743,12 @@ export default class DailyDashboardPlugin extends Plugin {
     if (!updated.updated) {
       new Notice("Could not find that Kanban task in the master task hub.");
       return false;
+    }
+
+    const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
+    if ((currentLaneOption?.laneKey ?? currentTask?.section ?? "") !== (targetLaneOption?.laneKey ?? lane)) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.savePluginData();
     }
 
     await this.app.vault.modify(todoFile, updated.content);
@@ -7667,6 +7775,19 @@ export default class DailyDashboardPlugin extends Plugin {
       new Notice("Master task hub not found. Set the path in plugin settings.");
       return false;
     }
+
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot?.projects.find((candidate) => candidate.name === projectName);
+    const currentTask = project
+      ? [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails
+      ].find((candidate) => candidate.taskId === taskId)
+      : null;
 
     const trimmedTask = input.taskText.trim();
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, input.lane);
@@ -7695,6 +7816,13 @@ export default class DailyDashboardPlugin extends Plugin {
     if (!updated.updated) {
       new Notice("Could not find that Kanban task in the master task hub.");
       return false;
+    }
+
+    const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
+    if ((currentLaneOption?.laneKey ?? currentTask?.section ?? "") !== (effectiveLaneOption?.laneKey ?? input.lane)
+      || (currentTask?.priority ?? "") !== input.priority.trim()) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.savePluginData();
     }
 
     await this.app.vault.modify(todoFile, updated.content);

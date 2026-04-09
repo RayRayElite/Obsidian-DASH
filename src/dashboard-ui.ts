@@ -8874,7 +8874,7 @@ export class FocusCaptureModal extends Modal {
 export class DashKanbanView extends ItemView {
   private plugin: DailyDashboardPlugin;
   private searchText = "";
-  private dragCard: { projectName: string; taskId: string } | null = null;
+  private dragCard: { projectName: string; taskId: string; laneKey: string } | null = null;
   private selectedCardKey: { projectName: string; taskId: string } | null = null;
   private quickAddDraft: { projectName: string; laneKey: string; taskText: string } | null = null;
   private priorityPickerKey: { projectName: string; taskId: string } | null = null;
@@ -9097,6 +9097,33 @@ export class DashKanbanView extends ItemView {
     this.priorityPickerKey = null;
     this.detailEditState = null;
     await this.requestRefresh();
+  }
+
+  private canReorderCardWithinLane(lane: DashKanbanProjectBoard["lanes"][number], draggedTaskId: string, targetCard: DashKanbanCard): boolean {
+    const draggedCard = lane.cards.find((candidate) => candidate.taskId === draggedTaskId);
+    if (!draggedCard || draggedCard.taskId === targetCard.taskId) {
+      return false;
+    }
+
+    return draggedCard.priority.trim().toLowerCase() === targetCard.priority.trim().toLowerCase();
+  }
+
+  private async reorderCardWithinLane(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], draggedTaskId: string, targetTaskId: string): Promise<void> {
+    const draggedCard = lane.cards.find((candidate) => candidate.taskId === draggedTaskId);
+    const targetCard = lane.cards.find((candidate) => candidate.taskId === targetTaskId);
+    if (!draggedCard || !targetCard) {
+      return;
+    }
+
+    const matchingPriorityCards = lane.cards.filter((candidate) => candidate.priority.trim().toLowerCase() === draggedCard.priority.trim().toLowerCase());
+    const orderedIds = matchingPriorityCards.map((candidate) => candidate.taskId).filter((taskId) => taskId !== draggedTaskId);
+    const targetIndex = orderedIds.indexOf(targetTaskId);
+    if (targetIndex < 0) {
+      return;
+    }
+
+    orderedIds.splice(targetIndex, 0, draggedTaskId);
+    await this.plugin.updateKanbanLaneCardOrder(project.projectName, lane.laneKey, orderedIds);
   }
 
   private renderDetailPanel(parent: HTMLElement, project: DashKanbanProjectBoard, card: DashKanbanCard): void {
@@ -9964,11 +9991,11 @@ export class DashKanbanView extends ItemView {
     }
 
     lane.cards.forEach((card) => {
-      cards.append(this.renderCard(project, card));
+      cards.append(this.renderCard(project, lane, card));
     });
   }
 
-  private renderCard(project: DashKanbanProjectBoard, card: DashKanbanCard): HTMLElement {
+  private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard): HTMLElement {
     const cardEl = document.createElement("article");
     const isSelected = this.selectedCardKey?.projectName === project.projectName && this.selectedCardKey?.taskId === card.taskId;
     cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
@@ -9983,7 +10010,7 @@ export class DashKanbanView extends ItemView {
       void this.requestRefresh();
     });
     cardEl.addEventListener("dragstart", (event) => {
-      this.dragCard = { projectName: project.projectName, taskId: card.taskId };
+      this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
       event.dataTransfer?.setData("text/plain", `${project.projectName}:${card.taskId}`);
       if (event.dataTransfer) {
@@ -9993,6 +10020,33 @@ export class DashKanbanView extends ItemView {
     cardEl.addEventListener("dragend", () => {
       this.dragCard = null;
       cardEl.removeClass("is-dragging");
+    });
+    cardEl.addEventListener("dragover", (event) => {
+      if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
+        return;
+      }
+      if (!this.canReorderCardWithinLane(lane, this.dragCard.taskId, card)) {
+        return;
+      }
+      event.preventDefault();
+      cardEl.addClass("is-drop-target");
+    });
+    cardEl.addEventListener("dragleave", () => {
+      cardEl.removeClass("is-drop-target");
+    });
+    cardEl.addEventListener("drop", (event) => {
+      if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
+        return;
+      }
+      if (!this.canReorderCardWithinLane(lane, this.dragCard.taskId, card)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const dragged = this.dragCard;
+      this.dragCard = null;
+      cardEl.removeClass("is-drop-target");
+      void this.reorderCardWithinLane(project, lane, dragged.taskId, card.taskId);
     });
     if (isSelected) {
       this.syncDetailEditState(project, card);

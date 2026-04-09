@@ -670,6 +670,7 @@ export interface KanbanBoardConfiguration {
   templateId: string;
   showInHub: boolean;
   laneDefinitions: KanbanLaneDefinition[];
+  laneOrder: Record<string, string[]>;
   boardHeight: number;
   collapsedInHub: boolean;
   showLaneCategories: boolean;

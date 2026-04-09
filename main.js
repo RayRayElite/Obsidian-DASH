@@ -13056,6 +13056,28 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.detailEditState = null;
     await this.requestRefresh();
   }
+  canReorderCardWithinLane(lane, draggedTaskId, targetCard) {
+    const draggedCard = lane.cards.find((candidate) => candidate.taskId === draggedTaskId);
+    if (!draggedCard || draggedCard.taskId === targetCard.taskId) {
+      return false;
+    }
+    return draggedCard.priority.trim().toLowerCase() === targetCard.priority.trim().toLowerCase();
+  }
+  async reorderCardWithinLane(project, lane, draggedTaskId, targetTaskId) {
+    const draggedCard = lane.cards.find((candidate) => candidate.taskId === draggedTaskId);
+    const targetCard = lane.cards.find((candidate) => candidate.taskId === targetTaskId);
+    if (!draggedCard || !targetCard) {
+      return;
+    }
+    const matchingPriorityCards = lane.cards.filter((candidate) => candidate.priority.trim().toLowerCase() === draggedCard.priority.trim().toLowerCase());
+    const orderedIds = matchingPriorityCards.map((candidate) => candidate.taskId).filter((taskId) => taskId !== draggedTaskId);
+    const targetIndex = orderedIds.indexOf(targetTaskId);
+    if (targetIndex < 0) {
+      return;
+    }
+    orderedIds.splice(targetIndex, 0, draggedTaskId);
+    await this.plugin.updateKanbanLaneCardOrder(project.projectName, lane.laneKey, orderedIds);
+  }
   renderDetailPanel(parent, project, card) {
     this.syncDetailEditState(project, card);
     const panel = parent.createDiv({ cls: "dash-kanban-detail-panel" });
@@ -13833,10 +13855,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       return;
     }
     lane.cards.forEach((card) => {
-      cards.append(this.renderCard(project, card));
+      cards.append(this.renderCard(project, lane, card));
     });
   }
-  renderCard(project, card) {
+  renderCard(project, lane, card) {
     var _a, _b, _c;
     const cardEl = document.createElement("article");
     const isSelected = ((_a = this.selectedCardKey) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.selectedCardKey) == null ? void 0 : _b.taskId) === card.taskId;
@@ -13853,7 +13875,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
     cardEl.addEventListener("dragstart", (event) => {
       var _a2;
-      this.dragCard = { projectName: project.projectName, taskId: card.taskId };
+      this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
       (_a2 = event.dataTransfer) == null ? void 0 : _a2.setData("text/plain", `${project.projectName}:${card.taskId}`);
       if (event.dataTransfer) {
@@ -13863,6 +13885,33 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     cardEl.addEventListener("dragend", () => {
       this.dragCard = null;
       cardEl.removeClass("is-dragging");
+    });
+    cardEl.addEventListener("dragover", (event) => {
+      if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
+        return;
+      }
+      if (!this.canReorderCardWithinLane(lane, this.dragCard.taskId, card)) {
+        return;
+      }
+      event.preventDefault();
+      cardEl.addClass("is-drop-target");
+    });
+    cardEl.addEventListener("dragleave", () => {
+      cardEl.removeClass("is-drop-target");
+    });
+    cardEl.addEventListener("drop", (event) => {
+      if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
+        return;
+      }
+      if (!this.canReorderCardWithinLane(lane, this.dragCard.taskId, card)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const dragged = this.dragCard;
+      this.dragCard = null;
+      cardEl.removeClass("is-drop-target");
+      void this.reorderCardWithinLane(project, lane, dragged.taskId, card.taskId);
     });
     if (isSelected) {
       this.syncDetailEditState(project, card);
@@ -16372,11 +16421,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }));
   }
   getKanbanBoardConfiguration(projectName) {
+    var _a;
     const existing = this.data.kanbanState.boardConfigurations[projectName];
     if (existing) {
       return {
         ...existing,
-        laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane }))
+        laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane })),
+        laneOrder: Object.fromEntries(Object.entries((_a = existing.laneOrder) != null ? _a : {}).map(([laneKey, taskIds]) => [laneKey, [...taskIds]]))
       };
     }
     return {
@@ -16384,6 +16435,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       templateId: "execution-default",
       showInHub: true,
       laneDefinitions: [],
+      laneOrder: {},
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
@@ -16558,6 +16610,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         checked: Boolean(targetLaneOption == null ? void 0 : targetLaneOption.done),
         updatedAt: timestamp
       };
+      this.removeTaskFromKanbanLaneOrder(normalizedFromProject, taskId);
+      this.removeTaskFromKanbanLaneOrder(normalizedToProject, taskId);
       await this.savePluginData();
     }
     await this.app.vault.modify(todoFile, nextContent);
@@ -16594,6 +16648,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         checked: true,
         updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
       };
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
     await this.app.vault.modify(todoFile, completed.content);
@@ -16625,6 +16680,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (this.data.kanbanState.taskRegistry[taskId]) {
       delete this.data.kanbanState.taskRegistry[taskId];
     }
+    this.removeTaskFromKanbanLaneOrder(projectName, taskId);
     Object.entries(this.data.kanbanState.repairQueue).forEach(([repairId, repair]) => {
       if (repair.taskId === taskId) {
         delete this.data.kanbanState.repairQueue[repairId];
@@ -16669,6 +16725,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (!projectName) {
       return;
     }
+    const existing = this.getKanbanBoardConfiguration(projectName);
     const templateId = input.templateId.trim() || "execution-default";
     const normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
     this.data.kanbanState.boardConfigurations[projectName] = {
@@ -16676,6 +16733,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       templateId,
       showInHub: input.showInHub,
       laneDefinitions: normalizedLaneDefinitions,
+      laneOrder: existing.laneOrder,
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
@@ -16698,6 +16756,27 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       collapsedInHub: typeof input.collapsedInHub === "boolean" ? input.collapsedInHub : existing.collapsedInHub,
       showLaneCategories: typeof input.showLaneCategories === "boolean" ? input.showLaneCategories : existing.showLaneCategories,
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark" ? input.theme : existing.theme,
+      updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    };
+    await this.savePluginData();
+    this.refreshDashboardViews();
+  }
+  async updateKanbanLaneCardOrder(projectName, laneKey, orderedTaskIds) {
+    var _a;
+    const normalizedProjectName = projectName.trim();
+    const normalizedLaneKey = laneKey.trim();
+    if (!normalizedProjectName || !normalizedLaneKey) {
+      return;
+    }
+    const existing = this.getKanbanBoardConfiguration(normalizedProjectName);
+    const normalizedTaskIds = orderedTaskIds.map((taskId) => taskId.trim()).filter((taskId, index, array) => taskId.length > 0 && array.indexOf(taskId) === index);
+    const preservedTaskIds = ((_a = existing.laneOrder[normalizedLaneKey]) != null ? _a : []).filter((taskId) => !normalizedTaskIds.includes(taskId));
+    this.data.kanbanState.boardConfigurations[normalizedProjectName] = {
+      ...existing,
+      laneOrder: {
+        ...existing.laneOrder,
+        [normalizedLaneKey]: [...preservedTaskIds, ...normalizedTaskIds]
+      },
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -16741,7 +16820,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...project.parkingLotTaskDetails
     ];
     const lanes = laneOptions.map((laneOption) => {
-      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions)).map((task) => this.buildDashKanbanCard(project.name, task, laneOption)).sort((left, right) => this.compareDashKanbanCardPriority(left, right));
+      var _a2;
+      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions)).map((task) => this.buildDashKanbanCard(project.name, task, laneOption));
+      const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, (_a2 = configuration == null ? void 0 : configuration.laneOrder) != null ? _a2 : {});
       return {
         laneKey: laneOption.laneKey,
         label: laneOption.label,
@@ -16754,8 +16835,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         categoryTag: laneOption.categoryTag,
         targetSection: laneOption.targetSection,
         done: laneOption.done,
-        cardCount: cards.length,
-        cards
+        cardCount: sortedCards.length,
+        cards: sortedCards
       };
     });
     return {
@@ -16810,21 +16891,61 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   compareDashKanbanCardPriority(left, right) {
-    const priorityWeight = (priority) => {
-      switch (priority.trim().toLowerCase()) {
-        case "urgent":
-          return 0;
-        case "high":
-          return 1;
-        case "medium":
-          return 2;
-        case "low":
-          return 3;
-        default:
-          return 4;
+    return this.getDashKanbanCardPriorityWeight(left.priority) - this.getDashKanbanCardPriorityWeight(right.priority);
+  }
+  getDashKanbanCardPriorityWeight(priority) {
+    switch (priority.trim().toLowerCase()) {
+      case "urgent":
+        return 0;
+      case "high":
+        return 1;
+      case "medium":
+        return 2;
+      case "low":
+        return 3;
+      default:
+        return 4;
+    }
+  }
+  sortDashKanbanLaneCards(cards, laneKey, laneOrder) {
+    var _a;
+    const manualPositions = new Map(((_a = laneOrder[laneKey]) != null ? _a : []).map((taskId, index) => [taskId, index]));
+    const groupedByPriority = /* @__PURE__ */ new Map();
+    cards.forEach((card) => {
+      var _a2;
+      const bucket = this.getDashKanbanCardPriorityWeight(card.priority);
+      const current = (_a2 = groupedByPriority.get(bucket)) != null ? _a2 : [];
+      current.push(card);
+      groupedByPriority.set(bucket, current);
+    });
+    return Array.from(groupedByPriority.entries()).sort(([leftBucket], [rightBucket]) => leftBucket - rightBucket).flatMap(([, group]) => group.sort((left, right) => {
+      const leftPosition = manualPositions.get(left.taskId);
+      const rightPosition = manualPositions.get(right.taskId);
+      if (leftPosition === void 0 && rightPosition === void 0) {
+        return 0;
       }
+      if (leftPosition === void 0) {
+        return 1;
+      }
+      if (rightPosition === void 0) {
+        return -1;
+      }
+      return leftPosition - rightPosition;
+    }));
+  }
+  removeTaskFromKanbanLaneOrder(projectName, taskId) {
+    var _a;
+    const configuration = this.data.kanbanState.boardConfigurations[projectName];
+    if (!configuration) {
+      return;
+    }
+    this.data.kanbanState.boardConfigurations[projectName] = {
+      ...configuration,
+      laneOrder: Object.fromEntries(Object.entries((_a = configuration.laneOrder) != null ? _a : {}).map(([laneKey, orderedTaskIds]) => [
+        laneKey,
+        orderedTaskIds.filter((candidate) => candidate !== taskId)
+      ]))
     };
-    return priorityWeight(left.priority) - priorityWeight(right.priority);
   }
   matchesDashKanbanLaneTask(projectName, laneOption, task, laneOptions) {
     var _a;
@@ -19595,6 +19716,15 @@ ${context}`, resolvedModel);
     });
     return boardTemplates;
   }
+  normalizeKanbanLaneOrder(value) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+    return Object.fromEntries(Object.entries(value).map(([laneKey, taskIds]) => [
+      laneKey,
+      Array.isArray(taskIds) ? taskIds.filter((taskId) => typeof taskId === "string" && taskId.trim().length > 0) : []
+    ]));
+  }
   normalizeKanbanBoardConfigurations(value) {
     if (!value || typeof value !== "object") {
       return {};
@@ -19613,6 +19743,7 @@ ${context}`, resolvedModel);
         templateId: typeof entry.templateId === "string" ? entry.templateId.trim() : "",
         showInHub: entry.showInHub !== false,
         laneDefinitions: this.normalizeKanbanLaneDefinitions(entry.laneDefinitions),
+        laneOrder: this.normalizeKanbanLaneOrder(entry.laneOrder),
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
@@ -20461,13 +20592,23 @@ ${context}`, resolvedModel);
     await this.addTaskToProject(projectName, targetSection, nextTaskText);
   }
   async editKanbanTask(projectName, taskId, taskText, lane) {
-    var _a;
+    var _a, _b, _c, _d;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
       return false;
     }
     const trimmedTask = taskText.trim();
+    const snapshot = await this.getTodoSnapshot();
+    const currentProject = snapshot == null ? void 0 : snapshot.projects.find((project) => project.name === projectName);
+    const currentTask = currentProject ? [
+      ...currentProject.nowTaskDetails,
+      ...currentProject.nextTaskDetails,
+      ...currentProject.laterTaskDetails,
+      ...currentProject.waitingTaskDetails,
+      ...currentProject.parkingLotTaskDetails,
+      ...currentProject.completedTaskDetails
+    ].find((candidate) => candidate.taskId === taskId) : null;
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, lane);
     const trimmedLane = ((targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || lane).trim();
     if (!trimmedTask || !trimmedLane) {
@@ -20487,6 +20628,11 @@ ${context}`, resolvedModel);
       new import_obsidian4.Notice("Could not find that Kanban task in the master task hub.");
       return false;
     }
+    const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
+    if (((_c = (_b = currentLaneOption == null ? void 0 : currentLaneOption.laneKey) != null ? _b : currentTask == null ? void 0 : currentTask.section) != null ? _c : "") !== ((_d = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _d : lane)) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.savePluginData();
+    }
     await this.app.vault.modify(todoFile, updated.content);
     await this.refreshMasterHubPortfolioSnapshot(false);
     if (this.data.settings.kanbanEnabled) {
@@ -20497,12 +20643,22 @@ ${context}`, resolvedModel);
     return true;
   }
   async updateKanbanTaskDetails(projectName, taskId, input) {
-    var _a;
+    var _a, _b, _c, _d, _e;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
       return false;
     }
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
+    const currentTask = project ? [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails,
+      ...project.completedTaskDetails
+    ].find((candidate) => candidate.taskId === taskId) : null;
     const trimmedTask = input.taskText.trim();
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, input.lane);
     const waitingLaneOption = this.getKanbanLaneOptions(projectName).find((option) => option.targetSection.trim().toLowerCase() === "waiting" || option.label.trim().toLowerCase() === "waiting");
@@ -20529,6 +20685,11 @@ ${context}`, resolvedModel);
     if (!updated.updated) {
       new import_obsidian4.Notice("Could not find that Kanban task in the master task hub.");
       return false;
+    }
+    const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
+    if (((_c = (_b = currentLaneOption == null ? void 0 : currentLaneOption.laneKey) != null ? _b : currentTask == null ? void 0 : currentTask.section) != null ? _c : "") !== ((_d = effectiveLaneOption == null ? void 0 : effectiveLaneOption.laneKey) != null ? _d : input.lane) || ((_e = currentTask == null ? void 0 : currentTask.priority) != null ? _e : "") !== input.priority.trim()) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.savePluginData();
     }
     await this.app.vault.modify(todoFile, updated.content);
     await this.refreshMasterHubPortfolioSnapshot(false);

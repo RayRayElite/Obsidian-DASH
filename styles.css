@@ -744,6 +744,11 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--dash-kanban-board-accent) 18%, transparent), 0 14px 26px rgba(0, 0, 0, 0.16);
 }
 
+.dash-kanban-card.is-drop-target {
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 52%, var(--background-modifier-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dash-kanban-board-accent) 22%, transparent), 0 14px 26px rgba(0, 0, 0, 0.2);
+}
+
 .dash-kanban-card.is-overdue {
   border-color: color-mix(in srgb, #ff8b7d 42%, var(--background-modifier-border));
 }
