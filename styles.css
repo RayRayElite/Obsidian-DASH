@@ -476,10 +476,12 @@
 }
 
 .dash-kanban-project-header {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  gap: 14px;
   align-items: start;
+  padding-right: 42px;
   padding-bottom: 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--dash-kanban-border));
 }
@@ -500,6 +502,25 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: 8px;
+}
+
+.dash-kanban-project-collapse-button {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
+  color: var(--text-muted);
+}
+
+.dash-kanban-project-collapse-button:hover {
+  color: var(--dash-kanban-board-accent);
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 40%, var(--dash-kanban-border));
 }
 
 .dash-kanban-project-board.is-collapsed {
@@ -634,7 +655,11 @@
 
 .dash-kanban-lane.is-drop-target {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 50%, var(--background-modifier-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-kanban-board-accent) 14%, transparent), var(--dash-kanban-shadow);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-board-accent) 14%, transparent), transparent 28%),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--dash-kanban-board-accent) 14%, transparent), transparent 34%),
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-board-surface) 90%, transparent), color-mix(in srgb, var(--dash-kanban-board-surface-strong) 92%, transparent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-kanban-board-accent) 18%, transparent), var(--dash-kanban-shadow);
 }
 
 .dash-kanban-lane-header {
@@ -700,6 +725,7 @@
 }
 
 .dash-kanban-card-stack {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -707,6 +733,23 @@
   min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.dash-kanban-lane.is-drop-target .dash-kanban-card-stack::before {
+  content: attr(data-drop-label);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  margin-bottom: 4px;
+  border: 1px dashed color-mix(in srgb, var(--dash-kanban-board-accent-strong) 44%, var(--dash-kanban-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--dash-kanban-board-accent) 14%, transparent);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .dash-kanban-quick-add {
@@ -780,8 +823,20 @@
 }
 
 .dash-kanban-card.is-drop-target {
+  transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 52%, var(--background-modifier-border));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--dash-kanban-board-accent) 22%, transparent), 0 14px 26px rgba(0, 0, 0, 0.2);
+}
+
+.dash-kanban-card.is-drop-target::before {
+  content: "Drop before";
+  display: block;
+  margin: -4px 0 2px;
+  color: var(--dash-kanban-board-accent-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .dash-kanban-card.is-overdue {
@@ -2997,6 +3052,29 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.daily-dashboard-project-modal .modal {
+  width: min(620px, calc(100vw - 40px));
+}
+
+.daily-dashboard-project-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.daily-dashboard-project-modal .setting-item {
+  padding: 12px 0;
+}
+
+.daily-dashboard-project-modal .setting-item-control {
+  gap: 10px;
+}
+
+.daily-dashboard-project-modal textarea {
+  min-height: 72px;
 }
 
 .daily-dashboard-setup-intro {

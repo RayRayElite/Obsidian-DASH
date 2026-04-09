@@ -224,7 +224,7 @@ export class DailyDashboardView extends ItemView {
   private draggedHabitIndex: number | null = null;
   private quickAddState: QuickAddState = {
     projectName: "",
-    sectionName: "Add",
+    sectionName: "",
     taskText: ""
   };
   private draggedLayoutCardKey: string | null = null;
@@ -497,17 +497,45 @@ export class DailyDashboardView extends ItemView {
     this.quickAddPanelOpen = !this.quickAddPanelOpen;
     if (this.quickAddPanelOpen) {
       this.notificationPanelOpen = false;
+      this.syncQuickAddSelection(this.quickAddState.projectName);
     }
     await this.render();
   }
 
-  private async submitQuickAddTask(): Promise<void> {
-    const text = this.quickAddState.taskText.trim();
-    if (!text || !this.quickAddState.projectName) {
+  private getQuickAddSections(projectName: string): string[] {
+    if (!projectName.trim()) {
+      return [];
+    }
+
+    return this.plugin.getKanbanLaneOptions(projectName)
+      .filter((lane) => !lane.done)
+      .map((lane) => (lane.targetSection || lane.label).trim())
+      .filter((section, index, array) => section.length > 0 && array.indexOf(section) === index);
+  }
+
+  private syncQuickAddSelection(projectName: string): void {
+    const sections = this.getQuickAddSections(projectName);
+    if (!projectName.trim() || sections.length === 0) {
+      this.quickAddState.sectionName = "";
       return;
     }
 
-    await this.plugin.addTaskToProject(this.quickAddState.projectName, this.quickAddState.sectionName, text);
+    if (!sections.includes(this.quickAddState.sectionName)) {
+      this.quickAddState.sectionName = sections[0];
+    }
+  }
+
+  private async submitQuickAddTask(): Promise<void> {
+    const text = this.quickAddState.taskText.trim();
+    const sections = this.getQuickAddSections(this.quickAddState.projectName);
+    const targetSection = sections.includes(this.quickAddState.sectionName)
+      ? this.quickAddState.sectionName
+      : sections[0] ?? "";
+    if (!text || !this.quickAddState.projectName || !targetSection) {
+      return;
+    }
+
+    await this.plugin.addTaskToProject(this.quickAddState.projectName, targetSection, text);
     this.quickAddState.taskText = "";
     this.quickAddPanelOpen = false;
     await this.render();
@@ -1027,6 +1055,7 @@ export class DailyDashboardView extends ItemView {
       if (!this.quickAddState.projectName && projects.length > 0) {
         this.quickAddState.projectName = projects[0].name;
       }
+      this.syncQuickAddSelection(this.quickAddState.projectName);
       if (!this.selectedSessionProjectName && projects.length > 0) {
         this.selectedSessionProjectName = projects[0].name;
       }
@@ -1070,9 +1099,14 @@ export class DailyDashboardView extends ItemView {
         const popoverHeader = quickAddPopover.createDiv({ cls: "daily-dashboard-notification-popover-header" });
         const popoverCopy = popoverHeader.createDiv({ cls: "daily-dashboard-stack" });
         popoverCopy.createEl("strong", { text: "Add to project" });
+        const quickAddSections = this.getQuickAddSections(this.quickAddState.projectName);
         popoverCopy.createEl("span", {
           cls: "daily-dashboard-row-meta",
-          text: projects.length > 0 ? "Capture a task straight into Add, Fix, Now, Next, or Later." : "Create a project first so there is somewhere to send the task."
+          text: projects.length > 0
+            ? quickAddSections.length > 0
+              ? `Capture straight into ${quickAddSections.join(", ")}.`
+              : "This project does not expose any active lanes yet."
+            : "Create a project first so there is somewhere to send the task."
         });
         if (projects.length === 0) {
           const emptyState = quickAddPopover.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
@@ -1089,9 +1123,11 @@ export class DailyDashboardView extends ItemView {
           });
           projectSelect.addEventListener("change", () => {
             this.quickAddState.projectName = projectSelect.value;
+            this.syncQuickAddSelection(projectSelect.value);
+            void this.render();
           });
           const sectionSelect = quickAddForm.createEl("select", { cls: "daily-dashboard-input" });
-          ["Add", "Fix", "Now", "Next", "Later"].forEach((section) => {
+          quickAddSections.forEach((section) => {
             const option = sectionSelect.createEl("option", { text: section });
             option.value = section;
             option.selected = section === this.quickAddState.sectionName;
@@ -1113,6 +1149,10 @@ export class DailyDashboardView extends ItemView {
               void this.submitQuickAddTask();
             }
           });
+          window.setTimeout(() => {
+            taskInput.focus();
+            taskInput.select();
+          }, 0);
           const quickAddActions = quickAddPopover.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
           createButton(quickAddActions, "Add task", async () => this.submitQuickAddTask(), true, "plus-circle");
           createButton(quickAddActions, "Open hub", async () => this.plugin.openMasterTodo(), false, "file-text");
@@ -5523,8 +5563,6 @@ export class CreateProjectModal extends Modal {
       categoryName: categories[0] ?? "Projects",
       status: "Planning",
       focus: "",
-      addTasks: [],
-      fixTasks: [],
       kanbanTemplateId: defaultTemplateId,
       kanbanTheme: "dark",
       kanbanShowLaneCategories: kanbanTemplateSupportsLaneCategories(defaultTemplate),
@@ -5533,6 +5571,7 @@ export class CreateProjectModal extends Modal {
   }
 
   onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-project-modal");
     this.setTitle("Create Project And Project Note");
     const { contentEl } = this;
     contentEl.empty();
@@ -5593,7 +5632,7 @@ export class CreateProjectModal extends Modal {
           .onChange((value) => {
             this.state.focus = value;
           });
-        textArea.inputEl.rows = 3;
+        textArea.inputEl.rows = 2;
       });
 
     new Setting(contentEl)
@@ -5649,30 +5688,6 @@ export class CreateProjectModal extends Modal {
       });
 
     new Setting(contentEl)
-      .setName("Add tasks")
-      .setDesc("Optional. One task per line; these seed the Add section.")
-      .addTextArea((textArea) => {
-        textArea
-          .setPlaceholder("First task\nSecond task")
-          .onChange((value) => {
-            this.state.addTasks = splitMultilineInput(value);
-          });
-        textArea.inputEl.rows = 5;
-      });
-
-    new Setting(contentEl)
-      .setName("Fix tasks")
-      .setDesc("Optional. One task per line; these seed the Fix section.")
-      .addTextArea((textArea) => {
-        textArea
-          .setPlaceholder("Known bug\nAnother bug")
-          .onChange((value) => {
-            this.state.fixTasks = splitMultilineInput(value);
-          });
-        textArea.inputEl.rows = 5;
-      });
-
-    new Setting(contentEl)
       .addButton((button) => {
         button.setButtonText("Create project").setCta().onClick(async () => {
           if (!this.state.projectName.trim()) {
@@ -5697,6 +5712,7 @@ export class CreateProjectModal extends Modal {
   }
 
   onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-project-modal");
     this.contentEl.empty();
   }
 }
@@ -9639,6 +9655,9 @@ export class DashKanbanView extends ItemView {
 
       const actionRow = collapsedBottom.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
       actionRow.append(
+        this.createHeaderButton("folder-plus", "New project", () => {
+          void this.plugin.openCreateProjectFlow();
+        }),
         this.createHeaderButton("plus", "Add card", () => {
           const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
           this.openInlineQuickAdd(targetProject);
@@ -9703,6 +9722,9 @@ export class DashKanbanView extends ItemView {
     }
     const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
     actionRow.append(
+      this.createHeaderButton("folder-plus", "New project", () => {
+        void this.plugin.openCreateProjectFlow();
+      }),
       this.createHeaderButton("plus", "Add card", () => {
         const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
         this.openInlineQuickAdd(targetProject);
@@ -10083,6 +10105,26 @@ export class DashKanbanView extends ItemView {
     });
   }
 
+  private queueTextInputFocus(input: HTMLInputElement | HTMLTextAreaElement, selectAll = false): void {
+    const focusInput = () => {
+      input.focus();
+      if (selectAll && typeof input.select === "function") {
+        input.select();
+        return;
+      }
+
+      const cursor = input.value.length;
+      input.setSelectionRange(cursor, cursor);
+    };
+
+    window.setTimeout(focusInput, 0);
+    window.setTimeout(() => {
+      if (document.activeElement !== input) {
+        focusInput();
+      }
+    }, 40);
+  }
+
   private renderProjectBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode): void {
     const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
     const board = parent.createDiv({ cls: `dash-kanban-project-board${isCollapsedInWorkspace ? " is-collapsed" : ""}` });
@@ -10090,6 +10132,15 @@ export class DashKanbanView extends ItemView {
     board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
     this.bindProjectCollapse(boardHeader, project, mode);
+    const collapseButton = boardHeader.createEl("button", { cls: "dash-kanban-project-collapse-button" });
+    collapseButton.type = "button";
+    collapseButton.ariaLabel = isCollapsedInWorkspace ? `Expand ${project.projectName}` : `Collapse ${project.projectName}`;
+    collapseButton.title = isCollapsedInWorkspace ? "Expand project" : "Collapse project";
+    setIcon(collapseButton, isCollapsedInWorkspace ? "chevron-right" : "chevron-down");
+    collapseButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.plugin.updateKanbanBoardPresentation(project.projectName, { collapsedInHub: !project.collapsedInHub });
+    });
     const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
     heading.createEl("h2", { text: project.projectName });
 
@@ -10118,9 +10169,6 @@ export class DashKanbanView extends ItemView {
         }));
       }
     }
-
-    const collapseChip = boardHeader.createDiv({ cls: "dash-kanban-project-collapse" });
-    setIcon(collapseChip, project.collapsedInHub && mode === "all-projects" ? "chevron-right" : "chevron-down");
 
     if (isCollapsedInWorkspace) {
       return;
@@ -10173,6 +10221,9 @@ export class DashKanbanView extends ItemView {
     const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action", attr: { "aria-label": `Add card to ${lane.label}` } });
     addButton.type = "button";
     setIcon(addButton, "plus");
+    addButton.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
     addButton.addEventListener("click", (event) => {
       event.stopPropagation();
       this.openInlineQuickAdd(project.projectName, lane.laneKey);
@@ -10220,13 +10271,14 @@ export class DashKanbanView extends ItemView {
         })
       );
       window.setTimeout(() => {
-        input.focus();
         input.style.height = "auto";
         input.style.height = `${Math.max(input.scrollHeight, 42)}px`;
       }, 0);
+      this.queueTextInputFocus(input);
     }
 
     const cards = laneEl.createDiv({ cls: "dash-kanban-card-stack" });
+    cards.dataset.dropLabel = lane.done ? `Drop into ${lane.label}` : `Drop in ${lane.label}`;
     laneEl.addEventListener("dragover", (event) => {
       if (!lane.targetSection || !this.dragCard) {
         return;
@@ -10296,6 +10348,7 @@ export class DashKanbanView extends ItemView {
         return;
       }
       event.preventDefault();
+      event.stopPropagation();
       cardEl.addClass("is-drop-target");
     });
     cardEl.addEventListener("dragleave", () => {
@@ -10649,6 +10702,9 @@ export class DashKanbanView extends ItemView {
     const labelEl = document.createElement("span");
     labelEl.textContent = label;
     button.appendChild(labelEl);
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
     button.addEventListener("click", onClick);
     return button;
   }
@@ -10660,6 +10716,9 @@ export class DashKanbanView extends ItemView {
     button.ariaLabel = label;
     button.title = label;
     setIcon(button, icon);
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
     button.addEventListener("click", onClick);
     return button;
   }
@@ -10669,6 +10728,9 @@ export class DashKanbanView extends ItemView {
     button.className = `dash-kanban-inline-button${cta ? " mod-cta" : ""}`;
     button.type = "button";
     button.textContent = label;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       onClick();
@@ -10681,6 +10743,9 @@ export class DashKanbanView extends ItemView {
     button.className = "dash-kanban-popover-option";
     button.type = "button";
     button.textContent = label;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       onClick();

@@ -724,10 +724,16 @@ export function trimLeadingBlankLines(lines: string[]): string[] {
   return output;
 }
 
-export function renderTodoProjectBlock(input: CreateProjectInput & { projectNoteLink: string }): string {
+export function renderTodoProjectBlock(input: CreateProjectInput & { projectNoteLink: string; workflowSections?: string[]; doneSectionName?: string }): string {
   const today = formatDateKey(new Date());
-  const addTasks = input.addTasks.length > 0 ? input.addTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
-  const fixTasks = input.fixTasks.length > 0 ? input.fixTasks.map((task) => `- [ ] ${task}`) : ["- [ ]"];
+  const workflowSections = (input.workflowSections ?? ["Now", "Next", "Later", "Waiting", "Parking Lot"])
+    .filter((section, index, array) => section.trim().length > 0 && array.indexOf(section) === index);
+  const doneSectionName = input.doneSectionName?.trim() || "Done";
+  const workflowBlocks = workflowSections.flatMap((section) => [
+    `### ${section}`,
+    section.toLowerCase() === "parking lot" ? "- Idea:" : "- [ ]",
+    ""
+  ]);
 
   return [
     `## ${input.projectName}`,
@@ -741,27 +747,7 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     "Waiting On:: None",
     "Relationships::",
     "",
-    "### Add",
-    ...addTasks,
-    "",
-    "### Fix",
-    ...fixTasks,
-    "",
-    "### Now",
-    "- [ ]",
-    "",
-    "### Next",
-    "- [ ]",
-    "",
-    "### Later",
-    "- [ ]",
-    "",
-    "### Waiting",
-    "- [ ]",
-    "",
-    "### Parking Lot",
-    "- Idea:",
-    "",
+    ...workflowBlocks,
     "### Repeating",
     "- [ ] Weekly review [repeat: weekly fri]",
     "",
@@ -780,12 +766,24 @@ export function renderTodoProjectBlock(input: CreateProjectInput & { projectNote
     "### Reference",
     "- Add durable support material here.",
     "",
-    "### Completed Archive"
+    `### ${doneSectionName}`
   ].join("\n");
 }
 
-export function renderProjectNoteTemplate(input: CreateProjectInput, masterTodoPath: string): string {
+export function renderProjectNoteTemplate(
+  input: CreateProjectInput,
+  masterTodoPath: string,
+  workflowSections: string[] = ["Now", "Next", "Later", "Waiting", "Parking Lot"],
+  doneSectionName = "Done"
+): string {
   const today = formatDateKey(new Date());
+  const normalizedWorkflowSections = workflowSections
+    .filter((section, index, array) => section.trim().length > 0 && array.indexOf(section) === index);
+  const laneBlocks = normalizedWorkflowSections.flatMap((section) => [
+    `### ${section}`,
+    section.toLowerCase() === "parking lot" ? "- Idea:" : "- [ ]",
+    ""
+  ]);
   return [
     `# ${input.projectName}`,
     "",
@@ -808,20 +806,9 @@ export function renderProjectNoteTemplate(input: CreateProjectInput, masterTodoP
     "- [ ] Weekly review [weekly]",
     "",
     "## Priority Lanes",
-    "### Now",
+    ...laneBlocks,
+    `### ${doneSectionName}`,
     "- [ ]",
-    "",
-    "### Next",
-    "- [ ]",
-    "",
-    "### Later",
-    "- [ ]",
-    "",
-    "### Waiting",
-    "- [ ]",
-    "",
-    "### Parking Lot",
-    "- Idea:",
     "",
     "## Risks",
     "- Capture the major failure modes, drift risks, or watch-outs here.",

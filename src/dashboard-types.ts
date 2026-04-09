@@ -587,8 +587,6 @@ export interface CreateProjectInput {
   categoryName: string;
   status: string;
   focus: string;
-  addTasks: string[];
-  fixTasks: string[];
   kanbanTemplateId: string;
   kanbanTheme: DashboardKanbanTheme;
   kanbanShowLaneCategories: boolean;

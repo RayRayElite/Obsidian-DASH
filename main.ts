@@ -2651,6 +2651,46 @@ export default class DailyDashboardPlugin extends Plugin {
       }));
   }
 
+  private getResolvedKanbanBoardTemplate(templateId: string): KanbanBoardTemplate {
+    return this.data.kanbanState.boardTemplates[templateId]
+      ?? this.data.kanbanState.boardTemplates["execution-default"]
+      ?? Object.values(this.data.kanbanState.boardTemplates)[0]
+      ?? {
+        templateId: "execution-default",
+        name: "Execution Default",
+        description: "",
+        laneDefinitions: [],
+        builtIn: true,
+        updatedAt: ""
+      };
+  }
+
+  private getTemplateWorkflowSections(templateId: string): string[] {
+    return this.getResolvedKanbanBoardTemplate(templateId).laneDefinitions
+      .filter((lane) => !lane.done)
+      .map((lane) => lane.label.trim())
+      .filter((label, index, array) => label.length > 0 && array.indexOf(label) === index);
+  }
+
+  private getTemplateCompletionSectionName(templateId: string): string {
+    return this.getResolvedKanbanBoardTemplate(templateId).laneDefinitions
+      .find((lane) => lane.done)?.label.trim() || "Done";
+  }
+
+  private getSeedKanbanLaneDefinitions(templateId: string): KanbanLaneDefinition[] {
+    const completionSectionName = this.getTemplateCompletionSectionName(templateId);
+    return this.getResolvedKanbanBoardTemplate(templateId).laneDefinitions.map((lane) => ({
+      ...lane,
+      mappedSections: lane.done
+        ? Array.from(new Set([completionSectionName, "Completed Archive"]))
+        : [lane.label.trim() || lane.laneKey]
+    }));
+  }
+
+  private stripMappedSectionsFromLaneDefinitions(laneDefinitions: KanbanLaneDefinition[]): Array<Omit<KanbanLaneDefinition, "mappedSections">> {
+    return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
+  }
+
   getKanbanBoardConfiguration(projectName: string): KanbanBoardConfiguration {
     const existing = this.data.kanbanState.boardConfigurations[projectName];
     if (existing) {
@@ -3341,17 +3381,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private buildDashKanbanProjectBoard(project: TodoProjectSummary): DashKanbanProjectBoard {
     const configuration = this.data.kanbanState.boardConfigurations[project.name];
-    const template = this.data.kanbanState.boardTemplates[configuration?.templateId || ""]
-      ?? this.data.kanbanState.boardTemplates["execution-default"]
-      ?? Object.values(this.data.kanbanState.boardTemplates)[0]
-      ?? {
-        templateId: "execution-default",
-        name: "Execution Default",
-        description: "",
-        laneDefinitions: [],
-        builtIn: true,
-        updatedAt: ""
-      };
+    const template = this.getResolvedKanbanBoardTemplate(configuration?.templateId || "");
     const laneOptions = this.getKanbanLaneOptions(project.name);
     const openTasks = [
       ...project.nowTaskDetails,
@@ -3384,7 +3414,8 @@ export default class DailyDashboardPlugin extends Plugin {
       };
     });
     const usesCustomTemplate = Boolean(configuration?.laneDefinitions.length)
-      && JSON.stringify(configuration?.laneDefinitions ?? []) !== JSON.stringify(template.laneDefinitions);
+      && JSON.stringify(this.stripMappedSectionsFromLaneDefinitions(configuration?.laneDefinitions ?? []))
+        !== JSON.stringify(this.stripMappedSectionsFromLaneDefinitions(template.laneDefinitions));
 
     return {
       projectName: project.name,
@@ -6249,6 +6280,10 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
+    const templateId = input.kanbanTemplateId.trim() || "execution-default";
+    const workflowSections = this.getTemplateWorkflowSections(templateId);
+    const doneSectionName = this.getTemplateCompletionSectionName(templateId);
+    const seededLaneDefinitions = this.getSeedKanbanLaneDefinitions(templateId);
     const projectNote = await this.createProjectNote(input);
     const projectBlock = renderTodoProjectBlock({
       ...input,
@@ -6256,8 +6291,8 @@ export default class DailyDashboardPlugin extends Plugin {
       categoryName,
       status: input.status.trim() || "Planning",
       focus: input.focus.trim(),
-      addTasks: input.addTasks,
-      fixTasks: input.fixTasks,
+      workflowSections,
+      doneSectionName,
       projectNoteLink: createWikiLink(projectNote.path, projectName)
     });
 
@@ -6265,9 +6300,9 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.app.vault.modify(todoFile, updatedContent);
     await this.saveKanbanBoardConfiguration({
       projectName,
-      templateId: input.kanbanTemplateId.trim() || "execution-default",
+      templateId,
       showInHub: true,
-      laneDefinitions: [],
+      laneDefinitions: seededLaneDefinitions,
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: input.kanbanShowLaneCategories,
@@ -10004,7 +10039,13 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const basePath = this.getPreferredProjectNotePath(input.projectName.trim());
     const uniquePath = this.getAvailableMarkdownPath(basePath);
-    return await this.app.vault.create(uniquePath, renderProjectNoteTemplate(input, this.data.settings.masterTodoPath));
+    const templateId = input.kanbanTemplateId.trim() || "execution-default";
+    return await this.app.vault.create(uniquePath, renderProjectNoteTemplate(
+      input,
+      this.data.settings.masterTodoPath,
+      this.getTemplateWorkflowSections(templateId),
+      this.getTemplateCompletionSectionName(templateId)
+    ));
   }
 
   private getPreferredProjectNotePath(projectName: string): string {
