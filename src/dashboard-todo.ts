@@ -1046,6 +1046,7 @@ export function inspectMasterHubKanbanMigration(content: string): KanbanMigratio
   const projectRanges = findProjectRanges(lines);
   const tasksWithVisibleId: KanbanMigrationTaskPreview[] = [];
   const tasksMissingVisibleId: KanbanMigrationTaskPreview[] = [];
+  const brokenLegacyTaskLines: KanbanMigrationTaskPreview[] = [];
   let totalTasks = 0;
   let openTasks = 0;
   let archivedTasks = 0;
@@ -1063,6 +1064,26 @@ export function inspectMasterHubKanbanMigration(content: string): KanbanMigratio
 
       const taskMatch = line.match(CHECKLIST_REGEX);
       if (!taskMatch) {
+        const brokenTask = parseBrokenLegacyKanbanTaskLine(line);
+        if (brokenTask) {
+          const taskPreview: KanbanMigrationTaskPreview = {
+            projectName: project.name,
+            sectionName: currentSection,
+            taskText: parseTodoTaskSummary(brokenTask.rawText, currentSection, new Date()).text,
+            taskId: brokenTask.taskId,
+            checked: brokenTask.checked,
+            lineNumber: index + 1
+          };
+
+          totalTasks += 1;
+          if (brokenTask.checked || currentSection.trim().toLowerCase() === "completed archive") {
+            archivedTasks += 1;
+          } else {
+            openTasks += 1;
+          }
+
+          brokenLegacyTaskLines.push(taskPreview);
+        }
         continue;
       }
 
@@ -1107,7 +1128,34 @@ export function inspectMasterHubKanbanMigration(content: string): KanbanMigratio
     openTasks,
     archivedTasks,
     tasksWithVisibleId,
-    tasksMissingVisibleId
+    tasksMissingVisibleId,
+    brokenLegacyTaskLines
+  };
+}
+
+export function repairBrokenKanbanMasterHubLines(content: string): { content: string; repairedTasks: number } {
+  const lines = content.split(/\r?\n/);
+  const projectRanges = findProjectRanges(lines);
+  if (projectRanges.length === 0) {
+    return { content, repairedTasks: 0 };
+  }
+
+  const output = [...lines];
+  let repairedTasks = 0;
+
+  [...projectRanges].reverse().forEach((project) => {
+    const result = repairBrokenKanbanTaskLinesInProject(output.slice(project.start, project.end + 1));
+    if (result.repairedTasks === 0) {
+      return;
+    }
+
+    output.splice(project.start, project.end - project.start + 1, ...result.lines);
+    repairedTasks += result.repairedTasks;
+  });
+
+  return {
+    content: output.join("\n"),
+    repairedTasks
   };
 }
 
@@ -1333,11 +1381,11 @@ export function repairMasterHubStructure(content: string, input: {
   masterTodoPath: string;
   projectNotesFolder: string;
   includeKanbanTaskIds?: boolean;
-}): { content: string; updatedProjects: number; addedMetadata: number; addedSections: number; addedTaskIds: number } {
+}): { content: string; updatedProjects: number; addedMetadata: number; addedSections: number; addedTaskIds: number; repairedBrokenTasks: number } {
   const lines = content.split(/\r?\n/);
   const projectRanges = findProjectRanges(lines);
   if (projectRanges.length === 0) {
-    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0, addedTaskIds: 0 };
+    return { content, updatedProjects: 0, addedMetadata: 0, addedSections: 0, addedTaskIds: 0, repairedBrokenTasks: 0 };
   }
 
   const output = [...lines];
@@ -1345,6 +1393,7 @@ export function repairMasterHubStructure(content: string, input: {
   let addedMetadata = 0;
   let addedSections = 0;
   let addedTaskIds = 0;
+  let repairedBrokenTasks = 0;
 
   [...projectRanges].reverse().forEach((project) => {
     const result = repairMasterHubProjectLines(output.slice(project.start, project.end + 1), {
@@ -1358,6 +1407,7 @@ export function repairMasterHubStructure(content: string, input: {
       addedMetadata += result.addedMetadata;
       addedSections += result.addedSections;
       addedTaskIds += result.addedTaskIds;
+      repairedBrokenTasks += result.repairedBrokenTasks;
     }
   });
 
@@ -1366,7 +1416,8 @@ export function repairMasterHubStructure(content: string, input: {
     updatedProjects,
     addedMetadata,
     addedSections,
-    addedTaskIds
+    addedTaskIds,
+    repairedBrokenTasks
   };
 }
 
@@ -1504,8 +1555,9 @@ function repairMasterHubProjectLines(projectLines: string[], input: {
   masterTodoPath: string;
   projectNotesFolder: string;
   includeKanbanTaskIds: boolean;
-}): { content: string; addedMetadata: number; addedSections: number; addedTaskIds: number } {
-  const lines = [...projectLines];
+}): { content: string; addedMetadata: number; addedSections: number; addedTaskIds: number; repairedBrokenTasks: number } {
+  const brokenTaskRepair = repairBrokenKanbanTaskLinesInProject(projectLines);
+  const lines = [...brokenTaskRepair.lines];
   const headingLine = lines[0]?.trim() ?? "";
   const projectName = headingLine.replace(/^##\s+/, "").trim();
   const metadataKeys = new Set(lines.map((line) => parseProjectMeta(line)?.key).filter((key): key is string => Boolean(key)));
@@ -1558,8 +1610,71 @@ function repairMasterHubProjectLines(projectLines: string[], input: {
     content: taskIdResult.lines.join("\n"),
     addedMetadata: missingMetaLines.length,
     addedSections,
-    addedTaskIds: taskIdResult.addedTaskIds
+    addedTaskIds: taskIdResult.addedTaskIds,
+    repairedBrokenTasks: brokenTaskRepair.repairedTasks
   };
+}
+
+function repairBrokenKanbanTaskLinesInProject(projectLines: string[]): { lines: string[]; repairedTasks: number } {
+  const output = [...projectLines];
+  let repairedTasks = 0;
+
+  output.forEach((line, index) => {
+    if (index === 0) {
+      return;
+    }
+
+    const brokenTask = parseBrokenLegacyKanbanTaskLine(line);
+    if (!brokenTask) {
+      return;
+    }
+
+    output[index] = `- [${brokenTask.checked ? "x" : " "}] ${brokenTask.rawText}`;
+    repairedTasks += 1;
+  });
+
+  return {
+    lines: output,
+    repairedTasks
+  };
+}
+
+function parseBrokenLegacyKanbanTaskLine(line: string): { rawText: string; checked: boolean; taskId: string } | null {
+  if (!line.includes(`[${TASK_ID_ANNOTATION_KEY}:`)) {
+    return null;
+  }
+
+  if (CHECKLIST_REGEX.test(line)) {
+    return null;
+  }
+
+  const trimmed = line.trim();
+  if (!trimmed || parseProjectMeta(line) || getSectionName(line) || PROJECT_SEPARATOR_REGEX.test(trimmed) || /^##+\s+/.test(trimmed)) {
+    return null;
+  }
+
+  const taskId = extractTaskAnnotation(trimmed, TASK_ID_ANNOTATION_KEY);
+  if (!taskId) {
+    return null;
+  }
+
+  if (/^\s+\S/.test(line)) {
+    return {
+      rawText: trimmed,
+      checked: false,
+      taskId
+    };
+  }
+
+  if (/^[xX]\S/.test(line)) {
+    return {
+      rawText: line.slice(1).trim(),
+      checked: true,
+      taskId
+    };
+  }
+
+  return null;
 }
 
 function ensureTaskIdsInProjectLines(projectLines: string[], projectName: string): { lines: string[]; addedTaskIds: number } {

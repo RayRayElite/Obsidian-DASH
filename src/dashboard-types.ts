@@ -734,6 +734,7 @@ export interface KanbanMigrationPreview {
   archivedTasks: number;
   tasksWithVisibleId: KanbanMigrationTaskPreview[];
   tasksMissingVisibleId: KanbanMigrationTaskPreview[];
+  brokenLegacyTaskLines: KanbanMigrationTaskPreview[];
 }
 
 export type CleanupSuggestionKind =

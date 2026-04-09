@@ -88,6 +88,7 @@ import {
   isRepeatingTaskDue,
   offloadReferencesFromMasterHub,
   parseTodoSnapshot,
+  repairBrokenKanbanMasterHubLines,
   repairMasterHubStructure,
   repairProjectNoteStructure,
   reconcileCompletedTasks,
@@ -640,6 +641,14 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Preview Kanban cleanup migration",
       callback: () => {
         void this.previewKanbanCleanupMigration(true);
+      }
+    });
+
+    this.addCommand({
+      id: "repair-broken-kanban-lines-in-master-task-hub",
+      name: "Repair broken Kanban lines in master task hub",
+      callback: () => {
+        void this.repairBrokenKanbanLinesInMasterTaskHub(true);
       }
     });
 
@@ -5321,11 +5330,36 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (showNotice) {
       const changedHubProjects = repairedHub.updatedProjects;
-      if (changedHubProjects === 0 && repairedNotes === 0) {
+      if (changedHubProjects === 0 && repairedNotes === 0 && repairedHub.repairedBrokenTasks === 0) {
         new Notice("Master task hub and project notes already match the current structure.");
       } else {
-        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"} and ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
+        new Notice(`Repaired ${changedHubProjects} hub project${changedHubProjects === 1 ? "" : "s"} and ${repairedNotes} project note${repairedNotes === 1 ? "" : "s"}; restored ${repairedHub.repairedBrokenTasks} broken Kanban task line${repairedHub.repairedBrokenTasks === 1 ? "" : "s"}, added ${repairedHub.addedMetadata + noteMetadataAdded} metadata line${repairedHub.addedMetadata + noteMetadataAdded === 1 ? "" : "s"}, and added ${repairedHub.addedSections + noteSectionsAdded} section${repairedHub.addedSections + noteSectionsAdded === 1 ? "" : "s"}.`);
       }
+    }
+  }
+
+  async repairBrokenKanbanLinesInMasterTaskHub(showNotice: boolean): Promise<void> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      if (showNotice) {
+        new Notice("Master task hub not found. Set the path in plugin settings.");
+      }
+      return;
+    }
+
+    const originalContent = await this.app.vault.read(todoFile);
+    const repaired = repairBrokenKanbanMasterHubLines(originalContent);
+    if (repaired.content !== originalContent) {
+      this.markKanbanManagedWrite(todoFile.path);
+      await this.app.vault.modify(todoFile, repaired.content);
+      await this.refreshMasterHubPortfolioSnapshot(false);
+      this.refreshDashboardViews();
+    }
+
+    if (showNotice) {
+      new Notice(repaired.repairedTasks > 0
+        ? `Repaired ${repaired.repairedTasks} broken Kanban task line${repaired.repairedTasks === 1 ? "" : "s"} in the Master Task Hub.`
+        : "No broken Kanban task lines were found in the Master Task Hub.");
     }
   }
 
@@ -5412,6 +5446,33 @@ export default class DailyDashboardPlugin extends Plugin {
       }
     });
 
+    preview.brokenLegacyTaskLines.forEach((task) => {
+      if (!task.taskId) {
+        return;
+      }
+
+      const existing = this.data.kanbanState.taskRegistry[task.taskId];
+      const nextEntry: KanbanTaskRegistryEntry = {
+        taskId: task.taskId,
+        projectName: task.projectName,
+        sectionName: task.sectionName,
+        taskText: task.taskText,
+        checked: task.checked,
+        source: "visible-task-id",
+        updatedAt
+      };
+
+      if (!existing
+        || existing.projectName !== nextEntry.projectName
+        || existing.sectionName !== nextEntry.sectionName
+        || existing.taskText !== nextEntry.taskText
+        || existing.checked !== nextEntry.checked
+        || existing.updatedAt !== nextEntry.updatedAt) {
+        this.data.kanbanState.taskRegistry[task.taskId] = nextEntry;
+        changed += 1;
+      }
+    });
+
     if (this.data.kanbanState.lastCleanupPreviewAt !== updatedAt) {
       this.data.kanbanState.lastCleanupPreviewAt = updatedAt;
       changed += 1;
@@ -5428,12 +5489,16 @@ export default class DailyDashboardPlugin extends Plugin {
     const previewPath = this.getKanbanCleanupPreviewPath();
     const visibleByProject = new Map<string, number>();
     const missingByProject = new Map<string, number>();
+    const brokenByProject = new Map<string, number>();
 
     input.preview.tasksWithVisibleId.forEach((task) => {
       visibleByProject.set(task.projectName, (visibleByProject.get(task.projectName) ?? 0) + 1);
     });
     input.preview.tasksMissingVisibleId.forEach((task) => {
       missingByProject.set(task.projectName, (missingByProject.get(task.projectName) ?? 0) + 1);
+    });
+    input.preview.brokenLegacyTaskLines.forEach((task) => {
+      brokenByProject.set(task.projectName, (brokenByProject.get(task.projectName) ?? 0) + 1);
     });
 
     const visibleProjectLines = [...visibleByProject.entries()]
@@ -5442,9 +5507,15 @@ export default class DailyDashboardPlugin extends Plugin {
     const missingProjectLines = [...missingByProject.entries()]
       .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .map(([projectName, count]) => `- ${projectName}: ${count} task${count === 1 ? "" : "s"}`);
+    const brokenProjectLines = [...brokenByProject.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .map(([projectName, count]) => `- ${projectName}: ${count} task line${count === 1 ? "" : "s"}`);
     const missingTaskLines = input.preview.tasksMissingVisibleId.length > 0
       ? input.preview.tasksMissingVisibleId.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (Master Task Hub line ${task.lineNumber})`)
       : ["- No open tasks are currently missing legacy visible sync ids."];
+    const brokenTaskLines = input.preview.brokenLegacyTaskLines.length > 0
+      ? input.preview.brokenLegacyTaskLines.slice(0, 80).map((task) => `- ${task.projectName} / ${task.sectionName} / ${task.taskText} (broken line ${task.lineNumber})`)
+      : ["- No legacy broken Kanban task lines were found."];
     const boardNoteLines = input.boardNotePaths.length > 0
       ? input.boardNotePaths.map((path) => `- [[${stripMarkdownExtension(path)}|${path.split("/").pop()?.replace(/\.md$/i, "") || path}]]`)
       : ["- No generated project board notes currently exist."];
@@ -5458,6 +5529,7 @@ export default class DailyDashboardPlugin extends Plugin {
       `- Open tracked tasks inspected: ${input.preview.openTasks}`,
       `- Legacy visible task ids still present: ${input.preview.tasksWithVisibleId.length}`,
       `- Open tasks missing legacy visible ids: ${input.preview.tasksMissingVisibleId.length}`,
+      `- Broken legacy Kanban task lines found: ${input.preview.brokenLegacyTaskLines.length}`,
       `- Hidden task-registry entries seeded: ${Object.keys(this.data.kanbanState.taskRegistry).length}`,
       `- Compatibility mode: ${this.data.settings.kanbanPluginCompatibilityMode ? "On" : "Off"}`,
       `- Existing generated board notes: ${input.boardNotePaths.length}`,
@@ -5474,9 +5546,16 @@ export default class DailyDashboardPlugin extends Plugin {
       "### Tasks Missing Legacy Visible Ids",
       ...(missingProjectLines.length > 0 ? missingProjectLines : ["- No open tasks are currently missing legacy visible ids."]),
       "",
+      "### Broken Legacy Task Lines",
+      ...(brokenProjectLines.length > 0 ? brokenProjectLines : ["- No broken legacy Kanban task lines were found."]),
+      "",
       "## Missing-Id Task List",
       ...missingTaskLines,
       ...(input.preview.tasksMissingVisibleId.length > 80 ? ["", `- ${input.preview.tasksMissingVisibleId.length - 80} additional task${input.preview.tasksMissingVisibleId.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : []),
+      "",
+      "## Broken Legacy Task Lines",
+      ...brokenTaskLines,
+      ...(input.preview.brokenLegacyTaskLines.length > 80 ? ["", `- ${input.preview.brokenLegacyTaskLines.length - 80} additional broken line${input.preview.brokenLegacyTaskLines.length - 80 === 1 ? " is" : "s are"} omitted from this preview for readability.`] : []),
       "",
       "## Existing Kanban Artifacts",
       `- Main Kanban Hub path: [[${stripMarkdownExtension(this.data.settings.kanbanHubPath)}|Kanban Hub]]`,
@@ -5485,6 +5564,7 @@ export default class DailyDashboardPlugin extends Plugin {
       "## Immediate Implication",
       "- Generated boards can still sync legacy-id-backed tasks today.",
       "- Tasks without legacy visible ids can still appear in generated Kanban artifacts, but old bidirectional sync paths will not be reliable for them until the hidden registry migration slice is complete.",
+      "- If your old Kanban bug removed checklist boxes, run Repair broken Kanban lines in master task hub before doing any manual cleanup.",
       "- Use this note as the non-destructive checkpoint before any visible task-id cleanup work.",
       ""
     ].join("\n");
