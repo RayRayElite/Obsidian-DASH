@@ -3698,9 +3698,36 @@ function normalizeLegacyKanbanSectionName(section: string): string {
 }
 
 function extractTaskAnnotation(value: string, key: string): string | null {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = value.match(new RegExp(`\\[${escapedKey}:\\s*([^\]]+)\\]`, "i"));
-  return match?.[1]?.trim() || null;
+  const normalizedValue = value;
+  const lowerValue = normalizedValue.toLowerCase();
+  const lowerKey = key.trim().toLowerCase();
+  if (!lowerKey) {
+    return null;
+  }
+
+  const marker = `[${lowerKey}:`;
+  let searchIndex = 0;
+  while (searchIndex < lowerValue.length) {
+    const start = lowerValue.indexOf(marker, searchIndex);
+    if (start === -1) {
+      return null;
+    }
+
+    const valueStart = start + marker.length;
+    const end = normalizedValue.indexOf("]", valueStart);
+    if (end === -1) {
+      return null;
+    }
+
+    const extracted = normalizedValue.slice(valueStart, end).trim();
+    if (extracted.length > 0) {
+      return extracted;
+    }
+
+    searchIndex = end + 1;
+  }
+
+  return null;
 }
 
 function removeTaskAnnotation(value: string, key: string): string {
