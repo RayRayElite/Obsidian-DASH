@@ -9821,20 +9821,6 @@ export class DashKanbanView extends ItemView {
       text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
     });
 
-    const collapseButton = document.createElement("button");
-    collapseButton.type = "button";
-    collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon dash-kanban-collapse-button--hero";
-    collapseButton.ariaLabel = "Collapse header";
-    collapseButton.title = "Collapse header";
-    setIcon(collapseButton, "chevron-up");
-    collapseButton.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-    collapseButton.addEventListener("click", () => {
-      void this.plugin.updateKanbanViewState({ headerCollapsed: true });
-    });
-    heroTop.appendChild(collapseButton);
-
     const summary = hero.createDiv({ cls: "dash-kanban-summary dash-kanban-summary--hero" });
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
@@ -9855,7 +9841,8 @@ export class DashKanbanView extends ItemView {
     if (viewState.headerCollapsed) {
       controls.addClass("is-collapsed");
     }
-    const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
+    const controlsTop = controls.createDiv({ cls: "dash-kanban-controls-top" });
+    const actionRow = controlsTop.createDiv({ cls: "dash-kanban-action-row" });
     actionRow.append(
       this.createHeaderButton("folder-plus", "New project", () => {
         void this.plugin.openCreateProjectFlow();
@@ -9883,6 +9870,20 @@ export class DashKanbanView extends ItemView {
         void this.plugin.pruneStaleKanbanRegistryEntries(true);
       })
     );
+
+    const collapseButton = document.createElement("button");
+    collapseButton.type = "button";
+    collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon dash-kanban-collapse-button--controls";
+    collapseButton.ariaLabel = "Collapse header";
+    collapseButton.title = "Collapse header";
+    setIcon(collapseButton, "chevron-up");
+    collapseButton.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    collapseButton.addEventListener("click", () => {
+      void this.plugin.updateKanbanViewState({ headerCollapsed: true });
+    });
+    controlsTop.appendChild(collapseButton);
 
     const filterRow = controls.createDiv({ cls: "dash-kanban-filter-row" });
     const searchWrapper = filterRow.createDiv({ cls: "dash-kanban-search" });
