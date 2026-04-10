@@ -3856,6 +3856,58 @@ export default class DailyDashboardPlugin extends Plugin {
     return stampedPath;
   }
 
+  async uploadMultipleKanbanTaskPhotos(projectName: string, taskId: string, files: Array<{ originalFileName: string; bytes: ArrayBuffer }>): Promise<string[]> {
+    const validFiles = files.filter((file) => file.originalFileName.trim().length > 0 && file.bytes.byteLength > 0);
+    if (validFiles.length === 0) {
+      return [];
+    }
+
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new Notice("Could not find that Kanban card in the master task hub.");
+      return [];
+    }
+
+    const attachmentFolder = this.getKanbanTaskAttachmentFolder(projectName);
+    await this.ensureFolder(attachmentFolder);
+
+    const stampedPaths: string[] = [];
+    for (const file of validFiles) {
+      const trimmedName = file.originalFileName.trim();
+      const extensionIndex = trimmedName.lastIndexOf(".");
+      const extension = extensionIndex >= 0 ? trimmedName.slice(extensionIndex + 1).trim().toLowerCase() : "";
+      if (!IMAGE_EXTENSIONS.has(extension)) {
+        continue;
+      }
+
+      const baseName = sanitizeFileName((extensionIndex >= 0 ? trimmedName.slice(0, extensionIndex) : trimmedName) || "card-photo");
+      const stampedPath = this.getAvailableFilePath(`${attachmentFolder}/${formatDateKey(new Date())}-${Date.now()}-${baseName}.${extension}`);
+      await this.app.vault.createBinary(stampedPath, file.bytes);
+      stampedPaths.push(stampedPath);
+    }
+
+    if (stampedPaths.length === 0) {
+      new Notice("Only image files can be attached to cards.");
+      return [];
+    }
+
+    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths]
+      .map((path) => normalizePath(path.trim()))
+      .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    const updated = await this.updateKanbanTaskDetails(projectName, taskId, {
+      taskText: task.text,
+      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      effort: task.effort,
+      executionContext: task.executionContext,
+      photoPaths: nextPhotoPaths
+    });
+
+    return updated ? stampedPaths : [];
+  }
+
   async removeKanbanTaskPhoto(projectName: string, taskId: string, imagePath: string): Promise<boolean> {
     const task = await this.getKanbanTaskById(projectName, taskId);
     if (!task) {

@@ -11052,14 +11052,14 @@ export class DashKanbanView extends ItemView {
         compactButton.className = "dash-kanban-card-photo-compact";
         compactButton.type = "button";
         compactButton.ariaLabel = photoPaths.length > 1
-          ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}`
-          : "Open attached image";
+          ? `Expand ${photoPaths.length} attached images`
+          : "Expand attached image";
         compactButton.title = photoPaths.length > 1
-          ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}`
-          : "Open attached image";
+          ? `Expand ${photoPaths.length} attached images`
+          : "Expand attached image";
         compactButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          this.openKanbanPhoto(activePhotoPath);
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
         });
 
         photoPaths.slice(0, 3).forEach((path, index) => {
@@ -11080,17 +11080,6 @@ export class DashKanbanView extends ItemView {
         const compactMeta = compactButton.createSpan({ cls: "dash-kanban-card-photo-compact-meta" });
         compactMeta.createEl("strong", { text: `${photoPaths.length}` });
         compactMeta.createEl("span", { text: photoPaths.length === 1 ? "image" : "images" });
-
-        const compactToggle = compactButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
-        compactToggle.type = "button";
-        compactToggle.ariaLabel = "Expand photo previews";
-        compactToggle.title = "Expand photo previews";
-        setIcon(compactToggle, "panel-top-open");
-        compactToggle.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
-        });
         compactButton.addEventListener("contextmenu", (event) => {
           event.preventDefault();
         });
@@ -11553,14 +11542,11 @@ export class DashKanbanView extends ItemView {
       return 0;
     }
 
-    let attachedCount = 0;
-    for (const file of imageFiles) {
-      const bytes = await file.arrayBuffer();
-      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, file.name, bytes);
-      if (attached) {
-        attachedCount += 1;
-      }
-    }
+    const payload = await Promise.all(imageFiles.map(async (file) => ({
+      originalFileName: file.name,
+      bytes: await file.arrayBuffer()
+    })));
+    const attachedCount = (await this.plugin.uploadMultipleKanbanTaskPhotos(projectName, taskId, payload)).length;
 
     if (attachedCount > 0) {
       await this.requestRefresh();

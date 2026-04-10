@@ -1498,14 +1498,6 @@
   color: var(--text-muted);
 }
 
-.dash-kanban-card-photo-compact .dash-kanban-card-photo-collapse-hint {
-  left: auto;
-  right: 6px;
-  top: 6px;
-  width: 20px;
-  height: 20px;
-}
-
 .dash-kanban-card-photo-compact-thumb {
   display: inline-flex;
   align-items: center;

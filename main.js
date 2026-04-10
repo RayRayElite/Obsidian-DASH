@@ -15057,11 +15057,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         const compactButton = document.createElement("button");
         compactButton.className = "dash-kanban-card-photo-compact";
         compactButton.type = "button";
-        compactButton.ariaLabel = photoPaths.length > 1 ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}` : "Open attached image";
-        compactButton.title = photoPaths.length > 1 ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}` : "Open attached image";
+        compactButton.ariaLabel = photoPaths.length > 1 ? `Expand ${photoPaths.length} attached images` : "Expand attached image";
+        compactButton.title = photoPaths.length > 1 ? `Expand ${photoPaths.length} attached images` : "Expand attached image";
         compactButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          this.openKanbanPhoto(activePhotoPath);
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
         });
         photoPaths.slice(0, 3).forEach((path, index) => {
           const thumbUrl = this.plugin.getKanbanTaskPhotoResourcePath(path);
@@ -15080,16 +15080,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         const compactMeta = compactButton.createSpan({ cls: "dash-kanban-card-photo-compact-meta" });
         compactMeta.createEl("strong", { text: `${photoPaths.length}` });
         compactMeta.createEl("span", { text: photoPaths.length === 1 ? "image" : "images" });
-        const compactToggle = compactButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
-        compactToggle.type = "button";
-        compactToggle.ariaLabel = "Expand photo previews";
-        compactToggle.title = "Expand photo previews";
-        (0, import_obsidian3.setIcon)(compactToggle, "panel-top-open");
-        compactToggle.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
-        });
         compactButton.addEventListener("contextmenu", (event) => {
           event.preventDefault();
         });
@@ -15512,14 +15502,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (imageFiles.length === 0) {
       return 0;
     }
-    let attachedCount = 0;
-    for (const file of imageFiles) {
-      const bytes = await file.arrayBuffer();
-      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, file.name, bytes);
-      if (attached) {
-        attachedCount += 1;
-      }
-    }
+    const payload = await Promise.all(imageFiles.map(async (file) => ({
+      originalFileName: file.name,
+      bytes: await file.arrayBuffer()
+    })));
+    const attachedCount = (await this.plugin.uploadMultipleKanbanTaskPhotos(projectName, taskId, payload)).length;
     if (attachedCount > 0) {
       await this.requestRefresh();
     }
@@ -18766,6 +18753,49 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return null;
     }
     return stampedPath;
+  }
+  async uploadMultipleKanbanTaskPhotos(projectName, taskId, files) {
+    var _a, _b;
+    const validFiles = files.filter((file) => file.originalFileName.trim().length > 0 && file.bytes.byteLength > 0);
+    if (validFiles.length === 0) {
+      return [];
+    }
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new import_obsidian4.Notice("Could not find that Kanban card in the master task hub.");
+      return [];
+    }
+    const attachmentFolder = this.getKanbanTaskAttachmentFolder(projectName);
+    await this.ensureFolder(attachmentFolder);
+    const stampedPaths = [];
+    for (const file of validFiles) {
+      const trimmedName = file.originalFileName.trim();
+      const extensionIndex = trimmedName.lastIndexOf(".");
+      const extension = extensionIndex >= 0 ? trimmedName.slice(extensionIndex + 1).trim().toLowerCase() : "";
+      if (!IMAGE_EXTENSIONS.has(extension)) {
+        continue;
+      }
+      const baseName = sanitizeFileName((extensionIndex >= 0 ? trimmedName.slice(0, extensionIndex) : trimmedName) || "card-photo");
+      const stampedPath = this.getAvailableFilePath(`${attachmentFolder}/${formatDateKey(/* @__PURE__ */ new Date())}-${Date.now()}-${baseName}.${extension}`);
+      await this.app.vault.createBinary(stampedPath, file.bytes);
+      stampedPaths.push(stampedPath);
+    }
+    if (stampedPaths.length === 0) {
+      new import_obsidian4.Notice("Only image files can be attached to cards.");
+      return [];
+    }
+    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths].map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    const updated = await this.updateKanbanTaskDetails(projectName, taskId, {
+      taskText: task.text,
+      lane: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      effort: task.effort,
+      executionContext: task.executionContext,
+      photoPaths: nextPhotoPaths
+    });
+    return updated ? stampedPaths : [];
   }
   async removeKanbanTaskPhoto(projectName, taskId, imagePath) {
     var _a, _b;
