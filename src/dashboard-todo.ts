@@ -73,6 +73,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
     const nextTasks: string[] = [];
     const laterTasks: string[] = [];
     const dueRepeatingTasks: string[] = [];
+    const openTaskDetails: TodoTaskSummary[] = [];
     const nowTaskDetails: TodoTaskSummary[] = [];
     const nextTaskDetails: TodoTaskSummary[] = [];
     const laterTaskDetails: TodoTaskSummary[] = [];
@@ -182,6 +183,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       }
 
       openCount += 1;
+      openTaskDetails.push(taskSummary);
       if (normalizedKanbanSection === "now") {
         nowTasks.push(taskSummary.text);
         nowTaskDetails.push(taskSummary);
@@ -308,6 +310,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       healthLabel: describeHealthScore(healthScore),
       healthReasons,
       relationships: Array.from(relationships),
+      openTaskDetails,
       nowTaskDetails,
       nextTaskDetails,
       laterTaskDetails,

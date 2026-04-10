@@ -864,6 +864,7 @@ export interface TodoProjectSummary {
   healthLabel: string;
   healthReasons: string[];
   relationships: string[];
+  openTaskDetails: TodoTaskSummary[];
   nowTaskDetails: TodoTaskSummary[];
   nextTaskDetails: TodoTaskSummary[];
   laterTaskDetails: TodoTaskSummary[];

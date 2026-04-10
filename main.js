@@ -3002,6 +3002,7 @@ function parseTodoSnapshot(content) {
     const nextTasks = [];
     const laterTasks = [];
     const dueRepeatingTasks = [];
+    const openTaskDetails = [];
     const nowTaskDetails = [];
     const nextTaskDetails = [];
     const laterTaskDetails = [];
@@ -3103,6 +3104,7 @@ function parseTodoSnapshot(content) {
         continue;
       }
       openCount += 1;
+      openTaskDetails.push(taskSummary);
       if (normalizedKanbanSection === "now") {
         nowTasks.push(taskSummary.text);
         nowTaskDetails.push(taskSummary);
@@ -3227,6 +3229,7 @@ function parseTodoSnapshot(content) {
       healthLabel: describeHealthScore(healthScore),
       healthReasons,
       relationships: Array.from(relationships),
+      openTaskDetails,
       nowTaskDetails,
       nextTaskDetails,
       laterTaskDetails,
@@ -17558,14 +17561,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           return;
         }
         lane.cards.forEach((card) => {
-          const task = [
-            ...project.nowTaskDetails,
-            ...project.nextTaskDetails,
-            ...project.laterTaskDetails,
-            ...project.waitingTaskDetails,
-            ...project.parkingLotTaskDetails,
-            ...project.completedTaskDetails
-          ].find((candidate) => candidate.taskId === card.taskId || candidate.text === card.text);
+          const task = this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === card.taskId || candidate.text === card.text);
           const liveMetadata = task ? this.resolveDashKanbanLiveTaskMetadata(project.name, task, liveTaskMetadata) : null;
           lines.push(`#### ${card.text}`);
           lines.push(`- Card task id: ${card.taskId || "<none>"}`);
@@ -17600,6 +17596,22 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     return (_b = (_a = this.getKanbanLaneOptions(projectName).find((lane) => lane.laneKey.trim().toLowerCase() === normalized)) != null ? _a : this.getKanbanLaneOptions(projectName).find((lane) => lane.targetSection.trim().toLowerCase() === normalized || lane.label.trim().toLowerCase() === normalized)) != null ? _b : null;
   }
+  getProjectOpenTaskDetails(project) {
+    if (project.openTaskDetails.length > 0) {
+      return project.openTaskDetails;
+    }
+    return [
+      ...project.nowTaskDetails,
+      ...project.nextTaskDetails,
+      ...project.laterTaskDetails,
+      ...project.waitingTaskDetails,
+      ...project.parkingLotTaskDetails,
+      ...project.dueRepeatingTaskDetails
+    ];
+  }
+  getProjectTaskDetails(project, includeCompleted = false) {
+    return includeCompleted ? [...this.getProjectOpenTaskDetails(project), ...project.completedTaskDetails] : this.getProjectOpenTaskDetails(project);
+  }
   stripKanbanCategoryTagsFromTaskText(taskText, categoryTags) {
     let nextText = taskText;
     categoryTags.forEach((tag) => {
@@ -17622,14 +17634,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     var _a, _b;
     const snapshot = await this.getTodoSnapshot();
     const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
-    const task = project ? [
-      ...project.nowTaskDetails,
-      ...project.nextTaskDetails,
-      ...project.laterTaskDetails,
-      ...project.waitingTaskDetails,
-      ...project.parkingLotTaskDetails,
-      ...project.completedTaskDetails
-    ].find((candidate) => candidate.taskId === taskId) : null;
+    const task = project ? this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === taskId) : null;
     if (task) {
       return getTodoTaskDisplayText(task.rawText, task.section);
     }
@@ -18209,13 +18214,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const configuration = this.data.kanbanState.boardConfigurations[project.name];
     const template = this.getResolvedKanbanBoardTemplate((configuration == null ? void 0 : configuration.templateId) || "");
     const laneOptions = this.getKanbanLaneOptions(project.name);
-    const openTasks = [
-      ...project.nowTaskDetails,
-      ...project.nextTaskDetails,
-      ...project.laterTaskDetails,
-      ...project.waitingTaskDetails,
-      ...project.parkingLotTaskDetails
-    ];
+    const openTasks = this.getProjectOpenTaskDetails(project);
     const laneAssignments = /* @__PURE__ */ new Map();
     [...openTasks, ...project.completedTaskDetails].forEach((task) => {
       const matchedLane = this.findBestDashKanbanLaneOption(project.name, task, laneOptions);
@@ -18466,14 +18465,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     var _a;
     const snapshot = await this.getTodoSnapshot();
     const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
-    return project ? (_a = [
-      ...project.nowTaskDetails,
-      ...project.nextTaskDetails,
-      ...project.laterTaskDetails,
-      ...project.waitingTaskDetails,
-      ...project.parkingLotTaskDetails,
-      ...project.completedTaskDetails
-    ].find((candidate) => candidate.taskId === taskId)) != null ? _a : null : null;
+    return project ? (_a = this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === taskId)) != null ? _a : null : null;
   }
   getKanbanTaskAttachmentFolder(projectName) {
     return normalizeFolderPath2(`${this.data.settings.kanbanBoardNotesFolder}/Attachments/${sanitizeFileName(projectName.trim() || "Project")}`);
@@ -20984,15 +20976,7 @@ ${context}`, resolvedModel);
       }
     };
     snapshot.projects.forEach((project) => {
-      [
-        ...project.nowTaskDetails,
-        ...project.nextTaskDetails,
-        ...project.laterTaskDetails,
-        ...project.waitingTaskDetails,
-        ...project.parkingLotTaskDetails,
-        ...project.completedTaskDetails,
-        ...project.dueRepeatingTaskDetails
-      ].forEach((task) => assignTaskId(project.name, task.section, task, task.kanbanLane === "Done" || task.section.trim().toLowerCase() === "completed archive"));
+      this.getProjectTaskDetails(project, true).forEach((task) => assignTaskId(project.name, task.section, task, task.kanbanLane === "Done" || task.section.trim().toLowerCase() === "completed archive"));
     });
     return changed;
   }
@@ -21475,15 +21459,7 @@ ${context}`, resolvedModel);
     const projectNames = new Set(snapshot.projects.map((project) => project.name.toLowerCase()));
     const activeTaskKeys = /* @__PURE__ */ new Set();
     snapshot.projects.forEach((project) => {
-      [
-        ...project.nowTaskDetails,
-        ...project.nextTaskDetails,
-        ...project.laterTaskDetails,
-        ...project.waitingTaskDetails,
-        ...project.parkingLotTaskDetails,
-        ...project.completedTaskDetails,
-        ...project.dueRepeatingTaskDetails
-      ].forEach((task) => {
+      this.getProjectTaskDetails(project, true).forEach((task) => {
         if (task.taskId.trim()) {
           activeTaskKeys.add(task.taskId.trim());
         }
@@ -22129,14 +22105,7 @@ ${context}`, resolvedModel);
     const trimmedTask = taskText.trim();
     const snapshot = await this.getTodoSnapshot();
     const currentProject = snapshot == null ? void 0 : snapshot.projects.find((project) => project.name === projectName);
-    const currentTask = currentProject ? [
-      ...currentProject.nowTaskDetails,
-      ...currentProject.nextTaskDetails,
-      ...currentProject.laterTaskDetails,
-      ...currentProject.waitingTaskDetails,
-      ...currentProject.parkingLotTaskDetails,
-      ...currentProject.completedTaskDetails
-    ].find((candidate) => candidate.taskId === taskId) : null;
+    const currentTask = currentProject ? this.getProjectTaskDetails(currentProject, true).find((candidate) => candidate.taskId === taskId) : null;
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, lane);
     const trimmedLane = ((targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || lane).trim();
     if (!trimmedTask || !trimmedLane) {
@@ -22180,14 +22149,7 @@ ${context}`, resolvedModel);
     }
     const snapshot = await this.getTodoSnapshot();
     const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
-    const currentTask = project ? [
-      ...project.nowTaskDetails,
-      ...project.nextTaskDetails,
-      ...project.laterTaskDetails,
-      ...project.waitingTaskDetails,
-      ...project.parkingLotTaskDetails,
-      ...project.completedTaskDetails
-    ].find((candidate) => candidate.taskId === taskId) : null;
+    const currentTask = project ? this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === taskId) : null;
     const trimmedTask = input.taskText.trim();
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, input.lane);
     const waitingLaneOption = this.getKanbanLaneOptions(projectName).find((option) => option.targetSection.trim().toLowerCase() === "waiting" || option.label.trim().toLowerCase() === "waiting");
@@ -22235,14 +22197,7 @@ ${context}`, resolvedModel);
     var _a, _b, _c;
     const snapshot = await this.getTodoSnapshot();
     const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
-    const task = project ? [
-      ...project.nowTaskDetails,
-      ...project.nextTaskDetails,
-      ...project.laterTaskDetails,
-      ...project.waitingTaskDetails,
-      ...project.parkingLotTaskDetails,
-      ...project.completedTaskDetails
-    ].find((candidate) => candidate.taskId === taskId) : null;
+    const task = project ? this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === taskId) : null;
     if (!task || task.section.trim().toLowerCase() === "completed archive") {
       return false;
     }
