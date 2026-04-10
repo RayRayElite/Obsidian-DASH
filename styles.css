@@ -96,16 +96,6 @@
   z-index: 1;
 }
 
-.dash-kanban-hero-top {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.dash-kanban-hero-actions,
 .dash-kanban-collapsed-controls {
   display: flex;
   align-items: flex-start;
@@ -1357,13 +1347,11 @@
 }
 
 @media (max-width: 920px) {
-  .dash-kanban-hero-top,
   .dash-kanban-collapsed-bottom {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .dash-kanban-hero-actions,
   .dash-kanban-collapsed-controls,
   .dash-kanban-collapsed-action-row {
     justify-content: flex-start;

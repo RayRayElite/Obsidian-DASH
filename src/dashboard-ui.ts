@@ -9812,12 +9812,46 @@ export class DashKanbanView extends ItemView {
     }
 
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
-    const top = hero.createDiv({ cls: "dash-kanban-hero-top" });
-    const copy = top.createDiv({ cls: "dash-kanban-hero-copy" });
+    const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
     copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
-    const heroActions = top.createDiv({ cls: "dash-kanban-hero-actions" });
-    heroActions.append(
+    copy.createEl("p", {
+      cls: "dash-kanban-subtitle",
+      text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
+    });
+
+    const summary = hero.createDiv({ cls: "dash-kanban-summary" });
+    createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
+    createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
+    createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
+    createSemanticChip(summary, viewState.focusFilter === "all"
+      ? "All work"
+      : viewState.focusFilter === "attention"
+        ? "Attention filter"
+        : viewState.focusFilter === "blocked"
+          ? "Blocked filter"
+          : "Due filter", "state");
+    createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
+    if (snapshot.repairCount > 0) {
+      createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
+    }
+
+    const headerMeta = hero.createDiv({ cls: "dash-kanban-summary" });
+    headerMeta.append(
+      this.createHeaderButton(viewState.headerCollapsed ? "chevron-down" : "chevron-up", viewState.headerCollapsed ? "Expand header" : "Collapse header", () => {
+        void this.plugin.updateKanbanViewState({ headerCollapsed: !viewState.headerCollapsed });
+      })
+    );
+
+    const controls = header.createDiv({ cls: "dash-kanban-controls" });
+    if (viewState.headerCollapsed) {
+      controls.addClass("is-collapsed");
+    }
+    const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
+    actionRow.append(
+      this.createHeaderButton("folder-plus", "New project", () => {
+        void this.plugin.openCreateProjectFlow();
+      }),
       this.createHeaderButton("plus", "Add card", () => {
         const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
         this.openInlineQuickAdd(targetProject);
@@ -9839,36 +9873,6 @@ export class DashKanbanView extends ItemView {
       }),
       this.createHeaderButton("database-zap", "Cleanup registry", () => {
         void this.plugin.pruneStaleKanbanRegistryEntries(true);
-      }),
-      this.createHeaderButton(viewState.headerCollapsed ? "chevron-down" : "chevron-up", viewState.headerCollapsed ? "Expand header" : "Collapse header", () => {
-        void this.plugin.updateKanbanViewState({ headerCollapsed: !viewState.headerCollapsed });
-      })
-    );
-
-    const summary = hero.createDiv({ cls: "dash-kanban-summary" });
-    createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
-    createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
-    createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
-    createSemanticChip(summary, viewState.focusFilter === "all"
-      ? "All work"
-      : viewState.focusFilter === "attention"
-        ? "Attention filter"
-        : viewState.focusFilter === "blocked"
-          ? "Blocked filter"
-          : "Due filter", "state");
-    createSemanticChip(summary, viewState.showDone ? "Done visible" : "Done hidden", viewState.showDone ? "done" : "neutral");
-    if (snapshot.repairCount > 0) {
-      createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
-    }
-
-    const controls = header.createDiv({ cls: "dash-kanban-controls" });
-    if (viewState.headerCollapsed) {
-      controls.addClass("is-collapsed");
-    }
-    const actionRow = controls.createDiv({ cls: "dash-kanban-action-row" });
-    actionRow.append(
-      this.createHeaderButton("folder-plus", "New project", () => {
-        void this.plugin.openCreateProjectFlow();
       })
     );
 
