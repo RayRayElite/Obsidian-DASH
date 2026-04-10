@@ -298,6 +298,11 @@ export default class DailyDashboardPlugin extends Plugin {
     return String(error);
   }
 
+  private isFolderAlreadyExistsError(error: unknown): boolean {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return message.includes("folder already exists") || message.includes("already exists");
+  }
+
   private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
     new Notice(message, timeout);
     if (playSound) {
@@ -12272,7 +12277,16 @@ export default class DailyDashboardPlugin extends Plugin {
       }
 
       if (!existing) {
-        await this.app.vault.createFolder(currentPath);
+        try {
+          await this.app.vault.createFolder(currentPath);
+        } catch (error) {
+          const refreshed = this.app.vault.getAbstractFileByPath(currentPath);
+          if (refreshed instanceof TFolder || this.isFolderAlreadyExistsError(error)) {
+            continue;
+          }
+
+          throw error;
+        }
       }
     }
   }

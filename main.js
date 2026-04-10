@@ -15122,6 +15122,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     return String(error);
   }
+  isFolderAlreadyExistsError(error) {
+    const message = this.getErrorMessage(error).toLowerCase();
+    return message.includes("folder already exists") || message.includes("already exists");
+  }
   showDashboardNotice(message, timeout = 4e3, playSound = false) {
     new import_obsidian4.Notice(message, timeout);
     if (playSound) {
@@ -25046,7 +25050,15 @@ ${body}`;
         throw new Error(`Path conflict at ${currentPath}: a file exists where the plugin expects a folder.`);
       }
       if (!existing) {
-        await this.app.vault.createFolder(currentPath);
+        try {
+          await this.app.vault.createFolder(currentPath);
+        } catch (error) {
+          const refreshed = this.app.vault.getAbstractFileByPath(currentPath);
+          if (refreshed instanceof import_obsidian4.TFolder || this.isFolderAlreadyExistsError(error)) {
+            continue;
+          }
+          throw error;
+        }
       }
     }
   }
