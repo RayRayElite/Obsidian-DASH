@@ -15161,10 +15161,26 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (!this.hasExistingSetupSignals(this.data)) {
       return;
     }
+    await this.markOnboardingCompleted();
+  }
+  async markOnboardingCompleted() {
     this.data.uiState.onboardingCompleted = true;
     this.data.uiState.onboardingDeferredUntil = "";
     this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
     await this.savePluginData();
+  }
+  ensureOnboardingCompletionForEstablishedSetup() {
+    if (this.data.uiState.onboardingCompleted) {
+      return false;
+    }
+    if (!this.hasExistingSetupSignals(this.data)) {
+      return false;
+    }
+    this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
+    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
+    void this.savePluginData();
+    return true;
   }
   isFolderAlreadyExistsError(error) {
     const message = this.getErrorMessage(error).toLowerCase();
@@ -20072,9 +20088,13 @@ ${context}`, resolvedModel);
     return snapshot;
   }
   isFirstRunSetupPending() {
+    this.ensureOnboardingCompletionForEstablishedSetup();
     return !this.data.uiState.onboardingCompleted;
   }
   shouldAutoOpenFirstRunSetupWizard(referenceDate = /* @__PURE__ */ new Date()) {
+    if (this.ensureOnboardingCompletionForEstablishedSetup()) {
+      return false;
+    }
     if (!this.isFirstRunSetupPending()) {
       return false;
     }
@@ -20098,10 +20118,7 @@ ${context}`, resolvedModel);
     if (this.data.uiState.onboardingCompleted) {
       return;
     }
-    this.data.uiState.onboardingCompleted = true;
-    this.data.uiState.onboardingDeferredUntil = "";
-    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
-    await this.savePluginData();
+    await this.markOnboardingCompleted();
     this.refreshDashboardViews();
   }
   async dismissDashboardNotification(id) {

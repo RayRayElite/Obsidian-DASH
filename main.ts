@@ -359,10 +359,30 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
+    await this.markOnboardingCompleted();
+  }
+
+  private async markOnboardingCompleted(): Promise<void> {
     this.data.uiState.onboardingCompleted = true;
     this.data.uiState.onboardingDeferredUntil = "";
     this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
     await this.savePluginData();
+  }
+
+  private ensureOnboardingCompletionForEstablishedSetup(): boolean {
+    if (this.data.uiState.onboardingCompleted) {
+      return false;
+    }
+
+    if (!this.hasExistingSetupSignals(this.data)) {
+      return false;
+    }
+
+    this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
+    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
+    void this.savePluginData();
+    return true;
   }
 
   private isFolderAlreadyExistsError(error: unknown): boolean {
@@ -6277,10 +6297,15 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   isFirstRunSetupPending(): boolean {
+    this.ensureOnboardingCompletionForEstablishedSetup();
     return !this.data.uiState.onboardingCompleted;
   }
 
   shouldAutoOpenFirstRunSetupWizard(referenceDate: Date = new Date()): boolean {
+    if (this.ensureOnboardingCompletionForEstablishedSetup()) {
+      return false;
+    }
+
     if (!this.isFirstRunSetupPending()) {
       return false;
     }
@@ -6310,10 +6335,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    this.data.uiState.onboardingCompleted = true;
-    this.data.uiState.onboardingDeferredUntil = "";
-    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
-    await this.savePluginData();
+    await this.markOnboardingCompleted();
     this.refreshDashboardViews();
   }
 
