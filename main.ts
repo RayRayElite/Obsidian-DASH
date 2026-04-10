@@ -298,6 +298,73 @@ export default class DailyDashboardPlugin extends Plugin {
     return String(error);
   }
 
+  private hasExistingSetupSignals(data: DashboardPluginData): boolean {
+    if (Object.keys(data.entries).length > 0) {
+      return true;
+    }
+
+    if (data.calendarEvents.length > 0) {
+      return true;
+    }
+
+    if (data.financeData.subscriptions.length > 0) {
+      return true;
+    }
+
+    if (Object.keys(data.kanbanState.taskRegistry).length > 0 || Object.keys(data.kanbanState.boardConfigurations).length > 0) {
+      return true;
+    }
+
+    if (Object.keys(data.noteIndex.entries).length > 0) {
+      return true;
+    }
+
+    const settings = data.settings;
+    if (
+      settings.masterTodoPath !== DEFAULT_SETTINGS.masterTodoPath
+      || settings.projectNotesFolder !== DEFAULT_SETTINGS.projectNotesFolder
+      || settings.dailyLogFolder !== DEFAULT_SETTINGS.dailyLogFolder
+      || settings.weeklyReportFolder !== DEFAULT_SETTINGS.weeklyReportFolder
+      || settings.monthlyReportFolder !== DEFAULT_SETTINGS.monthlyReportFolder
+      || settings.aiIndexedFolders !== DEFAULT_SETTINGS.aiIndexedFolders
+      || settings.aiContextDays !== DEFAULT_SETTINGS.aiContextDays
+      || settings.calendarDocumentPath !== DEFAULT_SETTINGS.calendarDocumentPath
+      || settings.kanbanHubPath !== DEFAULT_SETTINGS.kanbanHubPath
+      || settings.kanbanBoardNotesFolder !== DEFAULT_SETTINGS.kanbanBoardNotesFolder
+    ) {
+      return true;
+    }
+
+    if (this.app.vault.getAbstractFileByPath(normalizePath(settings.masterTodoPath)) instanceof TFile) {
+      return true;
+    }
+
+    const normalizedProjectNotesFolder = normalizeFolderPath(settings.projectNotesFolder);
+    if (normalizedProjectNotesFolder.length > 0) {
+      const projectNoteExists = this.app.vault.getMarkdownFiles().some((file) => normalizePath(file.path).startsWith(`${normalizedProjectNotesFolder}/`));
+      if (projectNoteExists) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async reconcileOnboardingState(): Promise<void> {
+    if (this.data.uiState.onboardingCompleted) {
+      return;
+    }
+
+    if (!this.hasExistingSetupSignals(this.data)) {
+      return;
+    }
+
+    this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
+    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
+    await this.savePluginData();
+  }
+
   private isFolderAlreadyExistsError(error: unknown): boolean {
     const message = this.getErrorMessage(error).toLowerCase();
     return message.includes("folder already exists") || message.includes("already exists");
@@ -10457,6 +10524,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async loadPluginData(): Promise<void> {
     this.data = await this.buildDataFromStorage();
+    await this.reconcileOnboardingState();
     await this.cleanupStaleTrackedMinuteOverrides();
   }
 

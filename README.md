@@ -22,6 +22,8 @@ Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as it
 - includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a hero-bar notification popover for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
 - lets you pick a hero wallpaper from a vault folder in plugin settings
 
+The first-run setup wizard now behaves like a true onboarding flow: it should open automatically only for a fresh install, skipping it counts as "don't prompt me again," and you can always reopen it later from the command palette or settings.
+
 Task lines in the master hub can now include lightweight annotations such as `[priority: high]`, `[due: 2026-04-05]`, `[blocked: waiting on API key]`, `[unblock: 2026-04-08]`, `[effort: 30m]`, `[energy: low]`, `[context: admin]`, `[trigger: after call with vendor]`, and `[minimum-step: draft the first outline]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, blocked, and priority-ranked work in project health, cleanup alerts, promotion flows, AI context, and suggested next actions.
 
 ## Master Todo Workflow

@@ -5188,8 +5188,8 @@ export class FirstRunSetupWizardModal extends Modal {
     }
 
     const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
-    createButton(footer, "Close for now", async () => {
-      await this.plugin.snoozeFirstRunSetupWizard(12);
+    createButton(footer, "Skip setup", async () => {
+      await this.plugin.completeFirstRunSetupWizard();
       this.close();
     }, false, "x");
     if (this.stepIndex > 0) {

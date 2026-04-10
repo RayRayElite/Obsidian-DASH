@@ -91,6 +91,7 @@ Interpretation guidelines for future refactors:
 3. Use `npm run watch` for rapid iteration when the vault points at this workspace.
 4. Use `npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"` when the user wants a normal deploy that copies the built plugin into the vault plugin folder.
 5. The deploy scripts matter because this repo is used against a real Obsidian vault on Windows paths with spaces.
+6. After completing any meaningful feature or bug fix code change, finish by running `npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"` unless the user explicitly says not to deploy or the task is docs-only.
 
 ## Code Guidelines
 

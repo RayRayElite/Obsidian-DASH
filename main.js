@@ -10611,8 +10611,8 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
         break;
     }
     const footer = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
-    createButton(footer, "Close for now", async () => {
-      await this.plugin.snoozeFirstRunSetupWizard(12);
+    createButton(footer, "Skip setup", async () => {
+      await this.plugin.completeFirstRunSetupWizard();
       this.close();
     }, false, "x");
     if (this.stepIndex > 0) {
@@ -15121,6 +15121,50 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return error.message.trim();
     }
     return String(error);
+  }
+  hasExistingSetupSignals(data) {
+    if (Object.keys(data.entries).length > 0) {
+      return true;
+    }
+    if (data.calendarEvents.length > 0) {
+      return true;
+    }
+    if (data.financeData.subscriptions.length > 0) {
+      return true;
+    }
+    if (Object.keys(data.kanbanState.taskRegistry).length > 0 || Object.keys(data.kanbanState.boardConfigurations).length > 0) {
+      return true;
+    }
+    if (Object.keys(data.noteIndex.entries).length > 0) {
+      return true;
+    }
+    const settings = data.settings;
+    if (settings.masterTodoPath !== DEFAULT_SETTINGS.masterTodoPath || settings.projectNotesFolder !== DEFAULT_SETTINGS.projectNotesFolder || settings.dailyLogFolder !== DEFAULT_SETTINGS.dailyLogFolder || settings.weeklyReportFolder !== DEFAULT_SETTINGS.weeklyReportFolder || settings.monthlyReportFolder !== DEFAULT_SETTINGS.monthlyReportFolder || settings.aiIndexedFolders !== DEFAULT_SETTINGS.aiIndexedFolders || settings.aiContextDays !== DEFAULT_SETTINGS.aiContextDays || settings.calendarDocumentPath !== DEFAULT_SETTINGS.calendarDocumentPath || settings.kanbanHubPath !== DEFAULT_SETTINGS.kanbanHubPath || settings.kanbanBoardNotesFolder !== DEFAULT_SETTINGS.kanbanBoardNotesFolder) {
+      return true;
+    }
+    if (this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(settings.masterTodoPath)) instanceof import_obsidian4.TFile) {
+      return true;
+    }
+    const normalizedProjectNotesFolder = normalizeFolderPath2(settings.projectNotesFolder);
+    if (normalizedProjectNotesFolder.length > 0) {
+      const projectNoteExists = this.app.vault.getMarkdownFiles().some((file) => (0, import_obsidian4.normalizePath)(file.path).startsWith(`${normalizedProjectNotesFolder}/`));
+      if (projectNoteExists) {
+        return true;
+      }
+    }
+    return false;
+  }
+  async reconcileOnboardingState() {
+    if (this.data.uiState.onboardingCompleted) {
+      return;
+    }
+    if (!this.hasExistingSetupSignals(this.data)) {
+      return;
+    }
+    this.data.uiState.onboardingCompleted = true;
+    this.data.uiState.onboardingDeferredUntil = "";
+    this.data.uiState.dismissedNotificationIds = this.data.uiState.dismissedNotificationIds.filter((id) => id !== "system:onboarding");
+    await this.savePluginData();
   }
   isFolderAlreadyExistsError(error) {
     const message = this.getErrorMessage(error).toLowerCase();
@@ -23564,6 +23608,7 @@ No entries available.`;
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
+    await this.reconcileOnboardingState();
     await this.cleanupStaleTrackedMinuteOverrides();
   }
   normalizeEntry(entry, date, settings = this.data.settings) {
