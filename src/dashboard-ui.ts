@@ -11398,15 +11398,17 @@ export class DashKanbanView extends ItemView {
       } else {
         photoPaths.forEach((path) => {
           const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
+          const fileName = path.split("/").pop() || path;
           const item = photoList.createDiv({ cls: "dash-kanban-photo-item" });
-          const openButton = item.createEl("button", { cls: "dash-kanban-photo-open" });
-          openButton.type = "button";
-          openButton.title = path;
-          openButton.addEventListener("mousedown", (event) => {
+          const thumbButton = item.createEl("button", { cls: "dash-kanban-photo-thumb-button" });
+          thumbButton.type = "button";
+          thumbButton.title = path;
+          thumbButton.ariaLabel = `Open ${fileName}`;
+          thumbButton.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
           });
-          openButton.addEventListener("click", (event) => {
+          thumbButton.addEventListener("click", (event) => {
             event.stopPropagation();
             this.openKanbanPhoto(path);
           });
@@ -11420,9 +11422,24 @@ export class DashKanbanView extends ItemView {
               event.stopPropagation();
               void this.copyKanbanPhotoToClipboard(path);
             });
-            openButton.appendChild(image);
+            thumbButton.appendChild(image);
+          } else {
+            setIcon(thumbButton, "image");
           }
-          openButton.createEl("span", { cls: "dash-kanban-photo-name", text: path.split("/").pop() || path });
+
+          const detailsButton = item.createEl("button", { cls: "dash-kanban-photo-name-button" });
+          detailsButton.type = "button";
+          detailsButton.title = path;
+          detailsButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
+          detailsButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.openKanbanPhoto(path);
+          });
+          detailsButton.createEl("span", { cls: "dash-kanban-photo-name", text: fileName });
+          detailsButton.createEl("span", { cls: "dash-kanban-photo-meta", text: "Open image" });
 
           const removeButton = item.createEl("button", { cls: "dash-kanban-photo-remove", text: "Remove" });
           removeButton.type = "button";

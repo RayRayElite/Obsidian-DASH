@@ -2719,6 +2719,40 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
   };
 }
 
+export function updateTaskPhotoPathsByIdInProject(content: string, input: {
+  projectName: string;
+  taskId: string;
+  photoPaths?: string[];
+  taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
+}): { content: string; updated: boolean; taskText: string; found: boolean; sectionName: string } {
+  const taskRegistry = input.taskRegistry ?? {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
+  if (!location) {
+    return { content, updated: false, taskText: "", found: false, sectionName: "" };
+  }
+
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false, taskText: "", found: false, sectionName: "" };
+  }
+
+  const annotatedTaskText = applyTaskAnnotationOverrides(removed.taskText, {
+    photoPaths: input.photoPaths
+  });
+  const normalizedTaskText = location.section.trim().toLowerCase() === "waiting"
+    ? annotatedTaskText
+    : stripBlockingTaskAnnotations(annotatedTaskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, location.section, normalizedTaskText);
+
+  return {
+    content: nextContent,
+    updated: nextContent !== content || normalizedTaskText !== removed.taskText,
+    taskText: normalizedTaskText,
+    found: true,
+    sectionName: location.section
+  };
+}
+
 export function moveTaskByIdInProject(content: string, input: {
   projectName: string;
   taskId: string;

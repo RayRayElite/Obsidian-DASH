@@ -5195,6 +5195,30 @@ function updateTaskByIdInProjectWithMetadata(content, input) {
     found: true
   };
 }
+function updateTaskPhotoPathsByIdInProject(content, input) {
+  var _a;
+  const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
+  if (!location) {
+    return { content, updated: false, taskText: "", found: false, sectionName: "" };
+  }
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false, taskText: "", found: false, sectionName: "" };
+  }
+  const annotatedTaskText = applyTaskAnnotationOverrides(removed.taskText, {
+    photoPaths: input.photoPaths
+  });
+  const normalizedTaskText = location.section.trim().toLowerCase() === "waiting" ? annotatedTaskText : stripBlockingTaskAnnotations(annotatedTaskText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, location.section, normalizedTaskText);
+  return {
+    content: nextContent,
+    updated: nextContent !== content || normalizedTaskText !== removed.taskText,
+    taskText: normalizedTaskText,
+    found: true,
+    sectionName: location.section
+  };
+}
 function transferTaskByIdBetweenProjects(content, input) {
   var _a, _b;
   const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
@@ -15377,15 +15401,17 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       } else {
         photoPaths.forEach((path) => {
           const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
+          const fileName = path.split("/").pop() || path;
           const item = photoList.createDiv({ cls: "dash-kanban-photo-item" });
-          const openButton = item.createEl("button", { cls: "dash-kanban-photo-open" });
-          openButton.type = "button";
-          openButton.title = path;
-          openButton.addEventListener("mousedown", (event) => {
+          const thumbButton = item.createEl("button", { cls: "dash-kanban-photo-thumb-button" });
+          thumbButton.type = "button";
+          thumbButton.title = path;
+          thumbButton.ariaLabel = `Open ${fileName}`;
+          thumbButton.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
           });
-          openButton.addEventListener("click", (event) => {
+          thumbButton.addEventListener("click", (event) => {
             event.stopPropagation();
             this.openKanbanPhoto(path);
           });
@@ -15399,9 +15425,23 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
               event.stopPropagation();
               void this.copyKanbanPhotoToClipboard(path);
             });
-            openButton.appendChild(image);
+            thumbButton.appendChild(image);
+          } else {
+            (0, import_obsidian3.setIcon)(thumbButton, "image");
           }
-          openButton.createEl("span", { cls: "dash-kanban-photo-name", text: path.split("/").pop() || path });
+          const detailsButton = item.createEl("button", { cls: "dash-kanban-photo-name-button" });
+          detailsButton.type = "button";
+          detailsButton.title = path;
+          detailsButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
+          detailsButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.openKanbanPhoto(path);
+          });
+          detailsButton.createEl("span", { cls: "dash-kanban-photo-name", text: fileName });
+          detailsButton.createEl("span", { cls: "dash-kanban-photo-meta", text: "Open image" });
           const removeButton = item.createEl("button", { cls: "dash-kanban-photo-remove", text: "Remove" });
           removeButton.type = "button";
           removeButton.addEventListener("mousedown", (event) => {
@@ -18727,8 +18767,43 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: file.name
     })).sort((left, right) => left.path.localeCompare(right.path));
   }
-  async attachExistingKanbanTaskPhoto(projectName, taskId, imagePath) {
+  async setKanbanTaskPhotoPaths(projectName, taskId, photoPaths) {
     var _a, _b;
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new import_obsidian4.Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+    const content = await this.app.vault.read(todoFile);
+    const updated = updateTaskPhotoPathsByIdInProject(content, {
+      projectName,
+      taskId,
+      photoPaths,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!updated.found) {
+      new import_obsidian4.Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+    if (updated.content !== content) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: updated.sectionName || task.section,
+      laneKey: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
+      taskText: updated.taskText || task.rawText,
+      checked: false
+    });
+    await this.refreshAfterTodoMutation(true, true);
+    return true;
+  }
+  async attachExistingKanbanTaskPhoto(projectName, taskId, imagePath) {
     const normalizedImagePath = (0, import_obsidian4.normalizePath)(imagePath.trim());
     const target = this.app.vault.getAbstractFileByPath(normalizedImagePath);
     if (!(target instanceof import_obsidian4.TFile) || !this.isSupportedKanbanImageFile(target)) {
@@ -18741,16 +18816,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), normalizedImagePath].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
-    return this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
   async uploadKanbanTaskPhoto(projectName, taskId, originalFileName, bytes) {
     const trimmedName = originalFileName.trim();
@@ -18772,7 +18838,6 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return stampedPath;
   }
   async uploadMultipleKanbanTaskPhotos(projectName, taskId, files) {
-    var _a, _b;
     const validFiles = files.filter((file) => file.originalFileName.trim().length > 0 && file.bytes.byteLength > 0);
     if (validFiles.length === 0) {
       return [];
@@ -18802,20 +18867,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return [];
     }
     const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths].map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
-    const updated = await this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    const updated = await this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
     return updated ? stampedPaths : [];
   }
   async removeKanbanTaskPhoto(projectName, taskId, imagePath) {
-    var _a, _b;
     const task = await this.getKanbanTaskById(projectName, taskId);
     if (!task) {
       new import_obsidian4.Notice("Could not find that Kanban card in the master task hub.");
@@ -18823,16 +18878,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const normalizedImagePath = (0, import_obsidian4.normalizePath)(imagePath.trim());
     const nextPhotoPaths = getTodoTaskPhotoPaths(task.rawText).filter((path) => (0, import_obsidian4.normalizePath)(path) !== normalizedImagePath);
-    return this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
   async openDashKanbanBoardSettings(initialProjectName = "") {
     var _a;

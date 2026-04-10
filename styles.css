@@ -1712,7 +1712,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(360px, calc(100vw - 24px));
+  width: min(420px, calc(100vw - 24px));
 }
 
 .dash-kanban-photo-list {
@@ -1730,9 +1730,10 @@
 }
 
 .dash-kanban-photo-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
   padding: 8px;
   border-radius: 14px;
   background: color-mix(in srgb, var(--background-primary-alt) 58%, transparent);
@@ -1743,22 +1744,21 @@
   opacity: 0.68;
 }
 
-.dash-kanban-photo-open {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 10px;
+.dash-kanban-photo-thumb-button {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  min-width: 0;
-  padding: 6px;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  padding: 0;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--background-primary) 78%, transparent);
   color: var(--text-normal);
-  text-align: left;
 }
 
-.dash-kanban-photo-open:hover {
+.dash-kanban-photo-thumb-button:hover,
+.dash-kanban-photo-name-button:hover {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 30%, var(--dash-kanban-border));
 }
 
@@ -1772,15 +1772,38 @@
   background: color-mix(in srgb, var(--background-primary-alt) 86%, transparent);
 }
 
+.dash-kanban-photo-name-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-primary) 78%, transparent);
+  color: var(--text-normal);
+  text-align: left;
+}
+
 .dash-kanban-photo-name {
+  display: block;
+  width: 100%;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
   font-size: 0.78rem;
-  line-height: 1.3;
-  word-break: break-word;
+  line-height: 1.25;
+}
+
+.dash-kanban-photo-meta {
+  display: block;
+  color: var(--text-faint);
+  font-size: 0.69rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .dash-kanban-photo-remove {
@@ -1791,7 +1814,6 @@
   background: color-mix(in srgb, #ff8b7d 8%, var(--background-primary));
   color: var(--text-normal);
   font-size: 0.74rem;
-  align-self: flex-end;
 }
 
 .dash-kanban-photo-remove:hover {

@@ -118,7 +118,8 @@ import {
   syncKanbanBoardNoteToMasterHub,
   syncKanbanHubToMasterHub,
   updateTaskByIdInProject,
-  updateTaskByIdInProjectWithMetadata
+  updateTaskByIdInProjectWithMetadata,
+  updateTaskPhotoPathsByIdInProject
 } from "./src/dashboard-todo";
 import {
   AddHabitModal,
@@ -3805,6 +3806,46 @@ export default class DailyDashboardPlugin extends Plugin {
       .sort((left, right) => left.path.localeCompare(right.path));
   }
 
+  private async setKanbanTaskPhotoPaths(projectName: string, taskId: string, photoPaths: string[]): Promise<boolean> {
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master task hub not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+
+    const content = await this.app.vault.read(todoFile);
+    const updated = updateTaskPhotoPathsByIdInProject(content, {
+      projectName,
+      taskId,
+      photoPaths,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (!updated.found) {
+      new Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+
+    if (updated.content !== content) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
+
+    await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+      projectName,
+      sectionName: updated.sectionName || task.section,
+      laneKey: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      taskText: updated.taskText || task.rawText,
+      checked: false
+    });
+    await this.refreshAfterTodoMutation(true, true);
+    return true;
+  }
+
   async attachExistingKanbanTaskPhoto(projectName: string, taskId: string, imagePath: string): Promise<boolean> {
     const normalizedImagePath = normalizePath(imagePath.trim());
     const target = this.app.vault.getAbstractFileByPath(normalizedImagePath);
@@ -3821,16 +3862,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), normalizedImagePath]
       .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
-    return this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
 
   async uploadKanbanTaskPhoto(projectName: string, taskId: string, originalFileName: string, bytes: ArrayBuffer): Promise<string | null> {
@@ -3894,16 +3926,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths]
       .map((path) => normalizePath(path.trim()))
       .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
-    const updated = await this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    const updated = await this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
 
     return updated ? stampedPaths : [];
   }
@@ -3918,16 +3941,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const normalizedImagePath = normalizePath(imagePath.trim());
     const nextPhotoPaths = getTodoTaskPhotoPaths(task.rawText)
       .filter((path) => normalizePath(path) !== normalizedImagePath);
-    return this.updateKanbanTaskDetails(projectName, taskId, {
-      taskText: task.text,
-      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
-      priority: task.priority,
-      dueDate: task.dueDate,
-      blockedReason: task.blockedReason,
-      effort: task.effort,
-      executionContext: task.executionContext,
-      photoPaths: nextPhotoPaths
-    });
+    return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
 
   async openDashKanbanBoardSettings(initialProjectName = ""): Promise<void> {
