@@ -434,7 +434,13 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async onload(): Promise<void> {
-    await this.loadPluginData();
+    try {
+      await this.loadPluginData();
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub failed to load persisted plugin data", error);
+      this.data = this.hydratePluginData(null);
+      new Notice(`Obsidian DASH - Daily Action & System Hub could not load its saved data cleanly. It started with safe defaults instead. ${this.getErrorMessage(error)}`);
+    }
 
     try {
       await this.initializeWorkspaceArtifacts();
@@ -11193,11 +11199,15 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     for (const file of files) {
-      const content = await this.app.vault.read(file);
-      const dateFromPath = file.basename;
-      const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
-      if (parsed) {
-        entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+      try {
+        const content = await this.app.vault.read(file);
+        const dateFromPath = file.basename;
+        const parsed = parseDailyLogEntry(content, dateFromPath, settings.habitDefinitions);
+        if (parsed) {
+          entries[parsed.date] = this.normalizeEntry(parsed, parsed.date, settings);
+        }
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub could not import daily log ${file.path}`, error);
       }
     }
 
@@ -11210,19 +11220,24 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
-    const content = await this.app.vault.read(file);
-    const parsed = parseDailyLogEntry(content, file.basename, this.data.settings.habitDefinitions);
-    if (!parsed) {
-      this.removeDailyLogEntry(normalizedPath);
-      return;
-    }
+    try {
+      const content = await this.app.vault.read(file);
+      const parsed = parseDailyLogEntry(content, file.basename, this.data.settings.habitDefinitions);
+      if (!parsed) {
+        this.removeDailyLogEntry(normalizedPath);
+        return;
+      }
 
-    const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
-    this.cleanTrackedMinuteOverrides(normalizedEntry);
-    this.cleanSleepTiming(normalizedEntry);
-    this.data.entries[parsed.date] = normalizedEntry;
-    await this.savePluginData();
-    this.refreshDashboardViews();
+      const normalizedEntry = this.normalizeEntry(parsed, parsed.date, this.data.settings);
+      this.cleanTrackedMinuteOverrides(normalizedEntry);
+      this.cleanSleepTiming(normalizedEntry);
+      this.data.entries[parsed.date] = normalizedEntry;
+      await this.savePluginData();
+      this.refreshDashboardViews();
+    } catch (error) {
+      console.error(`Obsidian DASH - Daily Action & System Hub could not reload daily log ${file.path}`, error);
+      new Notice(`Could not reload daily log ${file.basename}. Check the file for malformed content.`);
+    }
   }
 
   private removeDailyLogEntry(path: string): void {

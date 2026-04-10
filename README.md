@@ -251,7 +251,7 @@ The easiest workflow on Windows is to make your vault use this project folder di
 4. Create a junction from the vault plugin folder to this workspace folder:
 
 ```powershell
-cmd /c mklink /J "D:\Game Dev\Projects\.obsidian\plugins\obsidian-Dashboard-Plugin" "D:\Game Dev\Projects\Obsidian Dashboard Plugin"
+cmd /c mklink /J "D:\Game Dev\Projects\.obsidian\plugins\daily-dashboard" "D:\Game Dev\Projects\Obsidian Dashboard Plugin"
 ```
 
 5. Reopen Obsidian and enable the plugin.
@@ -287,6 +287,18 @@ For this vault, the concrete command is:
 ```bash
 npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"
 ```
+
+## Plugin Stays Enabled On Restart
+
+Obsidian persists community plugins by plugin id, not by the display name. For this plugin the id is `daily-dashboard`, so the installed folder under `.obsidian/plugins/` also needs to be named `daily-dashboard`.
+
+If Obsidian seems to forget that the plugin was enabled after a restart, check these first:
+
+1. Make sure the installed folder is `.obsidian/plugins/daily-dashboard`.
+2. Make sure `.obsidian/community-plugins.json` still contains `daily-dashboard`.
+3. If both are correct, the more likely cause is a startup load failure rather than a lost enable setting. Open Obsidian's developer console and look for an error mentioning `daily-dashboard` or `main.js`.
+
+The plugin now guards startup hydration more defensively so one malformed daily log or saved payload is less likely to prevent activation.
 
 Or set `OBSIDIAN_PLUGIN_DIR` and run:
 
