@@ -3939,8 +3939,14 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const normalizedImagePath = normalizePath(imagePath.trim());
-    const nextPhotoPaths = getTodoTaskPhotoPaths(task.rawText)
+    const currentPhotoPaths = getTodoTaskPhotoPaths(task.rawText);
+    const nextPhotoPaths = currentPhotoPaths
       .filter((path) => normalizePath(path) !== normalizedImagePath);
+    if (nextPhotoPaths.length === currentPhotoPaths.length) {
+      new Notice("That image was not found on the card.");
+      return false;
+    }
+
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
 

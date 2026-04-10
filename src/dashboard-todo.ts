@@ -2726,30 +2726,27 @@ export function updateTaskPhotoPathsByIdInProject(content: string, input: {
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; updated: boolean; taskText: string; found: boolean; sectionName: string } {
   const taskRegistry = input.taskRegistry ?? {};
-  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
-  if (!location) {
+  const match = findProjectTaskMatch(content, input.projectName, input.taskId, taskRegistry, true);
+  if (!match) {
     return { content, updated: false, taskText: "", found: false, sectionName: "" };
   }
 
-  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
-  if (!removed) {
-    return { content, updated: false, taskText: "", found: false, sectionName: "" };
-  }
-
-  const annotatedTaskText = applyTaskAnnotationOverrides(removed.taskText, {
+  const annotatedTaskText = applyTaskAnnotationOverrides(match.taskText, {
     photoPaths: input.photoPaths
   });
-  const normalizedTaskText = location.section.trim().toLowerCase() === "waiting"
+  const normalizedTaskText = match.section.trim().toLowerCase() === "waiting"
     ? annotatedTaskText
     : stripBlockingTaskAnnotations(annotatedTaskText);
-  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, location.section, normalizedTaskText);
+  const lines = content.split(/\r?\n/);
+  lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked: string) => `- [${checked}] ${normalizedTaskText}`);
+  const nextContent = lines.join("\n");
 
   return {
     content: nextContent,
-    updated: nextContent !== content || normalizedTaskText !== removed.taskText,
+    updated: nextContent !== content || normalizedTaskText !== match.taskText,
     taskText: normalizedTaskText,
     found: true,
-    sectionName: location.section
+    sectionName: match.section
   };
 }
 
@@ -3857,7 +3854,7 @@ function normalizeLegacyKanbanSectionName(section: string): string {
   return normalized;
 }
 
-function extractTaskAnnotation(value: string, key: string): string | null {
+function findTaskAnnotationRange(value: string, key: string): { start: number; end: number } | null {
   const normalizedValue = value;
   const lowerValue = normalizedValue.toLowerCase();
   const lowerKey = key.trim().toLowerCase();
@@ -3873,36 +3870,71 @@ function extractTaskAnnotation(value: string, key: string): string | null {
       return null;
     }
 
-    const valueStart = start + marker.length;
-    const end = normalizedValue.indexOf("]", valueStart);
-    if (end === -1) {
-      return null;
+    let depth = 0;
+    for (let index = start; index < normalizedValue.length; index += 1) {
+      const character = normalizedValue[index];
+      if (character === "[") {
+        depth += 1;
+      } else if (character === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          return { start, end: index + 1 };
+        }
+      }
     }
 
-    const extracted = normalizedValue.slice(valueStart, end).trim();
-    if (extracted.length > 0) {
-      return extracted;
-    }
-
-    searchIndex = end + 1;
+    return null;
   }
 
   return null;
 }
 
+function extractTaskAnnotation(value: string, key: string): string | null {
+  const range = findTaskAnnotationRange(value, key);
+  if (!range) {
+    return null;
+  }
+
+  const marker = `[${key.trim().toLowerCase()}:`;
+  const extracted = value.slice(range.start + marker.length, range.end - 1).trim();
+  return extracted.length > 0 ? extracted : null;
+}
+
 function removeTaskAnnotation(value: string, key: string): string {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return value
-    .replace(new RegExp(`\\s*\\[${escapedKey}:\\s*[^\]]+\\]`, "ig"), "")
+  const range = findTaskAnnotationRange(value, key);
+  if (!range) {
+    return value.replace(/\s{2,}/g, " ").trim();
+  }
+
+  return `${value.slice(0, range.start)}${value.slice(range.end)}`
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
 function stripTaskAnnotations(value: string): string {
-  return value
-    .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  let nextValue = value;
+  [
+    TASK_ID_ANNOTATION_KEY,
+    "priority",
+    "due",
+    "blocked",
+    "unblock",
+    "blocked-until",
+    "effort",
+    "energy",
+    "context",
+    "mode",
+    "trigger",
+    "minimum-step",
+    "minimum step",
+    "min-step",
+    "min step",
+    "photos"
+  ].forEach((key) => {
+    nextValue = removeTaskAnnotation(nextValue, key);
+  });
+
+  return nextValue.replace(/\s{2,}/g, " ").trim();
 }
 
 function extractTodoTaskTags(rawText: string): string[] {

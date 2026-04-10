@@ -5198,25 +5198,23 @@ function updateTaskByIdInProjectWithMetadata(content, input) {
 function updateTaskPhotoPathsByIdInProject(content, input) {
   var _a;
   const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
-  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
-  if (!location) {
+  const match = findProjectTaskMatch(content, input.projectName, input.taskId, taskRegistry, true);
+  if (!match) {
     return { content, updated: false, taskText: "", found: false, sectionName: "" };
   }
-  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
-  if (!removed) {
-    return { content, updated: false, taskText: "", found: false, sectionName: "" };
-  }
-  const annotatedTaskText = applyTaskAnnotationOverrides(removed.taskText, {
+  const annotatedTaskText = applyTaskAnnotationOverrides(match.taskText, {
     photoPaths: input.photoPaths
   });
-  const normalizedTaskText = location.section.trim().toLowerCase() === "waiting" ? annotatedTaskText : stripBlockingTaskAnnotations(annotatedTaskText);
-  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, location.section, normalizedTaskText);
+  const normalizedTaskText = match.section.trim().toLowerCase() === "waiting" ? annotatedTaskText : stripBlockingTaskAnnotations(annotatedTaskText);
+  const lines = content.split(/\r?\n/);
+  lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked) => `- [${checked}] ${normalizedTaskText}`);
+  const nextContent = lines.join("\n");
   return {
     content: nextContent,
-    updated: nextContent !== content || normalizedTaskText !== removed.taskText,
+    updated: nextContent !== content || normalizedTaskText !== match.taskText,
     taskText: normalizedTaskText,
     found: true,
-    sectionName: location.section
+    sectionName: match.section
   };
 }
 function transferTaskByIdBetweenProjects(content, input) {
@@ -6102,7 +6100,7 @@ function normalizeLegacyKanbanSectionName(section) {
   }
   return normalized;
 }
-function extractTaskAnnotation(value, key) {
+function findTaskAnnotationRange(value, key) {
   const normalizedValue = value;
   const lowerValue = normalizedValue.toLowerCase();
   const lowerKey = key.trim().toLowerCase();
@@ -6116,25 +6114,61 @@ function extractTaskAnnotation(value, key) {
     if (start === -1) {
       return null;
     }
-    const valueStart = start + marker.length;
-    const end = normalizedValue.indexOf("]", valueStart);
-    if (end === -1) {
-      return null;
+    let depth = 0;
+    for (let index = start; index < normalizedValue.length; index += 1) {
+      const character = normalizedValue[index];
+      if (character === "[") {
+        depth += 1;
+      } else if (character === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          return { start, end: index + 1 };
+        }
+      }
     }
-    const extracted = normalizedValue.slice(valueStart, end).trim();
-    if (extracted.length > 0) {
-      return extracted;
-    }
-    searchIndex = end + 1;
+    return null;
   }
   return null;
 }
+function extractTaskAnnotation(value, key) {
+  const range = findTaskAnnotationRange(value, key);
+  if (!range) {
+    return null;
+  }
+  const marker = `[${key.trim().toLowerCase()}:`;
+  const extracted = value.slice(range.start + marker.length, range.end - 1).trim();
+  return extracted.length > 0 ? extracted : null;
+}
 function removeTaskAnnotation(value, key) {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return value.replace(new RegExp(`\\s*\\[${escapedKey}:\\s*[^]]+\\]`, "ig"), "").replace(/\s{2,}/g, " ").trim();
+  const range = findTaskAnnotationRange(value, key);
+  if (!range) {
+    return value.replace(/\s{2,}/g, " ").trim();
+  }
+  return `${value.slice(0, range.start)}${value.slice(range.end)}`.replace(/\s{2,}/g, " ").trim();
 }
 function stripTaskAnnotations(value) {
-  return value.replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
+  let nextValue = value;
+  [
+    TASK_ID_ANNOTATION_KEY,
+    "priority",
+    "due",
+    "blocked",
+    "unblock",
+    "blocked-until",
+    "effort",
+    "energy",
+    "context",
+    "mode",
+    "trigger",
+    "minimum-step",
+    "minimum step",
+    "min-step",
+    "min step",
+    "photos"
+  ].forEach((key) => {
+    nextValue = removeTaskAnnotation(nextValue, key);
+  });
+  return nextValue.replace(/\s{2,}/g, " ").trim();
 }
 function extractTodoTaskTags(rawText) {
   return Array.from(rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g)).map((match) => match[1].trim().toLowerCase()).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
@@ -18877,7 +18911,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const normalizedImagePath = (0, import_obsidian4.normalizePath)(imagePath.trim());
-    const nextPhotoPaths = getTodoTaskPhotoPaths(task.rawText).filter((path) => (0, import_obsidian4.normalizePath)(path) !== normalizedImagePath);
+    const currentPhotoPaths = getTodoTaskPhotoPaths(task.rawText);
+    const nextPhotoPaths = currentPhotoPaths.filter((path) => (0, import_obsidian4.normalizePath)(path) !== normalizedImagePath);
+    if (nextPhotoPaths.length === currentPhotoPaths.length) {
+      new import_obsidian4.Notice("That image was not found on the card.");
+      return false;
+    }
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
   async openDashKanbanBoardSettings(initialProjectName = "") {
