@@ -96,6 +96,25 @@
   z-index: 1;
 }
 
+.dash-kanban-hero-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dash-kanban-hero-actions,
+.dash-kanban-collapsed-controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
 .dash-kanban-kicker {
   color: var(--dash-kanban-accent);
   font-size: 0.72rem;
@@ -122,7 +141,7 @@
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -135,8 +154,8 @@
 }
 
 .dash-kanban-collapsed-action-row {
-  flex: 1 1 100%;
-  justify-content: flex-start;
+  flex: 0 1 auto;
+  justify-content: flex-end;
   flex-wrap: wrap;
 }
 
@@ -1338,13 +1357,17 @@
 }
 
 @media (max-width: 920px) {
+  .dash-kanban-hero-top,
   .dash-kanban-collapsed-bottom {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .dash-kanban-hero-actions,
+  .dash-kanban-collapsed-controls,
   .dash-kanban-collapsed-action-row {
     justify-content: flex-start;
+    margin-left: 0;
   }
 
   .dash-kanban-card-popover {
