@@ -9754,6 +9754,9 @@ export class DashKanbanView extends ItemView {
       const collapsedControls = collapsedTop.createDiv({ cls: "dash-kanban-collapsed-controls" });
       const actionRow = collapsedControls.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
       actionRow.append(
+        this.createHeaderButton("folder-plus", "New project", () => {
+          void this.plugin.openCreateProjectFlow();
+        }),
         this.createHeaderButton("plus", "Add card", () => {
           const targetProject = snapshot.selectedProjectName || snapshot.projects[0]?.projectName || "";
           this.openInlineQuickAdd(targetProject);

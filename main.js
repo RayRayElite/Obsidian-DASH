@@ -13802,6 +13802,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       const collapsedControls = collapsedTop.createDiv({ cls: "dash-kanban-collapsed-controls" });
       const actionRow2 = collapsedControls.createDiv({ cls: "dash-kanban-action-row dash-kanban-collapsed-action-row" });
       actionRow2.append(
+        this.createHeaderButton("folder-plus", "New project", () => {
+          void this.plugin.openCreateProjectFlow();
+        }),
         this.createHeaderButton("plus", "Add card", () => {
           var _a;
           const targetProject = snapshot.selectedProjectName || ((_a = snapshot.projects[0]) == null ? void 0 : _a.projectName) || "";
