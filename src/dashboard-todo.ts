@@ -2168,14 +2168,39 @@ function buildNativeKanbanLaneEntries(project: TodoProjectSummary, laneDefinitio
     ...project.completedTaskDetails
   ];
 
+  const tasksByLane = new Map(laneDefinitions.map((lane) => [lane.laneKey, [] as TodoTaskSummary[]]));
+  allTasks.forEach((task) => {
+    const matchedLane = findBestMatchingKanbanLaneDefinition(laneDefinitions, task);
+    if (!matchedLane) {
+      return;
+    }
+
+    tasksByLane.get(matchedLane.laneKey)?.push(task);
+  });
+
   return laneDefinitions.map((lane) => ({
     lane,
     label: lane.label,
-    tasks: allTasks.filter((task) => doesKanbanLaneDefinitionMatchTask(lane, task))
+    tasks: tasksByLane.get(lane.laneKey) ?? []
   }));
 }
 
-function doesKanbanLaneDefinitionMatchTask(lane: KanbanLaneDefinition, task: TodoTaskSummary): boolean {
+function findBestMatchingKanbanLaneDefinition(laneDefinitions: KanbanLaneDefinition[], task: TodoTaskSummary): KanbanLaneDefinition | null {
+  const candidates = laneDefinitions.filter((lane) => doesKanbanLaneDefinitionBaseMatchTask(lane, task));
+  if (candidates.length <= 1) {
+    return candidates[0] ?? null;
+  }
+
+  const scoredCandidates = candidates.map((lane, index) => ({
+    lane,
+    index,
+    score: scoreKanbanLaneDefinitionForTask(lane, task)
+  }));
+  scoredCandidates.sort((left, right) => right.score - left.score || left.index - right.index);
+  return scoredCandidates[0]?.lane ?? null;
+}
+
+function doesKanbanLaneDefinitionBaseMatchTask(lane: KanbanLaneDefinition, task: TodoTaskSummary): boolean {
   if (lane.done) {
     return task.kanbanLane === "Done" || task.section.trim().toLowerCase() === "completed archive";
   }
@@ -2191,6 +2216,26 @@ function doesKanbanLaneDefinitionMatchTask(lane: KanbanLaneDefinition, task: Tod
     const normalizedSection = normalizeLegacyKanbanSectionName(section);
     return normalizedSection === normalizedTaskSection || normalizedSection === normalizedTaskLane;
   });
+}
+
+function scoreKanbanLaneDefinitionForTask(lane: KanbanLaneDefinition, task: TodoTaskSummary): number {
+  const laneCategoryTag = lane.categoryTag.trim().toLowerCase();
+  const laneCategoryLabel = lane.categoryLabel.trim().toLowerCase();
+  const taskTags = extractTodoTaskTags(task.rawText);
+  const taskHints = getTodoTaskCategoryHints(task.rawText, task.section, task.kanbanLane);
+  let score = 0;
+
+  if (laneCategoryTag && taskTags.includes(laneCategoryTag)) {
+    score += 100;
+  }
+  if (laneCategoryTag && taskHints.includes(laneCategoryTag)) {
+    score += 60;
+  }
+  if (laneCategoryLabel && taskHints.some((hint) => laneCategoryLabel.includes(hint))) {
+    score += 24;
+  }
+
+  return score;
 }
 
 function renderNativeKanbanLane(lane: KanbanLaneDefinition, tasks: TodoTaskSummary[], options?: { headingLevel?: 2 | 3 }): string[] {
@@ -2614,6 +2659,7 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
   blockedReason?: string;
   effort?: string;
   executionContext?: string;
+  photoPaths?: string[];
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
 }): { content: string; updated: boolean; taskText: string } {
   const taskRegistry = input.taskRegistry ?? {};
@@ -2633,7 +2679,8 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
     dueDate: input.dueDate,
     blockedReason: input.blockedReason,
     effort: input.effort,
-    executionContext: input.executionContext
+    executionContext: input.executionContext,
+    photoPaths: input.photoPaths
   });
   const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting"
     ? annotatedTaskText
@@ -2864,7 +2911,7 @@ function replaceTaskDisplayText(taskText: string, nextText: string): string {
     return trimmedNextText || trimmedTaskText;
   }
 
-  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):/i);
+  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):/i);
   if (!annotationMatch || typeof annotationMatch.index !== "number") {
     return trimmedNextText;
   }
@@ -2888,6 +2935,7 @@ function applyTaskAnnotationOverrides(taskText: string, input: {
   blockedReason?: string;
   effort?: string;
   executionContext?: string;
+  photoPaths?: string[];
 }): string {
   let nextText = taskText.trim();
   nextText = upsertTaskAnnotation(nextText, "priority", input.priority);
@@ -2895,6 +2943,7 @@ function applyTaskAnnotationOverrides(taskText: string, input: {
   nextText = upsertTaskAnnotation(nextText, "blocked", input.blockedReason);
   nextText = upsertTaskAnnotation(nextText, "effort", input.effort);
   nextText = upsertTaskAnnotation(nextText, "context", input.executionContext);
+  nextText = upsertTaskAnnotation(nextText, "photos", (input.photoPaths ?? []).map((path) => path.trim()).filter(Boolean).join(" | "));
   nextText = removeTaskAnnotation(nextText, "mode");
   return nextText.replace(/\s{2,}/g, " ").trim();
 }
@@ -3683,6 +3732,37 @@ export function getTodoTaskAnnotationValue(rawText: string, key: "priority" | "d
   return extractTaskAnnotation(rawText, key) ?? "";
 }
 
+export function getTodoTaskPhotoPaths(rawText: string): string[] {
+  return (extractTaskAnnotation(rawText, "photos") ?? "")
+    .split("|")
+    .map((item) => item.trim())
+    .filter((item, index, values) => item.length > 0 && values.indexOf(item) === index);
+}
+
+export function getTodoTaskCategoryHints(rawText: string, section: string, kanbanLane = ""): string[] {
+  const hints = new Set<string>();
+  const loweredValues = [section, kanbanLane, rawText].map((value) => value.trim().toLowerCase());
+  const taskTags = extractTodoTaskTags(rawText);
+
+  taskTags.forEach((tag) => hints.add(tag));
+  loweredValues.forEach((value) => {
+    if (!value) {
+      return;
+    }
+    if (/(^|\b)(fix|bug|bugs|defect|defects|issue|issues|hotfix)(\b|$)/.test(value)) {
+      hints.add("bug");
+    }
+    if (/(^|\b)(feature|features|add|idea|ideas|request|requests)(\b|$)/.test(value)) {
+      hints.add("feature");
+    }
+    if (/(^|\b)(expedite|expedited|urgent|interrupt|interrupts)(\b|$)/.test(value)) {
+      hints.add("expedite");
+    }
+  });
+
+  return Array.from(hints);
+}
+
 function resolveKanbanLane(section: string, isBlocked: boolean): KanbanLane | "" {
   if (isBlocked) {
     return "Waiting";
@@ -3761,9 +3841,15 @@ function removeTaskAnnotation(value: string, key: string): string {
 
 function stripTaskAnnotations(value: string): string {
   return value
-    .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step):\s*[^\]]+\]/gi, "")
+    .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function extractTodoTaskTags(rawText: string): string[] {
+  return Array.from(rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g))
+    .map((match) => match[1].trim().toLowerCase())
+    .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
 }
 
 export function appendLinesToSection(content: string, sectionName: string, linesToAppend: string[]): string {

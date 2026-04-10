@@ -16,7 +16,7 @@ import {
   renderScore
 } from "./dashboard-core";
 import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes, getTrackedWorkMinutesByProject } from "./dashboard-logs";
-import { getTodoTaskAnnotationValue, splitMultilineInput } from "./dashboard-todo";
+import { getTodoTaskAnnotationValue, getTodoTaskPhotoPaths, splitMultilineInput } from "./dashboard-todo";
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
   CORE_SESSION_TRACKER_OPTIONS,
@@ -276,6 +276,7 @@ export class DailyDashboardView extends ItemView {
   private expandedHabitMissNotes = new Set<string>();
   private selectedGamificationWindow: "today" | "week" | "month" = "today";
   private selectedBudgetingTab: "overview" | "subscriptions" | "budget" = "overview";
+  private weekAtAGlanceOffset = 0;
   private budgetCategoryDraft = "";
   private draggedSessionDeckTrackerId: string | null = null;
   private readonly handleDocumentPointerDown = (event: MouseEvent): void => {
@@ -1320,11 +1321,34 @@ export class DailyDashboardView extends ItemView {
         ...visibleSessionTrackers.map((tracker) => ({ kind: tracker.id, label: tracker.label })),
         WEEK_AT_A_GLANCE_SEGMENTS[WEEK_AT_A_GLANCE_SEGMENTS.length - 1]
       ];
+      const weekBoardDays = this.getCurrentWeekTimeBoard(this.weekAtAGlanceOffset);
+      const weekBoardNavigation = weekBoardCard.createDiv({ cls: "daily-dashboard-week-navigation" });
+      const previousWeekButton = weekBoardNavigation.createEl("button", { cls: "daily-dashboard-week-nav-button", text: "‹" });
+      previousWeekButton.type = "button";
+      previousWeekButton.ariaLabel = "Previous week";
+      previousWeekButton.title = "Previous week";
+      previousWeekButton.addEventListener("click", () => {
+        this.weekAtAGlanceOffset -= 1;
+        void this.requestRefresh();
+      });
+      weekBoardNavigation.createEl("strong", { text: this.getWeekAtAGlanceRangeLabel(weekBoardDays) });
+      const nextWeekButton = weekBoardNavigation.createEl("button", { cls: "daily-dashboard-week-nav-button", text: "›" });
+      nextWeekButton.type = "button";
+      nextWeekButton.ariaLabel = "Newer week";
+      nextWeekButton.title = "Newer week";
+      nextWeekButton.disabled = this.weekAtAGlanceOffset >= 0;
+      nextWeekButton.addEventListener("click", () => {
+        if (this.weekAtAGlanceOffset >= 0) {
+          return;
+        }
+        this.weekAtAGlanceOffset = Math.min(0, this.weekAtAGlanceOffset + 1);
+        void this.requestRefresh();
+      });
       const weekBoard = weekBoardCard.createDiv({ cls: "daily-dashboard-week-strip" });
       const weekStage = weekBoard.createDiv({ cls: "daily-dashboard-week-stage" });
       weekStage.createDiv({ cls: "daily-dashboard-week-platform" });
       const weekBars = weekStage.createDiv({ cls: "daily-dashboard-week-bars" });
-      this.getCurrentWeekTimeBoard().forEach((day) => {
+      weekBoardDays.forEach((day) => {
         const column = weekBars.createDiv({ cls: "daily-dashboard-week-column" });
         if (day.isToday) {
           column.addClass("is-today");
@@ -4215,7 +4239,7 @@ export class DailyDashboardView extends ItemView {
     textarea.addEventListener("touchend", persistHeight);
   }
 
-  private getCurrentWeekTimeBoard(): Array<{
+  private getCurrentWeekTimeBoard(weekOffset = 0): Array<{
     label: string;
     date: string;
     minutesByKind: Record<string, number>;
@@ -4228,7 +4252,7 @@ export class DailyDashboardView extends ItemView {
     const activeLogicalDate = dayState.status === "in-progress" ? dayState.activeDate : "";
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - currentDayIndex);
+    start.setDate(start.getDate() - currentDayIndex + (weekOffset * 7));
     const allEntries = this.plugin.getAllEntries();
     const entryMap = new Map(allEntries.map((entry) => [entry.date, entry]));
     const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -4303,6 +4327,16 @@ export class DailyDashboardView extends ItemView {
 
     const hours = minutes / 60;
     return `${hours.toFixed(minutes % 60 === 0 ? 0 : 1).replace(/\.0$/, "")}h`;
+  }
+
+  private getWeekAtAGlanceRangeLabel(days: Array<{ date: string }>): string {
+    const firstDay = days[0]?.date ?? "";
+    const lastDay = days[days.length - 1]?.date ?? "";
+    if (!firstDay || !lastDay) {
+      return "Week view";
+    }
+
+    return `${firstDay.slice(5)} to ${lastDay.slice(5)}`;
   }
 }
 
@@ -9102,6 +9136,7 @@ export class DashKanbanView extends ItemView {
   private priorityPickerKey: { projectName: string; taskId: string } | null = null;
   private duePickerKey: { projectName: string; taskId: string } | null = null;
   private effortPickerKey: { projectName: string; taskId: string } | null = null;
+  private photoPickerKey: { projectName: string; taskId: string } | null = null;
   private detailEditState: {
     projectName: string;
     taskId: string;
@@ -9155,6 +9190,7 @@ export class DashKanbanView extends ItemView {
     this.priorityPickerKey = null;
     this.duePickerKey = null;
     this.effortPickerKey = null;
+    this.photoPickerKey = null;
   }
 
   private setLaneDropTarget(target: HTMLElement | null): void {
@@ -9281,7 +9317,7 @@ export class DashKanbanView extends ItemView {
       if (target?.closest(".dash-kanban-card, .dash-kanban-quick-add, .dash-kanban-lane-rename")) {
         return;
       }
-      if (!this.selectedCardKey && !this.priorityPickerKey && !this.duePickerKey && !this.effortPickerKey) {
+      if (!this.selectedCardKey && !this.priorityPickerKey && !this.duePickerKey && !this.effortPickerKey && !this.photoPickerKey) {
         return;
       }
       this.closeInlineCardEditor();
@@ -10350,13 +10386,25 @@ export class DashKanbanView extends ItemView {
     const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${extraClass ? ` ${extraClass}` : ""}` });
     laneEl.dataset.project = project.projectName;
     laneEl.dataset.section = lane.targetSection;
+    laneEl.dataset.category = toClassSlug(lane.categoryLabel || lane.categoryTag || lane.label || "lane");
+    if (lane.categoryColor) {
+      laneEl.style.setProperty("--dash-kanban-lane-accent", lane.categoryColor);
+    }
     const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
-    const titleButton = header.createEl("button", { cls: "dash-kanban-lane-title", text: lane.label });
+    const titleWrap = header.createDiv({ cls: "dash-kanban-lane-title-wrap" });
+    if (lane.categoryLabel) {
+      titleWrap.createEl("span", { cls: "dash-kanban-lane-kicker", text: lane.categoryLabel });
+    }
+    const titleRow = titleWrap.createDiv({ cls: "dash-kanban-lane-title-row" });
+    const titleButton = titleRow.createEl("button", { cls: "dash-kanban-lane-title", text: lane.label });
     titleButton.type = "button";
     titleButton.addEventListener("click", (event) => {
       event.stopPropagation();
       this.activateLaneRename(titleButton, project, lane);
     });
+    if (lane.helperText) {
+      titleWrap.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
+    }
     const laneTools = header.createDiv({ cls: "dash-kanban-lane-tools" });
     const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action", attr: { "aria-label": `Add card to ${lane.label}` } });
     addButton.type = "button";
@@ -10369,9 +10417,6 @@ export class DashKanbanView extends ItemView {
       this.openInlineQuickAdd(project.projectName, lane.laneKey);
     });
     laneTools.createSpan({ cls: "dash-kanban-lane-count", text: `${lane.cardCount}` });
-    if (lane.helperText) {
-      laneEl.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
-    }
 
     if (this.quickAddDraft?.projectName === project.projectName && this.quickAddDraft.laneKey === lane.laneKey) {
       const composer = laneEl.createDiv({ cls: "dash-kanban-quick-add" });
@@ -10457,6 +10502,9 @@ export class DashKanbanView extends ItemView {
     const resolvedPriority = card.priority || getTodoTaskAnnotationValue(card.rawText, "priority");
     const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
     const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
+    const photoPaths = getTodoTaskPhotoPaths(card.rawText);
+    const primaryPhotoPath = photoPaths[0] || "";
+    const primaryPhotoUrl = primaryPhotoPath ? this.plugin.getKanbanTaskPhotoResourcePath(primaryPhotoPath) : "";
     const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
@@ -10654,6 +10702,30 @@ export class DashKanbanView extends ItemView {
       cardEl.appendChild(content);
     }
 
+    if (primaryPhotoUrl) {
+      const gallery = document.createElement("div");
+      gallery.className = "dash-kanban-card-photo-strip";
+      const previewButton = document.createElement("button");
+      previewButton.className = "dash-kanban-card-photo-preview";
+      previewButton.type = "button";
+      previewButton.ariaLabel = photoPaths.length > 1 ? `Open ${photoPaths.length} attached photos` : "Open attached photo";
+      previewButton.title = photoPaths.length > 1 ? `Open attached photos (${photoPaths.length})` : "Open attached photo";
+      previewButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.openKanbanPhoto(primaryPhotoPath);
+      });
+      const previewImage = document.createElement("img");
+      previewImage.className = "dash-kanban-card-photo-image";
+      previewImage.src = primaryPhotoUrl;
+      previewImage.alt = `${card.text} photo`;
+      previewButton.appendChild(previewImage);
+      gallery.appendChild(previewButton);
+      if (photoPaths.length > 1) {
+        gallery.createEl("span", { cls: "dash-kanban-card-photo-count", text: `+${photoPaths.length - 1}` });
+      }
+      cardEl.appendChild(gallery);
+    }
+
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
     if (card.energy) {
@@ -10694,6 +10766,7 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.duePickerKey = null;
         this.effortPickerKey = null;
+        this.photoPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
@@ -10704,6 +10777,7 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.effortPickerKey = null;
+        this.photoPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
@@ -10714,6 +10788,18 @@ export class DashKanbanView extends ItemView {
           : { projectName: project.projectName, taskId: card.taskId };
         this.priorityPickerKey = null;
         this.duePickerKey = null;
+        this.photoPickerKey = null;
+        this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
+        void this.requestRefresh();
+      }),
+      this.createCardActionButton("image", photoPaths.length > 0 ? `Manage photos (${photoPaths.length})` : "Attach photos", (event) => {
+        event.stopPropagation();
+        this.photoPickerKey = this.photoPickerKey?.projectName === project.projectName && this.photoPickerKey.taskId === card.taskId
+          ? null
+          : { projectName: project.projectName, taskId: card.taskId };
+        this.priorityPickerKey = null;
+        this.duePickerKey = null;
+        this.effortPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       }),
@@ -10855,6 +10941,67 @@ export class DashKanbanView extends ItemView {
       window.setTimeout(() => input.focus(), 0);
     }
 
+    if (this.matchesCardKey(this.photoPickerKey, project.projectName, card.taskId)) {
+      const picker = document.createElement("div");
+      picker.className = `dash-kanban-card-popover dash-kanban-photo-popover${preferPopoverBelow ? " is-below" : ""}`;
+      picker.addEventListener("click", (event) => event.stopPropagation());
+
+      const label = document.createElement("span");
+      label.className = "dash-kanban-detail-label";
+      label.textContent = "Photos";
+      picker.appendChild(label);
+
+      const photoList = document.createElement("div");
+      photoList.className = "dash-kanban-photo-list";
+      picker.appendChild(photoList);
+
+      if (photoPaths.length === 0) {
+        photoList.createEl("p", { cls: "dash-kanban-photo-empty", text: "No photos attached yet." });
+      } else {
+        photoPaths.forEach((path) => {
+          const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
+          const item = photoList.createDiv({ cls: "dash-kanban-photo-item" });
+          const openButton = item.createEl("button", { cls: "dash-kanban-photo-open" });
+          openButton.type = "button";
+          openButton.title = path;
+          openButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.openKanbanPhoto(path);
+          });
+          if (resourcePath) {
+            const image = document.createElement("img");
+            image.className = "dash-kanban-photo-thumb";
+            image.src = resourcePath;
+            image.alt = path;
+            openButton.appendChild(image);
+          }
+          openButton.createEl("span", { cls: "dash-kanban-photo-name", text: path.split("/").pop() || path });
+
+          const removeButton = item.createEl("button", { cls: "dash-kanban-photo-remove", text: "Remove" });
+          removeButton.type = "button";
+          removeButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            void this.removePhotoFromCard(project.projectName, card.taskId, path);
+          });
+        });
+      }
+
+      const pickerActions = document.createElement("div");
+      pickerActions.className = "dash-kanban-popover-actions";
+      picker.appendChild(pickerActions);
+      pickerActions.append(
+        this.createInlineEditorButton("Upload", () => {
+          void this.uploadPhotoForCard(project.projectName, card.taskId);
+        }, true),
+        this.createInlineEditorButton("Link vault image", () => {
+          void this.attachExistingPhotoToCard(project.projectName, card.taskId);
+        })
+      );
+
+      actionWrap.appendChild(picker);
+      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
+    }
+
     return cardEl;
   }
 
@@ -10888,6 +11035,70 @@ export class DashKanbanView extends ItemView {
     });
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  private openKanbanPhoto(path: string): void {
+    const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
+    if (!resourcePath) {
+      new Notice("That photo could not be opened.");
+      return;
+    }
+
+    window.open(resourcePath, "_blank", "noopener,noreferrer");
+  }
+
+  private async attachExistingPhotoToCard(projectName: string, taskId: string): Promise<void> {
+    const imagePath = window.prompt("Enter the vault path to an existing image file:", "")?.trim() ?? "";
+    if (!imagePath) {
+      return;
+    }
+
+    const attached = await this.plugin.attachExistingKanbanTaskPhoto(projectName, taskId, imagePath);
+    if (!attached) {
+      return;
+    }
+
+    await this.requestRefresh();
+  }
+
+  private async uploadPhotoForCard(projectName: string, taskId: string): Promise<void> {
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.accept = "image/*";
+    picker.multiple = false;
+    picker.style.display = "none";
+    document.body.appendChild(picker);
+
+    picker.addEventListener("change", () => {
+      const selected = picker.files?.[0];
+      if (!selected) {
+        picker.remove();
+        return;
+      }
+
+      void (async () => {
+        try {
+          const bytes = await selected.arrayBuffer();
+          const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, selected.name, bytes);
+          if (attached) {
+            await this.requestRefresh();
+          }
+        } finally {
+          picker.remove();
+        }
+      })();
+    }, { once: true });
+
+    picker.click();
+  }
+
+  private async removePhotoFromCard(projectName: string, taskId: string, path: string): Promise<void> {
+    const removed = await this.plugin.removeKanbanTaskPhoto(projectName, taskId, path);
+    if (!removed) {
+      return;
+    }
+
+    await this.requestRefresh();
   }
 
   private createInlineEditorButton(label: string, onClick: () => void, cta = false): HTMLButtonElement {

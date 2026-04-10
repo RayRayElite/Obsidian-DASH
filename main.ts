@@ -84,6 +84,8 @@ import {
   findProjectRanges,
   findTodoCategoryRanges,
   formatKanbanCategoryMetadataValue,
+  getTodoTaskCategoryHints,
+  getTodoTaskPhotoPaths,
   getTodoTaskAnnotationValue,
   getTodoTaskDisplayText,
   getIsoWeekRange,
@@ -3611,6 +3613,88 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.openFile(target);
   }
 
+  getKanbanTaskPhotoResourcePath(path: string): string {
+    const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (!(target instanceof TFile) || !this.isSupportedKanbanImageFile(target)) {
+      return "";
+    }
+
+    return this.app.vault.getResourcePath(target);
+  }
+
+  async attachExistingKanbanTaskPhoto(projectName: string, taskId: string, imagePath: string): Promise<boolean> {
+    const normalizedImagePath = normalizePath(imagePath.trim());
+    const target = this.app.vault.getAbstractFileByPath(normalizedImagePath);
+    if (!(target instanceof TFile) || !this.isSupportedKanbanImageFile(target)) {
+      new Notice("Choose an existing vault image file.");
+      return false;
+    }
+
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+
+    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), normalizedImagePath]
+      .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    return this.updateKanbanTaskDetails(projectName, taskId, {
+      taskText: task.text,
+      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      effort: task.effort,
+      executionContext: task.executionContext,
+      photoPaths: nextPhotoPaths
+    });
+  }
+
+  async uploadKanbanTaskPhoto(projectName: string, taskId: string, originalFileName: string, bytes: ArrayBuffer): Promise<string | null> {
+    const trimmedName = originalFileName.trim();
+    const extensionIndex = trimmedName.lastIndexOf(".");
+    const extension = extensionIndex >= 0 ? trimmedName.slice(extensionIndex + 1).trim().toLowerCase() : "";
+    if (!IMAGE_EXTENSIONS.has(extension)) {
+      new Notice("Only image files can be attached to cards.");
+      return null;
+    }
+
+    const attachmentFolder = this.getKanbanTaskAttachmentFolder(projectName);
+    await this.ensureFolder(attachmentFolder);
+    const baseName = sanitizeFileName((extensionIndex >= 0 ? trimmedName.slice(0, extensionIndex) : trimmedName) || "card-photo");
+    const stampedPath = this.getAvailableFilePath(`${attachmentFolder}/${formatDateKey(new Date())}-${Date.now()}-${baseName}.${extension}`);
+    await this.app.vault.createBinary(stampedPath, bytes);
+
+    const attached = await this.attachExistingKanbanTaskPhoto(projectName, taskId, stampedPath);
+    if (!attached) {
+      return null;
+    }
+
+    return stampedPath;
+  }
+
+  async removeKanbanTaskPhoto(projectName: string, taskId: string, imagePath: string): Promise<boolean> {
+    const task = await this.getKanbanTaskById(projectName, taskId);
+    if (!task) {
+      new Notice("Could not find that Kanban card in the master task hub.");
+      return false;
+    }
+
+    const normalizedImagePath = normalizePath(imagePath.trim());
+    const nextPhotoPaths = getTodoTaskPhotoPaths(task.rawText)
+      .filter((path) => normalizePath(path) !== normalizedImagePath);
+    return this.updateKanbanTaskDetails(projectName, taskId, {
+      taskText: task.text,
+      lane: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      priority: task.priority,
+      dueDate: task.dueDate,
+      blockedReason: task.blockedReason,
+      effort: task.effort,
+      executionContext: task.executionContext,
+      photoPaths: nextPhotoPaths
+    });
+  }
+
   async openDashKanbanBoardSettings(initialProjectName = ""): Promise<void> {
     const snapshot = await this.getTodoSnapshot();
     const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
@@ -3633,10 +3717,17 @@ export default class DailyDashboardPlugin extends Plugin {
       ...project.waitingTaskDetails,
       ...project.parkingLotTaskDetails
     ];
+    const laneAssignments = new Map<TodoTaskSummary, string>();
+    [...openTasks, ...project.completedTaskDetails].forEach((task) => {
+      const matchedLane = this.findBestDashKanbanLaneOption(project.name, task, laneOptions);
+      if (matchedLane) {
+        laneAssignments.set(task, matchedLane.laneKey);
+      }
+    });
 
     const lanes = laneOptions.map((laneOption) => {
       const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
-        .filter((task) => this.matchesDashKanbanLaneTask(project.name, laneOption, task, laneOptions))
+        .filter((task) => laneAssignments.get(task) === laneOption.laneKey)
         .map((task) => this.buildDashKanbanCard(project.name, task, laneOption, liveTaskMetadata));
       const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, configuration?.laneOrder ?? {});
 
@@ -3860,7 +3951,26 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  private matchesDashKanbanLaneTask(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary, laneOptions: KanbanLaneOption[]): boolean {
+  private findBestDashKanbanLaneOption(projectName: string, task: TodoTaskSummary, laneOptions: KanbanLaneOption[]): KanbanLaneOption | null {
+    const candidates = laneOptions.filter((laneOption) => this.matchesDashKanbanLaneTaskBase(projectName, laneOption, task));
+    if (candidates.length <= 1) {
+      return candidates[0] ?? null;
+    }
+
+    if (!this.getKanbanBoardConfiguration(projectName).showLaneCategories) {
+      return candidates[0] ?? null;
+    }
+
+    const scoredCandidates = candidates.map((laneOption, index) => ({
+      laneOption,
+      index,
+      score: this.scoreDashKanbanLaneOptionForTask(laneOption, task)
+    }));
+    scoredCandidates.sort((left, right) => right.score - left.score || left.index - right.index);
+    return scoredCandidates[0]?.laneOption ?? null;
+  }
+
+  private matchesDashKanbanLaneTaskBase(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary): boolean {
     const matchesSection = laneOption.done
       ? true
       : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase()
@@ -3873,18 +3983,66 @@ export default class DailyDashboardPlugin extends Plugin {
       return true;
     }
 
+    return laneOption.done || laneOption.categoryTag.trim().length > 0 || laneOption.categoryLabel.trim().length > 0;
+  }
+
+  private scoreDashKanbanLaneOptionForTask(laneOption: KanbanLaneOption, task: TodoTaskSummary): number {
+    const laneCategoryTag = laneOption.categoryTag.trim().toLowerCase();
+    const laneCategoryLabel = laneOption.categoryLabel.trim().toLowerCase();
     const taskTags = this.extractDashKanbanTags(task.rawText).map((tag) => tag.toLowerCase());
-    const peerTaggedLanes = laneOptions.filter((candidate) => candidate.targetSection.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() && candidate.categoryTag.trim().length > 0);
-    if (laneOption.categoryTag.trim().length === 0) {
-      return !peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
+    const taskHints = getTodoTaskCategoryHints(task.rawText, task.section, task.kanbanLane);
+    let score = 0;
+
+    if (laneCategoryTag && taskTags.includes(laneCategoryTag)) {
+      score += 100;
+    }
+    if (laneCategoryTag && taskHints.includes(laneCategoryTag)) {
+      score += 60;
+    }
+    if (laneCategoryLabel && taskHints.some((hint) => laneCategoryLabel.includes(hint))) {
+      score += 24;
     }
 
-    if (taskTags.includes(laneOption.categoryTag.trim().toLowerCase())) {
-      return true;
+    return score;
+  }
+
+  private async getKanbanTaskById(projectName: string, taskId: string): Promise<TodoTaskSummary | null> {
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot?.projects.find((candidate) => candidate.name === projectName);
+    return project
+      ? [
+        ...project.nowTaskDetails,
+        ...project.nextTaskDetails,
+        ...project.laterTaskDetails,
+        ...project.waitingTaskDetails,
+        ...project.parkingLotTaskDetails,
+        ...project.completedTaskDetails
+      ].find((candidate) => candidate.taskId === taskId) ?? null
+      : null;
+  }
+
+  private getKanbanTaskAttachmentFolder(projectName: string): string {
+    return normalizeFolderPath(`${this.data.settings.kanbanBoardNotesFolder}/Attachments/${sanitizeFileName(projectName.trim() || "Project")}`);
+  }
+
+  private getAvailableFilePath(basePath: string): string {
+    const normalizedBasePath = normalizePath(basePath);
+    if (!this.app.vault.getAbstractFileByPath(normalizedBasePath)) {
+      return normalizedBasePath;
     }
 
-    const taskHasAnyTaggedLane = peerTaggedLanes.some((candidate) => taskTags.includes(candidate.categoryTag.trim().toLowerCase()));
-    return !taskHasAnyTaggedLane && peerTaggedLanes[0]?.laneKey === laneOption.laneKey;
+    const extensionIndex = normalizedBasePath.lastIndexOf(".");
+    const prefix = extensionIndex >= 0 ? normalizedBasePath.slice(0, extensionIndex) : normalizedBasePath;
+    const suffix = extensionIndex >= 0 ? normalizedBasePath.slice(extensionIndex) : "";
+    let counter = 2;
+    while (this.app.vault.getAbstractFileByPath(`${prefix} ${counter}${suffix}`)) {
+      counter += 1;
+    }
+    return `${prefix} ${counter}${suffix}`;
+  }
+
+  private isSupportedKanbanImageFile(file: TFile): boolean {
+    return IMAGE_EXTENSIONS.has(file.extension.trim().toLowerCase());
   }
 
   private stripKanbanCategoryTagsFromDisplay(text: string, categoryTags: string[]): string {
@@ -8358,6 +8516,7 @@ export default class DailyDashboardPlugin extends Plugin {
     blockedReason: string;
     effort: string;
     executionContext: string;
+    photoPaths?: string[];
   }): Promise<boolean> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -8400,6 +8559,7 @@ export default class DailyDashboardPlugin extends Plugin {
       blockedReason: input.blockedReason,
       effort: input.effort,
       executionContext: input.executionContext,
+      photoPaths: input.photoPaths,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
     if (!updated.updated) {
