@@ -3865,7 +3865,7 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     const lanes = laneOptions.map((laneOption) => {
-      const cards = (laneOption.done ? project.completedTaskDetails : openTasks)
+      const cards = (laneOption.done ? [...project.completedTaskDetails, ...openTasks] : openTasks)
         .filter((task) => laneAssignments.get(task) === laneOption.laneKey)
         .map((task) => this.buildDashKanbanCard(project.name, task, laneOption, liveTaskMetadata));
       const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, configuration?.laneOrder ?? {});
@@ -4110,9 +4110,13 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private matchesDashKanbanLaneTaskBase(projectName: string, laneOption: KanbanLaneOption, task: TodoTaskSummary): boolean {
+    const normalizedTaskSection = task.section.trim().toLowerCase();
+    const normalizedLaneSection = laneOption.targetSection.trim().toLowerCase();
     const matchesSection = laneOption.done
-      ? true
-      : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase()
+      ? normalizedTaskSection === normalizedLaneSection
+        || normalizedTaskSection === "completed archive"
+        || (task.completedAt || "").trim().length > 0
+      : normalizedTaskSection === normalizedLaneSection
         || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
     if (!matchesSection) {
       return false;
@@ -8560,7 +8564,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   async addKanbanTask(projectName: string, laneKey: string, taskText: string): Promise<void> {
     const laneOption = this.resolveKanbanLaneOption(projectName, laneKey);
-    const targetSection = laneOption?.done ? "Next" : laneOption?.targetSection || laneKey;
+    const targetSection = laneOption?.targetSection || laneKey;
     const nextTaskText = this.formatTaskTextForKanbanLane(projectName, laneOption?.laneKey ?? laneKey, taskText);
     await this.addTaskToProject(projectName, targetSection, nextTaskText);
   }

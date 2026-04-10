@@ -18333,7 +18333,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
     const lanes = laneOptions.map((laneOption) => {
       var _a2;
-      const cards = (laneOption.done ? project.completedTaskDetails : openTasks).filter((task) => laneAssignments.get(task) === laneOption.laneKey).map((task) => this.buildDashKanbanCard(project.name, task, laneOption, liveTaskMetadata));
+      const cards = (laneOption.done ? [...project.completedTaskDetails, ...openTasks] : openTasks).filter((task) => laneAssignments.get(task) === laneOption.laneKey).map((task) => this.buildDashKanbanCard(project.name, task, laneOption, liveTaskMetadata));
       const sortedCards = this.sortDashKanbanLaneCards(cards, laneOption.laneKey, (_a2 = configuration == null ? void 0 : configuration.laneOrder) != null ? _a2 : {});
       return {
         laneKey: laneOption.laneKey,
@@ -18544,7 +18544,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return (_d = (_c = scoredCandidates[0]) == null ? void 0 : _c.laneOption) != null ? _d : null;
   }
   matchesDashKanbanLaneTaskBase(projectName, laneOption, task) {
-    const matchesSection = laneOption.done ? true : task.section.trim().toLowerCase() === laneOption.targetSection.trim().toLowerCase() || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
+    const normalizedTaskSection = task.section.trim().toLowerCase();
+    const normalizedLaneSection = laneOption.targetSection.trim().toLowerCase();
+    const matchesSection = laneOption.done ? normalizedTaskSection === normalizedLaneSection || normalizedTaskSection === "completed archive" || (task.completedAt || "").trim().length > 0 : normalizedTaskSection === normalizedLaneSection || (task.kanbanLane || "").trim().toLowerCase() === laneOption.label.trim().toLowerCase();
     if (!matchesSection) {
       return false;
     }
@@ -22200,7 +22202,7 @@ ${context}`, resolvedModel);
   async addKanbanTask(projectName, laneKey, taskText) {
     var _a;
     const laneOption = this.resolveKanbanLaneOption(projectName, laneKey);
-    const targetSection = (laneOption == null ? void 0 : laneOption.done) ? "Next" : (laneOption == null ? void 0 : laneOption.targetSection) || laneKey;
+    const targetSection = (laneOption == null ? void 0 : laneOption.targetSection) || laneKey;
     const nextTaskText = this.formatTaskTextForKanbanLane(projectName, (_a = laneOption == null ? void 0 : laneOption.laneKey) != null ? _a : laneKey, taskText);
     await this.addTaskToProject(projectName, targetSection, nextTaskText);
   }
