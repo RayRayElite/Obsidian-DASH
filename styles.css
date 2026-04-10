@@ -423,6 +423,15 @@
   color: var(--text-muted);
 }
 
+.dash-kanban-header-button.is-danger {
+  border-color: color-mix(in srgb, #e17c72 24%, var(--dash-kanban-border));
+  color: color-mix(in srgb, #f2b0a8 68%, var(--text-normal));
+}
+
+.dash-kanban-header-button.is-danger:hover {
+  background: color-mix(in srgb, #e17c72 12%, var(--background-primary));
+}
+
 .dash-kanban-density-toggle .dash-kanban-toggle-button {
   min-width: 104px;
 }
@@ -1232,6 +1241,23 @@
   text-transform: uppercase;
 }
 
+.dash-kanban-card.is-photo-drop-target {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #7ec6ff 44%, var(--dash-kanban-card-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, #7ec6ff 18%, transparent), var(--dash-kanban-card-shadow);
+}
+
+.dash-kanban-card.is-photo-drop-target::before {
+  content: "Drop image to attach";
+  display: block;
+  margin: -4px 0 2px;
+  color: #7ec6ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .dash-kanban-card.is-overdue {
   border-color: color-mix(in srgb, #ff8b7d 42%, var(--background-modifier-border));
 }
@@ -1376,6 +1402,13 @@
   min-height: 68px;
   font-size: 0.98rem;
   font-weight: 600;
+}
+
+.dash-kanban-card-editor-hint {
+  margin: -2px 0 0;
+  color: var(--text-faint);
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .dash-kanban-inline-editor.is-card-editor {
@@ -3820,6 +3853,52 @@
 
 .daily-dashboard-project-modal textarea {
   min-height: 72px;
+}
+
+.daily-dashboard-vault-image-modal .modal {
+  width: min(720px, 92vw);
+}
+
+.daily-dashboard-vault-image-modal .modal-content {
+  display: grid;
+  gap: 12px;
+}
+
+.daily-dashboard-vault-image-search {
+  width: 100%;
+}
+
+.daily-dashboard-vault-image-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.daily-dashboard-vault-image-row {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 12%, var(--background-modifier-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+  text-align: left;
+}
+
+.daily-dashboard-vault-image-row:hover {
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent) 24%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 74%, var(--daily-dashboard-accent) 8%);
+}
+
+.daily-dashboard-vault-image-name {
+  color: var(--text-normal);
+  line-height: 1.3;
+}
+
+.daily-dashboard-vault-image-path {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  word-break: break-all;
 }
 
 .daily-dashboard-setup-intro {

@@ -711,6 +711,26 @@ export function insertProjectIntoTodo(content: string, categoryName: string, pro
   return result.join("\n");
 }
 
+export function deleteProjectFromTodo(content: string, projectName: string): { content: string; deleted: boolean } {
+  const normalizedProjectName = projectName.trim().toLowerCase();
+  if (!normalizedProjectName) {
+    return { content, deleted: false };
+  }
+
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === normalizedProjectName);
+  if (!project) {
+    return { content, deleted: false };
+  }
+
+  const output = [...lines];
+  output.splice(project.start, project.end - project.start + 1);
+  return {
+    content: trimTrailingBlankLines(trimLeadingBlankLines(output)).join("\n"),
+    deleted: true
+  };
+}
+
 export function trimTrailingBlankLines(lines: string[]): string[] {
   const output = [...lines];
   while (output.length > 0 && output[output.length - 1].trim() === "") {

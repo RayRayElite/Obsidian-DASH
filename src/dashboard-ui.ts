@@ -23,6 +23,7 @@ import {
   DEFAULT_SETTINGS,
   HABIT_CADENCE_OPTIONS,
   HABIT_WINDOW_OPTIONS,
+  IMAGE_EXTENSIONS,
   SESSION_TAG_OPTIONS,
   VIEW_TYPE_DASH_KANBAN,
   VIEW_TYPE_DAILY_DASHBOARD,
@@ -5653,6 +5654,7 @@ export class CreateProjectModal extends Modal {
       .addText((text) => {
         text
           .setPlaceholder("New Project")
+          .setValue(this.state.projectName)
           .onChange((value) => {
             this.state.projectName = value;
           });
@@ -5676,6 +5678,7 @@ export class CreateProjectModal extends Modal {
       .addText((text) => {
         text
           .setPlaceholder("Or type a new category name")
+          .setValue(this.categories.includes(this.state.categoryName) ? "" : this.state.categoryName)
           .onChange((value) => {
             if (value.trim()) {
               this.state.categoryName = value.trim();
@@ -5773,6 +5776,85 @@ export class CreateProjectModal extends Modal {
   onClose(): void {
     this.modalEl.removeClass("daily-dashboard-project-modal");
     this.contentEl.empty();
+  }
+}
+
+class KanbanVaultImagePickerModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private query = "";
+  private readonly onChoose: (path: string) => Promise<void>;
+
+  constructor(app: App, plugin: DailyDashboardPlugin, onChoose: (path: string) => Promise<void>) {
+    super(app);
+    this.plugin = plugin;
+    this.onChoose = onChoose;
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-vault-image-modal");
+    this.setTitle("Link Vault Image");
+    this.render();
+  }
+
+  onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-vault-image-modal");
+    this.contentEl.empty();
+  }
+
+  private render(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    const allImages = this.plugin.getAvailableKanbanImagePaths();
+    const normalizedQuery = this.query.trim().toLowerCase();
+    const filteredImages = normalizedQuery
+      ? allImages.filter((image) => image.path.toLowerCase().includes(normalizedQuery) || image.name.toLowerCase().includes(normalizedQuery))
+      : allImages;
+
+    const search = contentEl.createEl("input", {
+      cls: "daily-dashboard-input daily-dashboard-vault-image-search",
+      attr: {
+        type: "search",
+        placeholder: "Search vault images by name or path"
+      }
+    });
+    search.value = this.query;
+    search.addEventListener("input", () => {
+      this.query = search.value;
+      this.render();
+    });
+
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Choose an existing vault image to link without duplicating the file."
+    });
+
+    const list = contentEl.createDiv({ cls: "daily-dashboard-vault-image-list" });
+    if (filteredImages.length === 0) {
+      list.createEl("p", {
+        cls: "daily-dashboard-row-meta",
+        text: allImages.length === 0 ? "No supported image files were found in the vault." : "No images matched that search."
+      });
+    } else {
+      filteredImages.slice(0, 200).forEach((image) => {
+        const button = list.createEl("button", { cls: "daily-dashboard-vault-image-row" });
+        button.type = "button";
+        button.createEl("strong", { cls: "daily-dashboard-vault-image-name", text: image.name });
+        button.createEl("span", { cls: "daily-dashboard-vault-image-path", text: image.path });
+        button.addEventListener("click", () => {
+          void this.onChoose(image.path).then(() => this.close());
+        });
+      });
+
+      if (filteredImages.length > 200) {
+        list.createEl("p", {
+          cls: "daily-dashboard-row-meta",
+          text: `Showing the first 200 of ${filteredImages.length} matching images. Refine the search to narrow the list.`
+        });
+      }
+    }
+
+    window.setTimeout(() => search.focus(), 0);
   }
 }
 
@@ -6672,6 +6754,38 @@ export class KanbanTaskEditModal extends Modal {
     this.syncSelectionFromTask();
   }
 
+  private isSupportedKanbanImageFile(file: File | null | undefined): file is File {
+    if (!file) {
+      return false;
+    }
+
+    const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
+    return file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+  }
+
+  private async attachPastedImages(event: ClipboardEvent): Promise<void> {
+    const files = Array.from(event.clipboardData?.items ?? [])
+      .map((item) => item.kind === "file" ? item.getAsFile() : null)
+      .filter((file): file is File => this.isSupportedKanbanImageFile(file));
+    if (files.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    let attachedCount = 0;
+    for (const file of files) {
+      const bytes = await file.arrayBuffer();
+      const attached = await this.plugin.uploadKanbanTaskPhoto(this.selectedProjectName, this.selectedTaskId, file.name, bytes);
+      if (attached) {
+        attachedCount += 1;
+      }
+    }
+
+    if (attachedCount > 0) {
+      new Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
+    }
+  }
+
   private getLaneOptions(): KanbanLaneOption[] {
     return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
@@ -6804,7 +6918,7 @@ export class KanbanTaskEditModal extends Modal {
 
     new Setting(contentEl)
       .setName("Task text")
-      .setDesc("This updates the task label while preserving existing task metadata annotations.")
+      .setDesc("This updates the task label while preserving existing task metadata annotations. Paste an image here to attach it to the card.")
       .addTextArea((textArea) => {
         textArea
           .setPlaceholder("Refine the task wording")
@@ -6813,6 +6927,9 @@ export class KanbanTaskEditModal extends Modal {
             this.taskText = value;
           });
         textArea.inputEl.rows = 4;
+        textArea.inputEl.addEventListener("paste", (event) => {
+          void this.attachPastedImages(event);
+        });
         window.setTimeout(() => textArea.inputEl.focus(), 0);
       });
 
@@ -10365,6 +10482,26 @@ export class DashKanbanView extends ItemView {
         }));
         boardActions.lastElementChild?.addClass("is-secondary");
       }
+      boardActions.append(this.createHeaderButton("trash-2", "Delete", () => {
+        const confirmed = window.confirm(`Delete \"${project.projectName}\" from the Master Task Hub and remove its project note?`);
+        if (!confirmed) {
+          return;
+        }
+
+        if (this.selectedCardKey?.projectName === project.projectName) {
+          this.selectedCardKey = null;
+          this.detailEditState = null;
+          this.clearCardPopovers();
+        }
+
+        void this.plugin.deleteProjectAndNote(project.projectName).then(async (deleted) => {
+          if (deleted) {
+            await this.requestRefresh();
+          }
+        });
+      }));
+      boardActions.lastElementChild?.addClass("is-secondary");
+      boardActions.lastElementChild?.addClass("is-danger");
     }
 
     if (isCollapsedInWorkspace) {
@@ -10599,9 +10736,19 @@ export class DashKanbanView extends ItemView {
       this.dragCard = null;
       this.suppressCardClickUntil = Date.now() + 250;
       this.clearDragTargets();
+      cardEl.removeClass("is-photo-drop-target");
       cardEl.removeClass("is-dragging");
     });
     cardEl.addEventListener("dragover", (event) => {
+      const droppedImages = this.getImageFilesFromDataTransfer(event.dataTransfer);
+      if (droppedImages.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        cardEl.addClass("is-photo-drop-target");
+        return;
+      }
+
+      cardEl.removeClass("is-photo-drop-target");
       if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
         return;
       }
@@ -10612,7 +10759,25 @@ export class DashKanbanView extends ItemView {
       event.stopPropagation();
       this.setCardDropTarget(cardEl);
     });
+    cardEl.addEventListener("dragleave", (event) => {
+      if (!cardEl.contains(event.relatedTarget as Node | null)) {
+        cardEl.removeClass("is-photo-drop-target");
+      }
+    });
     cardEl.addEventListener("drop", (event) => {
+      const droppedImages = this.getImageFilesFromDataTransfer(event.dataTransfer);
+      cardEl.removeClass("is-photo-drop-target");
+      if (droppedImages.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.attachImageFilesToCard(project.projectName, card.taskId, droppedImages).then((attachedCount) => {
+          if (attachedCount > 0) {
+            new Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
+          }
+        });
+        return;
+      }
+
       if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
         return;
       }
@@ -10671,7 +10836,15 @@ export class DashKanbanView extends ItemView {
         textArea.style.height = "auto";
         textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
       });
+      textArea.addEventListener("paste", (event) => {
+        void this.handleCardImagePaste(event, project.projectName, card.taskId);
+      });
       editor.appendChild(textArea);
+
+      editor.createEl("p", {
+        cls: "dash-kanban-card-editor-hint",
+        text: "Paste an image here or drop one anywhere on the card to attach it."
+      });
 
       if (card.notePreview) {
         const note = document.createElement("p");
@@ -11100,18 +11273,79 @@ export class DashKanbanView extends ItemView {
     window.open(resourcePath, "_blank", "noopener,noreferrer");
   }
 
+  private isSupportedKanbanImageFile(file: File | null | undefined): file is File {
+    if (!file) {
+      return false;
+    }
+
+    const extension = file.name.split(".").pop()?.trim().toLowerCase() ?? "";
+    return file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+  }
+
+  private getImageFilesFromDataTransfer(dataTransfer: DataTransfer | null): File[] {
+    if (!dataTransfer) {
+      return [];
+    }
+
+    return Array.from(dataTransfer.files).filter((file) => this.isSupportedKanbanImageFile(file));
+  }
+
+  private getImageFilesFromClipboard(dataTransfer: DataTransfer | null): File[] {
+    if (!dataTransfer) {
+      return [];
+    }
+
+    const files = Array.from(dataTransfer.items)
+      .map((item) => item.kind === "file" ? item.getAsFile() : null)
+      .filter((file): file is File => this.isSupportedKanbanImageFile(file));
+
+    return files.length > 0 ? files : this.getImageFilesFromDataTransfer(dataTransfer);
+  }
+
+  private async attachImageFilesToCard(projectName: string, taskId: string, files: Iterable<File>): Promise<number> {
+    const imageFiles = Array.from(files).filter((file) => this.isSupportedKanbanImageFile(file));
+    if (imageFiles.length === 0) {
+      return 0;
+    }
+
+    let attachedCount = 0;
+    for (const file of imageFiles) {
+      const bytes = await file.arrayBuffer();
+      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, file.name, bytes);
+      if (attached) {
+        attachedCount += 1;
+      }
+    }
+
+    if (attachedCount > 0) {
+      await this.requestRefresh();
+    }
+    return attachedCount;
+  }
+
+  private async handleCardImagePaste(event: ClipboardEvent, projectName: string, taskId: string): Promise<void> {
+    const files = this.getImageFilesFromClipboard(event.clipboardData);
+    if (files.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const attachedCount = await this.attachImageFilesToCard(projectName, taskId, files);
+    if (attachedCount > 0) {
+      new Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
+    }
+  }
+
   private async attachExistingPhotoToCard(projectName: string, taskId: string): Promise<void> {
-    const imagePath = window.prompt("Enter the vault path to an existing image file:", "")?.trim() ?? "";
-    if (!imagePath) {
-      return;
-    }
+    new KanbanVaultImagePickerModal(this.app, this.plugin, async (imagePath) => {
+      const attached = await this.plugin.attachExistingKanbanTaskPhoto(projectName, taskId, imagePath);
+      if (!attached) {
+        return;
+      }
 
-    const attached = await this.plugin.attachExistingKanbanTaskPhoto(projectName, taskId, imagePath);
-    if (!attached) {
-      return;
-    }
-
-    await this.requestRefresh();
+      await this.requestRefresh();
+    }).open();
   }
 
   private async uploadPhotoForCard(projectName: string, taskId: string): Promise<void> {
@@ -11119,7 +11353,11 @@ export class DashKanbanView extends ItemView {
     picker.type = "file";
     picker.accept = "image/*";
     picker.multiple = false;
-    picker.style.display = "none";
+    picker.style.position = "fixed";
+    picker.style.left = "-9999px";
+    picker.style.top = "0";
+    picker.style.opacity = "0";
+    picker.style.pointerEvents = "none";
     document.body.appendChild(picker);
 
     picker.addEventListener("change", () => {
@@ -11142,7 +11380,12 @@ export class DashKanbanView extends ItemView {
       })();
     }, { once: true });
 
-    picker.click();
+    const enhancedPicker = picker as HTMLInputElement & { showPicker?: () => void };
+    if (typeof enhancedPicker.showPicker === "function") {
+      enhancedPicker.showPicker();
+    } else {
+      picker.click();
+    }
   }
 
   private async removePhotoFromCard(projectName: string, taskId: string, path: string): Promise<void> {

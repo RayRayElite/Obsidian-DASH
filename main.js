@@ -3559,6 +3559,23 @@ function insertProjectIntoTodo(content, categoryName, projectBlock) {
   }
   return result.join("\n");
 }
+function deleteProjectFromTodo(content, projectName) {
+  const normalizedProjectName = projectName.trim().toLowerCase();
+  if (!normalizedProjectName) {
+    return { content, deleted: false };
+  }
+  const lines = content.split(/\r?\n/);
+  const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === normalizedProjectName);
+  if (!project) {
+    return { content, deleted: false };
+  }
+  const output = [...lines];
+  output.splice(project.start, project.end - project.start + 1);
+  return {
+    content: trimTrailingBlankLines(trimLeadingBlankLines(output)).join("\n"),
+    deleted: true
+  };
+}
 function trimTrailingBlankLines(lines) {
   const output = [...lines];
   while (output.length > 0 && output[output.length - 1].trim() === "") {
@@ -10951,7 +10968,7 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
     const { contentEl } = this;
     contentEl.empty();
     new import_obsidian3.Setting(contentEl).setName("Project name").setDesc("Used for the master todo section and the new project note name.").addText((text) => {
-      text.setPlaceholder("New Project").onChange((value) => {
+      text.setPlaceholder("New Project").setValue(this.state.projectName).onChange((value) => {
         this.state.projectName = value;
       });
       window.setTimeout(() => text.inputEl.focus(), 0);
@@ -10967,7 +10984,7 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
         this.state.categoryName = value;
       });
     }).addText((text) => {
-      text.setPlaceholder("Or type a new category name").onChange((value) => {
+      text.setPlaceholder("Or type a new category name").setValue(this.categories.includes(this.state.categoryName) ? "" : this.state.categoryName).onChange((value) => {
         if (value.trim()) {
           this.state.categoryName = value.trim();
         }
@@ -11040,6 +11057,70 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
   onClose() {
     this.modalEl.removeClass("daily-dashboard-project-modal");
     this.contentEl.empty();
+  }
+};
+var KanbanVaultImagePickerModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, onChoose) {
+    super(app);
+    this.query = "";
+    this.plugin = plugin;
+    this.onChoose = onChoose;
+  }
+  onOpen() {
+    this.modalEl.addClass("daily-dashboard-vault-image-modal");
+    this.setTitle("Link Vault Image");
+    this.render();
+  }
+  onClose() {
+    this.modalEl.removeClass("daily-dashboard-vault-image-modal");
+    this.contentEl.empty();
+  }
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const allImages = this.plugin.getAvailableKanbanImagePaths();
+    const normalizedQuery = this.query.trim().toLowerCase();
+    const filteredImages = normalizedQuery ? allImages.filter((image) => image.path.toLowerCase().includes(normalizedQuery) || image.name.toLowerCase().includes(normalizedQuery)) : allImages;
+    const search = contentEl.createEl("input", {
+      cls: "daily-dashboard-input daily-dashboard-vault-image-search",
+      attr: {
+        type: "search",
+        placeholder: "Search vault images by name or path"
+      }
+    });
+    search.value = this.query;
+    search.addEventListener("input", () => {
+      this.query = search.value;
+      this.render();
+    });
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Choose an existing vault image to link without duplicating the file."
+    });
+    const list = contentEl.createDiv({ cls: "daily-dashboard-vault-image-list" });
+    if (filteredImages.length === 0) {
+      list.createEl("p", {
+        cls: "daily-dashboard-row-meta",
+        text: allImages.length === 0 ? "No supported image files were found in the vault." : "No images matched that search."
+      });
+    } else {
+      filteredImages.slice(0, 200).forEach((image) => {
+        const button = list.createEl("button", { cls: "daily-dashboard-vault-image-row" });
+        button.type = "button";
+        button.createEl("strong", { cls: "daily-dashboard-vault-image-name", text: image.name });
+        button.createEl("span", { cls: "daily-dashboard-vault-image-path", text: image.path });
+        button.addEventListener("click", () => {
+          void this.onChoose(image.path).then(() => this.close());
+        });
+      });
+      if (filteredImages.length > 200) {
+        list.createEl("p", {
+          cls: "daily-dashboard-row-meta",
+          text: `Showing the first 200 of ${filteredImages.length} matching images. Refine the search to narrow the list.`
+        });
+      }
+    }
+    window.setTimeout(() => search.focus(), 0);
   }
 };
 var LogicalDayRepairModal = class extends import_obsidian3.Modal {
@@ -11734,6 +11815,33 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
     this.taskText = "";
     this.syncSelectionFromTask();
   }
+  isSupportedKanbanImageFile(file) {
+    var _a, _b;
+    if (!file) {
+      return false;
+    }
+    const extension = (_b = (_a = file.name.split(".").pop()) == null ? void 0 : _a.trim().toLowerCase()) != null ? _b : "";
+    return file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+  }
+  async attachPastedImages(event) {
+    var _a, _b;
+    const files = Array.from((_b = (_a = event.clipboardData) == null ? void 0 : _a.items) != null ? _b : []).map((item) => item.kind === "file" ? item.getAsFile() : null).filter((file) => this.isSupportedKanbanImageFile(file));
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    let attachedCount = 0;
+    for (const file of files) {
+      const bytes = await file.arrayBuffer();
+      const attached = await this.plugin.uploadKanbanTaskPhoto(this.selectedProjectName, this.selectedTaskId, file.name, bytes);
+      if (attached) {
+        attachedCount += 1;
+      }
+    }
+    if (attachedCount > 0) {
+      new import_obsidian3.Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
+    }
+  }
   getLaneOptions() {
     return this.plugin.getKanbanLaneOptions(this.selectedProjectName).filter((option) => !option.done);
   }
@@ -11844,11 +11952,14 @@ var KanbanTaskEditModal = class extends import_obsidian3.Modal {
       });
     });
     contentEl.createEl("p", { cls: "daily-dashboard-row-meta", text: this.formatTaskMeta(selectedTask) || "No extra task metadata recorded." });
-    new import_obsidian3.Setting(contentEl).setName("Task text").setDesc("This updates the task label while preserving existing task metadata annotations.").addTextArea((textArea) => {
+    new import_obsidian3.Setting(contentEl).setName("Task text").setDesc("This updates the task label while preserving existing task metadata annotations. Paste an image here to attach it to the card.").addTextArea((textArea) => {
       textArea.setPlaceholder("Refine the task wording").setValue(this.taskText).onChange((value) => {
         this.taskText = value;
       });
       textArea.inputEl.rows = 4;
+      textArea.inputEl.addEventListener("paste", (event) => {
+        void this.attachPastedImages(event);
+      });
       window.setTimeout(() => textArea.inputEl.focus(), 0);
     });
     new import_obsidian3.Setting(contentEl).setName("Lane").setDesc("Moving out of Waiting strips blocking annotations; moving into Waiting preserves any existing ones.").addDropdown((dropdown) => {
@@ -14383,7 +14494,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }, 40);
   }
   renderProjectBoard(parent, project, mode, density) {
-    var _a;
+    var _a, _b, _c;
     const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
     const board = parent.createDiv({ cls: `dash-kanban-project-board${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}` });
     board.dataset.theme = project.theme;
@@ -14427,6 +14538,25 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         }));
         (_a = boardActions.lastElementChild) == null ? void 0 : _a.addClass("is-secondary");
       }
+      boardActions.append(this.createHeaderButton("trash-2", "Delete", () => {
+        var _a2;
+        const confirmed = window.confirm(`Delete "${project.projectName}" from the Master Task Hub and remove its project note?`);
+        if (!confirmed) {
+          return;
+        }
+        if (((_a2 = this.selectedCardKey) == null ? void 0 : _a2.projectName) === project.projectName) {
+          this.selectedCardKey = null;
+          this.detailEditState = null;
+          this.clearCardPopovers();
+        }
+        void this.plugin.deleteProjectAndNote(project.projectName).then(async (deleted) => {
+          if (deleted) {
+            await this.requestRefresh();
+          }
+        });
+      }));
+      (_b = boardActions.lastElementChild) == null ? void 0 : _b.addClass("is-secondary");
+      (_c = boardActions.lastElementChild) == null ? void 0 : _c.addClass("is-danger");
     }
     if (isCollapsedInWorkspace) {
       return;
@@ -14648,9 +14778,18 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       this.dragCard = null;
       this.suppressCardClickUntil = Date.now() + 250;
       this.clearDragTargets();
+      cardEl.removeClass("is-photo-drop-target");
       cardEl.removeClass("is-dragging");
     });
     cardEl.addEventListener("dragover", (event) => {
+      const droppedImages = this.getImageFilesFromDataTransfer(event.dataTransfer);
+      if (droppedImages.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        cardEl.addClass("is-photo-drop-target");
+        return;
+      }
+      cardEl.removeClass("is-photo-drop-target");
       if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
         return;
       }
@@ -14661,7 +14800,24 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       event.stopPropagation();
       this.setCardDropTarget(cardEl);
     });
+    cardEl.addEventListener("dragleave", (event) => {
+      if (!cardEl.contains(event.relatedTarget)) {
+        cardEl.removeClass("is-photo-drop-target");
+      }
+    });
     cardEl.addEventListener("drop", (event) => {
+      const droppedImages = this.getImageFilesFromDataTransfer(event.dataTransfer);
+      cardEl.removeClass("is-photo-drop-target");
+      if (droppedImages.length > 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.attachImageFilesToCard(project.projectName, card.taskId, droppedImages).then((attachedCount) => {
+          if (attachedCount > 0) {
+            new import_obsidian3.Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
+          }
+        });
+        return;
+      }
       if (!this.dragCard || this.dragCard.projectName !== project.projectName || this.dragCard.laneKey !== lane.laneKey) {
         return;
       }
@@ -14716,7 +14872,14 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         textArea.style.height = "auto";
         textArea.style.height = `${Math.max(textArea.scrollHeight, 68)}px`;
       });
+      textArea.addEventListener("paste", (event) => {
+        void this.handleCardImagePaste(event, project.projectName, card.taskId);
+      });
       editor.appendChild(textArea);
+      editor.createEl("p", {
+        cls: "dash-kanban-card-editor-hint",
+        text: "Paste an image here or drop one anywhere on the card to attach it."
+      });
       if (card.notePreview) {
         const note = document.createElement("p");
         note.className = "dash-kanban-card-note";
@@ -15115,24 +15278,76 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     window.open(resourcePath, "_blank", "noopener,noreferrer");
   }
-  async attachExistingPhotoToCard(projectName, taskId) {
+  isSupportedKanbanImageFile(file) {
     var _a, _b;
-    const imagePath = (_b = (_a = window.prompt("Enter the vault path to an existing image file:", "")) == null ? void 0 : _a.trim()) != null ? _b : "";
-    if (!imagePath) {
+    if (!file) {
+      return false;
+    }
+    const extension = (_b = (_a = file.name.split(".").pop()) == null ? void 0 : _a.trim().toLowerCase()) != null ? _b : "";
+    return file.type.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+  }
+  getImageFilesFromDataTransfer(dataTransfer) {
+    if (!dataTransfer) {
+      return [];
+    }
+    return Array.from(dataTransfer.files).filter((file) => this.isSupportedKanbanImageFile(file));
+  }
+  getImageFilesFromClipboard(dataTransfer) {
+    if (!dataTransfer) {
+      return [];
+    }
+    const files = Array.from(dataTransfer.items).map((item) => item.kind === "file" ? item.getAsFile() : null).filter((file) => this.isSupportedKanbanImageFile(file));
+    return files.length > 0 ? files : this.getImageFilesFromDataTransfer(dataTransfer);
+  }
+  async attachImageFilesToCard(projectName, taskId, files) {
+    const imageFiles = Array.from(files).filter((file) => this.isSupportedKanbanImageFile(file));
+    if (imageFiles.length === 0) {
+      return 0;
+    }
+    let attachedCount = 0;
+    for (const file of imageFiles) {
+      const bytes = await file.arrayBuffer();
+      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, file.name, bytes);
+      if (attached) {
+        attachedCount += 1;
+      }
+    }
+    if (attachedCount > 0) {
+      await this.requestRefresh();
+    }
+    return attachedCount;
+  }
+  async handleCardImagePaste(event, projectName, taskId) {
+    const files = this.getImageFilesFromClipboard(event.clipboardData);
+    if (files.length === 0) {
       return;
     }
-    const attached = await this.plugin.attachExistingKanbanTaskPhoto(projectName, taskId, imagePath);
-    if (!attached) {
-      return;
+    event.preventDefault();
+    event.stopPropagation();
+    const attachedCount = await this.attachImageFilesToCard(projectName, taskId, files);
+    if (attachedCount > 0) {
+      new import_obsidian3.Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
     }
-    await this.requestRefresh();
+  }
+  async attachExistingPhotoToCard(projectName, taskId) {
+    new KanbanVaultImagePickerModal(this.app, this.plugin, async (imagePath) => {
+      const attached = await this.plugin.attachExistingKanbanTaskPhoto(projectName, taskId, imagePath);
+      if (!attached) {
+        return;
+      }
+      await this.requestRefresh();
+    }).open();
   }
   async uploadPhotoForCard(projectName, taskId) {
     const picker = document.createElement("input");
     picker.type = "file";
     picker.accept = "image/*";
     picker.multiple = false;
-    picker.style.display = "none";
+    picker.style.position = "fixed";
+    picker.style.left = "-9999px";
+    picker.style.top = "0";
+    picker.style.opacity = "0";
+    picker.style.pointerEvents = "none";
     document.body.appendChild(picker);
     picker.addEventListener("change", () => {
       var _a;
@@ -15153,7 +15368,12 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         }
       })();
     }, { once: true });
-    picker.click();
+    const enhancedPicker = picker;
+    if (typeof enhancedPicker.showPicker === "function") {
+      enhancedPicker.showPicker();
+    } else {
+      picker.click();
+    }
   }
   async removePhotoFromCard(projectName, taskId, path) {
     const removed = await this.plugin.removeKanbanTaskPhoto(projectName, taskId, path);
@@ -18310,6 +18530,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     return this.app.vault.getResourcePath(target);
   }
+  getAvailableKanbanImagePaths() {
+    return this.app.vault.getFiles().filter((file) => this.isSupportedKanbanImageFile(file)).map((file) => ({
+      path: (0, import_obsidian4.normalizePath)(file.path),
+      name: file.name
+    })).sort((left, right) => left.path.localeCompare(right.path));
+  }
   async attachExistingKanbanTaskPhoto(projectName, taskId, imagePath) {
     var _a, _b;
     const normalizedImagePath = (0, import_obsidian4.normalizePath)(imagePath.trim());
@@ -20969,6 +21195,54 @@ ${context}`, resolvedModel);
     }
     new import_obsidian4.Notice(`Created ${projectName} in the master todo and generated its project note.`);
   }
+  async deleteProjectAndNote(projectName) {
+    var _a;
+    const normalizedProjectName = projectName.trim();
+    if (!normalizedProjectName) {
+      return false;
+    }
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new import_obsidian4.Notice("Master todo note not found. Set the path in plugin settings.");
+      return false;
+    }
+    const snapshot = await this.getTodoSnapshot();
+    const project = (_a = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === normalizedProjectName)) != null ? _a : null;
+    const projectNotePath = project ? this.getProjectNotePath(project.name, project.noteLinks) : "";
+    const content = await this.app.vault.read(todoFile);
+    const removed = deleteProjectFromTodo(content, normalizedProjectName);
+    if (!removed.deleted) {
+      new import_obsidian4.Notice("Could not find that project in the master task hub.");
+      return false;
+    }
+    await this.app.vault.modify(todoFile, removed.content);
+    if (projectNotePath) {
+      const noteFile = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(projectNotePath));
+      if (noteFile instanceof import_obsidian4.TFile) {
+        await this.app.vault.delete(noteFile, true);
+      }
+    }
+    const boardNotePath = buildKanbanBoardNotePath(this.data.settings.kanbanBoardNotesFolder, normalizedProjectName);
+    const boardNoteFile = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(boardNotePath));
+    if (boardNoteFile instanceof import_obsidian4.TFile) {
+      await this.app.vault.delete(boardNoteFile, true);
+    }
+    delete this.data.kanbanState.boardConfigurations[normalizedProjectName];
+    Object.entries(this.data.kanbanState.taskRegistry).forEach(([taskId, entry]) => {
+      if (entry.projectName === normalizedProjectName) {
+        delete this.data.kanbanState.taskRegistry[taskId];
+      }
+    });
+    Object.entries(this.data.kanbanState.repairQueue).forEach(([repairId, entry]) => {
+      if (entry.projectName === normalizedProjectName) {
+        delete this.data.kanbanState.repairQueue[repairId];
+      }
+    });
+    await this.savePluginData();
+    await this.refreshAfterTodoMutation(true, true);
+    new import_obsidian4.Notice(`Deleted ${normalizedProjectName} and its project note.`);
+    return true;
+  }
   async createMissingProjectNotesFromTodo(showNotice) {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -21486,7 +21760,7 @@ ${context}`, resolvedModel);
       selectedProjectName: typeof (value == null ? void 0 : value.selectedProjectName) === "string" ? value.selectedProjectName.trim() : "",
       showDone: (value == null ? void 0 : value.showDone) !== false,
       focusFilter: (value == null ? void 0 : value.focusFilter) === "attention" || (value == null ? void 0 : value.focusFilter) === "blocked" || (value == null ? void 0 : value.focusFilter) === "due" ? value.focusFilter : "all",
-      density: "compact",
+      density: (value == null ? void 0 : value.density) === "comfortable" ? "comfortable" : "compact",
       headerCollapsed: Boolean(value == null ? void 0 : value.headerCollapsed)
     };
   }

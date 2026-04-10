@@ -100,6 +100,7 @@ import {
   repairProjectNoteStructure,
   reconcileCompletedTasks,
   completeTaskByIdInProject,
+  deleteProjectFromTodo,
   deleteTaskByIdInProject,
   renderKanbanHub,
   renderKanbanProjectBoardNote,
@@ -3784,6 +3785,16 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.app.vault.getResourcePath(target);
   }
 
+  getAvailableKanbanImagePaths(): Array<{ path: string; name: string }> {
+    return this.app.vault.getFiles()
+      .filter((file) => this.isSupportedKanbanImageFile(file))
+      .map((file) => ({
+        path: normalizePath(file.path),
+        name: file.name
+      }))
+      .sort((left, right) => left.path.localeCompare(right.path));
+  }
+
   async attachExistingKanbanTaskPhoto(projectName: string, taskId: string, imagePath: string): Promise<boolean> {
     const normalizedImagePath = normalizePath(imagePath.trim());
     const target = this.app.vault.getAbstractFileByPath(normalizedImagePath);
@@ -6962,6 +6973,63 @@ export default class DailyDashboardPlugin extends Plugin {
     new Notice(`Created ${projectName} in the master todo and generated its project note.`);
   }
 
+  async deleteProjectAndNote(projectName: string): Promise<boolean> {
+    const normalizedProjectName = projectName.trim();
+    if (!normalizedProjectName) {
+      return false;
+    }
+
+    const todoFile = this.getMasterTodoFile();
+    if (!todoFile) {
+      new Notice("Master todo note not found. Set the path in plugin settings.");
+      return false;
+    }
+
+    const snapshot = await this.getTodoSnapshot();
+    const project = snapshot?.projects.find((candidate) => candidate.name === normalizedProjectName) ?? null;
+    const projectNotePath = project ? this.getProjectNotePath(project.name, project.noteLinks) : "";
+    const content = await this.app.vault.read(todoFile);
+    const removed = deleteProjectFromTodo(content, normalizedProjectName);
+    if (!removed.deleted) {
+      new Notice("Could not find that project in the master task hub.");
+      return false;
+    }
+
+    await this.app.vault.modify(todoFile, removed.content);
+
+    if (projectNotePath) {
+      const noteFile = this.app.vault.getAbstractFileByPath(normalizePath(projectNotePath));
+      if (noteFile instanceof TFile) {
+        await this.app.vault.delete(noteFile, true);
+      }
+    }
+
+    const boardNotePath = buildKanbanBoardNotePath(this.data.settings.kanbanBoardNotesFolder, normalizedProjectName);
+    const boardNoteFile = this.app.vault.getAbstractFileByPath(normalizePath(boardNotePath));
+    if (boardNoteFile instanceof TFile) {
+      await this.app.vault.delete(boardNoteFile, true);
+    }
+
+    delete this.data.kanbanState.boardConfigurations[normalizedProjectName];
+
+    Object.entries(this.data.kanbanState.taskRegistry).forEach(([taskId, entry]) => {
+      if (entry.projectName === normalizedProjectName) {
+        delete this.data.kanbanState.taskRegistry[taskId];
+      }
+    });
+
+    Object.entries(this.data.kanbanState.repairQueue).forEach(([repairId, entry]) => {
+      if (entry.projectName === normalizedProjectName) {
+        delete this.data.kanbanState.repairQueue[repairId];
+      }
+    });
+
+    await this.savePluginData();
+    await this.refreshAfterTodoMutation(true, true);
+    new Notice(`Deleted ${normalizedProjectName} and its project note.`);
+    return true;
+  }
+
   async createMissingProjectNotesFromTodo(showNotice: boolean): Promise<void> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
@@ -7615,7 +7683,7 @@ export default class DailyDashboardPlugin extends Plugin {
         || value?.focusFilter === "due"
         ? value.focusFilter
         : "all",
-      density: "compact",
+      density: value?.density === "comfortable" ? "comfortable" : "compact",
       headerCollapsed: Boolean(value?.headerCollapsed)
     };
   }
