@@ -5134,18 +5134,19 @@ function updateTaskByIdInProject(content, input) {
   const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
   const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
   if (!location) {
-    return { content, updated: false };
+    return { content, updated: false, found: false };
   }
   const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
   if (!removed) {
-    return { content, updated: false };
+    return { content, updated: false, found: false };
   }
   const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
   const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting" ? nextTaskText : stripBlockingTaskAnnotations(nextTaskText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
   return {
     content: nextContent,
-    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase()
+    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase(),
+    found: true
   };
 }
 function updateTaskByIdInProjectWithMetadata(content, input) {
@@ -5153,11 +5154,11 @@ function updateTaskByIdInProjectWithMetadata(content, input) {
   const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
   const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
   if (!location) {
-    return { content, updated: false, taskText: "" };
+    return { content, updated: false, taskText: "", found: false };
   }
   const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
   if (!removed) {
-    return { content, updated: false, taskText: "" };
+    return { content, updated: false, taskText: "", found: false };
   }
   const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
   const annotatedTaskText = applyTaskAnnotationOverrides(nextTaskText, {
@@ -5173,7 +5174,8 @@ function updateTaskByIdInProjectWithMetadata(content, input) {
   return {
     content: nextContent,
     updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase() || normalizedTaskText !== removed.taskText,
-    taskText: normalizedTaskText
+    taskText: normalizedTaskText,
+    found: true
   };
 }
 function transferTaskByIdBetweenProjects(content, input) {
@@ -22254,7 +22256,7 @@ ${context}`, resolvedModel);
       sectionName: trimmedLane,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
-    if (!updated.updated) {
+    if (!updated.found) {
       new import_obsidian4.Notice("Could not find that Kanban task in the master task hub.");
       return false;
     }
@@ -22271,7 +22273,9 @@ ${context}`, resolvedModel);
       taskText: formattedTaskText,
       checked: false
     });
-    await this.app.vault.modify(todoFile, updated.content);
+    if (updated.updated) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
     await this.refreshAfterTodoMutation(true, true);
     return true;
   }
@@ -22309,7 +22313,7 @@ ${context}`, resolvedModel);
       photoPaths: input.photoPaths,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
-    if (!updated.updated) {
+    if (!updated.found) {
       new import_obsidian4.Notice("Could not find that Kanban task in the master task hub.");
       return false;
     }
@@ -22326,7 +22330,9 @@ ${context}`, resolvedModel);
       taskText: updated.taskText,
       checked: false
     });
-    await this.app.vault.modify(todoFile, updated.content);
+    if (updated.updated) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
     await this.refreshAfterTodoMutation(true, true);
     return true;
   }

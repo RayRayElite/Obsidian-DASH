@@ -8629,7 +8629,7 @@ export default class DailyDashboardPlugin extends Plugin {
       sectionName: trimmedLane,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
-    if (!updated.updated) {
+    if (!updated.found) {
       new Notice("Could not find that Kanban task in the master task hub.");
       return false;
     }
@@ -8649,7 +8649,9 @@ export default class DailyDashboardPlugin extends Plugin {
       checked: false
     });
 
-    await this.app.vault.modify(todoFile, updated.content);
+    if (updated.updated) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
     await this.refreshAfterTodoMutation(true, true);
     return true;
   }
@@ -8701,7 +8703,7 @@ export default class DailyDashboardPlugin extends Plugin {
       photoPaths: input.photoPaths,
       taskRegistry: this.data.kanbanState.taskRegistry
     });
-    if (!updated.updated) {
+    if (!updated.found) {
       new Notice("Could not find that Kanban task in the master task hub.");
       return false;
     }
@@ -8722,7 +8724,9 @@ export default class DailyDashboardPlugin extends Plugin {
       checked: false
     });
 
-    await this.app.vault.modify(todoFile, updated.content);
+    if (updated.updated) {
+      await this.app.vault.modify(todoFile, updated.content);
+    }
     await this.refreshAfterTodoMutation(true, true);
     return true;
   }

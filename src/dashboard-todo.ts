@@ -2628,16 +2628,16 @@ export function updateTaskByIdInProject(content: string, input: {
   taskText: string;
   sectionName: string;
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
-}): { content: string; updated: boolean } {
+}): { content: string; updated: boolean; found: boolean } {
   const taskRegistry = input.taskRegistry ?? {};
   const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
   if (!location) {
-    return { content, updated: false };
+    return { content, updated: false, found: false };
   }
 
   const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
   if (!removed) {
-    return { content, updated: false };
+    return { content, updated: false, found: false };
   }
 
   const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
@@ -2648,7 +2648,8 @@ export function updateTaskByIdInProject(content: string, input: {
 
   return {
     content: nextContent,
-    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase()
+    updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase(),
+    found: true
   };
 }
 
@@ -2664,16 +2665,16 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
   executionContext?: string;
   photoPaths?: string[];
   taskRegistry?: Record<string, KanbanTaskRegistryEntry>;
-}): { content: string; updated: boolean; taskText: string } {
+}): { content: string; updated: boolean; taskText: string; found: boolean } {
   const taskRegistry = input.taskRegistry ?? {};
   const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
   if (!location) {
-    return { content, updated: false, taskText: "" };
+    return { content, updated: false, taskText: "", found: false };
   }
 
   const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
   if (!removed) {
-    return { content, updated: false, taskText: "" };
+    return { content, updated: false, taskText: "", found: false };
   }
 
   const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
@@ -2693,7 +2694,8 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
   return {
     content: nextContent,
     updated: nextContent !== content || location.section.toLowerCase() !== input.sectionName.trim().toLowerCase() || normalizedTaskText !== removed.taskText,
-    taskText: normalizedTaskText
+    taskText: normalizedTaskText,
+    found: true
   };
 }
 
