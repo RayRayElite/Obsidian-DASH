@@ -11141,17 +11141,27 @@ var KanbanPhotoUploadModal = class extends import_obsidian3.Modal {
       cls: "daily-dashboard-input daily-dashboard-file-input",
       attr: {
         type: "file",
-        accept: "image/*"
+        accept: "image/*",
+        multiple: "multiple"
       }
     });
+    const selectionMeta = contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "No images selected yet."
+    });
+    fileInput.addEventListener("change", () => {
+      var _a, _b, _c, _d, _e;
+      const count = (_b = (_a = fileInput.files) == null ? void 0 : _a.length) != null ? _b : 0;
+      selectionMeta.setText(count === 0 ? "No images selected yet." : count === 1 ? `1 image selected: ${(_e = (_d = (_c = fileInput.files) == null ? void 0 : _c[0]) == null ? void 0 : _d.name) != null ? _e : "image"}` : `${count} images selected.`);
+    });
     const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-    const uploadButton = actions.createEl("button", { cls: "mod-cta", text: "Attach image" });
+    const uploadButton = actions.createEl("button", { cls: "mod-cta", text: "Attach images" });
     uploadButton.type = "button";
     uploadButton.addEventListener("click", () => {
       var _a;
-      const selected = (_a = fileInput.files) == null ? void 0 : _a[0];
-      if (!selected) {
-        new import_obsidian3.Notice("Choose an image file first.");
+      const selected = Array.from((_a = fileInput.files) != null ? _a : []);
+      if (selected.length === 0) {
+        new import_obsidian3.Notice("Choose one or more image files first.");
         return;
       }
       void this.onUpload(selected).then(() => this.close());
@@ -15043,16 +15053,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (activePhotoUrl) {
       const gallery = document.createElement("div");
       gallery.className = `dash-kanban-card-photo-strip${photosCollapsed ? " is-collapsed" : ""}${photoPaths.length > 1 ? " has-multiple" : ""}`;
-      const collapseToggle = document.createElement("button");
-      collapseToggle.className = "dash-kanban-card-photo-toggle";
-      collapseToggle.type = "button";
-      collapseToggle.ariaLabel = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
-      collapseToggle.title = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
-      collapseToggle.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this.togglePhotoCardCollapsed(project.projectName, card.taskId);
-      });
-      (0, import_obsidian3.setIcon)(collapseToggle, photosCollapsed ? "panel-top-open" : "panel-top-close");
       if (photosCollapsed) {
         const compactButton = document.createElement("button");
         compactButton.className = "dash-kanban-card-photo-compact";
@@ -15080,7 +15080,20 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         const compactMeta = compactButton.createSpan({ cls: "dash-kanban-card-photo-compact-meta" });
         compactMeta.createEl("strong", { text: `${photoPaths.length}` });
         compactMeta.createEl("span", { text: photoPaths.length === 1 ? "image" : "images" });
-        gallery.append(compactButton, collapseToggle);
+        const compactToggle = compactButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
+        compactToggle.type = "button";
+        compactToggle.ariaLabel = "Expand photo previews";
+        compactToggle.title = "Expand photo previews";
+        (0, import_obsidian3.setIcon)(compactToggle, "panel-top-open");
+        compactToggle.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
+        });
+        compactButton.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+        });
+        gallery.appendChild(compactButton);
       } else {
         if (photoPaths.length > 1) {
           const previousButton = document.createElement("button");
@@ -15117,6 +15130,16 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         const openHint = previewButton.createSpan({ cls: "dash-kanban-card-photo-open-hint" });
         openHint.ariaHidden = "true";
         (0, import_obsidian3.setIcon)(openHint, "expand");
+        const collapseHint = previewButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
+        collapseHint.type = "button";
+        collapseHint.ariaLabel = "Collapse photo previews";
+        collapseHint.title = "Collapse photo previews";
+        (0, import_obsidian3.setIcon)(collapseHint, "panel-top-close");
+        collapseHint.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
+        });
         const status = previewButton.createSpan({ cls: "dash-kanban-card-photo-status" });
         status.createEl("strong", { text: `${activePhotoIndex + 1}/${photoPaths.length}` });
         if (photoPaths.length > 1) {
@@ -15136,7 +15159,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           (0, import_obsidian3.setIcon)(nextButton, "chevron-right");
           gallery.appendChild(nextButton);
         }
-        gallery.appendChild(collapseToggle);
       }
       cardEl.appendChild(gallery);
     }
@@ -15525,11 +15547,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }).open();
   }
   async uploadPhotoForCard(projectName, taskId) {
-    new KanbanPhotoUploadModal(this.app, async (selected) => {
-      const bytes = await selected.arrayBuffer();
-      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, selected.name, bytes);
-      if (attached) {
-        await this.requestRefresh();
+    new KanbanPhotoUploadModal(this.app, async (selectedFiles) => {
+      const attachedCount = await this.attachImageFilesToCard(projectName, taskId, selectedFiles);
+      if (attachedCount > 0) {
+        new import_obsidian3.Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
       }
     }).open();
   }

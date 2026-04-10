@@ -5859,9 +5859,9 @@ class KanbanVaultImagePickerModal extends Modal {
 }
 
 class KanbanPhotoUploadModal extends Modal {
-  private readonly onUpload: (file: File) => Promise<void>;
+  private readonly onUpload: (files: File[]) => Promise<void>;
 
-  constructor(app: App, onUpload: (file: File) => Promise<void>) {
+  constructor(app: App, onUpload: (files: File[]) => Promise<void>) {
     super(app);
     this.onUpload = onUpload;
   }
@@ -5881,17 +5881,31 @@ class KanbanPhotoUploadModal extends Modal {
       cls: "daily-dashboard-input daily-dashboard-file-input",
       attr: {
         type: "file",
-        accept: "image/*"
+        accept: "image/*",
+        multiple: "multiple"
       }
     });
 
+    const selectionMeta = contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "No images selected yet."
+    });
+    fileInput.addEventListener("change", () => {
+      const count = fileInput.files?.length ?? 0;
+      selectionMeta.setText(count === 0
+        ? "No images selected yet."
+        : count === 1
+          ? `1 image selected: ${fileInput.files?.[0]?.name ?? "image"}`
+          : `${count} images selected.`);
+    });
+
     const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-    const uploadButton = actions.createEl("button", { cls: "mod-cta", text: "Attach image" });
+    const uploadButton = actions.createEl("button", { cls: "mod-cta", text: "Attach images" });
     uploadButton.type = "button";
     uploadButton.addEventListener("click", () => {
-      const selected = fileInput.files?.[0];
-      if (!selected) {
-        new Notice("Choose an image file first.");
+      const selected = Array.from(fileInput.files ?? []);
+      if (selected.length === 0) {
+        new Notice("Choose one or more image files first.");
         return;
       }
 
@@ -11033,17 +11047,6 @@ export class DashKanbanView extends ItemView {
       const gallery = document.createElement("div");
       gallery.className = `dash-kanban-card-photo-strip${photosCollapsed ? " is-collapsed" : ""}${photoPaths.length > 1 ? " has-multiple" : ""}`;
 
-      const collapseToggle = document.createElement("button");
-      collapseToggle.className = "dash-kanban-card-photo-toggle";
-      collapseToggle.type = "button";
-      collapseToggle.ariaLabel = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
-      collapseToggle.title = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
-      collapseToggle.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this.togglePhotoCardCollapsed(project.projectName, card.taskId);
-      });
-      setIcon(collapseToggle, photosCollapsed ? "panel-top-open" : "panel-top-close");
-
       if (photosCollapsed) {
         const compactButton = document.createElement("button");
         compactButton.className = "dash-kanban-card-photo-compact";
@@ -11077,7 +11080,21 @@ export class DashKanbanView extends ItemView {
         const compactMeta = compactButton.createSpan({ cls: "dash-kanban-card-photo-compact-meta" });
         compactMeta.createEl("strong", { text: `${photoPaths.length}` });
         compactMeta.createEl("span", { text: photoPaths.length === 1 ? "image" : "images" });
-        gallery.append(compactButton, collapseToggle);
+
+        const compactToggle = compactButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
+        compactToggle.type = "button";
+        compactToggle.ariaLabel = "Expand photo previews";
+        compactToggle.title = "Expand photo previews";
+        setIcon(compactToggle, "panel-top-open");
+        compactToggle.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
+        });
+        compactButton.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+        });
+        gallery.appendChild(compactButton);
       } else {
         if (photoPaths.length > 1) {
           const previousButton = document.createElement("button");
@@ -11116,6 +11133,18 @@ export class DashKanbanView extends ItemView {
         openHint.ariaHidden = "true";
         setIcon(openHint, "expand");
 
+        const collapseHint = previewButton.createEl("button", { cls: "dash-kanban-card-photo-collapse-hint" });
+        collapseHint.type = "button";
+        collapseHint.ariaLabel = "Collapse photo previews";
+        collapseHint.title = "Collapse photo previews";
+        setIcon(collapseHint, "panel-top-close");
+
+        collapseHint.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          this.togglePhotoCardCollapsed(project.projectName, card.taskId);
+        });
+
         const status = previewButton.createSpan({ cls: "dash-kanban-card-photo-status" });
         status.createEl("strong", { text: `${activePhotoIndex + 1}/${photoPaths.length}` });
         if (photoPaths.length > 1) {
@@ -11138,7 +11167,6 @@ export class DashKanbanView extends ItemView {
           gallery.appendChild(nextButton);
         }
 
-        gallery.appendChild(collapseToggle);
       }
 
       cardEl.appendChild(gallery);
@@ -11566,11 +11594,10 @@ export class DashKanbanView extends ItemView {
   }
 
   private async uploadPhotoForCard(projectName: string, taskId: string): Promise<void> {
-    new KanbanPhotoUploadModal(this.app, async (selected) => {
-      const bytes = await selected.arrayBuffer();
-      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, selected.name, bytes);
-      if (attached) {
-        await this.requestRefresh();
+    new KanbanPhotoUploadModal(this.app, async (selectedFiles) => {
+      const attachedCount = await this.attachImageFilesToCard(projectName, taskId, selectedFiles);
+      if (attachedCount > 0) {
+        new Notice(`Attached ${attachedCount} image${attachedCount === 1 ? "" : "s"} to the card.`);
       }
     }).open();
   }

@@ -1370,8 +1370,7 @@
   justify-content: space-between;
 }
 
-.dash-kanban-card-photo-nav,
-.dash-kanban-card-photo-toggle {
+.dash-kanban-card-photo-nav {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
@@ -1382,8 +1381,7 @@
   color: var(--text-faint);
 }
 
-.dash-kanban-card-photo-nav:hover,
-.dash-kanban-card-photo-toggle:hover {
+.dash-kanban-card-photo-nav:hover {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 36%, var(--dash-kanban-border));
   color: var(--text-normal);
 }
@@ -1441,6 +1439,29 @@
   opacity: 0.84;
 }
 
+.dash-kanban-card-photo-collapse-hint {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--background-primary) 80%, rgba(0, 0, 0, 0.2));
+  color: var(--text-faint);
+  opacity: 0.78;
+}
+
+.dash-kanban-card-photo-collapse-hint:hover {
+  opacity: 1;
+  color: var(--text-normal);
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 30%, var(--dash-kanban-border));
+}
+
 .dash-kanban-card-photo-status {
   position: absolute;
   left: 10px;
@@ -1465,6 +1486,7 @@
 }
 
 .dash-kanban-card-photo-compact {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1474,6 +1496,14 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--background-primary) 82%, transparent);
   color: var(--text-muted);
+}
+
+.dash-kanban-card-photo-compact .dash-kanban-card-photo-collapse-hint {
+  left: auto;
+  right: 6px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
 }
 
 .dash-kanban-card-photo-compact-thumb {
