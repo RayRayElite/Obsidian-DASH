@@ -9308,6 +9308,8 @@ export class DashKanbanView extends ItemView {
   private duePickerKey: { projectName: string; taskId: string } | null = null;
   private effortPickerKey: { projectName: string; taskId: string } | null = null;
   private photoPickerKey: { projectName: string; taskId: string } | null = null;
+  private photoCardIndices = new Map<string, number>();
+  private collapsedPhotoCards = new Set<string>();
   private detailEditState: {
     projectName: string;
     taskId: string;
@@ -9350,6 +9352,55 @@ export class DashKanbanView extends ItemView {
 
   private matchesCardKey(key: { projectName: string; taskId: string } | null, projectName: string, taskId: string): boolean {
     return !!key && key.projectName === projectName && key.taskId === taskId;
+  }
+
+  private getPhotoCardStateKey(projectName: string, taskId: string): string {
+    return `${projectName}::${taskId}`;
+  }
+
+  private getPhotoCardIndex(projectName: string, taskId: string, photoCount: number): number {
+    if (photoCount <= 1) {
+      return 0;
+    }
+
+    const key = this.getPhotoCardStateKey(projectName, taskId);
+    const currentIndex = this.photoCardIndices.get(key) ?? 0;
+    const normalizedIndex = ((currentIndex % photoCount) + photoCount) % photoCount;
+    if (normalizedIndex !== currentIndex) {
+      this.photoCardIndices.set(key, normalizedIndex);
+    }
+    return normalizedIndex;
+  }
+
+  private setPhotoCardIndex(projectName: string, taskId: string, nextIndex: number, photoCount: number): void {
+    const key = this.getPhotoCardStateKey(projectName, taskId);
+    if (photoCount <= 1) {
+      this.photoCardIndices.delete(key);
+      return;
+    }
+
+    const normalizedIndex = ((nextIndex % photoCount) + photoCount) % photoCount;
+    this.photoCardIndices.set(key, normalizedIndex);
+  }
+
+  private cyclePhotoCard(projectName: string, taskId: string, photoCount: number, direction: -1 | 1): void {
+    const currentIndex = this.getPhotoCardIndex(projectName, taskId, photoCount);
+    this.setPhotoCardIndex(projectName, taskId, currentIndex + direction, photoCount);
+    void this.requestRefresh();
+  }
+
+  private togglePhotoCardCollapsed(projectName: string, taskId: string): void {
+    const key = this.getPhotoCardStateKey(projectName, taskId);
+    if (this.collapsedPhotoCards.has(key)) {
+      this.collapsedPhotoCards.delete(key);
+    } else {
+      this.collapsedPhotoCards.add(key);
+    }
+    void this.requestRefresh();
+  }
+
+  private isPhotoCardCollapsed(projectName: string, taskId: string): boolean {
+    return this.collapsedPhotoCards.has(this.getPhotoCardStateKey(projectName, taskId));
   }
 
   private isCardEditing(projectName: string, taskId: string): boolean {
@@ -10741,8 +10792,10 @@ export class DashKanbanView extends ItemView {
     const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
     const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
     const photoPaths = getTodoTaskPhotoPaths(card.rawText);
-    const primaryPhotoPath = photoPaths[0] || "";
-    const primaryPhotoUrl = primaryPhotoPath ? this.plugin.getKanbanTaskPhotoResourcePath(primaryPhotoPath) : "";
+    const activePhotoIndex = this.getPhotoCardIndex(project.projectName, card.taskId, photoPaths.length);
+    const activePhotoPath = photoPaths[activePhotoIndex] || "";
+    const activePhotoUrl = activePhotoPath ? this.plugin.getKanbanTaskPhotoResourcePath(activePhotoPath) : "";
+    const photosCollapsed = this.isPhotoCardCollapsed(project.projectName, card.taskId);
     const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
@@ -10976,35 +11029,118 @@ export class DashKanbanView extends ItemView {
       cardEl.appendChild(content);
     }
 
-    if (primaryPhotoUrl) {
+    if (activePhotoUrl) {
       const gallery = document.createElement("div");
-      gallery.className = "dash-kanban-card-photo-strip";
-      const previewButton = document.createElement("button");
-      previewButton.className = "dash-kanban-card-photo-preview";
-      previewButton.type = "button";
-      previewButton.ariaLabel = photoPaths.length > 1 ? `Open ${photoPaths.length} attached photos` : "Open attached photo";
-      previewButton.title = photoPaths.length > 1 ? `Open attached photos (${photoPaths.length})` : "Open attached photo";
-      previewButton.addEventListener("click", (event) => {
+      gallery.className = `dash-kanban-card-photo-strip${photosCollapsed ? " is-collapsed" : ""}${photoPaths.length > 1 ? " has-multiple" : ""}`;
+
+      const collapseToggle = document.createElement("button");
+      collapseToggle.className = "dash-kanban-card-photo-toggle";
+      collapseToggle.type = "button";
+      collapseToggle.ariaLabel = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
+      collapseToggle.title = photosCollapsed ? "Expand photo previews" : "Collapse photo previews";
+      collapseToggle.addEventListener("click", (event) => {
         event.stopPropagation();
-        this.openKanbanPhoto(primaryPhotoPath);
+        this.togglePhotoCardCollapsed(project.projectName, card.taskId);
       });
-      const previewImage = document.createElement("img");
-      previewImage.className = "dash-kanban-card-photo-image";
-      previewImage.src = primaryPhotoUrl;
-      previewImage.alt = `${card.text} photo`;
-      previewImage.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void this.copyKanbanPhotoToClipboard(primaryPhotoPath);
-      });
-      previewButton.appendChild(previewImage);
-      const openHint = previewButton.createSpan({ cls: "dash-kanban-card-photo-open-hint" });
-      openHint.ariaHidden = "true";
-      setIcon(openHint, "expand");
-      gallery.appendChild(previewButton);
-      if (photoPaths.length > 1) {
-        gallery.createEl("span", { cls: "dash-kanban-card-photo-count", text: `+${photoPaths.length - 1}` });
+      setIcon(collapseToggle, photosCollapsed ? "panel-top-open" : "panel-top-close");
+
+      if (photosCollapsed) {
+        const compactButton = document.createElement("button");
+        compactButton.className = "dash-kanban-card-photo-compact";
+        compactButton.type = "button";
+        compactButton.ariaLabel = photoPaths.length > 1
+          ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}`
+          : "Open attached image";
+        compactButton.title = photoPaths.length > 1
+          ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}`
+          : "Open attached image";
+        compactButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.openKanbanPhoto(activePhotoPath);
+        });
+
+        photoPaths.slice(0, 3).forEach((path, index) => {
+          const thumbUrl = this.plugin.getKanbanTaskPhotoResourcePath(path);
+          const thumb = document.createElement("span");
+          thumb.className = `dash-kanban-card-photo-compact-thumb${index === activePhotoIndex ? " is-active" : ""}`;
+          if (thumbUrl) {
+            const image = document.createElement("img");
+            image.src = thumbUrl;
+            image.alt = path;
+            thumb.appendChild(image);
+          } else {
+            setIcon(thumb, "image");
+          }
+          compactButton.appendChild(thumb);
+        });
+
+        const compactMeta = compactButton.createSpan({ cls: "dash-kanban-card-photo-compact-meta" });
+        compactMeta.createEl("strong", { text: `${photoPaths.length}` });
+        compactMeta.createEl("span", { text: photoPaths.length === 1 ? "image" : "images" });
+        gallery.append(compactButton, collapseToggle);
+      } else {
+        if (photoPaths.length > 1) {
+          const previousButton = document.createElement("button");
+          previousButton.className = "dash-kanban-card-photo-nav is-previous";
+          previousButton.type = "button";
+          previousButton.ariaLabel = "Show previous image";
+          previousButton.title = "Show previous image";
+          previousButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.cyclePhotoCard(project.projectName, card.taskId, photoPaths.length, -1);
+          });
+          setIcon(previousButton, "chevron-left");
+          gallery.appendChild(previousButton);
+        }
+
+        const previewButton = document.createElement("button");
+        previewButton.className = "dash-kanban-card-photo-preview";
+        previewButton.type = "button";
+        previewButton.ariaLabel = photoPaths.length > 1 ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}` : "Open attached photo";
+        previewButton.title = photoPaths.length > 1 ? `Open image ${activePhotoIndex + 1} of ${photoPaths.length}` : "Open attached photo";
+        previewButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.openKanbanPhoto(activePhotoPath);
+        });
+        const previewImage = document.createElement("img");
+        previewImage.className = "dash-kanban-card-photo-image";
+        previewImage.src = activePhotoUrl;
+        previewImage.alt = `${card.text} photo ${activePhotoIndex + 1}`;
+        previewImage.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void this.copyKanbanPhotoToClipboard(activePhotoPath);
+        });
+        previewButton.appendChild(previewImage);
+        const openHint = previewButton.createSpan({ cls: "dash-kanban-card-photo-open-hint" });
+        openHint.ariaHidden = "true";
+        setIcon(openHint, "expand");
+
+        const status = previewButton.createSpan({ cls: "dash-kanban-card-photo-status" });
+        status.createEl("strong", { text: `${activePhotoIndex + 1}/${photoPaths.length}` });
+        if (photoPaths.length > 1) {
+          status.createEl("span", { text: "Use arrows" });
+        }
+
+        gallery.appendChild(previewButton);
+
+        if (photoPaths.length > 1) {
+          const nextButton = document.createElement("button");
+          nextButton.className = "dash-kanban-card-photo-nav is-next";
+          nextButton.type = "button";
+          nextButton.ariaLabel = "Show next image";
+          nextButton.title = "Show next image";
+          nextButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.cyclePhotoCard(project.projectName, card.taskId, photoPaths.length, 1);
+          });
+          setIcon(nextButton, "chevron-right");
+          gallery.appendChild(nextButton);
+        }
+
+        gallery.appendChild(collapseToggle);
       }
+
       cardEl.appendChild(gallery);
     }
 

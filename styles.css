@@ -1358,6 +1358,34 @@
   display: flex;
   align-items: stretch;
   gap: 8px;
+  position: relative;
+}
+
+.dash-kanban-card-photo-strip.has-multiple {
+  align-items: center;
+}
+
+.dash-kanban-card-photo-strip.is-collapsed {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dash-kanban-card-photo-nav,
+.dash-kanban-card-photo-toggle {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+  color: var(--text-faint);
+}
+
+.dash-kanban-card-photo-nav:hover,
+.dash-kanban-card-photo-toggle:hover {
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 36%, var(--dash-kanban-border));
+  color: var(--text-normal);
 }
 
 .dash-kanban-card-photo-preview {
@@ -1378,6 +1406,14 @@
 
 .dash-kanban-card-photo-preview:hover {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 38%, var(--dash-kanban-border));
+}
+
+.dash-kanban-card-photo-preview:focus-visible,
+.dash-kanban-card-photo-nav:focus-visible,
+.dash-kanban-card-photo-toggle:focus-visible,
+.dash-kanban-card-photo-compact:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--dash-kanban-board-accent-strong) 42%, transparent);
+  outline-offset: 1px;
 }
 
 .dash-kanban-card-photo-image {
@@ -1405,19 +1441,77 @@
   opacity: 0.84;
 }
 
-.dash-kanban-card-photo-count {
+.dash-kanban-card-photo-status {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 84%, rgba(0, 0, 0, 0.2));
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dash-kanban-card-photo-status strong {
+  color: var(--text-normal);
+  font-size: 0.72rem;
+}
+
+.dash-kanban-card-photo-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
+  color: var(--text-muted);
+}
+
+.dash-kanban-card-photo-compact-thumb {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  font-weight: 700;
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--background-primary-alt) 86%, transparent);
+  color: var(--text-faint);
+}
+
+.dash-kanban-card-photo-compact-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dash-kanban-card-photo-compact-thumb.is-active {
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 42%, var(--dash-kanban-border));
+}
+
+.dash-kanban-card-photo-compact-meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-left: 2px;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dash-kanban-card-photo-compact-meta strong {
+  color: var(--text-normal);
+  font-size: 0.8rem;
 }
 
 .dash-kanban-card-editor-text {
