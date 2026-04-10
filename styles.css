@@ -1356,20 +1356,24 @@
 
 .dash-kanban-card-photo-strip {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 8px;
 }
 
 .dash-kanban-card-photo-preview {
   position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: stretch;
   overflow: hidden;
   width: 100%;
   max-width: 100%;
-  min-height: 110px;
+  min-height: 152px;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
   border-radius: 16px;
-  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 82%, transparent), color-mix(in srgb, var(--background-primary-alt) 88%, transparent));
 }
 
 .dash-kanban-card-photo-preview:hover {
@@ -1379,8 +1383,23 @@
 .dash-kanban-card-photo-image {
   display: block;
   width: 100%;
-  height: 132px;
-  object-fit: cover;
+  height: 136px;
+  object-fit: contain;
+  object-position: center;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--dash-kanban-board-accent) 10%, transparent), transparent 72%);
+}
+
+.dash-kanban-card-photo-open-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px 8px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .dash-kanban-card-photo-count {
@@ -1620,7 +1639,9 @@
   width: 54px;
   height: 54px;
   border-radius: 10px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: color-mix(in srgb, var(--background-primary-alt) 86%, transparent);
 }
 
 .dash-kanban-photo-name {

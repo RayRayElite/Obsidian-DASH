@@ -11123,6 +11123,48 @@ var KanbanVaultImagePickerModal = class extends import_obsidian3.Modal {
     window.setTimeout(() => search.focus(), 0);
   }
 };
+var KanbanPhotoUploadModal = class extends import_obsidian3.Modal {
+  constructor(app, onUpload) {
+    super(app);
+    this.onUpload = onUpload;
+  }
+  onOpen() {
+    this.modalEl.addClass("daily-dashboard-vault-image-modal");
+    this.setTitle("Upload Card Image");
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Choose a local image file to copy into the project's Kanban attachment folder."
+    });
+    const fileInput = contentEl.createEl("input", {
+      cls: "daily-dashboard-input daily-dashboard-file-input",
+      attr: {
+        type: "file",
+        accept: "image/*"
+      }
+    });
+    const actions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+    const uploadButton = actions.createEl("button", { cls: "mod-cta", text: "Attach image" });
+    uploadButton.type = "button";
+    uploadButton.addEventListener("click", () => {
+      var _a;
+      const selected = (_a = fileInput.files) == null ? void 0 : _a[0];
+      if (!selected) {
+        new import_obsidian3.Notice("Choose an image file first.");
+        return;
+      }
+      void this.onUpload(selected).then(() => this.close());
+    });
+    const cancelButton = actions.createEl("button", { text: "Cancel" });
+    cancelButton.type = "button";
+    cancelButton.addEventListener("click", () => this.close());
+  }
+  onClose() {
+    this.modalEl.removeClass("daily-dashboard-vault-image-modal");
+    this.contentEl.empty();
+  }
+};
 var LogicalDayRepairModal = class extends import_obsidian3.Modal {
   constructor(app, plugin) {
     super(app);
@@ -14968,7 +15010,13 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       previewImage.className = "dash-kanban-card-photo-image";
       previewImage.src = primaryPhotoUrl;
       previewImage.alt = `${card.text} photo`;
+      previewImage.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void this.copyKanbanPhotoToClipboard(primaryPhotoPath);
+      });
       previewButton.appendChild(previewImage);
+      previewButton.createEl("span", { cls: "dash-kanban-card-photo-open-label", text: "Open full image" });
       gallery.appendChild(previewButton);
       if (photoPaths.length > 1) {
         gallery.createEl("span", { cls: "dash-kanban-card-photo-count", text: `+${photoPaths.length - 1}` });
@@ -15213,6 +15261,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
             image.className = "dash-kanban-photo-thumb";
             image.src = resourcePath;
             image.alt = path;
+            image.addEventListener("contextmenu", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void this.copyKanbanPhotoToClipboard(path);
+            });
             openButton.appendChild(image);
           }
           openButton.createEl("span", { cls: "dash-kanban-photo-name", text: path.split("/").pop() || path });
@@ -15278,6 +15331,27 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     window.open(resourcePath, "_blank", "noopener,noreferrer");
   }
+  async copyKanbanPhotoToClipboard(path) {
+    const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
+    const clipboardApi = navigator.clipboard;
+    if (!resourcePath || typeof (clipboardApi == null ? void 0 : clipboardApi.write) !== "function" || typeof ClipboardItem === "undefined") {
+      new import_obsidian3.Notice("Image copy is not supported in this environment.");
+      return;
+    }
+    try {
+      const response = await fetch(resourcePath);
+      const blob = await response.blob();
+      await clipboardApi.write([
+        new ClipboardItem({
+          [blob.type || "image/png"]: blob
+        })
+      ]);
+      new import_obsidian3.Notice("Image copied to clipboard.");
+    } catch (error) {
+      console.warn("DASH Kanban could not copy image to clipboard", error);
+      new import_obsidian3.Notice("Could not copy that image to the clipboard.");
+    }
+  }
   isSupportedKanbanImageFile(file) {
     var _a, _b;
     if (!file) {
@@ -15339,41 +15413,13 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }).open();
   }
   async uploadPhotoForCard(projectName, taskId) {
-    const picker = document.createElement("input");
-    picker.type = "file";
-    picker.accept = "image/*";
-    picker.multiple = false;
-    picker.style.position = "fixed";
-    picker.style.left = "-9999px";
-    picker.style.top = "0";
-    picker.style.opacity = "0";
-    picker.style.pointerEvents = "none";
-    document.body.appendChild(picker);
-    picker.addEventListener("change", () => {
-      var _a;
-      const selected = (_a = picker.files) == null ? void 0 : _a[0];
-      if (!selected) {
-        picker.remove();
-        return;
+    new KanbanPhotoUploadModal(this.app, async (selected) => {
+      const bytes = await selected.arrayBuffer();
+      const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, selected.name, bytes);
+      if (attached) {
+        await this.requestRefresh();
       }
-      void (async () => {
-        try {
-          const bytes = await selected.arrayBuffer();
-          const attached = await this.plugin.uploadKanbanTaskPhoto(projectName, taskId, selected.name, bytes);
-          if (attached) {
-            await this.requestRefresh();
-          }
-        } finally {
-          picker.remove();
-        }
-      })();
-    }, { once: true });
-    const enhancedPicker = picker;
-    if (typeof enhancedPicker.showPicker === "function") {
-      enhancedPicker.showPicker();
-    } else {
-      picker.click();
-    }
+    }).open();
   }
   async removePhotoFromCard(projectName, taskId, path) {
     const removed = await this.plugin.removeKanbanTaskPhoto(projectName, taskId, path);
