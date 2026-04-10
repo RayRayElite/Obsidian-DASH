@@ -11402,6 +11402,10 @@ export class DashKanbanView extends ItemView {
           const openButton = item.createEl("button", { cls: "dash-kanban-photo-open" });
           openButton.type = "button";
           openButton.title = path;
+          openButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
           openButton.addEventListener("click", (event) => {
             event.stopPropagation();
             this.openKanbanPhoto(path);
@@ -11422,9 +11426,22 @@ export class DashKanbanView extends ItemView {
 
           const removeButton = item.createEl("button", { cls: "dash-kanban-photo-remove", text: "Remove" });
           removeButton.type = "button";
+          removeButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
           removeButton.addEventListener("click", (event) => {
             event.stopPropagation();
-            void this.removePhotoFromCard(project.projectName, card.taskId, path);
+            removeButton.disabled = true;
+            item.addClass("is-removing");
+            void this.removePhotoFromCard(project.projectName, card.taskId, path).finally(() => {
+              if (!item.isConnected) {
+                return;
+              }
+
+              removeButton.disabled = false;
+              item.removeClass("is-removing");
+            });
           });
         });
       }
@@ -11595,6 +11612,7 @@ export class DashKanbanView extends ItemView {
     }
 
     await this.requestRefresh();
+    new Notice("Removed image from the card.");
   }
 
   private createInlineEditorButton(label: string, onClick: () => void, cta = false): HTMLButtonElement {

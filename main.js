@@ -15381,6 +15381,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           const openButton = item.createEl("button", { cls: "dash-kanban-photo-open" });
           openButton.type = "button";
           openButton.title = path;
+          openButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
           openButton.addEventListener("click", (event) => {
             event.stopPropagation();
             this.openKanbanPhoto(path);
@@ -15400,9 +15404,21 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           openButton.createEl("span", { cls: "dash-kanban-photo-name", text: path.split("/").pop() || path });
           const removeButton = item.createEl("button", { cls: "dash-kanban-photo-remove", text: "Remove" });
           removeButton.type = "button";
+          removeButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
           removeButton.addEventListener("click", (event) => {
             event.stopPropagation();
-            void this.removePhotoFromCard(project.projectName, card.taskId, path);
+            removeButton.disabled = true;
+            item.addClass("is-removing");
+            void this.removePhotoFromCard(project.projectName, card.taskId, path).finally(() => {
+              if (!item.isConnected) {
+                return;
+              }
+              removeButton.disabled = false;
+              item.removeClass("is-removing");
+            });
           });
         });
       }
@@ -15547,6 +15563,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       return;
     }
     await this.requestRefresh();
+    new import_obsidian3.Notice("Removed image from the card.");
   }
   createInlineEditorButton(label, onClick, cta = false) {
     const button = document.createElement("button");
