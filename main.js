@@ -11506,17 +11506,18 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
       const categoryLabel = lane.categoryLabel.trim();
       const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
       const done = lane.done;
+      const ruleType = done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom";
       return {
-        laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
+        laneKey: lane.laneKey.trim() || this.buildLaneKey(label, `lane-${index + 1}`),
         label,
         helperText,
-        columnKey: this.buildLaneKey(lane.label.trim(), lane.columnKey || lane.laneKey || `lane-${index + 1}`),
+        columnKey: lane.columnKey.trim() || this.buildLaneKey(label, lane.laneKey || `column-${index + 1}`),
         categoryKey: this.buildLaneKey(categoryLabel, lane.categoryKey || `group-${index + 1}`),
         categoryLabel,
         categorySubtitle: lane.categorySubtitle.trim(),
         categoryColor: lane.categoryColor.trim(),
         categoryTag: lane.categoryTag.trim().toLowerCase(),
-        ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
+        ruleType,
         mappedSections,
         done
       };
@@ -11669,8 +11670,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
           laneKey: `lane-${this.laneDefinitions.length + 1}`,
           label: "New Lane",
           helperText: "",
+          columnKey: `lane-${this.laneDefinitions.length + 1}`,
           categoryKey: "",
           categoryLabel: "Workflow",
+          categorySubtitle: "",
           categoryColor: "",
           categoryTag: "",
           ruleType: "custom",
@@ -17460,6 +17463,54 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       mappedSections: lane.done ? Array.from(/* @__PURE__ */ new Set([completionSectionName, "Completed Archive"])) : [lane.label.trim() || lane.laneKey]
     }));
   }
+  getPrimaryKanbanLaneSectionName(lane) {
+    const primarySection = lane.mappedSections.map((section) => section.trim()).find((section) => section.length > 0 && section.toLowerCase() !== "completed archive");
+    return primarySection != null ? primarySection : "";
+  }
+  normalizeKanbanLaneSemantic(section) {
+    const normalized = section.trim().toLowerCase();
+    if (!normalized) {
+      return "";
+    }
+    if (normalized === "add" || normalized === "fix") {
+      return "next";
+    }
+    if (normalized === "completed archive") {
+      return "done";
+    }
+    return normalized;
+  }
+  getPrimaryKanbanLaneSemantic(templateId, lane) {
+    const templateLane = this.getResolvedKanbanBoardTemplate(templateId).laneDefinitions.find((candidate) => candidate.laneKey === lane.laneKey);
+    const semanticSource = (templateLane == null ? void 0 : templateLane.mappedSections.length) ? templateLane.mappedSections : lane.mappedSections;
+    const primarySection = semanticSource.map((section) => this.normalizeKanbanLaneSemantic(section)).find((section) => section.length > 0 && section !== "completed archive");
+    return primarySection != null ? primarySection : lane.done ? "done" : "";
+  }
+  alignTemplateSwitchLaneDefinitions(previousTemplateId, nextTemplateId, previousLaneDefinitions, nextLaneDefinitions) {
+    if (!previousTemplateId.trim() || !nextTemplateId.trim() || previousTemplateId === nextTemplateId) {
+      return nextLaneDefinitions;
+    }
+    const primarySectionBySemantic = /* @__PURE__ */ new Map();
+    previousLaneDefinitions.forEach((lane) => {
+      const semantic = this.getPrimaryKanbanLaneSemantic(previousTemplateId, lane);
+      const primarySection = this.getPrimaryKanbanLaneSectionName(lane);
+      if (semantic && primarySection && !primarySectionBySemantic.has(semantic)) {
+        primarySectionBySemantic.set(semantic, primarySection);
+      }
+    });
+    return nextLaneDefinitions.map((lane) => {
+      const semantic = this.getPrimaryKanbanLaneSemantic(nextTemplateId, lane);
+      const mappedPrimarySection = primarySectionBySemantic.get(semantic);
+      if (!mappedPrimarySection) {
+        return lane;
+      }
+      const trailingSections = lane.mappedSections.map((section) => section.trim()).filter((section) => section.length > 0 && section.toLowerCase() === "completed archive");
+      return {
+        ...lane,
+        mappedSections: [mappedPrimarySection, ...trailingSections]
+      };
+    });
+  }
   stripMappedSectionsFromLaneDefinitions(laneDefinitions) {
     return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
   }
@@ -17887,6 +17938,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       mappedSections: lane.targetSection ? [lane.targetSection] : [],
       done: lane.done
     }));
+    normalizedLaneDefinitions = this.alignTemplateSwitchLaneDefinitions(existing.templateId, templateId, previousLaneDefinitions, normalizedLaneDefinitions);
     const hubRenameResult = await this.applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, normalizedLaneDefinitions);
     normalizedLaneDefinitions = hubRenameResult.laneDefinitions;
     this.data.kanbanState.boardConfigurations[projectName] = {
@@ -18003,54 +18055,62 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return changed;
   }
   async applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, nextLaneDefinitions) {
-    var _a;
+    var _a, _b;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile || previousLaneDefinitions.length === 0 || nextLaneDefinitions.length === 0) {
       return { laneDefinitions: nextLaneDefinitions, updatedMasterHub: false, collisionCount: 0 };
     }
     const previousByLaneKey = new Map(previousLaneDefinitions.map((lane) => [lane.laneKey, lane]));
+    const previousPrimaryBySection = /* @__PURE__ */ new Map();
     const previousSingleSectionCounts = /* @__PURE__ */ new Map();
     previousLaneDefinitions.forEach((lane) => {
       var _a2;
-      const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
-      if (lane.ruleType === "hub-section" && !lane.done && mappedSections.length === 1) {
-        const key = mappedSections[0].toLowerCase();
+      const primarySection = this.getPrimaryKanbanLaneSectionName(lane);
+      if (primarySection) {
+        previousPrimaryBySection.set(primarySection.toLowerCase(), lane);
+        const key = primarySection.toLowerCase();
         previousSingleSectionCounts.set(key, ((_a2 = previousSingleSectionCounts.get(key)) != null ? _a2 : 0) + 1);
       }
     });
     let content = null;
     let updatedMasterHub = false;
     let collisionCount = 0;
+    const renamedSections = /* @__PURE__ */ new Map();
     const adjustedLaneDefinitions = nextLaneDefinitions.map((lane) => ({
       ...lane,
       mappedSections: [...lane.mappedSections]
     }));
     for (const lane of adjustedLaneDefinitions) {
-      const previousLane = previousByLaneKey.get(lane.laneKey);
+      const currentPrimarySection = this.getPrimaryKanbanLaneSectionName(lane);
+      const priorRename = currentPrimarySection ? renamedSections.get(currentPrimarySection.toLowerCase()) : "";
+      if (priorRename) {
+        lane.mappedSections = [priorRename, ...lane.mappedSections.filter((section) => section.trim().toLowerCase() === "completed archive")];
+        continue;
+      }
+      const previousLane = (_a = previousByLaneKey.get(lane.laneKey)) != null ? _a : currentPrimarySection ? previousPrimaryBySection.get(currentPrimarySection.toLowerCase()) : void 0;
       if (!previousLane) {
         continue;
       }
       const previousLabel = previousLane.label.trim();
       const nextLabel = lane.label.trim();
-      const previousMappedSections = previousLane.mappedSections.map((section) => section.trim()).filter(Boolean);
-      const nextMappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
+      const previousSectionName = this.getPrimaryKanbanLaneSectionName(previousLane);
+      const nextSectionName = this.getPrimaryKanbanLaneSectionName(lane);
       if (!previousLabel || !nextLabel || previousLabel.toLowerCase() === nextLabel.toLowerCase()) {
         continue;
       }
-      if (previousLane.ruleType !== "hub-section" || lane.ruleType !== "hub-section" || previousLane.done || lane.done) {
+      if (previousLane.ruleType === "custom" || lane.ruleType === "custom") {
         continue;
       }
-      if (previousMappedSections.length !== 1 || nextMappedSections.length !== 1) {
+      if (!previousSectionName || !nextSectionName) {
         continue;
       }
-      const previousSectionName = previousMappedSections[0];
       if (previousSectionName.toLowerCase() !== previousLabel.toLowerCase()) {
         continue;
       }
-      if (nextMappedSections[0].toLowerCase() !== previousSectionName.toLowerCase()) {
+      if (nextSectionName.toLowerCase() !== previousSectionName.toLowerCase()) {
         continue;
       }
-      if (((_a = previousSingleSectionCounts.get(previousSectionName.toLowerCase())) != null ? _a : 0) !== 1) {
+      if (((_b = previousSingleSectionCounts.get(previousSectionName.toLowerCase())) != null ? _b : 0) !== 1) {
         continue;
       }
       if (content === null) {
@@ -18069,7 +18129,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         continue;
       }
       content = renamed.content;
-      lane.mappedSections = [nextLabel];
+      renamedSections.set(previousSectionName.toLowerCase(), nextLabel);
+      adjustedLaneDefinitions.forEach((candidate) => {
+        const candidatePrimarySection = this.getPrimaryKanbanLaneSectionName(candidate);
+        if (candidatePrimarySection.toLowerCase() !== previousSectionName.toLowerCase()) {
+          return;
+        }
+        candidate.mappedSections = [nextLabel, ...candidate.mappedSections.filter((section) => section.trim().toLowerCase() === "completed archive")];
+      });
       updatedMasterHub = true;
     }
     if (updatedMasterHub && content !== null) {
@@ -22226,8 +22293,10 @@ ${context}`, resolvedModel);
       laneKey: lane.laneKey,
       label: lane.label,
       helperText: lane.helperText,
+      columnKey: lane.columnKey,
       categoryKey: lane.categoryKey,
       categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
       categoryColor: lane.categoryColor,
       categoryTag: lane.categoryTag,
       ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",

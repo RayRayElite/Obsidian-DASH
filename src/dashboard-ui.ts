@@ -6371,17 +6371,18 @@ export class DashKanbanBoardSettingsModal extends Modal {
         const categoryLabel = lane.categoryLabel.trim();
         const mappedSections = lane.mappedSections.map((section) => section.trim()).filter(Boolean);
         const done = lane.done;
+        const ruleType: KanbanLaneDefinition["ruleType"] = done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom";
         return {
-          laneKey: this.buildLaneKey(label, lane.laneKey || `lane-${index + 1}`),
+          laneKey: lane.laneKey.trim() || this.buildLaneKey(label, `lane-${index + 1}`),
           label,
           helperText,
-          columnKey: this.buildLaneKey(lane.label.trim(), lane.columnKey || lane.laneKey || `lane-${index + 1}`),
+          columnKey: lane.columnKey.trim() || this.buildLaneKey(label, lane.laneKey || `column-${index + 1}`),
           categoryKey: this.buildLaneKey(categoryLabel, lane.categoryKey || `group-${index + 1}`),
           categoryLabel,
           categorySubtitle: lane.categorySubtitle.trim(),
           categoryColor: lane.categoryColor.trim(),
           categoryTag: lane.categoryTag.trim().toLowerCase(),
-          ruleType: done ? "completion-state" : mappedSections.length > 0 ? "hub-section" : "custom",
+          ruleType,
           mappedSections,
           done
         };
@@ -6597,8 +6598,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
           laneKey: `lane-${this.laneDefinitions.length + 1}`,
           label: "New Lane",
           helperText: "",
+          columnKey: `lane-${this.laneDefinitions.length + 1}`,
           categoryKey: "",
           categoryLabel: "Workflow",
+          categorySubtitle: "",
           categoryColor: "",
           categoryTag: "",
           ruleType: "custom",
