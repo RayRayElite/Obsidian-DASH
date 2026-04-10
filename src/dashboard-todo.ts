@@ -38,6 +38,20 @@ const NON_PROJECT_HUB_HEADINGS = new Set(["portfolio snapshot"]);
 const TASK_ID_ANNOTATION_KEY = "task-id";
 const KANBAN_LANE_ORDER: KanbanLane[] = ["Now", "Next", "Later", "Waiting", "Parking Lot", "Done"];
 const KANBAN_CATEGORIES_META_KEY = "kanban categories";
+const TASK_METADATA_COMMENT_KEY = "daily-dashboard-meta";
+
+interface TaskHiddenMetadata {
+  priority?: string;
+  due?: string;
+  blocked?: string;
+  unblock?: string;
+  effort?: string;
+  energy?: string;
+  context?: string;
+  trigger?: string;
+  minimumStep?: string;
+  photos?: string[];
+}
 
 export function parseTodoSnapshot(content: string): TodoSnapshot {
   const lines = content.split(/\r?\n/);
@@ -1992,7 +2006,7 @@ function repairBrokenKanbanTaskLinesInProject(projectLines: string[]): { lines: 
 }
 
 function parseBrokenLegacyKanbanTaskLine(line: string, sectionName = "General"): { rawText: string; checked: boolean; taskId: string } | null {
-  if (!line.includes(`[${TASK_ID_ANNOTATION_KEY}:`)) {
+  if (!extractTaskAnnotation(line, TASK_ID_ANNOTATION_KEY)) {
     return null;
   }
 
@@ -2083,11 +2097,11 @@ function ensureTaskIdOnTaskText(taskText: string, seed: string): string {
   }
 
   const existingTaskId = extractTaskAnnotation(trimmed, TASK_ID_ANNOTATION_KEY);
-  if (existingTaskId) {
-    return trimmed;
-  }
-
-  return `${trimmed} [${TASK_ID_ANNOTATION_KEY}: ${createTaskId(seed)}]`;
+  return renderTaskTextWithMetadata(
+    stripTaskAnnotations(trimmed) || trimmed,
+    extractAllTaskMetadata(trimmed),
+    existingTaskId || createTaskId(seed)
+  );
 }
 
 function createTaskId(seed: string): string {
@@ -2967,22 +2981,19 @@ function replaceTaskDisplayText(taskText: string, nextText: string): string {
     return trimmedNextText || trimmedTaskText;
   }
 
-  const annotationMatch = trimmedTaskText.match(/\s\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):/i);
-  if (!annotationMatch || typeof annotationMatch.index !== "number") {
-    return trimmedNextText;
-  }
-
-  return `${trimmedNextText}${trimmedTaskText.slice(annotationMatch.index)}`;
+  return renderTaskTextWithMetadata(
+    trimmedNextText,
+    extractAllTaskMetadata(trimmedTaskText),
+    extractTaskAnnotation(trimmedTaskText, TASK_ID_ANNOTATION_KEY) ?? ""
+  );
 }
 
 function upsertTaskAnnotation(value: string, key: string, nextValue: string | undefined): string {
   const trimmedValue = value.trim();
-  const withoutAnnotation = removeTaskAnnotation(trimmedValue, key);
-  const normalizedNextValue = nextValue?.trim() ?? "";
-  if (!normalizedNextValue) {
-    return withoutAnnotation;
-  }
-  return `${withoutAnnotation} [${key}: ${normalizedNextValue}]`.trim();
+  const metadata = extractAllTaskMetadata(trimmedValue);
+  const taskId = extractTaskAnnotation(trimmedValue, TASK_ID_ANNOTATION_KEY) ?? "";
+  setTaskHiddenMetadataValue(metadata, key, nextValue?.trim() ?? "");
+  return renderTaskTextWithMetadata(stripTaskAnnotations(trimmedValue) || trimmedValue, metadata, taskId);
 }
 
 function applyTaskAnnotationOverrides(taskText: string, input: {
@@ -3005,8 +3016,7 @@ function applyTaskAnnotationOverrides(taskText: string, input: {
 }
 
 function stripBlockingTaskAnnotations(value: string): string {
-  return value
-    .replace(/\s*\[(?:blocked|unblock|blocked-until):\s*[^\]]+\]/gi, "")
+  return removeTaskAnnotation(removeTaskAnnotation(removeTaskAnnotation(value, "blocked"), "unblock"), "blocked-until")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -3789,8 +3799,8 @@ export function getTodoTaskAnnotationValue(rawText: string, key: "priority" | "d
 }
 
 export function getTodoTaskPhotoPaths(rawText: string): string[] {
-  return (extractTaskAnnotation(rawText, "photos") ?? "")
-    .split("|")
+  return extractTaskAnnotationValues(rawText, "photos")
+    .flatMap((value) => value.split("|"))
     .map((item) => item.trim())
     .filter((item, index, values) => item.length > 0 && values.indexOf(item) === index);
 }
@@ -3854,67 +3864,199 @@ function normalizeLegacyKanbanSectionName(section: string): string {
   return normalized;
 }
 
-function findTaskAnnotationRange(value: string, key: string): { start: number; end: number } | null {
-  const normalizedValue = value;
-  const lowerValue = normalizedValue.toLowerCase();
-  const lowerKey = key.trim().toLowerCase();
-  if (!lowerKey) {
-    return null;
-  }
+function normalizeTaskHiddenMetadata(metadata: TaskHiddenMetadata): TaskHiddenMetadata {
+  const normalizedPhotos = (metadata.photos ?? [])
+    .map((path) => path.trim())
+    .filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
 
-  const marker = `[${lowerKey}:`;
-  let searchIndex = 0;
-  while (searchIndex < lowerValue.length) {
-    const start = lowerValue.indexOf(marker, searchIndex);
-    if (start === -1) {
-      return null;
-    }
-
-    let depth = 0;
-    for (let index = start; index < normalizedValue.length; index += 1) {
-      const character = normalizedValue[index];
-      if (character === "[") {
-        depth += 1;
-      } else if (character === "]") {
-        depth -= 1;
-        if (depth === 0) {
-          return { start, end: index + 1 };
-        }
-      }
-    }
-
-    return null;
-  }
-
-  return null;
+  return {
+    priority: metadata.priority?.trim() || undefined,
+    due: metadata.due?.trim() || undefined,
+    blocked: metadata.blocked?.trim() || undefined,
+    unblock: metadata.unblock?.trim() || undefined,
+    effort: metadata.effort?.trim() || undefined,
+    energy: metadata.energy?.trim() || undefined,
+    context: metadata.context?.trim() || undefined,
+    trigger: metadata.trigger?.trim() || undefined,
+    minimumStep: metadata.minimumStep?.trim() || undefined,
+    photos: normalizedPhotos.length > 0 ? normalizedPhotos : undefined
+  };
 }
 
-function extractTaskAnnotation(value: string, key: string): string | null {
-  const range = findTaskAnnotationRange(value, key);
-  if (!range) {
-    return null;
-  }
-
-  const marker = `[${key.trim().toLowerCase()}:`;
-  const extracted = value.slice(range.start + marker.length, range.end - 1).trim();
-  return extracted.length > 0 ? extracted : null;
+function hasTaskHiddenMetadata(metadata: TaskHiddenMetadata): boolean {
+  return Boolean(
+    metadata.priority
+    || metadata.due
+    || metadata.blocked
+    || metadata.unblock
+    || metadata.effort
+    || metadata.energy
+    || metadata.context
+    || metadata.trigger
+    || metadata.minimumStep
+    || (metadata.photos?.length ?? 0) > 0
+  );
 }
 
-function removeTaskAnnotation(value: string, key: string): string {
-  const range = findTaskAnnotationRange(value, key);
-  if (!range) {
-    return value.replace(/\s{2,}/g, " ").trim();
+function extractHiddenTaskIdComment(value: string): string {
+  const hiddenMatch = value.match(/<!--\s*daily-dashboard-task-id:\s*([a-z0-9-]+)\s*-->/i);
+  return hiddenMatch?.[1]?.trim() ?? "";
+}
+
+function removeHiddenTaskIdComment(value: string): string {
+  return value.replace(/\s*<!--\s*daily-dashboard-task-id:\s*[a-z0-9-]+\s*-->/ig, "").trim();
+}
+
+function extractTaskHiddenMetadata(value: string): TaskHiddenMetadata {
+  const match = value.match(/<!--\s*daily-dashboard-meta:\s*(\{.*?\})\s*-->/i);
+  if (!match?.[1]) {
+    return {};
   }
 
-  return `${value.slice(0, range.start)}${value.slice(range.end)}`
+  try {
+    const parsed = JSON.parse(match[1]) as Partial<TaskHiddenMetadata>;
+    return normalizeTaskHiddenMetadata({
+      priority: typeof parsed.priority === "string" ? parsed.priority : "",
+      due: typeof parsed.due === "string" ? parsed.due : "",
+      blocked: typeof parsed.blocked === "string" ? parsed.blocked : "",
+      unblock: typeof parsed.unblock === "string" ? parsed.unblock : "",
+      effort: typeof parsed.effort === "string" ? parsed.effort : "",
+      energy: typeof parsed.energy === "string" ? parsed.energy : "",
+      context: typeof parsed.context === "string" ? parsed.context : "",
+      trigger: typeof parsed.trigger === "string" ? parsed.trigger : "",
+      minimumStep: typeof parsed.minimumStep === "string" ? parsed.minimumStep : "",
+      photos: Array.isArray(parsed.photos) ? parsed.photos.filter((entry): entry is string => typeof entry === "string") : []
+    });
+  } catch {
+    return {};
+  }
+}
+
+function removeTaskHiddenMetadataComment(value: string): string {
+  return value.replace(/\s*<!--\s*daily-dashboard-meta:\s*\{.*?\}\s*-->/ig, "").trim();
+}
+
+function renderTaskHiddenMetadata(metadata: TaskHiddenMetadata): string {
+  const normalized = normalizeTaskHiddenMetadata(metadata);
+  if (!hasTaskHiddenMetadata(normalized)) {
+    return "";
+  }
+
+  return ` <!-- ${TASK_METADATA_COMMENT_KEY}: ${JSON.stringify(normalized)} -->`;
+}
+
+function stripVisibleDashboardAnnotations(value: string): string {
+  return value
+    .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
-function stripTaskAnnotations(value: string): string {
-  let nextValue = value;
+function extractTaskAnnotationValues(value: string, key: string): string[] {
+  if (key.trim().toLowerCase() === TASK_ID_ANNOTATION_KEY) {
+    const visibleTaskIds = Array.from(value.matchAll(new RegExp(`\\[${TASK_ID_ANNOTATION_KEY}:\\s*([^\\]]+)\\]`, "ig")))
+      .map((match) => match[1]?.trim() ?? "")
+      .filter((entry) => entry.length > 0);
+    const hiddenTaskId = extractHiddenTaskIdComment(value);
+    return [hiddenTaskId, ...visibleTaskIds].filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index);
+  }
+
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const visibleValues = Array.from(value.matchAll(new RegExp(`\\[${escapedKey}:\\s*([^\\]]+)\\]`, "ig")))
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((entry) => entry.length > 0);
+  const hiddenMetadataValues = getTaskHiddenMetadataValues(extractTaskHiddenMetadata(value), key);
+  return [...hiddenMetadataValues, ...visibleValues].filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index);
+}
+
+function extractTaskAnnotation(value: string, key: string): string | null {
+  return extractTaskAnnotationValues(value, key)[0] ?? null;
+}
+
+function getTaskHiddenMetadataValues(metadata: TaskHiddenMetadata, key: string): string[] {
+  const normalizedKey = key.trim().toLowerCase();
+  if (normalizedKey === "photos") {
+    return metadata.photos ?? [];
+  }
+  if (normalizedKey === "context" || normalizedKey === "mode") {
+    return metadata.context ? [metadata.context] : [];
+  }
+  if (normalizedKey === "unblock" || normalizedKey === "blocked-until") {
+    return metadata.unblock ? [metadata.unblock] : [];
+  }
+  if (normalizedKey === "minimum-step" || normalizedKey === "minimum step" || normalizedKey === "min-step" || normalizedKey === "min step") {
+    return metadata.minimumStep ? [metadata.minimumStep] : [];
+  }
+  if (normalizedKey === "priority") {
+    return metadata.priority ? [metadata.priority] : [];
+  }
+  if (normalizedKey === "due") {
+    return metadata.due ? [metadata.due] : [];
+  }
+  if (normalizedKey === "blocked") {
+    return metadata.blocked ? [metadata.blocked] : [];
+  }
+  if (normalizedKey === "effort") {
+    return metadata.effort ? [metadata.effort] : [];
+  }
+  if (normalizedKey === "energy") {
+    return metadata.energy ? [metadata.energy] : [];
+  }
+  if (normalizedKey === "trigger") {
+    return metadata.trigger ? [metadata.trigger] : [];
+  }
+  return [];
+}
+
+function setTaskHiddenMetadataValue(metadata: TaskHiddenMetadata, key: string, nextValue: string): void {
+  const normalizedKey = key.trim().toLowerCase();
+  const normalizedValue = nextValue.trim();
+  if (normalizedKey === "photos") {
+    metadata.photos = normalizedValue
+      ? normalizedValue.split("|").map((entry) => entry.trim()).filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index)
+      : undefined;
+    return;
+  }
+  if (normalizedKey === "context" || normalizedKey === "mode") {
+    metadata.context = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "unblock" || normalizedKey === "blocked-until") {
+    metadata.unblock = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "minimum-step" || normalizedKey === "minimum step" || normalizedKey === "min-step" || normalizedKey === "min step") {
+    metadata.minimumStep = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "priority") {
+    metadata.priority = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "due") {
+    metadata.due = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "blocked") {
+    metadata.blocked = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "effort") {
+    metadata.effort = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "energy") {
+    metadata.energy = normalizedValue || undefined;
+    return;
+  }
+  if (normalizedKey === "trigger") {
+    metadata.trigger = normalizedValue || undefined;
+  }
+}
+
+function extractAllTaskMetadata(value: string): TaskHiddenMetadata {
+  const metadata = extractTaskHiddenMetadata(value);
   [
-    TASK_ID_ANNOTATION_KEY,
     "priority",
     "due",
     "blocked",
@@ -3928,13 +4070,57 @@ function stripTaskAnnotations(value: string): string {
     "minimum-step",
     "minimum step",
     "min-step",
-    "min step",
-    "photos"
+    "min step"
   ].forEach((key) => {
-    nextValue = removeTaskAnnotation(nextValue, key);
+    const valueForKey = Array.from(value.matchAll(new RegExp(`\\[${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:\\s*([^\\]]+)\\]`, "ig")))
+      .map((match) => match[1]?.trim() ?? "")
+      .find((entry) => entry.length > 0);
+    if (valueForKey) {
+      setTaskHiddenMetadataValue(metadata, key, valueForKey);
+    }
   });
 
-  return nextValue.replace(/\s{2,}/g, " ").trim();
+  const photos = Array.from(value.matchAll(/\[photos:\s*([^\]]+)\]/ig))
+    .map((match) => match[1]?.trim() ?? "")
+    .filter((entry) => entry.length > 0)
+    .flatMap((entry) => entry.split("|"))
+    .map((entry) => entry.trim())
+    .filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index);
+  if (photos.length > 0) {
+    metadata.photos = [...(metadata.photos ?? []), ...photos].filter((entry, index, values) => values.indexOf(entry) === index);
+  }
+
+  return normalizeTaskHiddenMetadata(metadata);
+}
+
+function renderTaskTextWithMetadata(displayText: string, metadata: TaskHiddenMetadata, taskId: string): string {
+  const baseText = stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(displayText))).trim();
+  const hiddenMetadata = renderTaskHiddenMetadata(metadata);
+  const taskIdComment = taskId.trim().length > 0 ? renderKanbanTaskIdComment(taskId) : "";
+  return `${baseText}${hiddenMetadata}${taskIdComment}`.trim();
+}
+
+function removeTaskAnnotation(value: string, key: string): string {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const withoutVisibleAnnotation = value
+    .replace(new RegExp(`\\s*\\[${escapedKey}:\\s*[^\]]+\\]`, "ig"), "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (key.trim().toLowerCase() === TASK_ID_ANNOTATION_KEY) {
+    return withoutVisibleAnnotation;
+  }
+
+  const metadata = extractAllTaskMetadata(withoutVisibleAnnotation);
+  const taskId = extractTaskAnnotation(withoutVisibleAnnotation, TASK_ID_ANNOTATION_KEY) ?? "";
+  setTaskHiddenMetadataValue(metadata, key, "");
+  return renderTaskTextWithMetadata(stripTaskAnnotations(withoutVisibleAnnotation) || withoutVisibleAnnotation, metadata, taskId);
+}
+
+function stripTaskAnnotations(value: string): string {
+  return stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(value)))
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function extractTodoTaskTags(rawText: string): string[] {
