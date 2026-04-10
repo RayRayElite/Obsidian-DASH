@@ -17708,14 +17708,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return nextText.replace(/\s{2,}/g, " ").trim();
   }
   formatTaskTextForKanbanLane(projectName, laneKeyOrSection, taskText) {
-    const laneOption = this.resolveKanbanLaneOption(projectName, laneKeyOrSection);
     const laneOptions = this.getKanbanLaneOptions(projectName);
     const categoryTags = laneOptions.map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
-    let nextText = this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags);
-    if (laneOption == null ? void 0 : laneOption.categoryTag.trim()) {
-      nextText = `${nextText} #${laneOption.categoryTag.trim()}`.trim();
-    }
-    return nextText.replace(/\s{2,}/g, " ").trim();
+    return this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags).replace(/\s{2,}/g, " ").trim();
   }
   async getKanbanTaskDisplayById(projectName, taskId) {
     var _a, _b;
@@ -17744,6 +17739,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     void runRefresh();
   }
   async syncKanbanRegistryAfterTaskEdit(taskId, input) {
+    var _a;
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (!registryEntry) {
       return;
@@ -17752,8 +17748,32 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       ...registryEntry,
       projectName: input.projectName,
       sectionName: input.sectionName,
+      laneKey: ((_a = input.laneKey) == null ? void 0 : _a.trim()) || registryEntry.laneKey || "",
       taskText: getTodoTaskDisplayText(input.taskText, input.sectionName),
       checked: Boolean(input.checked),
+      updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+    };
+    await this.savePluginData();
+  }
+  async seedKanbanRegistryTask(projectName, sectionName, laneKey, taskText) {
+    var _a;
+    const normalizedProjectName = projectName.trim();
+    const normalizedSectionName = sectionName.trim() || "General";
+    const normalizedLaneKey = laneKey.trim();
+    const normalizedTaskText = getTodoTaskDisplayText(taskText, normalizedSectionName).trim();
+    if (!normalizedProjectName || !normalizedLaneKey || !normalizedTaskText) {
+      return;
+    }
+    const existing = Object.values(this.data.kanbanState.taskRegistry).find((entry) => entry.projectName.trim().toLowerCase() === normalizedProjectName.toLowerCase() && entry.sectionName.trim().toLowerCase() === normalizedSectionName.toLowerCase() && entry.taskText.trim().toLowerCase() === normalizedTaskText.toLowerCase() && !entry.checked);
+    const taskId = (existing == null ? void 0 : existing.taskId) || this.createKanbanHiddenTaskId(`${normalizedProjectName}-${normalizedSectionName}-${normalizedTaskText}`);
+    this.data.kanbanState.taskRegistry[taskId] = {
+      taskId,
+      projectName: normalizedProjectName,
+      sectionName: normalizedSectionName,
+      laneKey: normalizedLaneKey,
+      taskText: normalizedTaskText,
+      checked: false,
+      source: (_a = existing == null ? void 0 : existing.source) != null ? _a : "hidden-registry",
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -17770,9 +17790,6 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
-    if (targetLaneOption == null ? void 0 : targetLaneOption.done) {
-      return this.completeKanbanTask(projectName, taskId);
-    }
     const currentTaskText = await this.getKanbanTaskDisplayById(projectName, taskId);
     if (!currentTaskText) {
       new import_obsidian4.Notice("Could not find that Kanban task in the Master Task Hub.");
@@ -17797,7 +17814,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return this.moveKanbanTask(normalizedToProject, taskId, normalizedSection);
     }
     const targetLaneOption = this.resolveKanbanLaneOption(normalizedToProject, normalizedSection);
-    const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.done) ? "Next" : (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || normalizedSection;
+    const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || normalizedSection;
     const currentTaskText = await this.getKanbanTaskDisplayById(normalizedFromProject, taskId);
     if (!currentTaskText) {
       new import_obsidian4.Notice("Could not find that Kanban task to transfer.");
@@ -17824,22 +17841,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         ...registryEntry,
         projectName: normalizedToProject,
         sectionName: effectiveTargetSection,
+        laneKey: (targetLaneOption == null ? void 0 : targetLaneOption.laneKey) || normalizedSection,
         taskText: transferred.taskText ? getTodoTaskDisplayText(transferred.taskText, effectiveTargetSection) : registryEntry.taskText,
         checked: false,
         updatedAt: timestamp
       };
     }
-    const nextContent = (targetLaneOption == null ? void 0 : targetLaneOption.done) ? completeTaskByIdInProject(transferred.content, {
-      projectName: normalizedToProject,
-      taskId,
-      archivedAt: timestamp,
-      taskRegistry: this.data.kanbanState.taskRegistry
-    }).content : transferred.content;
+    const nextContent = transferred.content;
     if (registryEntry) {
       this.data.kanbanState.taskRegistry[taskId] = {
         ...this.data.kanbanState.taskRegistry[taskId],
-        sectionName: (targetLaneOption == null ? void 0 : targetLaneOption.done) ? "Completed Archive" : effectiveTargetSection,
-        checked: Boolean(targetLaneOption == null ? void 0 : targetLaneOption.done),
+        sectionName: effectiveTargetSection,
+        laneKey: (targetLaneOption == null ? void 0 : targetLaneOption.laneKey) || normalizedSection,
+        checked: false,
         updatedAt: timestamp
       };
       this.removeTaskFromKanbanLaneOrder(normalizedFromProject, taskId);
@@ -18527,13 +18541,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   findBestDashKanbanLaneOption(projectName, task, laneOptions) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const persistedLaneKey = task.taskId.trim() ? (_c = (_b = (_a = this.data.kanbanState.taskRegistry[task.taskId.trim()]) == null ? void 0 : _a.laneKey) == null ? void 0 : _b.trim()) != null ? _c : "" : "";
+    const persistedCandidate = persistedLaneKey ? (_d = laneOptions.find((laneOption) => laneOption.laneKey === persistedLaneKey)) != null ? _d : null : null;
+    if (persistedCandidate && this.matchesDashKanbanLaneTaskBase(projectName, persistedCandidate, task)) {
+      return persistedCandidate;
+    }
     const candidates = laneOptions.filter((laneOption) => this.matchesDashKanbanLaneTaskBase(projectName, laneOption, task));
     if (candidates.length <= 1) {
-      return (_a = candidates[0]) != null ? _a : null;
+      return (_e = candidates[0]) != null ? _e : null;
     }
     if (!this.getKanbanBoardConfiguration(projectName).showLaneCategories) {
-      return (_b = candidates[0]) != null ? _b : null;
+      return (_f = candidates[0]) != null ? _f : null;
     }
     const scoredCandidates = candidates.map((laneOption, index) => ({
       laneOption,
@@ -18541,7 +18560,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       score: this.scoreDashKanbanLaneOptionForTask(laneOption, task)
     }));
     scoredCandidates.sort((left, right) => right.score - left.score || left.index - right.index);
-    return (_d = (_c = scoredCandidates[0]) == null ? void 0 : _c.laneOption) != null ? _d : null;
+    return (_h = (_g = scoredCandidates[0]) == null ? void 0 : _g.laneOption) != null ? _h : null;
   }
   matchesDashKanbanLaneTaskBase(projectName, laneOption, task) {
     const normalizedTaskSection = task.section.trim().toLowerCase();
@@ -21076,6 +21095,7 @@ ${context}`, resolvedModel);
         taskId,
         projectName: normalizedProjectName,
         sectionName: normalizedSectionName,
+        laneKey: (existing == null ? void 0 : existing.laneKey) || "",
         taskText: normalizedTaskText,
         checked,
         source: (existing == null ? void 0 : existing.source) === "visible-task-id" || task.taskId.trim().length > 0 && (existing == null ? void 0 : existing.source) === "visible-task-id" ? "visible-task-id" : (_a = existing == null ? void 0 : existing.source) != null ? _a : "hidden-registry",
@@ -21433,6 +21453,7 @@ ${context}`, resolvedModel);
           taskId: normalizedTaskId,
           projectName: typeof entry.projectName === "string" ? entry.projectName.trim() : "",
           sectionName: typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General",
+          laneKey: typeof entry.laneKey === "string" ? entry.laneKey.trim() : "",
           taskText: typeof entry.taskText === "string" ? entry.taskText.trim() : "",
           checked: Boolean(entry.checked),
           source: "visible-task-id",
@@ -22200,14 +22221,15 @@ ${context}`, resolvedModel);
     await this.refreshAfterTodoMutation(true, false);
   }
   async addKanbanTask(projectName, laneKey, taskText) {
-    var _a;
+    var _a, _b;
     const laneOption = this.resolveKanbanLaneOption(projectName, laneKey);
     const targetSection = (laneOption == null ? void 0 : laneOption.targetSection) || laneKey;
     const nextTaskText = this.formatTaskTextForKanbanLane(projectName, (_a = laneOption == null ? void 0 : laneOption.laneKey) != null ? _a : laneKey, taskText);
+    await this.seedKanbanRegistryTask(projectName, targetSection, (_b = laneOption == null ? void 0 : laneOption.laneKey) != null ? _b : laneKey, nextTaskText);
     await this.addTaskToProject(projectName, targetSection, nextTaskText);
   }
   async editKanbanTask(projectName, taskId, taskText, lane) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -22237,13 +22259,15 @@ ${context}`, resolvedModel);
       return false;
     }
     const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
-    if (((_c = (_b = currentLaneOption == null ? void 0 : currentLaneOption.laneKey) != null ? _b : currentTask == null ? void 0 : currentTask.section) != null ? _c : "") !== ((_d = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _d : lane)) {
+    const currentLaneKey = ((_c = (_b = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _b.laneKey) == null ? void 0 : _c.trim()) || (currentLaneOption == null ? void 0 : currentLaneOption.laneKey) || (currentTask == null ? void 0 : currentTask.section) || "";
+    if (currentLaneKey !== ((_d = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _d : lane)) {
       this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
     await this.syncKanbanRegistryAfterTaskEdit(taskId, {
       projectName,
       sectionName: trimmedLane,
+      laneKey: (_e = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _e : lane,
       taskText: formattedTaskText,
       checked: false
     });
@@ -22252,7 +22276,7 @@ ${context}`, resolvedModel);
     return true;
   }
   async updateKanbanTaskDetails(projectName, taskId, input) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -22290,13 +22314,15 @@ ${context}`, resolvedModel);
       return false;
     }
     const currentLaneOption = currentTask ? this.resolveKanbanLaneOption(projectName, currentTask.section) : null;
-    if (((_c = (_b = currentLaneOption == null ? void 0 : currentLaneOption.laneKey) != null ? _b : currentTask == null ? void 0 : currentTask.section) != null ? _c : "") !== ((_d = effectiveLaneOption == null ? void 0 : effectiveLaneOption.laneKey) != null ? _d : input.lane) || ((_e = currentTask == null ? void 0 : currentTask.priority) != null ? _e : "") !== input.priority.trim()) {
+    const currentLaneKey = ((_c = (_b = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _b.laneKey) == null ? void 0 : _c.trim()) || (currentLaneOption == null ? void 0 : currentLaneOption.laneKey) || (currentTask == null ? void 0 : currentTask.section) || "";
+    if (currentLaneKey !== ((_d = effectiveLaneOption == null ? void 0 : effectiveLaneOption.laneKey) != null ? _d : input.lane) || ((_e = currentTask == null ? void 0 : currentTask.priority) != null ? _e : "") !== input.priority.trim()) {
       this.removeTaskFromKanbanLaneOrder(projectName, taskId);
       await this.savePluginData();
     }
     await this.syncKanbanRegistryAfterTaskEdit(taskId, {
       projectName,
       sectionName: trimmedLane,
+      laneKey: (_f = effectiveLaneOption == null ? void 0 : effectiveLaneOption.laneKey) != null ? _f : input.lane,
       taskText: updated.taskText,
       checked: false
     });

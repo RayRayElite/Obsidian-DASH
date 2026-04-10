@@ -618,6 +618,7 @@ export interface KanbanTaskRegistryEntry {
   taskId: string;
   projectName: string;
   sectionName: string;
+  laneKey?: string;
   taskText: string;
   checked: boolean;
   source: "visible-task-id" | "hidden-registry";
