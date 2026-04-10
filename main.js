@@ -13828,19 +13828,19 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.plugin.pruneStaleKanbanRegistryEntries(true);
         })
       );
-      const collapseButton = document.createElement("button");
-      collapseButton.type = "button";
-      collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon";
-      collapseButton.ariaLabel = "Expand header";
-      collapseButton.title = "Expand header";
-      (0, import_obsidian3.setIcon)(collapseButton, "chevron-down");
-      collapseButton.addEventListener("mousedown", (event) => {
+      const collapseButton2 = document.createElement("button");
+      collapseButton2.type = "button";
+      collapseButton2.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon";
+      collapseButton2.ariaLabel = "Expand header";
+      collapseButton2.title = "Expand header";
+      (0, import_obsidian3.setIcon)(collapseButton2, "chevron-down");
+      collapseButton2.addEventListener("mousedown", (event) => {
         event.preventDefault();
       });
-      collapseButton.addEventListener("click", () => {
+      collapseButton2.addEventListener("click", () => {
         void this.plugin.updateKanbanViewState({ headerCollapsed: false });
       });
-      collapsedControls.appendChild(collapseButton);
+      collapsedControls.appendChild(collapseButton2);
       const collapsedBottom = hero2.createDiv({ cls: "dash-kanban-collapsed-bottom" });
       const summary2 = collapsedBottom.createDiv({ cls: "dash-kanban-summary" });
       createSemanticChip(summary2, `${snapshot.totalProjects} projects`, "focus");
@@ -13854,14 +13854,28 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       return;
     }
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
-    const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
+    const heroTop = hero.createDiv({ cls: "dash-kanban-hero-top" });
+    const copy = heroTop.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
     copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
     copy.createEl("p", {
       cls: "dash-kanban-subtitle",
       text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
     });
-    const summary = hero.createDiv({ cls: "dash-kanban-summary" });
+    const collapseButton = document.createElement("button");
+    collapseButton.type = "button";
+    collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon dash-kanban-collapse-button--hero";
+    collapseButton.ariaLabel = "Collapse header";
+    collapseButton.title = "Collapse header";
+    (0, import_obsidian3.setIcon)(collapseButton, "chevron-up");
+    collapseButton.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    collapseButton.addEventListener("click", () => {
+      void this.plugin.updateKanbanViewState({ headerCollapsed: true });
+    });
+    heroTop.appendChild(collapseButton);
+    const summary = hero.createDiv({ cls: "dash-kanban-summary dash-kanban-summary--hero" });
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
@@ -13870,12 +13884,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
     }
-    const headerMeta = hero.createDiv({ cls: "dash-kanban-summary" });
-    headerMeta.append(
-      this.createHeaderButton(viewState.headerCollapsed ? "chevron-down" : "chevron-up", viewState.headerCollapsed ? "Expand header" : "Collapse header", () => {
-        void this.plugin.updateKanbanViewState({ headerCollapsed: !viewState.headerCollapsed });
-      })
-    );
     const controls = header.createDiv({ cls: "dash-kanban-controls" });
     if (viewState.headerCollapsed) {
       controls.addClass("is-collapsed");

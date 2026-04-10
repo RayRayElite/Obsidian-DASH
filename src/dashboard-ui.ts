@@ -9812,7 +9812,8 @@ export class DashKanbanView extends ItemView {
     }
 
     const hero = header.createDiv({ cls: "dash-kanban-hero" });
-    const copy = hero.createDiv({ cls: "dash-kanban-hero-copy" });
+    const heroTop = hero.createDiv({ cls: "dash-kanban-hero-top" });
+    const copy = heroTop.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
     copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
     copy.createEl("p", {
@@ -9820,7 +9821,21 @@ export class DashKanbanView extends ItemView {
       text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
     });
 
-    const summary = hero.createDiv({ cls: "dash-kanban-summary" });
+    const collapseButton = document.createElement("button");
+    collapseButton.type = "button";
+    collapseButton.className = "dash-kanban-header-button dash-kanban-collapse-button dash-kanban-collapse-button--icon dash-kanban-collapse-button--hero";
+    collapseButton.ariaLabel = "Collapse header";
+    collapseButton.title = "Collapse header";
+    setIcon(collapseButton, "chevron-up");
+    collapseButton.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    collapseButton.addEventListener("click", () => {
+      void this.plugin.updateKanbanViewState({ headerCollapsed: true });
+    });
+    heroTop.appendChild(collapseButton);
+
+    const summary = hero.createDiv({ cls: "dash-kanban-summary dash-kanban-summary--hero" });
     createSemanticChip(summary, `${snapshot.totalProjects} projects`, "focus");
     createSemanticChip(summary, `${snapshot.totalCards} cards`, "capture");
     createSemanticChip(summary, viewState.mode === "all-projects" ? "All projects" : "Single project", "neutral");
@@ -9835,13 +9850,6 @@ export class DashKanbanView extends ItemView {
     if (snapshot.repairCount > 0) {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
     }
-
-    const headerMeta = hero.createDiv({ cls: "dash-kanban-summary" });
-    headerMeta.append(
-      this.createHeaderButton(viewState.headerCollapsed ? "chevron-down" : "chevron-up", viewState.headerCollapsed ? "Expand header" : "Collapse header", () => {
-        void this.plugin.updateKanbanViewState({ headerCollapsed: !viewState.headerCollapsed });
-      })
-    );
 
     const controls = header.createDiv({ cls: "dash-kanban-controls" });
     if (viewState.headerCollapsed) {
