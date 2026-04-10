@@ -2674,7 +2674,7 @@ export function updateTaskByIdInProject(content: string, input: {
     return { content, updated: false, found: false };
   }
 
-  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
+  const nextTaskText = input.taskText.trim();
   const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting"
     ? nextTaskText
     : stripBlockingTaskAnnotations(nextTaskText);
@@ -2711,18 +2711,9 @@ export function updateTaskByIdInProjectWithMetadata(content: string, input: {
     return { content, updated: false, taskText: "", found: false };
   }
 
-  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
-  const annotatedTaskText = applyTaskAnnotationOverrides(nextTaskText, {
-    priority: input.priority,
-    dueDate: input.dueDate,
-    blockedReason: input.blockedReason,
-    effort: input.effort,
-    executionContext: input.executionContext,
-    photoPaths: input.photoPaths
-  });
   const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting"
-    ? annotatedTaskText
-    : stripBlockingTaskAnnotations(annotatedTaskText);
+    ? input.taskText.trim()
+    : stripBlockingTaskAnnotations(input.taskText.trim());
   const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
 
   return {
@@ -2745,12 +2736,10 @@ export function updateTaskPhotoPathsByIdInProject(content: string, input: {
     return { content, updated: false, taskText: "", found: false, sectionName: "" };
   }
 
-  const annotatedTaskText = applyTaskAnnotationOverrides(match.taskText, {
-    photoPaths: input.photoPaths
-  });
+  const displayText = getTodoTaskDisplayText(match.taskText, match.section);
   const normalizedTaskText = match.section.trim().toLowerCase() === "waiting"
-    ? annotatedTaskText
-    : stripBlockingTaskAnnotations(annotatedTaskText);
+    ? displayText
+    : stripBlockingTaskAnnotations(displayText);
   const lines = content.split(/\r?\n/);
   lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked: string) => `- [${checked}] ${normalizedTaskText}`);
   const nextContent = lines.join("\n");
@@ -2782,9 +2771,10 @@ export function moveTaskByIdInProject(content: string, input: {
   }
 
   const targetSection = input.sectionName.trim() || location.section;
+  const displayText = getTodoTaskDisplayText(removed.taskText, location.section);
   const movedTaskText = targetSection.toLowerCase() === "waiting"
-    ? removed.taskText
-    : stripBlockingTaskAnnotations(removed.taskText);
+    ? displayText
+    : stripBlockingTaskAnnotations(displayText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, targetSection, movedTaskText);
 
   return {
@@ -2808,7 +2798,7 @@ export function transferTaskByIdBetweenProjects(content: string, input: {
   }
 
   const targetSection = input.sectionName.trim() || "General";
-  const nextTaskText = input.taskText?.trim().length ? input.taskText.trim() : removed.taskText;
+  const nextTaskText = input.taskText?.trim().length ? input.taskText.trim() : getTodoTaskDisplayText(removed.taskText, targetSection);
   const movedTaskText = targetSection.toLowerCase() === "waiting"
     ? nextTaskText
     : stripBlockingTaskAnnotations(nextTaskText);
@@ -3750,7 +3740,7 @@ function normalizeTodoDueDateKey(value: string): string | null {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
+export function parseTodoTaskSummary(rawText: string, section: string, now: Date): TodoTaskSummary {
   const taskId = extractTaskAnnotation(rawText, TASK_ID_ANNOTATION_KEY);
   const priority = extractTaskAnnotation(rawText, "priority");
   const dueDate = extractTaskAnnotation(rawText, "due");

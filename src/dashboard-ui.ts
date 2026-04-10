@@ -16,7 +16,7 @@ import {
   renderScore
 } from "./dashboard-core";
 import { formatMinutesAsHours, getMinutesBetween, getSleepMinutesForDay, getTrackedWorkMinutes, getTrackedWorkMinutesByProject } from "./dashboard-logs";
-import { getTodoTaskAnnotationValue, getTodoTaskPhotoPaths, splitMultilineInput } from "./dashboard-todo";
+import { splitMultilineInput } from "./dashboard-todo";
 import {
   ACTIVITY_SESSION_KIND_OPTIONS,
   CORE_SESSION_TRACKER_OPTIONS,
@@ -10802,10 +10802,10 @@ export class DashKanbanView extends ItemView {
   private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard): HTMLElement {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
-    const resolvedPriority = card.priority || getTodoTaskAnnotationValue(card.rawText, "priority");
-    const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
-    const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
-    const photoPaths = getTodoTaskPhotoPaths(card.rawText);
+    const resolvedPriority = card.priority;
+    const resolvedDueDate = card.dueDate;
+    const resolvedEffort = card.effort;
+    const photoPaths = card.photoPaths;
     const activePhotoIndex = this.getPhotoCardIndex(project.projectName, card.taskId, photoPaths.length);
     const activePhotoPath = photoPaths[activePhotoIndex] || "";
     const activePhotoUrl = activePhotoPath ? this.plugin.getKanbanTaskPhotoResourcePath(activePhotoPath) : "";

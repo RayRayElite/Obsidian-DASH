@@ -620,6 +620,16 @@ export interface KanbanTaskRegistryEntry {
   sectionName: string;
   laneKey?: string;
   taskText: string;
+  priority?: string;
+  dueDate?: string;
+  blockedReason?: string;
+  unblockDate?: string;
+  effort?: string;
+  energy?: string;
+  executionContext?: string;
+  trigger?: string;
+  minimumStep?: string;
+  photoPaths?: string[];
   checked: boolean;
   source: "visible-task-id" | "hidden-registry";
   updatedAt: string;
@@ -715,6 +725,7 @@ export interface DashKanbanCard {
   projectName: string;
   text: string;
   rawText: string;
+  photoPaths: string[];
   completedAt: string;
   sectionName: string;
   laneKey: string;

@@ -5159,7 +5159,7 @@ function updateTaskByIdInProject(content, input) {
   if (!removed) {
     return { content, updated: false, found: false };
   }
-  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
+  const nextTaskText = input.taskText.trim();
   const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting" ? nextTaskText : stripBlockingTaskAnnotations(nextTaskText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
   return {
@@ -5179,16 +5179,7 @@ function updateTaskByIdInProjectWithMetadata(content, input) {
   if (!removed) {
     return { content, updated: false, taskText: "", found: false };
   }
-  const nextTaskText = replaceTaskDisplayText(removed.taskText, input.taskText);
-  const annotatedTaskText = applyTaskAnnotationOverrides(nextTaskText, {
-    priority: input.priority,
-    dueDate: input.dueDate,
-    blockedReason: input.blockedReason,
-    effort: input.effort,
-    executionContext: input.executionContext,
-    photoPaths: input.photoPaths
-  });
-  const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting" ? annotatedTaskText : stripBlockingTaskAnnotations(annotatedTaskText);
+  const normalizedTaskText = input.sectionName.trim().toLowerCase() === "waiting" ? input.taskText.trim() : stripBlockingTaskAnnotations(input.taskText.trim());
   const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, input.sectionName, normalizedTaskText);
   return {
     content: nextContent,
@@ -5204,10 +5195,8 @@ function updateTaskPhotoPathsByIdInProject(content, input) {
   if (!match) {
     return { content, updated: false, taskText: "", found: false, sectionName: "" };
   }
-  const annotatedTaskText = applyTaskAnnotationOverrides(match.taskText, {
-    photoPaths: input.photoPaths
-  });
-  const normalizedTaskText = match.section.trim().toLowerCase() === "waiting" ? annotatedTaskText : stripBlockingTaskAnnotations(annotatedTaskText);
+  const displayText = getTodoTaskDisplayText(match.taskText, match.section);
+  const normalizedTaskText = match.section.trim().toLowerCase() === "waiting" ? displayText : stripBlockingTaskAnnotations(displayText);
   const lines = content.split(/\r?\n/);
   lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked) => `- [${checked}] ${normalizedTaskText}`);
   const nextContent = lines.join("\n");
@@ -5227,7 +5216,7 @@ function transferTaskByIdBetweenProjects(content, input) {
     return { content, updated: false, taskText: "" };
   }
   const targetSection = input.sectionName.trim() || "General";
-  const nextTaskText = ((_b = input.taskText) == null ? void 0 : _b.trim().length) ? input.taskText.trim() : removed.taskText;
+  const nextTaskText = ((_b = input.taskText) == null ? void 0 : _b.trim().length) ? input.taskText.trim() : getTodoTaskDisplayText(removed.taskText, targetSection);
   const movedTaskText = targetSection.toLowerCase() === "waiting" ? nextTaskText : stripBlockingTaskAnnotations(nextTaskText);
   const nextContent = insertTaskIntoProjectSection(removed.content, input.toProjectName, targetSection, movedTaskText);
   return {
@@ -5352,39 +5341,6 @@ function extractRenderedKanbanTaskId(value) {
 }
 function renderKanbanTaskIdComment(taskId) {
   return taskId.trim().length > 0 ? ` <!-- daily-dashboard-task-id: ${taskId.trim()} -->` : "";
-}
-function replaceTaskDisplayText(taskText, nextText) {
-  var _a;
-  const trimmedTaskText = taskText.trim();
-  const trimmedNextText = nextText.trim();
-  if (!trimmedTaskText || !trimmedNextText) {
-    return trimmedNextText || trimmedTaskText;
-  }
-  return renderTaskTextWithMetadata(
-    trimmedNextText,
-    extractAllTaskMetadata(trimmedTaskText),
-    (_a = extractTaskAnnotation(trimmedTaskText, TASK_ID_ANNOTATION_KEY)) != null ? _a : ""
-  );
-}
-function upsertTaskAnnotation(value, key, nextValue) {
-  var _a, _b;
-  const trimmedValue = value.trim();
-  const metadata = extractAllTaskMetadata(trimmedValue);
-  const taskId = (_a = extractTaskAnnotation(trimmedValue, TASK_ID_ANNOTATION_KEY)) != null ? _a : "";
-  setTaskHiddenMetadataValue(metadata, key, (_b = nextValue == null ? void 0 : nextValue.trim()) != null ? _b : "");
-  return renderTaskTextWithMetadata(stripTaskAnnotations(trimmedValue) || trimmedValue, metadata, taskId);
-}
-function applyTaskAnnotationOverrides(taskText, input) {
-  var _a;
-  let nextText = taskText.trim();
-  nextText = upsertTaskAnnotation(nextText, "priority", input.priority);
-  nextText = upsertTaskAnnotation(nextText, "due", input.dueDate);
-  nextText = upsertTaskAnnotation(nextText, "blocked", input.blockedReason);
-  nextText = upsertTaskAnnotation(nextText, "effort", input.effort);
-  nextText = upsertTaskAnnotation(nextText, "context", input.executionContext);
-  nextText = upsertTaskAnnotation(nextText, "photos", ((_a = input.photoPaths) != null ? _a : []).map((path) => path.trim()).filter(Boolean).join(" | "));
-  nextText = removeTaskAnnotation(nextText, "mode");
-  return nextText.replace(/\s{2,}/g, " ").trim();
 }
 function stripBlockingTaskAnnotations(value) {
   return removeTaskAnnotation(removeTaskAnnotation(removeTaskAnnotation(value, "blocked"), "unblock"), "blocked-until").replace(/\s{2,}/g, " ").trim();
@@ -15036,10 +14992,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   renderCard(project, lane, card) {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
-    const resolvedPriority = card.priority || getTodoTaskAnnotationValue(card.rawText, "priority");
-    const resolvedDueDate = card.dueDate || getTodoTaskAnnotationValue(card.rawText, "due");
-    const resolvedEffort = card.effort || getTodoTaskAnnotationValue(card.rawText, "effort");
-    const photoPaths = getTodoTaskPhotoPaths(card.rawText);
+    const resolvedPriority = card.priority;
+    const resolvedDueDate = card.dueDate;
+    const resolvedEffort = card.effort;
+    const photoPaths = card.photoPaths;
     const activePhotoIndex = this.getPhotoCardIndex(project.projectName, card.taskId, photoPaths.length);
     const activePhotoPath = photoPaths[activePhotoIndex] || "";
     const activePhotoUrl = activePhotoPath ? this.plugin.getKanbanTaskPhotoResourcePath(activePhotoPath) : "";
@@ -18420,7 +18376,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     void runRefresh();
   }
   async syncKanbanRegistryAfterTaskEdit(taskId, input) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (!registryEntry) {
       return;
@@ -18431,13 +18387,23 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       sectionName: input.sectionName,
       laneKey: ((_a = input.laneKey) == null ? void 0 : _a.trim()) || registryEntry.laneKey || "",
       taskText: getTodoTaskDisplayText(input.taskText, input.sectionName),
+      priority: (_d = (_c = (_b = input.priority) == null ? void 0 : _b.trim()) != null ? _c : registryEntry.priority) != null ? _d : "",
+      dueDate: (_g = (_f = (_e = input.dueDate) == null ? void 0 : _e.trim()) != null ? _f : registryEntry.dueDate) != null ? _g : "",
+      blockedReason: (_j = (_i = (_h = input.blockedReason) == null ? void 0 : _h.trim()) != null ? _i : registryEntry.blockedReason) != null ? _j : "",
+      unblockDate: (_m = (_l = (_k = input.unblockDate) == null ? void 0 : _k.trim()) != null ? _l : registryEntry.unblockDate) != null ? _m : "",
+      effort: (_p = (_o = (_n = input.effort) == null ? void 0 : _n.trim()) != null ? _o : registryEntry.effort) != null ? _p : "",
+      energy: (_s = (_r = (_q = input.energy) == null ? void 0 : _q.trim()) != null ? _r : registryEntry.energy) != null ? _s : "",
+      executionContext: (_v = (_u = (_t = input.executionContext) == null ? void 0 : _t.trim()) != null ? _u : registryEntry.executionContext) != null ? _v : "",
+      trigger: (_y = (_x = (_w = input.trigger) == null ? void 0 : _w.trim()) != null ? _x : registryEntry.trigger) != null ? _y : "",
+      minimumStep: (_B = (_A = (_z = input.minimumStep) == null ? void 0 : _z.trim()) != null ? _A : registryEntry.minimumStep) != null ? _B : "",
+      photoPaths: Array.isArray(input.photoPaths) ? input.photoPaths.map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index) : [...(_C = registryEntry.photoPaths) != null ? _C : []],
       checked: Boolean(input.checked),
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
   }
   async seedKanbanRegistryTask(projectName, sectionName, laneKey, taskText) {
-    var _a;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const normalizedProjectName = projectName.trim();
     const normalizedSectionName = sectionName.trim() || "General";
     const normalizedLaneKey = laneKey.trim();
@@ -18453,8 +18419,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       sectionName: normalizedSectionName,
       laneKey: normalizedLaneKey,
       taskText: normalizedTaskText,
+      priority: (_a = existing == null ? void 0 : existing.priority) != null ? _a : "",
+      dueDate: (_b = existing == null ? void 0 : existing.dueDate) != null ? _b : "",
+      blockedReason: (_c = existing == null ? void 0 : existing.blockedReason) != null ? _c : "",
+      unblockDate: (_d = existing == null ? void 0 : existing.unblockDate) != null ? _d : "",
+      effort: (_e = existing == null ? void 0 : existing.effort) != null ? _e : "",
+      energy: (_f = existing == null ? void 0 : existing.energy) != null ? _f : "",
+      executionContext: (_g = existing == null ? void 0 : existing.executionContext) != null ? _g : "",
+      trigger: (_h = existing == null ? void 0 : existing.trigger) != null ? _h : "",
+      minimumStep: (_i = existing == null ? void 0 : existing.minimumStep) != null ? _i : "",
+      photoPaths: [...(_j = existing == null ? void 0 : existing.photoPaths) != null ? _j : []],
       checked: false,
-      source: (_a = existing == null ? void 0 : existing.source) != null ? _a : "hidden-registry",
+      source: (_k = existing == null ? void 0 : existing.source) != null ? _k : "hidden-registry",
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -18984,6 +18960,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       sectionName: updated.sectionName || task.section,
       laneKey: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
       taskText: updated.taskText || task.rawText,
+      photoPaths,
       checked: false
     });
     await this.refreshAfterTodoMutation(true, true);
@@ -19001,7 +18978,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       new import_obsidian4.Notice("Could not find that Kanban card in the master task hub.");
       return false;
     }
-    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), normalizedImagePath].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    const nextPhotoPaths = [...this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText), normalizedImagePath].filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
   async uploadKanbanTaskPhoto(projectName, taskId, originalFileName, bytes) {
@@ -19052,7 +19029,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       new import_obsidian4.Notice("Only image files can be attached to cards.");
       return [];
     }
-    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths].map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
+    const nextPhotoPaths = [...this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText), ...stampedPaths].map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
     const updated = await this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
     return updated ? stampedPaths : [];
   }
@@ -19063,13 +19040,18 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const normalizedImagePath = (0, import_obsidian4.normalizePath)(imagePath.trim());
-    const currentPhotoPaths = getTodoTaskPhotoPaths(task.rawText);
+    const currentPhotoPaths = this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText);
     const nextPhotoPaths = currentPhotoPaths.filter((path) => (0, import_obsidian4.normalizePath)(path) !== normalizedImagePath);
     if (nextPhotoPaths.length === currentPhotoPaths.length) {
       new import_obsidian4.Notice("That image was not found on the card.");
       return false;
     }
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
+  }
+  getStoredKanbanTaskPhotoPaths(taskId, rawText) {
+    var _a, _b, _c;
+    const source = Array.isArray((_a = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _a.photoPaths) ? (_c = (_b = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _b.photoPaths) != null ? _c : [] : getTodoTaskPhotoPaths(rawText);
+    return source.map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
   }
   async openDashKanbanBoardSettings(initialProjectName = "") {
     var _a;
@@ -19137,18 +19119,27 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   buildDashKanbanCard(projectName, task, laneOption, liveTaskMetadata) {
+    var _a;
     const allCategoryTags = this.getKanbanLaneOptions(projectName).map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
     const liveMetadata = this.resolveDashKanbanLiveTaskMetadata(projectName, task, liveTaskMetadata);
     const visibleTags = this.extractDashKanbanTags(task.rawText).filter((tag) => !allCategoryTags.includes(tag.toLowerCase()));
     const resolvedRawText = (liveMetadata == null ? void 0 : liveMetadata.rawText) || task.rawText;
     const resolvedPriority = (liveMetadata == null ? void 0 : liveMetadata.priority) || task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
     const resolvedDueDate = (liveMetadata == null ? void 0 : liveMetadata.dueDate) || task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+    const resolvedBlockedReason = (liveMetadata == null ? void 0 : liveMetadata.blockedReason) || task.blockedReason;
+    const resolvedUnblockDate = (liveMetadata == null ? void 0 : liveMetadata.unblockDate) || task.unblockDate;
     const resolvedEffort = (liveMetadata == null ? void 0 : liveMetadata.effort) || task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
+    const resolvedEnergy = (liveMetadata == null ? void 0 : liveMetadata.energy) || task.energy;
+    const resolvedExecutionContext = (liveMetadata == null ? void 0 : liveMetadata.executionContext) || task.executionContext;
+    const resolvedTrigger = (liveMetadata == null ? void 0 : liveMetadata.trigger) || task.trigger;
+    const resolvedMinimumStep = (liveMetadata == null ? void 0 : liveMetadata.minimumStep) || task.minimumStep;
+    const resolvedPhotoPaths = ((_a = liveMetadata == null ? void 0 : liveMetadata.photoPaths) != null ? _a : []).map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
     return {
       taskId: task.taskId,
       projectName,
       text: this.stripKanbanCategoryTagsFromDisplay(task.text, allCategoryTags),
       rawText: resolvedRawText,
+      photoPaths: resolvedPhotoPaths,
       sectionName: task.section,
       laneKey: laneOption.laneKey,
       laneLabel: laneOption.label,
@@ -19157,13 +19148,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       completedAt: task.completedAt,
       priority: resolvedPriority,
       dueDate: resolvedDueDate,
-      blockedReason: task.blockedReason,
-      unblockDate: task.unblockDate,
+      blockedReason: resolvedBlockedReason,
+      unblockDate: resolvedUnblockDate,
       effort: resolvedEffort,
-      energy: task.energy,
-      executionContext: task.executionContext,
-      trigger: task.trigger,
-      minimumStep: task.minimumStep,
+      energy: resolvedEnergy,
+      executionContext: resolvedExecutionContext,
+      trigger: resolvedTrigger,
+      minimumStep: resolvedMinimumStep,
       isBlocked: task.isBlocked,
       isDueSoon: task.isDueSoon,
       isOverdue: task.isOverdue,
@@ -19173,12 +19164,48 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   buildDashKanbanLiveTaskMetadataLookup(content) {
-    const lines = content.split(/\r?\n/);
     const byTaskId = /* @__PURE__ */ new Map();
     const byProjectSectionAndText = /* @__PURE__ */ new Map();
     const byProjectAndText = /* @__PURE__ */ new Map();
+    const registerMetadata = (projectName, sectionName, taskId, displayText, metadata, overwrite = false) => {
+      const normalizedProjectName = projectName.trim().toLowerCase();
+      const normalizedSectionName = sectionName.trim().toLowerCase();
+      const normalizedText = displayText.trim().toLowerCase().replace(/\s+/g, " ");
+      if (!normalizedProjectName || !normalizedText) {
+        return;
+      }
+      if (taskId.trim()) {
+        if (overwrite || !byTaskId.has(taskId.trim())) {
+          byTaskId.set(taskId.trim(), metadata);
+        }
+      }
+      const projectSectionKey = `${normalizedProjectName}::${normalizedSectionName}::${normalizedText}`;
+      const projectKey = `${normalizedProjectName}::${normalizedText}`;
+      if (overwrite || !byProjectSectionAndText.has(projectSectionKey)) {
+        byProjectSectionAndText.set(projectSectionKey, metadata);
+      }
+      if (overwrite || !byProjectAndText.has(projectKey)) {
+        byProjectAndText.set(projectKey, metadata);
+      }
+    };
+    Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+      registerMetadata(entry.projectName, entry.sectionName, entry.taskId, getTodoTaskDisplayText(entry.taskText, entry.sectionName), {
+        rawText: entry.taskText,
+        priority: (_a = entry.priority) != null ? _a : "",
+        dueDate: (_b = entry.dueDate) != null ? _b : "",
+        blockedReason: (_c = entry.blockedReason) != null ? _c : "",
+        unblockDate: (_d = entry.unblockDate) != null ? _d : "",
+        effort: (_e = entry.effort) != null ? _e : "",
+        energy: (_f = entry.energy) != null ? _f : "",
+        executionContext: (_g = entry.executionContext) != null ? _g : "",
+        trigger: (_h = entry.trigger) != null ? _h : "",
+        minimumStep: (_i = entry.minimumStep) != null ? _i : "",
+        photoPaths: [...(_j = entry.photoPaths) != null ? _j : []]
+      }, true);
+    });
+    const lines = content.split(/\r?\n/);
     findProjectRanges(lines).forEach((project) => {
-      var _a, _b;
       let currentSection = "General";
       for (let index = project.start + 1; index <= project.end; index += 1) {
         const line = lines[index];
@@ -19196,23 +19223,21 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
           continue;
         }
         const displayText = getTodoTaskDisplayText(rawText, currentSection);
+        const parsedTask = parseTodoTaskSummary(rawText, currentSection, /* @__PURE__ */ new Date());
         const metadata = {
           rawText,
-          priority: getTodoTaskAnnotationValue(rawText, "priority"),
-          dueDate: getTodoTaskAnnotationValue(rawText, "due"),
-          effort: getTodoTaskAnnotationValue(rawText, "effort")
+          priority: parsedTask.priority || getTodoTaskAnnotationValue(rawText, "priority"),
+          dueDate: parsedTask.dueDate || getTodoTaskAnnotationValue(rawText, "due"),
+          blockedReason: parsedTask.blockedReason,
+          unblockDate: parsedTask.unblockDate,
+          effort: parsedTask.effort || getTodoTaskAnnotationValue(rawText, "effort"),
+          energy: parsedTask.energy,
+          executionContext: parsedTask.executionContext,
+          trigger: parsedTask.trigger,
+          minimumStep: parsedTask.minimumStep,
+          photoPaths: getTodoTaskPhotoPaths(rawText)
         };
-        const taskIdMatch = rawText.match(/\[task-id:\s*([^\]]+)\]/i);
-        const taskId = (_b = (_a = taskIdMatch == null ? void 0 : taskIdMatch[1]) == null ? void 0 : _a.trim()) != null ? _b : "";
-        if (taskId) {
-          byTaskId.set(taskId, metadata);
-        }
-        const normalizedText = displayText.trim().toLowerCase().replace(/\s+/g, " ");
-        if (!normalizedText) {
-          continue;
-        }
-        byProjectSectionAndText.set(`${project.name.trim().toLowerCase()}::${currentSection.trim().toLowerCase()}::${normalizedText}`, metadata);
-        byProjectAndText.set(`${project.name.trim().toLowerCase()}::${normalizedText}`, metadata);
+        registerMetadata(project.name, currentSection, parsedTask.taskId, displayText, metadata, false);
       }
     });
     return { byTaskId, byProjectSectionAndText, byProjectAndText };
@@ -21843,7 +21868,7 @@ ${context}`, resolvedModel);
   hydrateKanbanTaskRegistryFromSnapshot(snapshot, updatedAt) {
     let changed = 0;
     const assignTaskId = (projectName, sectionName, task, checked) => {
-      var _a;
+      var _a, _b;
       const repairId = `ambiguous-match:${projectName.trim().toLowerCase()}:${sectionName.trim().toLowerCase()}:${task.text.trim().toLowerCase()}`;
       const normalizedProjectName = projectName.trim();
       const normalizedSectionName = sectionName.trim() || "General";
@@ -21894,8 +21919,18 @@ ${context}`, resolvedModel);
         sectionName: normalizedSectionName,
         laneKey: (existing == null ? void 0 : existing.laneKey) || "",
         taskText: normalizedTaskText,
+        priority: task.priority || (existing == null ? void 0 : existing.priority) || getTodoTaskAnnotationValue(task.rawText, "priority"),
+        dueDate: task.dueDate || (existing == null ? void 0 : existing.dueDate) || getTodoTaskAnnotationValue(task.rawText, "due"),
+        blockedReason: task.blockedReason || (existing == null ? void 0 : existing.blockedReason) || "",
+        unblockDate: task.unblockDate || (existing == null ? void 0 : existing.unblockDate) || "",
+        effort: task.effort || (existing == null ? void 0 : existing.effort) || getTodoTaskAnnotationValue(task.rawText, "effort"),
+        energy: task.energy || (existing == null ? void 0 : existing.energy) || "",
+        executionContext: task.executionContext || (existing == null ? void 0 : existing.executionContext) || "",
+        trigger: task.trigger || (existing == null ? void 0 : existing.trigger) || "",
+        minimumStep: task.minimumStep || (existing == null ? void 0 : existing.minimumStep) || "",
+        photoPaths: getTodoTaskPhotoPaths(task.rawText).length > 0 ? getTodoTaskPhotoPaths(task.rawText) : [...(_a = existing == null ? void 0 : existing.photoPaths) != null ? _a : []],
         checked,
-        source: (existing == null ? void 0 : existing.source) === "visible-task-id" || task.taskId.trim().length > 0 && (existing == null ? void 0 : existing.source) === "visible-task-id" ? "visible-task-id" : (_a = existing == null ? void 0 : existing.source) != null ? _a : "hidden-registry",
+        source: (existing == null ? void 0 : existing.source) === "visible-task-id" || task.taskId.trim().length > 0 && (existing == null ? void 0 : existing.source) === "visible-task-id" ? "visible-task-id" : (_b = existing == null ? void 0 : existing.source) != null ? _b : "hidden-registry",
         updatedAt
       };
       if (!existing || existing.projectName !== nextEntry.projectName || existing.sectionName !== nextEntry.sectionName || existing.taskText !== nextEntry.taskText || existing.checked !== nextEntry.checked || existing.source !== nextEntry.source || existing.updatedAt !== nextEntry.updatedAt) {
@@ -22235,6 +22270,22 @@ ${context}`, resolvedModel);
       headerCollapsed: Boolean(value == null ? void 0 : value.headerCollapsed)
     };
   }
+  extractLegacyKanbanRegistryMetadata(taskText, sectionName) {
+    const parsedTask = parseTodoTaskSummary(taskText, sectionName, /* @__PURE__ */ new Date());
+    return {
+      taskText: getTodoTaskDisplayText(taskText, sectionName),
+      priority: parsedTask.priority,
+      dueDate: parsedTask.dueDate,
+      blockedReason: parsedTask.blockedReason,
+      unblockDate: parsedTask.unblockDate,
+      effort: parsedTask.effort,
+      energy: parsedTask.energy,
+      executionContext: parsedTask.executionContext,
+      trigger: parsedTask.trigger,
+      minimumStep: parsedTask.minimumStep,
+      photoPaths: getTodoTaskPhotoPaths(taskText)
+    };
+  }
   normalizeKanbanState(state) {
     const taskRegistry = {};
     if ((state == null ? void 0 : state.taskRegistry) && typeof state.taskRegistry === "object") {
@@ -22246,14 +22297,26 @@ ${context}`, resolvedModel);
         if (!normalizedTaskId) {
           return;
         }
+        const sectionName = typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General";
+        const legacyMetadata = this.extractLegacyKanbanRegistryMetadata(typeof entry.taskText === "string" ? entry.taskText.trim() : "", sectionName);
         taskRegistry[normalizedTaskId] = {
           taskId: normalizedTaskId,
           projectName: typeof entry.projectName === "string" ? entry.projectName.trim() : "",
-          sectionName: typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General",
+          sectionName,
           laneKey: typeof entry.laneKey === "string" ? entry.laneKey.trim() : "",
-          taskText: typeof entry.taskText === "string" ? entry.taskText.trim() : "",
+          taskText: legacyMetadata.taskText,
+          priority: typeof entry.priority === "string" ? entry.priority.trim() : legacyMetadata.priority,
+          dueDate: typeof entry.dueDate === "string" ? entry.dueDate.trim() : legacyMetadata.dueDate,
+          blockedReason: typeof entry.blockedReason === "string" ? entry.blockedReason.trim() : legacyMetadata.blockedReason,
+          unblockDate: typeof entry.unblockDate === "string" ? entry.unblockDate.trim() : legacyMetadata.unblockDate,
+          effort: typeof entry.effort === "string" ? entry.effort.trim() : legacyMetadata.effort,
+          energy: typeof entry.energy === "string" ? entry.energy.trim() : legacyMetadata.energy,
+          executionContext: typeof entry.executionContext === "string" ? entry.executionContext.trim() : legacyMetadata.executionContext,
+          trigger: typeof entry.trigger === "string" ? entry.trigger.trim() : legacyMetadata.trigger,
+          minimumStep: typeof entry.minimumStep === "string" ? entry.minimumStep.trim() : legacyMetadata.minimumStep,
+          photoPaths: Array.isArray(entry.photoPaths) ? entry.photoPaths.filter((path) => typeof path === "string").map((path) => (0, import_obsidian4.normalizePath)(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index) : legacyMetadata.photoPaths,
           checked: Boolean(entry.checked),
-          source: "visible-task-id",
+          source: entry.source === "hidden-registry" ? "hidden-registry" : "visible-task-id",
           updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
         };
       });
@@ -22270,6 +22333,7 @@ ${context}`, resolvedModel);
   seedKanbanTaskRegistryFromPreview(preview, updatedAt) {
     let changed = 0;
     preview.tasksWithVisibleId.forEach((task) => {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
       if (!task.taskId) {
         return;
       }
@@ -22279,6 +22343,16 @@ ${context}`, resolvedModel);
         projectName: task.projectName,
         sectionName: task.sectionName,
         taskText: task.taskText,
+        priority: (_a = existing == null ? void 0 : existing.priority) != null ? _a : "",
+        dueDate: (_b = existing == null ? void 0 : existing.dueDate) != null ? _b : "",
+        blockedReason: (_c = existing == null ? void 0 : existing.blockedReason) != null ? _c : "",
+        unblockDate: (_d = existing == null ? void 0 : existing.unblockDate) != null ? _d : "",
+        effort: (_e = existing == null ? void 0 : existing.effort) != null ? _e : "",
+        energy: (_f = existing == null ? void 0 : existing.energy) != null ? _f : "",
+        executionContext: (_g = existing == null ? void 0 : existing.executionContext) != null ? _g : "",
+        trigger: (_h = existing == null ? void 0 : existing.trigger) != null ? _h : "",
+        minimumStep: (_i = existing == null ? void 0 : existing.minimumStep) != null ? _i : "",
+        photoPaths: [...(_j = existing == null ? void 0 : existing.photoPaths) != null ? _j : []],
         checked: task.checked,
         source: "visible-task-id",
         updatedAt
@@ -22289,6 +22363,7 @@ ${context}`, resolvedModel);
       }
     });
     preview.brokenLegacyTaskLines.forEach((task) => {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
       if (!task.taskId) {
         return;
       }
@@ -22298,6 +22373,16 @@ ${context}`, resolvedModel);
         projectName: task.projectName,
         sectionName: task.sectionName,
         taskText: task.taskText,
+        priority: (_a = existing == null ? void 0 : existing.priority) != null ? _a : "",
+        dueDate: (_b = existing == null ? void 0 : existing.dueDate) != null ? _b : "",
+        blockedReason: (_c = existing == null ? void 0 : existing.blockedReason) != null ? _c : "",
+        unblockDate: (_d = existing == null ? void 0 : existing.unblockDate) != null ? _d : "",
+        effort: (_e = existing == null ? void 0 : existing.effort) != null ? _e : "",
+        energy: (_f = existing == null ? void 0 : existing.energy) != null ? _f : "",
+        executionContext: (_g = existing == null ? void 0 : existing.executionContext) != null ? _g : "",
+        trigger: (_h = existing == null ? void 0 : existing.trigger) != null ? _h : "",
+        minimumStep: (_i = existing == null ? void 0 : existing.minimumStep) != null ? _i : "",
+        photoPaths: [...(_j = existing == null ? void 0 : existing.photoPaths) != null ? _j : []],
         checked: task.checked,
         source: "visible-task-id",
         updatedAt
@@ -23123,6 +23208,12 @@ ${context}`, resolvedModel);
       sectionName: trimmedLane,
       laneKey: (_f = effectiveLaneOption == null ? void 0 : effectiveLaneOption.laneKey) != null ? _f : input.lane,
       taskText: updated.taskText,
+      priority: input.priority,
+      dueDate: input.dueDate,
+      blockedReason: input.blockedReason,
+      effort: input.effort,
+      executionContext: input.executionContext,
+      photoPaths: input.photoPaths,
       checked: false
     });
     if (updated.updated) {
@@ -23132,7 +23223,7 @@ ${context}`, resolvedModel);
     return true;
   }
   async cycleKanbanTaskPriority(projectName, taskId) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const snapshot = await this.getTodoSnapshot();
     const project = snapshot == null ? void 0 : snapshot.projects.find((candidate) => candidate.name === projectName);
     const task = project ? this.getProjectTaskDetails(project, true).find((candidate) => candidate.taskId === taskId) : null;
@@ -23140,11 +23231,12 @@ ${context}`, resolvedModel);
       return false;
     }
     const priorityOrder = ["", "low", "medium", "high", "urgent"];
-    const currentIndex = priorityOrder.indexOf(task.priority.trim().toLowerCase());
-    const nextPriority = (_a = priorityOrder[(currentIndex + 1) % priorityOrder.length]) != null ? _a : "";
+    const currentPriority = ((_b = (_a = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _a.priority) == null ? void 0 : _b.trim().toLowerCase()) || task.priority.trim().toLowerCase();
+    const currentIndex = priorityOrder.indexOf(currentPriority);
+    const nextPriority = (_c = priorityOrder[(currentIndex + 1) % priorityOrder.length]) != null ? _c : "";
     return this.updateKanbanTaskDetails(projectName, taskId, {
       taskText: task.text,
-      lane: (_c = (_b = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _b.laneKey) != null ? _c : task.section,
+      lane: (_e = (_d = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _d.laneKey) != null ? _e : task.section,
       priority: nextPriority,
       dueDate: task.dueDate,
       blockedReason: task.blockedReason,

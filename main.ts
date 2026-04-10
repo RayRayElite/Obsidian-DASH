@@ -94,6 +94,7 @@ import {
   insertTaskIntoProjectSection,
   isRepeatingTaskDue,
   offloadReferencesFromMasterHub,
+  parseTodoTaskSummary,
   parseTodoSnapshot,
   repairBrokenKanbanMasterHubLines,
   repairMasterHubStructure,
@@ -228,7 +229,14 @@ type DashKanbanLiveTaskMetadata = {
   rawText: string;
   priority: string;
   dueDate: string;
+  blockedReason: string;
+  unblockDate: string;
   effort: string;
+  energy: string;
+  executionContext: string;
+  trigger: string;
+  minimumStep: string;
+  photoPaths: string[];
 };
 
 type DashKanbanLiveTaskMetadataLookup = {
@@ -3168,6 +3176,16 @@ export default class DailyDashboardPlugin extends Plugin {
     laneKey?: string;
     taskText: string;
     checked?: boolean;
+    priority?: string;
+    dueDate?: string;
+    blockedReason?: string;
+    unblockDate?: string;
+    effort?: string;
+    energy?: string;
+    executionContext?: string;
+    trigger?: string;
+    minimumStep?: string;
+    photoPaths?: string[];
   }): Promise<void> {
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (!registryEntry) {
@@ -3180,6 +3198,18 @@ export default class DailyDashboardPlugin extends Plugin {
       sectionName: input.sectionName,
       laneKey: input.laneKey?.trim() || registryEntry.laneKey || "",
       taskText: getTodoTaskDisplayText(input.taskText, input.sectionName),
+      priority: input.priority?.trim() ?? registryEntry.priority ?? "",
+      dueDate: input.dueDate?.trim() ?? registryEntry.dueDate ?? "",
+      blockedReason: input.blockedReason?.trim() ?? registryEntry.blockedReason ?? "",
+      unblockDate: input.unblockDate?.trim() ?? registryEntry.unblockDate ?? "",
+      effort: input.effort?.trim() ?? registryEntry.effort ?? "",
+      energy: input.energy?.trim() ?? registryEntry.energy ?? "",
+      executionContext: input.executionContext?.trim() ?? registryEntry.executionContext ?? "",
+      trigger: input.trigger?.trim() ?? registryEntry.trigger ?? "",
+      minimumStep: input.minimumStep?.trim() ?? registryEntry.minimumStep ?? "",
+      photoPaths: Array.isArray(input.photoPaths)
+        ? input.photoPaths.map((path) => normalizePath(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index)
+        : [...(registryEntry.photoPaths ?? [])],
       checked: Boolean(input.checked),
       updatedAt: formatDateTimeKey(new Date())
     };
@@ -3208,6 +3238,16 @@ export default class DailyDashboardPlugin extends Plugin {
       sectionName: normalizedSectionName,
       laneKey: normalizedLaneKey,
       taskText: normalizedTaskText,
+      priority: existing?.priority ?? "",
+      dueDate: existing?.dueDate ?? "",
+      blockedReason: existing?.blockedReason ?? "",
+      unblockDate: existing?.unblockDate ?? "",
+      effort: existing?.effort ?? "",
+      energy: existing?.energy ?? "",
+      executionContext: existing?.executionContext ?? "",
+      trigger: existing?.trigger ?? "",
+      minimumStep: existing?.minimumStep ?? "",
+      photoPaths: [...(existing?.photoPaths ?? [])],
       checked: false,
       source: existing?.source ?? "hidden-registry",
       updatedAt: formatDateTimeKey(new Date())
@@ -3840,6 +3880,7 @@ export default class DailyDashboardPlugin extends Plugin {
       sectionName: updated.sectionName || task.section,
       laneKey: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
       taskText: updated.taskText || task.rawText,
+      photoPaths,
       checked: false
     });
     await this.refreshAfterTodoMutation(true, true);
@@ -3860,7 +3901,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return false;
     }
 
-    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), normalizedImagePath]
+    const nextPhotoPaths = [...this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText), normalizedImagePath]
       .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
   }
@@ -3923,7 +3964,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return [];
     }
 
-    const nextPhotoPaths = [...getTodoTaskPhotoPaths(task.rawText), ...stampedPaths]
+    const nextPhotoPaths = [...this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText), ...stampedPaths]
       .map((path) => normalizePath(path.trim()))
       .filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
     const updated = await this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
@@ -3939,7 +3980,7 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const normalizedImagePath = normalizePath(imagePath.trim());
-    const currentPhotoPaths = getTodoTaskPhotoPaths(task.rawText);
+    const currentPhotoPaths = this.getStoredKanbanTaskPhotoPaths(taskId, task.rawText);
     const nextPhotoPaths = currentPhotoPaths
       .filter((path) => normalizePath(path) !== normalizedImagePath);
     if (nextPhotoPaths.length === currentPhotoPaths.length) {
@@ -3948,6 +3989,15 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     return this.setKanbanTaskPhotoPaths(projectName, taskId, nextPhotoPaths);
+  }
+
+  private getStoredKanbanTaskPhotoPaths(taskId: string, rawText: string): string[] {
+    const source = Array.isArray(this.data.kanbanState.taskRegistry[taskId]?.photoPaths)
+      ? this.data.kanbanState.taskRegistry[taskId]?.photoPaths ?? []
+      : getTodoTaskPhotoPaths(rawText);
+    return source
+      .map((path) => normalizePath(path.trim()))
+      .filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
   }
 
   async openDashKanbanBoardSettings(initialProjectName = ""): Promise<void> {
@@ -4033,13 +4083,23 @@ export default class DailyDashboardPlugin extends Plugin {
     const resolvedRawText = liveMetadata?.rawText || task.rawText;
     const resolvedPriority = liveMetadata?.priority || task.priority || getTodoTaskAnnotationValue(task.rawText, "priority");
     const resolvedDueDate = liveMetadata?.dueDate || task.dueDate || getTodoTaskAnnotationValue(task.rawText, "due");
+    const resolvedBlockedReason = liveMetadata?.blockedReason || task.blockedReason;
+    const resolvedUnblockDate = liveMetadata?.unblockDate || task.unblockDate;
     const resolvedEffort = liveMetadata?.effort || task.effort || getTodoTaskAnnotationValue(task.rawText, "effort");
+    const resolvedEnergy = liveMetadata?.energy || task.energy;
+    const resolvedExecutionContext = liveMetadata?.executionContext || task.executionContext;
+    const resolvedTrigger = liveMetadata?.trigger || task.trigger;
+    const resolvedMinimumStep = liveMetadata?.minimumStep || task.minimumStep;
+    const resolvedPhotoPaths = (liveMetadata?.photoPaths ?? [])
+      .map((path) => normalizePath(path.trim()))
+      .filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
 
     return {
       taskId: task.taskId,
       projectName,
       text: this.stripKanbanCategoryTagsFromDisplay(task.text, allCategoryTags),
       rawText: resolvedRawText,
+      photoPaths: resolvedPhotoPaths,
       sectionName: task.section,
       laneKey: laneOption.laneKey,
       laneLabel: laneOption.label,
@@ -4048,13 +4108,13 @@ export default class DailyDashboardPlugin extends Plugin {
       completedAt: task.completedAt,
       priority: resolvedPriority,
       dueDate: resolvedDueDate,
-      blockedReason: task.blockedReason,
-      unblockDate: task.unblockDate,
+      blockedReason: resolvedBlockedReason,
+      unblockDate: resolvedUnblockDate,
       effort: resolvedEffort,
-      energy: task.energy,
-      executionContext: task.executionContext,
-      trigger: task.trigger,
-      minimumStep: task.minimumStep,
+      energy: resolvedEnergy,
+      executionContext: resolvedExecutionContext,
+      trigger: resolvedTrigger,
+      minimumStep: resolvedMinimumStep,
       isBlocked: task.isBlocked,
       isDueSoon: task.isDueSoon,
       isOverdue: task.isOverdue,
@@ -4065,10 +4125,51 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private buildDashKanbanLiveTaskMetadataLookup(content: string): DashKanbanLiveTaskMetadataLookup {
-    const lines = content.split(/\r?\n/);
     const byTaskId = new Map<string, DashKanbanLiveTaskMetadata>();
     const byProjectSectionAndText = new Map<string, DashKanbanLiveTaskMetadata>();
     const byProjectAndText = new Map<string, DashKanbanLiveTaskMetadata>();
+
+    const registerMetadata = (projectName: string, sectionName: string, taskId: string, displayText: string, metadata: DashKanbanLiveTaskMetadata, overwrite = false): void => {
+      const normalizedProjectName = projectName.trim().toLowerCase();
+      const normalizedSectionName = sectionName.trim().toLowerCase();
+      const normalizedText = displayText.trim().toLowerCase().replace(/\s+/g, " ");
+      if (!normalizedProjectName || !normalizedText) {
+        return;
+      }
+
+      if (taskId.trim()) {
+        if (overwrite || !byTaskId.has(taskId.trim())) {
+          byTaskId.set(taskId.trim(), metadata);
+        }
+      }
+
+      const projectSectionKey = `${normalizedProjectName}::${normalizedSectionName}::${normalizedText}`;
+      const projectKey = `${normalizedProjectName}::${normalizedText}`;
+      if (overwrite || !byProjectSectionAndText.has(projectSectionKey)) {
+        byProjectSectionAndText.set(projectSectionKey, metadata);
+      }
+      if (overwrite || !byProjectAndText.has(projectKey)) {
+        byProjectAndText.set(projectKey, metadata);
+      }
+    };
+
+    Object.values(this.data.kanbanState.taskRegistry).forEach((entry) => {
+      registerMetadata(entry.projectName, entry.sectionName, entry.taskId, getTodoTaskDisplayText(entry.taskText, entry.sectionName), {
+        rawText: entry.taskText,
+        priority: entry.priority ?? "",
+        dueDate: entry.dueDate ?? "",
+        blockedReason: entry.blockedReason ?? "",
+        unblockDate: entry.unblockDate ?? "",
+        effort: entry.effort ?? "",
+        energy: entry.energy ?? "",
+        executionContext: entry.executionContext ?? "",
+        trigger: entry.trigger ?? "",
+        minimumStep: entry.minimumStep ?? "",
+        photoPaths: [...(entry.photoPaths ?? [])]
+      }, true);
+    });
+
+    const lines = content.split(/\r?\n/);
 
     findProjectRanges(lines).forEach((project) => {
       let currentSection = "General";
@@ -4092,26 +4193,22 @@ export default class DailyDashboardPlugin extends Plugin {
         }
 
         const displayText = getTodoTaskDisplayText(rawText, currentSection);
+        const parsedTask = parseTodoTaskSummary(rawText, currentSection, new Date());
         const metadata: DashKanbanLiveTaskMetadata = {
           rawText,
-          priority: getTodoTaskAnnotationValue(rawText, "priority"),
-          dueDate: getTodoTaskAnnotationValue(rawText, "due"),
-          effort: getTodoTaskAnnotationValue(rawText, "effort")
+          priority: parsedTask.priority || getTodoTaskAnnotationValue(rawText, "priority"),
+          dueDate: parsedTask.dueDate || getTodoTaskAnnotationValue(rawText, "due"),
+          blockedReason: parsedTask.blockedReason,
+          unblockDate: parsedTask.unblockDate,
+          effort: parsedTask.effort || getTodoTaskAnnotationValue(rawText, "effort"),
+          energy: parsedTask.energy,
+          executionContext: parsedTask.executionContext,
+          trigger: parsedTask.trigger,
+          minimumStep: parsedTask.minimumStep,
+          photoPaths: getTodoTaskPhotoPaths(rawText)
         };
 
-        const taskIdMatch = rawText.match(/\[task-id:\s*([^\]]+)\]/i);
-        const taskId = taskIdMatch?.[1]?.trim() ?? "";
-        if (taskId) {
-          byTaskId.set(taskId, metadata);
-        }
-
-        const normalizedText = displayText.trim().toLowerCase().replace(/\s+/g, " ");
-        if (!normalizedText) {
-          continue;
-        }
-
-        byProjectSectionAndText.set(`${project.name.trim().toLowerCase()}::${currentSection.trim().toLowerCase()}::${normalizedText}`, metadata);
-        byProjectAndText.set(`${project.name.trim().toLowerCase()}::${normalizedText}`, metadata);
+        registerMetadata(project.name, currentSection, parsedTask.taskId, displayText, metadata, false);
       }
     });
 
@@ -7332,6 +7429,18 @@ export default class DailyDashboardPlugin extends Plugin {
         sectionName: normalizedSectionName,
         laneKey: existing?.laneKey || "",
         taskText: normalizedTaskText,
+        priority: task.priority || existing?.priority || getTodoTaskAnnotationValue(task.rawText, "priority"),
+        dueDate: task.dueDate || existing?.dueDate || getTodoTaskAnnotationValue(task.rawText, "due"),
+        blockedReason: task.blockedReason || existing?.blockedReason || "",
+        unblockDate: task.unblockDate || existing?.unblockDate || "",
+        effort: task.effort || existing?.effort || getTodoTaskAnnotationValue(task.rawText, "effort"),
+        energy: task.energy || existing?.energy || "",
+        executionContext: task.executionContext || existing?.executionContext || "",
+        trigger: task.trigger || existing?.trigger || "",
+        minimumStep: task.minimumStep || existing?.minimumStep || "",
+        photoPaths: getTodoTaskPhotoPaths(task.rawText).length > 0
+          ? getTodoTaskPhotoPaths(task.rawText)
+          : [...(existing?.photoPaths ?? [])],
         checked,
         source: existing?.source === "visible-task-id" || task.taskId.trim().length > 0 && existing?.source === "visible-task-id"
           ? "visible-task-id"
@@ -7770,6 +7879,34 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
+  private extractLegacyKanbanRegistryMetadata(taskText: string, sectionName: string): Pick<KanbanTaskRegistryEntry,
+    "taskText"
+    | "priority"
+    | "dueDate"
+    | "blockedReason"
+    | "unblockDate"
+    | "effort"
+    | "energy"
+    | "executionContext"
+    | "trigger"
+    | "minimumStep"
+    | "photoPaths"> {
+    const parsedTask = parseTodoTaskSummary(taskText, sectionName, new Date());
+    return {
+      taskText: getTodoTaskDisplayText(taskText, sectionName),
+      priority: parsedTask.priority,
+      dueDate: parsedTask.dueDate,
+      blockedReason: parsedTask.blockedReason,
+      unblockDate: parsedTask.unblockDate,
+      effort: parsedTask.effort,
+      energy: parsedTask.energy,
+      executionContext: parsedTask.executionContext,
+      trigger: parsedTask.trigger,
+      minimumStep: parsedTask.minimumStep,
+      photoPaths: getTodoTaskPhotoPaths(taskText)
+    };
+  }
+
   private normalizeKanbanState(state: Partial<KanbanState> | null | undefined): KanbanState {
     const taskRegistry: Record<string, KanbanTaskRegistryEntry> = {};
     if (state?.taskRegistry && typeof state.taskRegistry === "object") {
@@ -7783,14 +7920,29 @@ export default class DailyDashboardPlugin extends Plugin {
           return;
         }
 
+        const sectionName = typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General";
+        const legacyMetadata = this.extractLegacyKanbanRegistryMetadata(typeof entry.taskText === "string" ? entry.taskText.trim() : "", sectionName);
+
         taskRegistry[normalizedTaskId] = {
           taskId: normalizedTaskId,
           projectName: typeof entry.projectName === "string" ? entry.projectName.trim() : "",
-          sectionName: typeof entry.sectionName === "string" ? entry.sectionName.trim() : "General",
+          sectionName,
           laneKey: typeof entry.laneKey === "string" ? entry.laneKey.trim() : "",
-          taskText: typeof entry.taskText === "string" ? entry.taskText.trim() : "",
+          taskText: legacyMetadata.taskText,
+          priority: typeof entry.priority === "string" ? entry.priority.trim() : legacyMetadata.priority,
+          dueDate: typeof entry.dueDate === "string" ? entry.dueDate.trim() : legacyMetadata.dueDate,
+          blockedReason: typeof entry.blockedReason === "string" ? entry.blockedReason.trim() : legacyMetadata.blockedReason,
+          unblockDate: typeof entry.unblockDate === "string" ? entry.unblockDate.trim() : legacyMetadata.unblockDate,
+          effort: typeof entry.effort === "string" ? entry.effort.trim() : legacyMetadata.effort,
+          energy: typeof entry.energy === "string" ? entry.energy.trim() : legacyMetadata.energy,
+          executionContext: typeof entry.executionContext === "string" ? entry.executionContext.trim() : legacyMetadata.executionContext,
+          trigger: typeof entry.trigger === "string" ? entry.trigger.trim() : legacyMetadata.trigger,
+          minimumStep: typeof entry.minimumStep === "string" ? entry.minimumStep.trim() : legacyMetadata.minimumStep,
+          photoPaths: Array.isArray(entry.photoPaths)
+            ? entry.photoPaths.filter((path): path is string => typeof path === "string").map((path) => normalizePath(path.trim())).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index)
+            : legacyMetadata.photoPaths,
           checked: Boolean(entry.checked),
-          source: "visible-task-id",
+          source: entry.source === "hidden-registry" ? "hidden-registry" : "visible-task-id",
           updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
         };
       });
@@ -7820,6 +7972,16 @@ export default class DailyDashboardPlugin extends Plugin {
         projectName: task.projectName,
         sectionName: task.sectionName,
         taskText: task.taskText,
+        priority: existing?.priority ?? "",
+        dueDate: existing?.dueDate ?? "",
+        blockedReason: existing?.blockedReason ?? "",
+        unblockDate: existing?.unblockDate ?? "",
+        effort: existing?.effort ?? "",
+        energy: existing?.energy ?? "",
+        executionContext: existing?.executionContext ?? "",
+        trigger: existing?.trigger ?? "",
+        minimumStep: existing?.minimumStep ?? "",
+        photoPaths: [...(existing?.photoPaths ?? [])],
         checked: task.checked,
         source: "visible-task-id",
         updatedAt
@@ -7847,6 +8009,16 @@ export default class DailyDashboardPlugin extends Plugin {
         projectName: task.projectName,
         sectionName: task.sectionName,
         taskText: task.taskText,
+        priority: existing?.priority ?? "",
+        dueDate: existing?.dueDate ?? "",
+        blockedReason: existing?.blockedReason ?? "",
+        unblockDate: existing?.unblockDate ?? "",
+        effort: existing?.effort ?? "",
+        energy: existing?.energy ?? "",
+        executionContext: existing?.executionContext ?? "",
+        trigger: existing?.trigger ?? "",
+        minimumStep: existing?.minimumStep ?? "",
+        photoPaths: [...(existing?.photoPaths ?? [])],
         checked: task.checked,
         source: "visible-task-id",
         updatedAt
@@ -8871,6 +9043,12 @@ export default class DailyDashboardPlugin extends Plugin {
       sectionName: trimmedLane,
       laneKey: effectiveLaneOption?.laneKey ?? input.lane,
       taskText: updated.taskText,
+      priority: input.priority,
+      dueDate: input.dueDate,
+      blockedReason: input.blockedReason,
+      effort: input.effort,
+      executionContext: input.executionContext,
+      photoPaths: input.photoPaths,
       checked: false
     });
 
@@ -8892,7 +9070,8 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const priorityOrder = ["", "low", "medium", "high", "urgent"];
-    const currentIndex = priorityOrder.indexOf(task.priority.trim().toLowerCase());
+    const currentPriority = this.data.kanbanState.taskRegistry[taskId]?.priority?.trim().toLowerCase() || task.priority.trim().toLowerCase();
+    const currentIndex = priorityOrder.indexOf(currentPriority);
     const nextPriority = priorityOrder[(currentIndex + 1) % priorityOrder.length] ?? "";
 
     return this.updateKanbanTaskDetails(projectName, taskId, {
