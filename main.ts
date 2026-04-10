@@ -2877,6 +2877,52 @@ export default class DailyDashboardPlugin extends Plugin {
     });
   }
 
+  private reconcileUniqueLabelLaneMappingsToProjectSections(
+    project: TodoProjectSummary,
+    laneDefinitions: KanbanLaneDefinition[]
+  ): boolean {
+    const sectionNamesByNormalized = new Map(project.sectionNames.map((section) => [section.trim().toLowerCase(), section.trim()]));
+    const labelCounts = new Map<string, number>();
+    laneDefinitions.forEach((lane) => {
+      const key = lane.label.trim().toLowerCase();
+      if (key) {
+        labelCounts.set(key, (labelCounts.get(key) ?? 0) + 1);
+      }
+    });
+
+    let updated = false;
+    laneDefinitions.forEach((lane) => {
+      const label = lane.label.trim();
+      const normalizedLabel = label.toLowerCase();
+      if (!label || (labelCounts.get(normalizedLabel) ?? 0) !== 1) {
+        return;
+      }
+
+      const matchingSection = sectionNamesByNormalized.get(normalizedLabel);
+      if (!matchingSection) {
+        return;
+      }
+
+      const primarySection = this.getPrimaryKanbanLaneSectionName(lane);
+      if (primarySection && primarySection.toLowerCase() === normalizedLabel) {
+        return;
+      }
+
+      const normalizedPrimary = primarySection.toLowerCase();
+      if (primarySection && sectionNamesByNormalized.has(normalizedPrimary)) {
+        return;
+      }
+
+      const trailingSections = lane.mappedSections
+        .map((section) => section.trim())
+        .filter((section) => section.length > 0 && section.toLowerCase() === "completed archive");
+      lane.mappedSections = [matchingSection, ...trailingSections];
+      updated = true;
+    });
+
+    return updated;
+  }
+
   private stripMappedSectionsFromLaneDefinitions(laneDefinitions: KanbanLaneDefinition[]): Array<Omit<KanbanLaneDefinition, "mappedSections">> {
     return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
   }
@@ -3380,6 +3426,7 @@ export default class DailyDashboardPlugin extends Plugin {
       return;
     }
 
+    const persistedExisting = this.data.kanbanState.boardConfigurations[projectName];
     const existing = this.getKanbanBoardConfiguration(projectName);
     const templateId = input.templateId.trim() || "execution-default";
     let normalizedLaneDefinitions = this.normalizeKanbanLaneDefinitions(input.laneDefinitions);
@@ -3399,7 +3446,9 @@ export default class DailyDashboardPlugin extends Plugin {
         mappedSections: lane.targetSection ? [lane.targetSection] : [],
         done: lane.done
       }));
-    normalizedLaneDefinitions = this.alignTemplateSwitchLaneDefinitions(existing.templateId, templateId, previousLaneDefinitions, normalizedLaneDefinitions);
+    if (persistedExisting) {
+      normalizedLaneDefinitions = this.alignTemplateSwitchLaneDefinitions(existing.templateId, templateId, previousLaneDefinitions, normalizedLaneDefinitions);
+    }
     const hubRenameResult = await this.applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, normalizedLaneDefinitions);
     normalizedLaneDefinitions = hubRenameResult.laneDefinitions;
     this.data.kanbanState.boardConfigurations[projectName] = {
@@ -3497,6 +3546,10 @@ export default class DailyDashboardPlugin extends Plugin {
             updated = true;
           }
         });
+      }
+
+      if (this.reconcileUniqueLabelLaneMappingsToProjectSections(project, nextLaneDefinitions)) {
+        updated = true;
       }
 
       const normalizedSectionNames = new Set(project.sectionNames.map((section) => section.trim().toLowerCase()));
