@@ -3818,9 +3818,10 @@ export class DailyDashboardView extends ItemView {
       }
       const left = ((session.startDate.getTime() - startBoundary.getTime()) / totalSpan) * 100;
       const width = ((session.endDate.getTime() - session.startDate.getTime()) / totalSpan) * 100;
+      const displayEnd = session.end ?? formatDateTimeKey(session.endDate);
       segment.style.left = `${Math.max(0, left)}%`;
       segment.style.width = `${Math.max(0.75, width)}%`;
-      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` • ${session.tag}` : ""}`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${displayEnd.slice(11, 16)}${session.tag ? ` • ${session.tag}` : ""}`;
     });
 
     const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
@@ -5918,8 +5919,8 @@ export class LogicalDayRepairModal extends Modal {
       });
   }
 
-  private toDateTimeLocalValue(value: string): string {
-    if (!value.trim()) {
+  private toDateTimeLocalValue(value: string | null): string {
+    if (!value?.trim()) {
       return "";
     }
 
@@ -5953,9 +5954,10 @@ export class LogicalDayRepairModal extends Modal {
       const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
       const left = ((session.startDate.getTime() - startBoundary.getTime()) / totalSpan) * 100;
       const width = ((session.endDate.getTime() - session.startDate.getTime()) / totalSpan) * 100;
+      const displayEnd = session.end ?? formatDateTimeKey(session.endDate);
       segment.style.left = `${Math.max(0, left)}%`;
       segment.style.width = `${Math.max(0.75, width)}%`;
-      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` • ${session.tag}` : ""}`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${displayEnd.slice(11, 16)}${session.tag ? ` • ${session.tag}` : ""}`;
     });
 
     const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
@@ -6013,7 +6015,7 @@ export class LogicalDayRepairModal extends Modal {
         });
         endInput.value = this.toDateTimeLocalValue(session.end);
         endInput.addEventListener("change", () => {
-          session.end = endInput.value.trim();
+          session.end = endInput.value.trim() || null;
         });
 
         const tagInput = row.createEl("input", {
@@ -6063,7 +6065,7 @@ interface TimelineStripSession {
   id: string;
   kind: RepairTimelineSessionKind | ActivitySessionKind;
   start: string;
-  end: string;
+  end: string | null;
   tag: string;
 }
 

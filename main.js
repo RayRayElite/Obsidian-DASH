@@ -9470,15 +9470,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
     });
     const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
     parsedSessions.forEach((session) => {
+      var _a;
       const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
       if (!["work", "nap", "relax", "break", "poop"].includes(session.kind)) {
         segment.style.background = this.getSessionTrackerColor(session.kind);
       }
       const left = (session.startDate.getTime() - startBoundary.getTime()) / totalSpan * 100;
       const width = (session.endDate.getTime() - session.startDate.getTime()) / totalSpan * 100;
+      const displayEnd = (_a = session.end) != null ? _a : formatDateTimeKey(session.endDate);
       segment.style.left = `${Math.max(0, left)}%`;
       segment.style.width = `${Math.max(0.75, width)}%`;
-      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${displayEnd.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
     });
     const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
     ["00:00", "06:00", "12:00", "18:00", "24:00"].forEach((label) => {
@@ -11060,7 +11062,7 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
     });
   }
   toDateTimeLocalValue(value) {
-    if (!value.trim()) {
+    if (!(value == null ? void 0 : value.trim())) {
       return "";
     }
     return value.replace(" ", "T").slice(0, 16);
@@ -11084,12 +11086,14 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
     const totalSpan = endBoundary.getTime() - startBoundary.getTime();
     const strip = parent.createDiv({ cls: "daily-dashboard-timeline-strip" });
     parsedSessions.forEach((session) => {
+      var _a;
       const segment = strip.createDiv({ cls: `daily-dashboard-timeline-segment is-${session.kind}` });
       const left = (session.startDate.getTime() - startBoundary.getTime()) / totalSpan * 100;
       const width = (session.endDate.getTime() - session.startDate.getTime()) / totalSpan * 100;
+      const displayEnd = (_a = session.end) != null ? _a : formatDateTimeKey(session.endDate);
       segment.style.left = `${Math.max(0, left)}%`;
       segment.style.width = `${Math.max(0.75, width)}%`;
-      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${session.end.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
+      segment.title = `${session.kind} ${session.start.slice(11, 16)}-${displayEnd.slice(11, 16)}${session.tag ? ` \u2022 ${session.tag}` : ""}`;
     });
     const scale = parent.createDiv({ cls: "daily-dashboard-timeline-scale" });
     ["00:00", "06:00", "12:00", "18:00", "24:00"].forEach((label) => {
@@ -11139,7 +11143,7 @@ var LogicalDayRepairModal = class extends import_obsidian3.Modal {
         });
         endInput.value = this.toDateTimeLocalValue(session.end);
         endInput.addEventListener("change", () => {
-          session.end = endInput.value.trim();
+          session.end = endInput.value.trim() || null;
         });
         const tagInput = row.createEl("input", {
           cls: "daily-dashboard-input",
@@ -18690,7 +18694,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       lastInactivityPromptActivityAt: "",
       lastLateNightWarningKey: ""
     };
-    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate);
+    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate, input.status);
     if (normalizedTimelineSessions === null) {
       return false;
     }
@@ -23636,6 +23640,9 @@ No entries available.`;
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
+    if (this.reconcileDayStateWithOpenSessions()) {
+      await this.savePluginData();
+    }
     await this.reconcileOnboardingState();
     await this.cleanupStaleTrackedMinuteOverrides();
   }
@@ -23886,12 +23893,12 @@ No entries available.`;
   }
   buildRepairTimelineSessions(sessions, kind) {
     return sessions.map((session, index) => {
-      var _a, _b;
+      var _a;
       return {
         id: `${kind}-${index}-${session.start}-${(_a = session.end) != null ? _a : "open"}`,
         kind,
         start: session.start,
-        end: (_b = session.end) != null ? _b : "",
+        end: session.end,
         tag: session.tag
       };
     });
@@ -23902,24 +23909,30 @@ No entries available.`;
     entry.energyScore = (_d = (_c = entry.energyCheckIns[0]) == null ? void 0 : _c.score) != null ? _d : 0;
     entry.anxietyScore = (_f = (_e = entry.anxietyCheckIns[0]) == null ? void 0 : _e.score) != null ? _f : 0;
   }
-  normalizeRepairTimelineSessions(sessions, date) {
+  normalizeRepairTimelineSessions(sessions, date, status) {
+    var _a;
     const normalized = [];
+    const dateStartBoundary = `${date} 00:00`;
     for (const [index, session] of sessions.entries()) {
       const label = `${session.kind} session ${index + 1}`;
       const start = this.normalizeRepairTimestamp(session.start, `${label} start`);
-      const end = this.normalizeRepairTimestamp(session.end, `${label} end`);
+      const end = this.normalizeRepairTimestamp((_a = session.end) != null ? _a : "", `${label} end`);
       if (start === null || end === null) {
         return null;
       }
-      if (!start || !end) {
-        new import_obsidian4.Notice(`${label} needs both a start and end time.`);
+      if (!start) {
+        new import_obsidian4.Notice(`${label} needs a start time.`);
         return null;
       }
-      if (start.slice(0, 10) !== date || end.slice(0, 10) !== date) {
-        new import_obsidian4.Notice(`${label} must stay on ${date}. Use the correct logical date before applying the repair.`);
+      if (start < dateStartBoundary) {
+        new import_obsidian4.Notice(`${label} cannot start before ${date}.`);
         return null;
       }
-      if (end <= start) {
+      if (!end && status !== "in-progress") {
+        new import_obsidian4.Notice(`${label} needs an end time unless the logical day is still in progress.`);
+        return null;
+      }
+      if (end && end <= start) {
         new import_obsidian4.Notice(`${label} must end after it starts.`);
         return null;
       }
@@ -23927,7 +23940,7 @@ No entries available.`;
         id: session.id || `${session.kind}-${index}-${start}`,
         kind: session.kind,
         start,
-        end,
+        end: end || null,
         tag: session.tag.trim()
       });
     }
@@ -23939,6 +23952,43 @@ No entries available.`;
       end: session.end,
       tag: session.tag.trim()
     }));
+  }
+  getLatestOpenLogicalSessionTimestamp(entry) {
+    var _a;
+    const openTimestamps = [
+      ...entry.workSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.napSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.relaxSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.breakSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.poopSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.activitySessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.todayFocus.flatMap((item) => item.workSessions.filter((session) => session.end === null).map((session) => session.start))
+    ].filter((value) => value.trim().length > 0);
+    return (_a = openTimestamps.sort().slice(-1)[0]) != null ? _a : "";
+  }
+  findLogicalDayWithOpenSessions(entries) {
+    var _a;
+    const candidate = Object.values(entries).map((entry) => ({
+      date: entry.date,
+      lastOpenAt: this.getLatestOpenLogicalSessionTimestamp(entry)
+    })).filter((entry) => entry.lastOpenAt.length > 0).sort((left, right) => left.lastOpenAt.localeCompare(right.lastOpenAt) || left.date.localeCompare(right.date)).slice(-1)[0];
+    return (_a = candidate == null ? void 0 : candidate.date) != null ? _a : null;
+  }
+  reconcileDayStateWithOpenSessions() {
+    const activeDateFromSessions = this.findLogicalDayWithOpenSessions(this.data.entries);
+    if (!activeDateFromSessions) {
+      return false;
+    }
+    if (this.data.dayState.status === "in-progress" && this.data.dayState.activeDate === activeDateFromSessions) {
+      return false;
+    }
+    this.data.dayState = {
+      activeDate: activeDateFromSessions,
+      status: "in-progress",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
+    };
+    return true;
   }
   ensureWakeAndDayStartFromActivity(entry, timestamp) {
     var _a, _b;
@@ -24254,6 +24304,7 @@ No entries available.`;
       this.cleanTrackedMinuteOverrides(normalizedEntry);
       this.cleanSleepTiming(normalizedEntry);
       this.data.entries[parsed.date] = normalizedEntry;
+      this.reconcileDayStateWithOpenSessions();
       await this.savePluginData();
       this.refreshDashboardViews();
     } catch (error) {

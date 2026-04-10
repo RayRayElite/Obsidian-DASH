@@ -129,7 +129,7 @@ The dashboard records wake time, sleep time, day start/end, tracked work session
 
 The recovery block now adds a wake-quality score, a rolling sleep debt summary, a sleep consistency view, a blended recovery score, and a recent-nights strip so you can see whether the last week is actually stable instead of guessing from one bad night. The state card now uses timestamped mood, energy, and anxiety check-ins during the day, and mood entries can capture a named feeling alongside the score.
 
-The logical day repair flow still includes a manual timeline editor for work, nap, relax, break, and bowel sessions, but the always-on live timeline strip was removed from the dashboard because it was adding more chrome than operational value.
+The logical day repair flow still includes a manual timeline editor for work, nap, relax, break, and bowel sessions, and it now tolerates past-midnight or still-open sessions while the logical day remains active. The always-on live timeline strip was removed from the dashboard because it was adding more chrome than operational value.
 
 Recurring routine templates still use `Label|HH:MM|HH:MM`, but they now live inside the `Action Queue` card and as real notifications instead of taking over a separate Day Flow section.
 

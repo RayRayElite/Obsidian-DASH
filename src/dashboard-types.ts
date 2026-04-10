@@ -385,7 +385,7 @@ export interface RepairTimelineSession {
   id: string;
   kind: RepairTimelineSessionKind;
   start: string;
-  end: string;
+  end: string | null;
   tag: string;
 }
 

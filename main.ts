@@ -4594,7 +4594,7 @@ export default class DailyDashboardPlugin extends Plugin {
       lastLateNightWarningKey: ""
     };
 
-    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate);
+    const normalizedTimelineSessions = this.normalizeRepairTimelineSessions(input.timelineSessions, normalizedDate, input.status);
     if (normalizedTimelineSessions === null) {
       return false;
     }
@@ -10546,6 +10546,9 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async loadPluginData(): Promise<void> {
     this.data = await this.buildDataFromStorage();
+    if (this.reconcileDayStateWithOpenSessions()) {
+      await this.savePluginData();
+    }
     await this.reconcileOnboardingState();
     await this.cleanupStaleTrackedMinuteOverrides();
   }
@@ -10863,7 +10866,7 @@ export default class DailyDashboardPlugin extends Plugin {
       id: `${kind}-${index}-${session.start}-${session.end ?? "open"}`,
       kind,
       start: session.start,
-      end: session.end ?? "",
+      end: session.end,
       tag: session.tag
     }));
   }
@@ -10874,25 +10877,30 @@ export default class DailyDashboardPlugin extends Plugin {
     entry.anxietyScore = entry.anxietyCheckIns[0]?.score ?? 0;
   }
 
-  private normalizeRepairTimelineSessions(sessions: RepairTimelineSession[], date: string): RepairTimelineSession[] | null {
+  private normalizeRepairTimelineSessions(sessions: RepairTimelineSession[], date: string, status: DayLifecycleState["status"]): RepairTimelineSession[] | null {
     const normalized: RepairTimelineSession[] = [];
+    const dateStartBoundary = `${date} 00:00`;
 
     for (const [index, session] of sessions.entries()) {
       const label = `${session.kind} session ${index + 1}`;
       const start = this.normalizeRepairTimestamp(session.start, `${label} start`);
-      const end = this.normalizeRepairTimestamp(session.end, `${label} end`);
+      const end = this.normalizeRepairTimestamp(session.end ?? "", `${label} end`);
       if (start === null || end === null) {
         return null;
       }
-      if (!start || !end) {
-        new Notice(`${label} needs both a start and end time.`);
+      if (!start) {
+        new Notice(`${label} needs a start time.`);
         return null;
       }
-      if (start.slice(0, 10) !== date || end.slice(0, 10) !== date) {
-        new Notice(`${label} must stay on ${date}. Use the correct logical date before applying the repair.`);
+      if (start < dateStartBoundary) {
+        new Notice(`${label} cannot start before ${date}.`);
         return null;
       }
-      if (end <= start) {
+      if (!end && status !== "in-progress") {
+        new Notice(`${label} needs an end time unless the logical day is still in progress.`);
+        return null;
+      }
+      if (end && end <= start) {
         new Notice(`${label} must end after it starts.`);
         return null;
       }
@@ -10901,7 +10909,7 @@ export default class DailyDashboardPlugin extends Plugin {
         id: session.id || `${session.kind}-${index}-${start}`,
         kind: session.kind,
         start,
-        end,
+        end: end || null,
         tag: session.tag.trim()
       });
     }
@@ -10917,6 +10925,52 @@ export default class DailyDashboardPlugin extends Plugin {
         end: session.end,
         tag: session.tag.trim()
       }));
+  }
+
+  private getLatestOpenLogicalSessionTimestamp(entry: DailyEntry): string {
+    const openTimestamps = [
+      ...entry.workSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.napSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.relaxSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.breakSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.poopSessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.activitySessions.filter((session) => session.end === null).map((session) => session.start),
+      ...entry.todayFocus.flatMap((item) => item.workSessions.filter((session) => session.end === null).map((session) => session.start))
+    ].filter((value) => value.trim().length > 0);
+
+    return openTimestamps.sort().slice(-1)[0] ?? "";
+  }
+
+  private findLogicalDayWithOpenSessions(entries: Record<string, DailyEntry>): string | null {
+    const candidate = Object.values(entries)
+      .map((entry) => ({
+        date: entry.date,
+        lastOpenAt: this.getLatestOpenLogicalSessionTimestamp(entry)
+      }))
+      .filter((entry) => entry.lastOpenAt.length > 0)
+      .sort((left, right) => left.lastOpenAt.localeCompare(right.lastOpenAt) || left.date.localeCompare(right.date))
+      .slice(-1)[0];
+
+    return candidate?.date ?? null;
+  }
+
+  private reconcileDayStateWithOpenSessions(): boolean {
+    const activeDateFromSessions = this.findLogicalDayWithOpenSessions(this.data.entries);
+    if (!activeDateFromSessions) {
+      return false;
+    }
+
+    if (this.data.dayState.status === "in-progress" && this.data.dayState.activeDate === activeDateFromSessions) {
+      return false;
+    }
+
+    this.data.dayState = {
+      activeDate: activeDateFromSessions,
+      status: "in-progress",
+      lastInactivityPromptActivityAt: "",
+      lastLateNightWarningKey: ""
+    };
+    return true;
   }
 
   private ensureWakeAndDayStartFromActivity(entry: DailyEntry, timestamp: string): void {
@@ -11327,6 +11381,7 @@ export default class DailyDashboardPlugin extends Plugin {
       this.cleanTrackedMinuteOverrides(normalizedEntry);
       this.cleanSleepTiming(normalizedEntry);
       this.data.entries[parsed.date] = normalizedEntry;
+      this.reconcileDayStateWithOpenSessions();
       await this.savePluginData();
       this.refreshDashboardViews();
     } catch (error) {
