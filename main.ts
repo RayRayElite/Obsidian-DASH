@@ -3785,6 +3785,16 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.app.vault.getResourcePath(target);
   }
 
+  async openKanbanTaskPhoto(path: string): Promise<void> {
+    const target = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (!(target instanceof TFile) || !this.isSupportedKanbanImageFile(target)) {
+      new Notice("That image could not be found in the vault.");
+      return;
+    }
+
+    await this.openFile(target);
+  }
+
   getAvailableKanbanImagePaths(): Array<{ path: string; name: string }> {
     return this.app.vault.getFiles()
       .filter((file) => this.isSupportedKanbanImageFile(file))

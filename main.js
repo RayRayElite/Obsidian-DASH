@@ -15016,7 +15016,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         void this.copyKanbanPhotoToClipboard(primaryPhotoPath);
       });
       previewButton.appendChild(previewImage);
-      previewButton.createEl("span", { cls: "dash-kanban-card-photo-open-label", text: "Open full image" });
+      const openHint = previewButton.createSpan({ cls: "dash-kanban-card-photo-open-hint" });
+      openHint.ariaHidden = "true";
+      (0, import_obsidian3.setIcon)(openHint, "expand");
       gallery.appendChild(previewButton);
       if (photoPaths.length > 1) {
         gallery.createEl("span", { cls: "dash-kanban-card-photo-count", text: `+${photoPaths.length - 1}` });
@@ -15324,12 +15326,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     return button;
   }
   openKanbanPhoto(path) {
-    const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
-    if (!resourcePath) {
-      new import_obsidian3.Notice("That photo could not be opened.");
-      return;
-    }
-    window.open(resourcePath, "_blank", "noopener,noreferrer");
+    void this.plugin.openKanbanTaskPhoto(path);
   }
   async copyKanbanPhotoToClipboard(path) {
     const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
@@ -18575,6 +18572,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return "";
     }
     return this.app.vault.getResourcePath(target);
+  }
+  async openKanbanTaskPhoto(path) {
+    const target = this.app.vault.getAbstractFileByPath((0, import_obsidian4.normalizePath)(path));
+    if (!(target instanceof import_obsidian4.TFile) || !this.isSupportedKanbanImageFile(target)) {
+      new import_obsidian4.Notice("That image could not be found in the vault.");
+      return;
+    }
+    await this.openFile(target);
   }
   getAvailableKanbanImagePaths() {
     return this.app.vault.getFiles().filter((file) => this.isSupportedKanbanImageFile(file)).map((file) => ({

@@ -10998,7 +10998,9 @@ export class DashKanbanView extends ItemView {
         void this.copyKanbanPhotoToClipboard(primaryPhotoPath);
       });
       previewButton.appendChild(previewImage);
-      previewButton.createEl("span", { cls: "dash-kanban-card-photo-open-label", text: "Open full image" });
+      const openHint = previewButton.createSpan({ cls: "dash-kanban-card-photo-open-hint" });
+      openHint.ariaHidden = "true";
+      setIcon(openHint, "expand");
       gallery.appendChild(previewButton);
       if (photoPaths.length > 1) {
         gallery.createEl("span", { cls: "dash-kanban-card-photo-count", text: `+${photoPaths.length - 1}` });
@@ -11326,13 +11328,7 @@ export class DashKanbanView extends ItemView {
   }
 
   private openKanbanPhoto(path: string): void {
-    const resourcePath = this.plugin.getKanbanTaskPhotoResourcePath(path);
-    if (!resourcePath) {
-      new Notice("That photo could not be opened.");
-      return;
-    }
-
-    window.open(resourcePath, "_blank", "noopener,noreferrer");
+    void this.plugin.openKanbanTaskPhoto(path);
   }
 
   private async copyKanbanPhotoToClipboard(path: string): Promise<void> {
