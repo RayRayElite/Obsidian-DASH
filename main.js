@@ -26944,7 +26944,22 @@ ${body}`;
     if (existing) {
       throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
     }
-    return await this.app.vault.create(normalizedPath, content);
+    try {
+      return await this.app.vault.create(normalizedPath, content);
+    } catch (error) {
+      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (refreshed instanceof import_obsidian4.TFile || this.isFolderAlreadyExistsError(error)) {
+        const file = refreshed instanceof import_obsidian4.TFile ? refreshed : this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (file instanceof import_obsidian4.TFile) {
+          const current = await this.app.vault.read(file);
+          if (current !== content) {
+            await this.app.vault.modify(file, content);
+          }
+          return file;
+        }
+      }
+      throw error;
+    }
   }
   async ensureFolder(folderPath) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(folderPath);

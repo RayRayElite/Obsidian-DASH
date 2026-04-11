@@ -13182,7 +13182,25 @@ export default class DailyDashboardPlugin extends Plugin {
       throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
     }
 
-    return await this.app.vault.create(normalizedPath, content);
+    try {
+      return await this.app.vault.create(normalizedPath, content);
+    } catch (error) {
+      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (refreshed instanceof TFile || this.isFolderAlreadyExistsError(error)) {
+        const file = refreshed instanceof TFile
+          ? refreshed
+          : this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (file instanceof TFile) {
+          const current = await this.app.vault.read(file);
+          if (current !== content) {
+            await this.app.vault.modify(file, content);
+          }
+          return file;
+        }
+      }
+
+      throw error;
+    }
   }
 
   private async ensureFolder(folderPath: string): Promise<void> {
