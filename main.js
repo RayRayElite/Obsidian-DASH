@@ -13883,6 +13883,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     separator.textContent = value;
     return separator;
   }
+  mountCardPopover(popover) {
+    this.contentEl.appendChild(popover);
+  }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
     this.detailEditState = null;
@@ -15462,7 +15465,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         });
         picker.appendChild(button);
       });
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, priorityButton, preferPopoverBelow);
     }
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
@@ -15629,7 +15632,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, void 0, 3);
       syncSaveState(saveButton);
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, dueButton, preferPopoverBelow);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? dueParts.month.length >= 2 ? dueParts.day.length >= 2 ? dueParts.year.length >= 4 ? 3 : 2 : 1 : 0 : 0);
     }
@@ -15677,7 +15680,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.requestRefresh();
         }
       });
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, effortButton, preferPopoverBelow);
       window.setTimeout(() => input.focus(), 0);
     }
@@ -15769,7 +15772,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.attachExistingPhotoToCard(project.projectName, card.taskId);
         })
       );
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, photoButton, preferPopoverBelow);
     }
     return cardEl;

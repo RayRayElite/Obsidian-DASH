@@ -9577,6 +9577,10 @@ export class DashKanbanView extends ItemView {
     return separator;
   }
 
+  private mountCardPopover(popover: HTMLElement): void {
+    this.contentEl.appendChild(popover);
+  }
+
   private closeInlineCardEditor(): void {
     this.selectedCardKey = null;
     this.detailEditState = null;
@@ -11331,7 +11335,7 @@ export class DashKanbanView extends ItemView {
         });
         picker.appendChild(button);
       });
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, priorityButton, preferPopoverBelow);
     }
 
@@ -11520,7 +11524,7 @@ export class DashKanbanView extends ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
       syncSaveState(saveButton);
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, dueButton, preferPopoverBelow);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? (dueParts.month.length >= 2 ? (dueParts.day.length >= 2 ? (dueParts.year.length >= 4 ? 3 : 2) : 1) : 0) : 0);
     }
@@ -11569,7 +11573,7 @@ export class DashKanbanView extends ItemView {
           void this.requestRefresh();
         }
       });
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, effortButton, preferPopoverBelow);
       window.setTimeout(() => input.focus(), 0);
     }
@@ -11670,7 +11674,7 @@ export class DashKanbanView extends ItemView {
         })
       );
 
-      actionWrap.appendChild(picker);
+      this.mountCardPopover(picker);
       this.positionCardPopover(picker, photoButton, preferPopoverBelow);
     }
 
