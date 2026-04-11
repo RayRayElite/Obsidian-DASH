@@ -15002,8 +15002,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     columns.forEach((column, columnIndex) => {
       const header = matrix.createDiv({ cls: "dash-kanban-matrix-column-header" });
       header.style.setProperty("--dash-kanban-column-index", `${columnIndex + 1}`);
-      header.createEl("span", { cls: "dash-kanban-matrix-column-kicker", text: `Stage ${columnIndex + 1}` });
-      header.createEl("h3", { text: column.label });
+      const headerTop = header.createDiv({ cls: "dash-kanban-matrix-column-top" });
+      headerTop.createEl("h3", { text: column.label });
+      headerTop.createEl("span", { cls: "dash-kanban-matrix-column-kicker", text: `Stage ${columnIndex + 1}` });
       if (column.helperText) {
         header.createEl("p", { text: column.helperText });
       }
