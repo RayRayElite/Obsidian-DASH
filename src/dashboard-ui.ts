@@ -108,20 +108,20 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
 
 const DASH_KANBAN_THEME_LABELS: Record<DashboardKanbanTheme, string> = {
   dark: "Midnight Grid",
-  light: "Paper Ledger",
-  ocean: "Ocean Ledger",
-  forest: "Forest Field",
-  rose: "Rose Workshop",
-  aurora: "Aurora Signal"
+  light: "Day Shift",
+  ocean: "Night Harbor",
+  forest: "Pine Console",
+  rose: "Ember Atelier",
+  aurora: "Violet Signal"
 };
 
 const DASH_KANBAN_THEME_PREVIEW_TEXT: Record<DashboardKanbanTheme, string> = {
   dark: "Neutral charcoal and brass for broad daily use.",
-  light: "Warm paper tones with quieter editorial contrast.",
-  ocean: "Cool ledger blues with cleaner triage emphasis.",
-  forest: "Field-note greens with softer operational depth.",
-  rose: "Workshop reds with warmer tactile surfaces.",
-  aurora: "High-contrast neon drift for more dramatic boards."
+  light: "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.",
+  ocean: "Deep harbor blues with cooler instrumentation and darker naval surfaces.",
+  forest: "Pine-and-moss depth with a steadier field-console atmosphere.",
+  rose: "Wine, ember, and studio neutrals instead of a simple pink wash.",
+  aurora: "Grounded indigo-violet panels with tighter neon signal accents."
 };
 
 function kanbanTemplateSupportsLaneCategories(template: KanbanBoardTemplate | null | undefined): boolean {
