@@ -41,6 +41,7 @@ const KANBAN_CATEGORIES_META_KEY = "kanban categories";
 const TASK_METADATA_COMMENT_KEY = "daily-dashboard-meta";
 
 interface TaskHiddenMetadata {
+  body?: string;
   priority?: string;
   due?: string;
   blocked?: string;
@@ -155,12 +156,14 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
         continue;
       }
 
-        const taskText = taskMatch[2].trim();
-        const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
-        const normalizedTask = taskSummary.text.toLowerCase();
+      const taskBlock = collectTaskBlock(lines, index);
+      const taskText = taskBlock.taskText.trim();
+      const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
+      const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
       const normalizedKanbanSection = normalizeLegacyKanbanSectionName(currentSection);
       const isComplete = taskMatch[1].toLowerCase() === "x";
+      index = taskBlock.endIndex;
 
       emptySections.delete(currentSection);
       seenTasks.set(normalizedTask, (seenTasks.get(normalizedTask) ?? 0) + 1);
@@ -171,7 +174,7 @@ export function parseTodoSnapshot(content: string): TodoSnapshot {
       if (sectionKey === "completed archive" || isComplete) {
         archivedCount += 1;
         if (sectionKey === "completed archive") {
-          const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), project.name);
+          const archivedTask = parseArchivedArchiveTask(taskText, project.name);
           if (archivedTask) {
             const completedSummary = parseTodoTaskSummary(archivedTask.text, archivedTask.section, now);
             completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done", completedAt: archivedTask.archivedAt });
@@ -442,25 +445,28 @@ export function restoreUncheckedArchivedTasksFromProjectLines(
   const restoredTasks: ArchivedTaskSnapshot[] = [];
   let currentSection = "General";
 
-  projectLines.forEach((line) => {
+  for (let index = 0; index < projectLines.length; index += 1) {
+    const line = projectLines[index];
     const sectionName = getSectionName(line);
     if (sectionName) {
       currentSection = sectionName;
       keptLines.push(line);
-      return;
+      continue;
     }
 
     const taskMatch = line.match(CHECKLIST_REGEX);
     if (taskMatch && currentSection.trim().toLowerCase() === "completed archive" && taskMatch[1] === " ") {
-      const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), projectName);
+      const taskBlock = collectTaskBlock(projectLines, index);
+      const archivedTask = parseArchivedArchiveTask(taskBlock.taskText.trim(), projectName);
       if (archivedTask) {
         restoredTasks.push(archivedTask);
-        return;
+        index = taskBlock.endIndex;
+        continue;
       }
     }
 
     keptLines.push(line);
-  });
+  }
 
   if (restoredTasks.length === 0) {
     return { lines: projectLines, restoredTasks: [] };
@@ -484,7 +490,7 @@ function parseArchivedArchiveTask(value: string, projectName: string): ArchivedT
   }
 
   const [, archivedAt, section, text] = match;
-  const trimmedText = text.trim();
+  const trimmedText = getTodoTaskDisplayText(text.trim(), section.trim() || "General");
   if (!trimmedText) {
     return null;
   }
@@ -507,34 +513,37 @@ export function archiveCompletedTasksFromProjectLines(
   let currentSection = "General";
   const usesHeadingSections = projectLines.some((line) => /^###\s+/.test(line.trim()));
 
-  projectLines.forEach((line) => {
+  for (let index = 0; index < projectLines.length; index += 1) {
+    const line = projectLines[index];
     const sectionName = getSectionName(line);
     if (sectionName) {
       currentSection = sectionName;
       keptLines.push(line);
-      return;
+      continue;
     }
 
     const taskMatch = line.match(CHECKLIST_REGEX);
     if (taskMatch && !isNonArchivableSection(currentSection) && taskMatch[1].toLowerCase() === "x") {
+      const taskBlock = collectTaskBlock(projectLines, index);
       archivedTasks.push({
         project: projectName,
         section: currentSection,
-        text: taskMatch[2].trim(),
+        text: getTodoTaskDisplayText(taskBlock.taskText, currentSection),
         archivedAt
       });
-      return;
+      index = taskBlock.endIndex;
+      continue;
     }
 
     keptLines.push(line);
-  });
+  }
 
   if (archivedTasks.length === 0) {
     return { lines: projectLines, archivedTasks: [] };
   }
 
   const archiveHeaderIndex = keptLines.findIndex((line) => isCompletedArchiveHeader(line));
-  const archiveLines = archivedTasks.map((task) => `- [x] ${task.archivedAt} - [${task.section}] ${task.text}`);
+  const archiveLines = archivedTasks.map((task) => `- [x] ${task.archivedAt} - [${task.section}] ${normalizeTaskTextForStorage(task.text)}`);
 
   if (archiveHeaderIndex >= 0) {
     let insertIndex = archiveHeaderIndex + 1;
@@ -1716,7 +1725,8 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
 
   const output = [...lines];
   const normalizedSection = sectionName.trim();
-  const taskLine = `- [ ] ${taskText.trim()}`;
+  const taskLine = `- [ ] ${normalizeTaskTextForStorage(taskText).trim()}`;
+  const normalizedDisplayText = normalizeKanbanTaskMatchText(getTodoTaskDisplayText(taskText, normalizedSection));
   let sectionStart = -1;
   let sectionEnd = project.end;
 
@@ -1740,11 +1750,15 @@ export function insertTaskIntoProjectSection(content: string, projectName: strin
   }
 
   if (sectionStart >= 0) {
-    const existingTasks = output.slice(sectionStart + 1, sectionEnd + 1)
-      .map((line) => line.match(CHECKLIST_REGEX)?.[2].trim().toLowerCase())
-      .filter((line): line is string => Boolean(line));
-    if (existingTasks.includes(taskText.trim().toLowerCase())) {
-      return content;
+    for (let index = sectionStart + 1; index <= sectionEnd; index += 1) {
+      if (!CHECKLIST_REGEX.test(output[index])) {
+        continue;
+      }
+      const taskBlock = collectTaskBlock(output, index);
+      if (normalizeKanbanTaskMatchText(getTodoTaskDisplayText(taskBlock.taskText, normalizedSection)) === normalizedDisplayText) {
+        return content;
+      }
+      index = taskBlock.endIndex;
     }
     let insertIndex = sectionEnd + 1;
     while (insertIndex > sectionStart + 1 && output[insertIndex - 1].trim() === "") {
@@ -2668,7 +2682,7 @@ function removeTaskByIdFromProject(content: string, projectName: string, taskId:
     return null;
   }
 
-  output.splice(match.index, 1);
+  output.splice(match.index, match.endIndex - match.index + 1);
   return {
     content: output.join("\n"),
     taskText: match.taskText
@@ -2760,7 +2774,7 @@ export function updateTaskPhotoPathsByIdInProject(content: string, input: {
     ? displayText
     : stripBlockingTaskAnnotations(displayText);
   const lines = content.split(/\r?\n/);
-  lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked: string) => `- [${checked}] ${normalizedTaskText}`);
+  lines.splice(match.index, match.endIndex - match.index + 1, `- [${match.checked ? "x" : " "}] ${normalizeTaskTextForStorage(normalizedTaskText)}`);
   const nextContent = lines.join("\n");
 
   return {
@@ -2885,7 +2899,7 @@ function findProjectTaskMatch(
   taskId: string,
   taskRegistry: Record<string, KanbanTaskRegistryEntry>,
   allowCompleted: boolean
-): { index: number; section: string; checked: boolean; taskText: string } | null {
+): { index: number; endIndex: number; section: string; checked: boolean; taskText: string } | null {
   const lines = content.split(/\r?\n/);
   const project = findProjectRanges(lines).find((candidate) => candidate.name.toLowerCase() === projectName.toLowerCase());
   if (!project) {
@@ -2893,7 +2907,7 @@ function findProjectTaskMatch(
   }
 
   let currentSection = "General";
-  const fallbackCandidates: Array<{ index: number; section: string; checked: boolean; taskText: string; sectionMatches: boolean; checkedMatches: boolean }> = [];
+  const fallbackCandidates: Array<{ index: number; endIndex: number; section: string; checked: boolean; taskText: string; sectionMatches: boolean; checkedMatches: boolean }> = [];
   const registryEntry = taskRegistry[taskId];
   const normalizedRegistryText = registryEntry ? normalizeKanbanTaskMatchText(registryEntry.taskText) : "";
   const normalizedRegistrySection = registryEntry ? normalizeLegacyKanbanSectionName(registryEntry.sectionName) : "";
@@ -2911,16 +2925,19 @@ function findProjectTaskMatch(
     }
 
     const checked = taskMatch[1].toLowerCase() === "x";
+    const taskBlock = collectTaskBlock(lines, index);
     if (!allowCompleted && (checked || currentSection.trim().toLowerCase() === "completed archive")) {
+      index = taskBlock.endIndex;
       continue;
     }
 
-    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
+    if (extractTaskAnnotation(taskBlock.taskText.trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
       return {
         index,
+        endIndex: taskBlock.endIndex,
         section: currentSection,
         checked,
-        taskText: taskMatch[2].trim()
+        taskText: taskBlock.taskText.trim()
       };
     }
 
@@ -2928,19 +2945,22 @@ function findProjectTaskMatch(
       continue;
     }
 
-    const parsedText = parseTodoTaskSummary(taskMatch[2].trim(), currentSection, new Date()).text;
+    const parsedText = parseTodoTaskSummary(taskBlock.taskText.trim(), currentSection, new Date()).text;
     if (normalizeKanbanTaskMatchText(parsedText) !== normalizedRegistryText) {
+      index = taskBlock.endIndex;
       continue;
     }
 
     fallbackCandidates.push({
       index,
+      endIndex: taskBlock.endIndex,
       section: currentSection,
       checked,
-      taskText: taskMatch[2].trim(),
+      taskText: taskBlock.taskText.trim(),
       sectionMatches: normalizeLegacyKanbanSectionName(currentSection) === normalizedRegistrySection,
       checkedMatches: checked === registryEntry.checked
     });
+    index = taskBlock.endIndex;
   }
 
   const exactMatches = fallbackCandidates.filter((candidate) => candidate.sectionMatches && candidate.checkedMatches);
@@ -2967,6 +2987,39 @@ function findProjectTaskMatch(
 
 function normalizeKanbanTaskMatchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isTaskContinuationLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (CHECKLIST_REGEX.test(line)) {
+    return false;
+  }
+  if (getSectionName(line) || /^##\s+/.test(trimmed)) {
+    return false;
+  }
+  return true;
+}
+
+function collectTaskBlock(lines: string[], startIndex: number): { taskText: string; endIndex: number } {
+  const taskMatch = lines[startIndex]?.match(CHECKLIST_REGEX);
+  if (!taskMatch) {
+    return { taskText: "", endIndex: startIndex };
+  }
+
+  const parts = [taskMatch[2].trimEnd()];
+  let endIndex = startIndex;
+  while (endIndex + 1 < lines.length && isTaskContinuationLine(lines[endIndex + 1])) {
+    endIndex += 1;
+    parts.push(lines[endIndex].trimEnd());
+  }
+
+  return {
+    taskText: normalizeTaskBodyText(parts.join("\n")),
+    endIndex
+  };
 }
 
 function extractRenderedKanbanTaskId(value: string): string {
@@ -3873,12 +3926,25 @@ function normalizeLegacyKanbanSectionName(section: string): string {
   return normalized;
 }
 
+function normalizeTaskBodyText(value: string): string {
+  const normalized = value.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n").map((line) => line.replace(/[ \t]+$/g, ""));
+  while (lines.length > 0 && lines[0].trim().length === 0) {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines[lines.length - 1].trim().length === 0) {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
+
 function normalizeTaskHiddenMetadata(metadata: TaskHiddenMetadata): TaskHiddenMetadata {
   const normalizedPhotos = (metadata.photos ?? [])
     .map((path) => path.trim())
     .filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
 
   return {
+    body: normalizeTaskBodyText(metadata.body ?? "") || undefined,
     priority: metadata.priority?.trim() || undefined,
     due: metadata.due?.trim() || undefined,
     blocked: metadata.blocked?.trim() || undefined,
@@ -3894,7 +3960,8 @@ function normalizeTaskHiddenMetadata(metadata: TaskHiddenMetadata): TaskHiddenMe
 
 function hasTaskHiddenMetadata(metadata: TaskHiddenMetadata): boolean {
   return Boolean(
-    metadata.priority
+    metadata.body
+    || metadata.priority
     || metadata.due
     || metadata.blocked
     || metadata.unblock
@@ -3925,6 +3992,7 @@ function extractTaskHiddenMetadata(value: string): TaskHiddenMetadata {
   try {
     const parsed = JSON.parse(match[1]) as Partial<TaskHiddenMetadata>;
     return normalizeTaskHiddenMetadata({
+      body: typeof parsed.body === "string" ? parsed.body : "",
       priority: typeof parsed.priority === "string" ? parsed.priority : "",
       due: typeof parsed.due === "string" ? parsed.due : "",
       blocked: typeof parsed.blocked === "string" ? parsed.blocked : "",
@@ -3957,7 +4025,7 @@ function renderTaskHiddenMetadata(metadata: TaskHiddenMetadata): string {
 function stripVisibleDashboardAnnotations(value: string): string {
   return value
     .replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "")
-    .replace(/\s{2,}/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 
@@ -3984,6 +4052,9 @@ function extractTaskAnnotation(value: string, key: string): string | null {
 
 function getTaskHiddenMetadataValues(metadata: TaskHiddenMetadata, key: string): string[] {
   const normalizedKey = key.trim().toLowerCase();
+  if (normalizedKey === "body") {
+    return metadata.body ? [metadata.body] : [];
+  }
   if (normalizedKey === "photos") {
     return metadata.photos ?? [];
   }
@@ -4019,7 +4090,11 @@ function getTaskHiddenMetadataValues(metadata: TaskHiddenMetadata, key: string):
 
 function setTaskHiddenMetadataValue(metadata: TaskHiddenMetadata, key: string, nextValue: string): void {
   const normalizedKey = key.trim().toLowerCase();
-  const normalizedValue = nextValue.trim();
+  const normalizedValue = normalizedKey === "body" ? normalizeTaskBodyText(nextValue) : nextValue.trim();
+  if (normalizedKey === "body") {
+    metadata.body = normalizedValue || undefined;
+    return;
+  }
   if (normalizedKey === "photos") {
     metadata.photos = normalizedValue
       ? normalizedValue.split("|").map((entry) => entry.trim()).filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index)
@@ -4103,10 +4178,15 @@ function extractAllTaskMetadata(value: string): TaskHiddenMetadata {
 }
 
 function renderTaskTextWithMetadata(displayText: string, metadata: TaskHiddenMetadata, taskId: string): string {
-  const baseText = stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(displayText))).trim();
-  const hiddenMetadata = renderTaskHiddenMetadata(metadata);
+  const baseText = normalizeTaskBodyText(stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(displayText))).trim());
+  const bodyText = baseText || normalizeTaskBodyText(metadata.body ?? "");
+  const primaryLine = bodyText.split(/\r?\n/)[0]?.trim() ?? "";
+  const hiddenMetadata = renderTaskHiddenMetadata({
+    ...metadata,
+    body: bodyText.includes("\n") ? bodyText : ""
+  });
   const taskIdComment = taskId.trim().length > 0 ? renderKanbanTaskIdComment(taskId) : "";
-  return `${baseText}${hiddenMetadata}${taskIdComment}`.trim();
+  return `${primaryLine}${taskIdComment}${hiddenMetadata}`.trim();
 }
 
 function removeTaskAnnotation(value: string, key: string): string {
@@ -4127,9 +4207,18 @@ function removeTaskAnnotation(value: string, key: string): string {
 }
 
 function stripTaskAnnotations(value: string): string {
-  return stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(value)))
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  const metadata = extractTaskHiddenMetadata(value);
+  const visibleText = stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(value)));
+  return normalizeTaskBodyText(metadata.body ?? visibleText);
+}
+
+function normalizeTaskTextForStorage(taskText: string): string {
+  const metadata = extractAllTaskMetadata(taskText);
+  const taskId = extractTaskAnnotation(taskText, TASK_ID_ANNOTATION_KEY) ?? "";
+  const displayText = stripTaskAnnotations(taskText)
+    || stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(taskText)))
+    || taskText;
+  return renderTaskTextWithMetadata(displayText, metadata, taskId);
 }
 
 function extractTodoTaskTags(rawText: string): string[] {

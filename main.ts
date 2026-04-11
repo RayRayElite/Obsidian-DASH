@@ -3521,12 +3521,18 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private stripKanbanCategoryTagsFromTaskText(taskText: string, categoryTags: string[]): string {
-    let nextText = taskText;
-    categoryTags.forEach((tag) => {
-      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
-    });
-    return nextText.replace(/\s{2,}/g, " ").trim();
+    return taskText
+      .split(/\r?\n/)
+      .map((line) => {
+        let nextLine = line;
+        categoryTags.forEach((tag) => {
+          const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          nextLine = nextLine.replace(new RegExp(`(?:^|[ \t])#${escapedTag}(?=[ \t]|$)`, "gi"), " ");
+        });
+        return nextLine.replace(/[ \t]{2,}/g, " ").trimEnd();
+      })
+      .join("\n")
+      .trim();
   }
 
   private formatTaskTextForKanbanLane(projectName: string, laneKeyOrSection: string, taskText: string): string {
@@ -3534,7 +3540,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const categoryTags = laneOptions
       .map((option) => option.categoryTag.trim().toLowerCase())
       .filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
-    return this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags).replace(/\s{2,}/g, " ").trim();
+    return this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags);
   }
 
   private async getKanbanTaskDisplayById(projectName: string, taskId: string): Promise<string | null> {
@@ -3667,6 +3673,13 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
+    const currentTask = await this.getKanbanTaskById(projectName, taskId);
+    if (targetLaneOption?.done) {
+      if (currentTask && (currentTask.completedAt || "").trim().length > 0) {
+        return true;
+      }
+      return this.completeKanbanTask(projectName, taskId);
+    }
     const effectiveTargetSection = targetLaneOption?.targetSection || targetLane;
     const content = await this.app.vault.read(todoFile);
     const moved = moveTaskByIdInProject(content, {
@@ -4310,10 +4323,15 @@ export default class DailyDashboardPlugin extends Plugin {
       await this.app.vault.modify(todoFile, updated.content);
     }
 
+    const persistedLaneKey = this.data.kanbanState.taskRegistry[taskId]?.laneKey?.trim() ?? "";
+    const resolvedLaneKey = persistedLaneKey && this.getKanbanLaneOptions(projectName).some((lane) => lane.laneKey === persistedLaneKey)
+      ? persistedLaneKey
+      : this.resolveKanbanLaneOption(projectName, updated.sectionName || task.section)?.laneKey ?? task.section;
+
     await this.syncKanbanRegistryAfterTaskEdit(taskId, {
       projectName,
       sectionName: updated.sectionName || task.section,
-      laneKey: this.resolveKanbanLaneOption(projectName, task.section)?.laneKey ?? task.section,
+      laneKey: resolvedLaneKey,
       taskText: updated.taskText || task.rawText,
       photoPaths,
       checked: false

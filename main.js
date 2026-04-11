@@ -3172,12 +3172,14 @@ function parseTodoSnapshot(content) {
       if (!taskMatch) {
         continue;
       }
-      const taskText = taskMatch[2].trim();
+      const taskBlock = collectTaskBlock(lines, index);
+      const taskText = taskBlock.taskText.trim();
       const taskSummary = parseTodoTaskSummary(taskText, currentSection, now);
       const normalizedTask = taskSummary.text.toLowerCase();
       const sectionKey = currentSection.toLowerCase();
       const normalizedKanbanSection = normalizeLegacyKanbanSectionName(currentSection);
       const isComplete = taskMatch[1].toLowerCase() === "x";
+      index = taskBlock.endIndex;
       emptySections.delete(currentSection);
       seenTasks.set(normalizedTask, ((_a = seenTasks.get(normalizedTask)) != null ? _a : 0) + 1);
       if (((_b = seenTasks.get(normalizedTask)) != null ? _b : 0) > 1) {
@@ -3186,7 +3188,7 @@ function parseTodoSnapshot(content) {
       if (sectionKey === "completed archive" || isComplete) {
         archivedCount += 1;
         if (sectionKey === "completed archive") {
-          const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), project.name);
+          const archivedTask = parseArchivedArchiveTask(taskText, project.name);
           if (archivedTask) {
             const completedSummary = parseTodoTaskSummary(archivedTask.text, archivedTask.section, now);
             completedTaskDetails.push({ ...completedSummary, kanbanLane: "Done", completedAt: archivedTask.archivedAt });
@@ -3434,23 +3436,26 @@ function restoreUncheckedArchivedTasksFromProjectLines(projectLines, projectName
   const keptLines = [];
   const restoredTasks = [];
   let currentSection = "General";
-  projectLines.forEach((line) => {
+  for (let index = 0; index < projectLines.length; index += 1) {
+    const line = projectLines[index];
     const sectionName = getSectionName(line);
     if (sectionName) {
       currentSection = sectionName;
       keptLines.push(line);
-      return;
+      continue;
     }
     const taskMatch = line.match(CHECKLIST_REGEX);
     if (taskMatch && currentSection.trim().toLowerCase() === "completed archive" && taskMatch[1] === " ") {
-      const archivedTask = parseArchivedArchiveTask(taskMatch[2].trim(), projectName);
+      const taskBlock = collectTaskBlock(projectLines, index);
+      const archivedTask = parseArchivedArchiveTask(taskBlock.taskText.trim(), projectName);
       if (archivedTask) {
         restoredTasks.push(archivedTask);
-        return;
+        index = taskBlock.endIndex;
+        continue;
       }
     }
     keptLines.push(line);
-  });
+  }
   if (restoredTasks.length === 0) {
     return { lines: projectLines, restoredTasks: [] };
   }
@@ -3469,7 +3474,7 @@ function parseArchivedArchiveTask(value, projectName) {
     return null;
   }
   const [, archivedAt, section, text] = match;
-  const trimmedText = text.trim();
+  const trimmedText = getTodoTaskDisplayText(text.trim(), section.trim() || "General");
   if (!trimmedText) {
     return null;
   }
@@ -3485,30 +3490,33 @@ function archiveCompletedTasksFromProjectLines(projectLines, projectName, archiv
   const archivedTasks = [];
   let currentSection = "General";
   const usesHeadingSections = projectLines.some((line) => /^###\s+/.test(line.trim()));
-  projectLines.forEach((line) => {
+  for (let index = 0; index < projectLines.length; index += 1) {
+    const line = projectLines[index];
     const sectionName = getSectionName(line);
     if (sectionName) {
       currentSection = sectionName;
       keptLines.push(line);
-      return;
+      continue;
     }
     const taskMatch = line.match(CHECKLIST_REGEX);
     if (taskMatch && !isNonArchivableSection(currentSection) && taskMatch[1].toLowerCase() === "x") {
+      const taskBlock = collectTaskBlock(projectLines, index);
       archivedTasks.push({
         project: projectName,
         section: currentSection,
-        text: taskMatch[2].trim(),
+        text: getTodoTaskDisplayText(taskBlock.taskText, currentSection),
         archivedAt
       });
-      return;
+      index = taskBlock.endIndex;
+      continue;
     }
     keptLines.push(line);
-  });
+  }
   if (archivedTasks.length === 0) {
     return { lines: projectLines, archivedTasks: [] };
   }
   const archiveHeaderIndex = keptLines.findIndex((line) => isCompletedArchiveHeader(line));
-  const archiveLines = archivedTasks.map((task) => `- [x] ${task.archivedAt} - [${task.section}] ${task.text}`);
+  const archiveLines = archivedTasks.map((task) => `- [x] ${task.archivedAt} - [${task.section}] ${normalizeTaskTextForStorage(task.text)}`);
   if (archiveHeaderIndex >= 0) {
     let insertIndex = archiveHeaderIndex + 1;
     while (insertIndex < keptLines.length && keptLines[insertIndex].trim() === "") {
@@ -4487,7 +4495,8 @@ function insertTaskIntoProjectSection(content, projectName, sectionName, taskTex
   }
   const output = [...lines];
   const normalizedSection = sectionName.trim();
-  const taskLine = `- [ ] ${taskText.trim()}`;
+  const taskLine = `- [ ] ${normalizeTaskTextForStorage(taskText).trim()}`;
+  const normalizedDisplayText = normalizeKanbanTaskMatchText(getTodoTaskDisplayText(taskText, normalizedSection));
   let sectionStart = -1;
   let sectionEnd = project.end;
   for (let index = project.start + 1; index <= project.end; index += 1) {
@@ -4508,12 +4517,15 @@ function insertTaskIntoProjectSection(content, projectName, sectionName, taskTex
     }
   }
   if (sectionStart >= 0) {
-    const existingTasks = output.slice(sectionStart + 1, sectionEnd + 1).map((line) => {
-      var _a2;
-      return (_a2 = line.match(CHECKLIST_REGEX)) == null ? void 0 : _a2[2].trim().toLowerCase();
-    }).filter((line) => Boolean(line));
-    if (existingTasks.includes(taskText.trim().toLowerCase())) {
-      return content;
+    for (let index = sectionStart + 1; index <= sectionEnd; index += 1) {
+      if (!CHECKLIST_REGEX.test(output[index])) {
+        continue;
+      }
+      const taskBlock = collectTaskBlock(output, index);
+      if (normalizeKanbanTaskMatchText(getTodoTaskDisplayText(taskBlock.taskText, normalizedSection)) === normalizedDisplayText) {
+        return content;
+      }
+      index = taskBlock.endIndex;
     }
     let insertIndex2 = sectionEnd + 1;
     while (insertIndex2 > sectionStart + 1 && output[insertIndex2 - 1].trim() === "") {
@@ -5260,7 +5272,7 @@ function removeTaskByIdFromProject(content, projectName, taskId, taskRegistry = 
   if (!match) {
     return null;
   }
-  output.splice(match.index, 1);
+  output.splice(match.index, match.endIndex - match.index + 1);
   return {
     content: output.join("\n"),
     taskText: match.taskText
@@ -5316,7 +5328,7 @@ function updateTaskPhotoPathsByIdInProject(content, input) {
   const displayText = getTodoTaskDisplayText(match.taskText, match.section);
   const normalizedTaskText = match.section.trim().toLowerCase() === "waiting" ? displayText : stripBlockingTaskAnnotations(displayText);
   const lines = content.split(/\r?\n/);
-  lines[match.index] = lines[match.index].replace(CHECKLIST_REGEX, (_full, checked) => `- [${checked}] ${normalizedTaskText}`);
+  lines.splice(match.index, match.endIndex - match.index + 1, `- [${match.checked ? "x" : " "}] ${normalizeTaskTextForStorage(normalizedTaskText)}`);
   const nextContent = lines.join("\n");
   return {
     content: nextContent,
@@ -5421,32 +5433,38 @@ function findProjectTaskMatch(content, projectName, taskId, taskRegistry, allowC
       continue;
     }
     const checked = taskMatch[1].toLowerCase() === "x";
+    const taskBlock = collectTaskBlock(lines, index);
     if (!allowCompleted && (checked || currentSection.trim().toLowerCase() === "completed archive")) {
+      index = taskBlock.endIndex;
       continue;
     }
-    if (extractTaskAnnotation(taskMatch[2].trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
+    if (extractTaskAnnotation(taskBlock.taskText.trim(), TASK_ID_ANNOTATION_KEY) === taskId) {
       return {
         index,
+        endIndex: taskBlock.endIndex,
         section: currentSection,
         checked,
-        taskText: taskMatch[2].trim()
+        taskText: taskBlock.taskText.trim()
       };
     }
     if (!registryEntry || registryEntry.projectName.trim().toLowerCase() !== projectName.trim().toLowerCase()) {
       continue;
     }
-    const parsedText = parseTodoTaskSummary(taskMatch[2].trim(), currentSection, /* @__PURE__ */ new Date()).text;
+    const parsedText = parseTodoTaskSummary(taskBlock.taskText.trim(), currentSection, /* @__PURE__ */ new Date()).text;
     if (normalizeKanbanTaskMatchText(parsedText) !== normalizedRegistryText) {
+      index = taskBlock.endIndex;
       continue;
     }
     fallbackCandidates.push({
       index,
+      endIndex: taskBlock.endIndex,
       section: currentSection,
       checked,
-      taskText: taskMatch[2].trim(),
+      taskText: taskBlock.taskText.trim(),
       sectionMatches: normalizeLegacyKanbanSectionName(currentSection) === normalizedRegistrySection,
       checkedMatches: checked === registryEntry.checked
     });
+    index = taskBlock.endIndex;
   }
   const exactMatches = fallbackCandidates.filter((candidate) => candidate.sectionMatches && candidate.checkedMatches);
   if (exactMatches.length === 1) {
@@ -5467,6 +5485,36 @@ function findProjectTaskMatch(content, projectName, taskId, taskRegistry, allowC
 }
 function normalizeKanbanTaskMatchText(value) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+function isTaskContinuationLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (CHECKLIST_REGEX.test(line)) {
+    return false;
+  }
+  if (getSectionName(line) || /^##\s+/.test(trimmed)) {
+    return false;
+  }
+  return true;
+}
+function collectTaskBlock(lines, startIndex) {
+  var _a;
+  const taskMatch = (_a = lines[startIndex]) == null ? void 0 : _a.match(CHECKLIST_REGEX);
+  if (!taskMatch) {
+    return { taskText: "", endIndex: startIndex };
+  }
+  const parts = [taskMatch[2].trimEnd()];
+  let endIndex = startIndex;
+  while (endIndex + 1 < lines.length && isTaskContinuationLine(lines[endIndex + 1])) {
+    endIndex += 1;
+    parts.push(lines[endIndex].trimEnd());
+  }
+  return {
+    taskText: normalizeTaskBodyText(parts.join("\n")),
+    endIndex
+  };
 }
 function extractRenderedKanbanTaskId(value) {
   var _a, _b, _c;
@@ -6194,26 +6242,38 @@ function normalizeLegacyKanbanSectionName(section) {
   }
   return normalized;
 }
+function normalizeTaskBodyText(value) {
+  const normalized = value.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n").map((line) => line.replace(/[ \t]+$/g, ""));
+  while (lines.length > 0 && lines[0].trim().length === 0) {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines[lines.length - 1].trim().length === 0) {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
 function normalizeTaskHiddenMetadata(metadata) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
   const normalizedPhotos = ((_a = metadata.photos) != null ? _a : []).map((path) => path.trim()).filter((path, index, values) => path.length > 0 && values.indexOf(path) === index);
   return {
-    priority: ((_b = metadata.priority) == null ? void 0 : _b.trim()) || void 0,
-    due: ((_c = metadata.due) == null ? void 0 : _c.trim()) || void 0,
-    blocked: ((_d = metadata.blocked) == null ? void 0 : _d.trim()) || void 0,
-    unblock: ((_e = metadata.unblock) == null ? void 0 : _e.trim()) || void 0,
-    effort: ((_f = metadata.effort) == null ? void 0 : _f.trim()) || void 0,
-    energy: ((_g = metadata.energy) == null ? void 0 : _g.trim()) || void 0,
-    context: ((_h = metadata.context) == null ? void 0 : _h.trim()) || void 0,
-    trigger: ((_i = metadata.trigger) == null ? void 0 : _i.trim()) || void 0,
-    minimumStep: ((_j = metadata.minimumStep) == null ? void 0 : _j.trim()) || void 0,
+    body: normalizeTaskBodyText((_b = metadata.body) != null ? _b : "") || void 0,
+    priority: ((_c = metadata.priority) == null ? void 0 : _c.trim()) || void 0,
+    due: ((_d = metadata.due) == null ? void 0 : _d.trim()) || void 0,
+    blocked: ((_e = metadata.blocked) == null ? void 0 : _e.trim()) || void 0,
+    unblock: ((_f = metadata.unblock) == null ? void 0 : _f.trim()) || void 0,
+    effort: ((_g = metadata.effort) == null ? void 0 : _g.trim()) || void 0,
+    energy: ((_h = metadata.energy) == null ? void 0 : _h.trim()) || void 0,
+    context: ((_i = metadata.context) == null ? void 0 : _i.trim()) || void 0,
+    trigger: ((_j = metadata.trigger) == null ? void 0 : _j.trim()) || void 0,
+    minimumStep: ((_k = metadata.minimumStep) == null ? void 0 : _k.trim()) || void 0,
     photos: normalizedPhotos.length > 0 ? normalizedPhotos : void 0
   };
 }
 function hasTaskHiddenMetadata(metadata) {
   var _a, _b;
   return Boolean(
-    metadata.priority || metadata.due || metadata.blocked || metadata.unblock || metadata.effort || metadata.energy || metadata.context || metadata.trigger || metadata.minimumStep || ((_b = (_a = metadata.photos) == null ? void 0 : _a.length) != null ? _b : 0) > 0
+    metadata.body || metadata.priority || metadata.due || metadata.blocked || metadata.unblock || metadata.effort || metadata.energy || metadata.context || metadata.trigger || metadata.minimumStep || ((_b = (_a = metadata.photos) == null ? void 0 : _a.length) != null ? _b : 0) > 0
   );
 }
 function extractHiddenTaskIdComment(value) {
@@ -6232,6 +6292,7 @@ function extractTaskHiddenMetadata(value) {
   try {
     const parsed = JSON.parse(match[1]);
     return normalizeTaskHiddenMetadata({
+      body: typeof parsed.body === "string" ? parsed.body : "",
       priority: typeof parsed.priority === "string" ? parsed.priority : "",
       due: typeof parsed.due === "string" ? parsed.due : "",
       blocked: typeof parsed.blocked === "string" ? parsed.blocked : "",
@@ -6258,7 +6319,7 @@ function renderTaskHiddenMetadata(metadata) {
   return ` <!-- ${TASK_METADATA_COMMENT_KEY}: ${JSON.stringify(normalized)} -->`;
 }
 function stripVisibleDashboardAnnotations(value) {
-  return value.replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "").replace(/\s{2,}/g, " ").trim();
+  return value.replace(/\s*\[(?:task-id|priority|due|blocked|unblock|blocked-until|effort|energy|context|mode|trigger|minimum-step|minimum step|min-step|min step|photos):\s*[^\]]+\]/gi, "").replace(/[ \t]{2,}/g, " ").trim();
 }
 function extractTaskAnnotationValues(value, key) {
   if (key.trim().toLowerCase() === TASK_ID_ANNOTATION_KEY) {
@@ -6284,6 +6345,9 @@ function extractTaskAnnotation(value, key) {
 function getTaskHiddenMetadataValues(metadata, key) {
   var _a;
   const normalizedKey = key.trim().toLowerCase();
+  if (normalizedKey === "body") {
+    return metadata.body ? [metadata.body] : [];
+  }
   if (normalizedKey === "photos") {
     return (_a = metadata.photos) != null ? _a : [];
   }
@@ -6318,7 +6382,11 @@ function getTaskHiddenMetadataValues(metadata, key) {
 }
 function setTaskHiddenMetadataValue(metadata, key, nextValue) {
   const normalizedKey = key.trim().toLowerCase();
-  const normalizedValue = nextValue.trim();
+  const normalizedValue = normalizedKey === "body" ? normalizeTaskBodyText(nextValue) : nextValue.trim();
+  if (normalizedKey === "body") {
+    metadata.body = normalizedValue || void 0;
+    return;
+  }
   if (normalizedKey === "photos") {
     metadata.photos = normalizedValue ? normalizedValue.split("|").map((entry) => entry.trim()).filter((entry, index, values) => entry.length > 0 && values.indexOf(entry) === index) : void 0;
     return;
@@ -6396,10 +6464,16 @@ function extractAllTaskMetadata(value) {
   return normalizeTaskHiddenMetadata(metadata);
 }
 function renderTaskTextWithMetadata(displayText, metadata, taskId) {
-  const baseText = stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(displayText))).trim();
-  const hiddenMetadata = renderTaskHiddenMetadata(metadata);
+  var _a, _b, _c;
+  const baseText = normalizeTaskBodyText(stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(displayText))).trim());
+  const bodyText = baseText || normalizeTaskBodyText((_a = metadata.body) != null ? _a : "");
+  const primaryLine = (_c = (_b = bodyText.split(/\r?\n/)[0]) == null ? void 0 : _b.trim()) != null ? _c : "";
+  const hiddenMetadata = renderTaskHiddenMetadata({
+    ...metadata,
+    body: bodyText.includes("\n") ? bodyText : ""
+  });
   const taskIdComment = taskId.trim().length > 0 ? renderKanbanTaskIdComment(taskId) : "";
-  return `${baseText}${hiddenMetadata}${taskIdComment}`.trim();
+  return `${primaryLine}${taskIdComment}${hiddenMetadata}`.trim();
 }
 function removeTaskAnnotation(value, key) {
   var _a;
@@ -6414,7 +6488,17 @@ function removeTaskAnnotation(value, key) {
   return renderTaskTextWithMetadata(stripTaskAnnotations(withoutVisibleAnnotation) || withoutVisibleAnnotation, metadata, taskId);
 }
 function stripTaskAnnotations(value) {
-  return stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(value))).replace(/\s{2,}/g, " ").trim();
+  var _a;
+  const metadata = extractTaskHiddenMetadata(value);
+  const visibleText = stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(value)));
+  return normalizeTaskBodyText((_a = metadata.body) != null ? _a : visibleText);
+}
+function normalizeTaskTextForStorage(taskText) {
+  var _a;
+  const metadata = extractAllTaskMetadata(taskText);
+  const taskId = (_a = extractTaskAnnotation(taskText, TASK_ID_ANNOTATION_KEY)) != null ? _a : "";
+  const displayText = stripTaskAnnotations(taskText) || stripVisibleDashboardAnnotations(removeTaskHiddenMetadataComment(removeHiddenTaskIdComment(taskText))) || taskText;
+  return renderTaskTextWithMetadata(displayText, metadata, taskId);
 }
 function extractTodoTaskTags(rawText) {
   return Array.from(rawText.matchAll(/(?:^|\s)#([A-Za-z0-9/_-]+)/g)).map((match) => match[1].trim().toLowerCase()).filter((value, index, values) => value.length > 0 && values.indexOf(value) === index);
@@ -19170,17 +19254,19 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return includeCompleted ? [...this.getProjectOpenTaskDetails(project), ...project.completedTaskDetails] : this.getProjectOpenTaskDetails(project);
   }
   stripKanbanCategoryTagsFromTaskText(taskText, categoryTags) {
-    let nextText = taskText;
-    categoryTags.forEach((tag) => {
-      const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      nextText = nextText.replace(new RegExp(`(?:^|\\s)#${escapedTag}(?=\\s|$)`, "gi"), " ");
-    });
-    return nextText.replace(/\s{2,}/g, " ").trim();
+    return taskText.split(/\r?\n/).map((line) => {
+      let nextLine = line;
+      categoryTags.forEach((tag) => {
+        const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        nextLine = nextLine.replace(new RegExp(`(?:^|[ 	])#${escapedTag}(?=[ 	]|$)`, "gi"), " ");
+      });
+      return nextLine.replace(/[ \t]{2,}/g, " ").trimEnd();
+    }).join("\n").trim();
   }
   formatTaskTextForKanbanLane(projectName, laneKeyOrSection, taskText) {
     const laneOptions = this.getKanbanLaneOptions(projectName);
     const categoryTags = laneOptions.map((option) => option.categoryTag.trim().toLowerCase()).filter((value, index, array) => value.length > 0 && array.indexOf(value) === index);
-    return this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags).replace(/\s{2,}/g, " ").trim();
+    return this.stripKanbanCategoryTagsFromTaskText(taskText.trim(), categoryTags);
   }
   async getKanbanTaskDisplayById(projectName, taskId) {
     var _a, _b;
@@ -19280,6 +19366,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
+    const currentTask = await this.getKanbanTaskById(projectName, taskId);
+    if (targetLaneOption == null ? void 0 : targetLaneOption.done) {
+      if (currentTask && (currentTask.completedAt || "").trim().length > 0) {
+        return true;
+      }
+      return this.completeKanbanTask(projectName, taskId);
+    }
     const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || targetLane;
     const content = await this.app.vault.read(todoFile);
     const moved = moveTaskByIdInProject(content, {
@@ -19797,7 +19890,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     })).sort((left, right) => left.path.localeCompare(right.path));
   }
   async setKanbanTaskPhotoPaths(projectName, taskId, photoPaths) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -19822,10 +19915,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     if (updated.content !== content) {
       await this.app.vault.modify(todoFile, updated.content);
     }
+    const persistedLaneKey = (_c = (_b = (_a = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _a.laneKey) == null ? void 0 : _b.trim()) != null ? _c : "";
+    const resolvedLaneKey = persistedLaneKey && this.getKanbanLaneOptions(projectName).some((lane) => lane.laneKey === persistedLaneKey) ? persistedLaneKey : (_e = (_d = this.resolveKanbanLaneOption(projectName, updated.sectionName || task.section)) == null ? void 0 : _d.laneKey) != null ? _e : task.section;
     await this.syncKanbanRegistryAfterTaskEdit(taskId, {
       projectName,
       sectionName: updated.sectionName || task.section,
-      laneKey: (_b = (_a = this.resolveKanbanLaneOption(projectName, task.section)) == null ? void 0 : _a.laneKey) != null ? _b : task.section,
+      laneKey: resolvedLaneKey,
       taskText: updated.taskText || task.rawText,
       photoPaths,
       checked: false

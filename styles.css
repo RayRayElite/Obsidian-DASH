@@ -1624,6 +1624,7 @@
   line-height: 1.28;
   letter-spacing: -0.018em;
   color: var(--dash-kanban-text-strong);
+  white-space: pre-line;
 }
 
 .dash-kanban-card-photo-strip {
