@@ -9511,13 +9511,16 @@ export class DashKanbanView extends ItemView {
     parent.appendChild(pill);
   }
 
-  private appendCardLabel(parent: HTMLElement, label: string, value: string, kind: "priority" | "due" | "effort" | "done"): void {
+  private appendCardLabel(parent: HTMLElement, label: string, value: string, kind: "priority" | "due" | "effort" | "done", state = ""): void {
     if (!value.trim()) {
       return;
     }
     const pill = document.createElement("span");
     pill.className = "dash-kanban-card-label";
     pill.dataset.kind = kind;
+    if (state) {
+      pill.dataset.state = state;
+    }
     if (kind === "priority") {
       pill.dataset.priority = getKanbanPriorityTone(value);
     }
@@ -9537,32 +9540,38 @@ export class DashKanbanView extends ItemView {
       }
 
       popover.style.visibility = "hidden";
-      popover.style.position = "fixed";
+      popover.style.position = "absolute";
       popover.style.left = "0px";
       popover.style.top = "0px";
 
+      const host = popover.offsetParent instanceof HTMLElement
+        ? popover.offsetParent
+        : anchor.parentElement instanceof HTMLElement
+          ? anchor.parentElement
+          : anchor;
       const anchorRect = anchor.getBoundingClientRect();
+      const hostRect = host.getBoundingClientRect();
       const popoverRect = popover.getBoundingClientRect();
       const horizontalPadding = 12;
       const verticalGap = 8;
       const width = Math.min(popoverRect.width || 240, window.innerWidth - horizontalPadding * 2);
       const centeredLeft = anchorRect.left + (anchorRect.width / 2) - (width / 2);
-      const left = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, centeredLeft));
+      const viewportLeft = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, centeredLeft));
 
-      let top = preferBelow
+      let viewportTop = preferBelow
         ? anchorRect.bottom + verticalGap
         : anchorRect.top - popoverRect.height - verticalGap;
 
-      if (top < horizontalPadding) {
-        top = anchorRect.bottom + verticalGap;
+      if (viewportTop < horizontalPadding) {
+        viewportTop = anchorRect.bottom + verticalGap;
       }
-      if (top + popoverRect.height > window.innerHeight - horizontalPadding) {
-        top = Math.max(horizontalPadding, anchorRect.top - popoverRect.height - verticalGap);
+      if (viewportTop + popoverRect.height > window.innerHeight - horizontalPadding) {
+        viewportTop = Math.max(horizontalPadding, anchorRect.top - popoverRect.height - verticalGap);
       }
 
       popover.style.width = `${width}px`;
-      popover.style.left = `${left}px`;
-      popover.style.top = `${top}px`;
+      popover.style.left = `${viewportLeft - hostRect.left}px`;
+      popover.style.top = `${viewportTop - hostRect.top}px`;
       popover.style.visibility = "visible";
     }, 0);
   }
@@ -11081,7 +11090,7 @@ export class DashKanbanView extends ItemView {
         this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
       } else {
         if (resolvedDueDate) {
-          this.appendCardLabel(labelRow, "Due", resolvedDueDate, "due");
+          this.appendCardLabel(labelRow, card.isOverdue ? "Overdue" : "Due", resolvedDueDate, "due", card.isOverdue ? "overdue" : card.isDueSoon ? "due-soon" : "");
         }
         if (resolvedEffort) {
           this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
@@ -11260,7 +11269,7 @@ export class DashKanbanView extends ItemView {
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
       });
-    const dueButton = this.createCardActionButton("calendar", resolvedDueDate ? `Due ${resolvedDueDate}` : "Set due date", (event) => {
+    const dueButton = this.createCardActionButton("calendar", resolvedDueDate ? `${card.isOverdue ? "Overdue" : "Due"} ${resolvedDueDate}` : "Set due date", (event) => {
         event.stopPropagation();
         this.duePickerKey = this.duePickerKey?.projectName === project.projectName && this.duePickerKey.taskId === card.taskId
           ? null
@@ -11359,15 +11368,6 @@ export class DashKanbanView extends ItemView {
       timeGroup.className = "dash-kanban-due-group is-time";
       fieldRow.appendChild(timeGroup);
 
-      const preview = document.createElement("div");
-      preview.className = "dash-kanban-due-preview";
-      picker.appendChild(preview);
-
-      const updatePreview = () => {
-        const formatted = formatKanbanDueDateDraft(dueParts);
-        preview.textContent = formatted || "MM/DD/YYYY";
-      };
-
       const canSaveDueDate = () => isKanbanDueDateComplete(dueParts) && (!hasKanbanDueTimeValue(dueParts) || isKanbanDueTimeComplete(dueParts));
 
       const syncSaveState = (saveButton: HTMLButtonElement) => {
@@ -11400,7 +11400,6 @@ export class DashKanbanView extends ItemView {
             input.value = sanitized;
           }
           dueParts[key] = sanitized;
-          updatePreview();
           syncSaveState(saveButton);
           if (sanitized.length === maxLength && typeof nextIndex === "number") {
             focusFieldAt(nextIndex);
@@ -11489,7 +11488,6 @@ export class DashKanbanView extends ItemView {
       meridiemSelect.value = dueParts.meridiem;
       meridiemSelect.addEventListener("change", () => {
         dueParts.meridiem = meridiemSelect.value === "PM" ? "PM" : "AM";
-        updatePreview();
       });
       meridiemSelect.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -11527,7 +11525,6 @@ export class DashKanbanView extends ItemView {
       bindSegmentField(yearInput, "year", 4, 2, 3, 1);
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
-      updatePreview();
       syncSaveState(saveButton);
       actionWrap.appendChild(picker);
       this.positionCardPopover(picker, dueButton, preferPopoverBelow);
