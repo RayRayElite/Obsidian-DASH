@@ -16310,6 +16310,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.activeRoutineNotificationSignature = "";
     this.notificationAudioContext = null;
     this.kanbanManagedWritePaths = /* @__PURE__ */ new Set();
+    this.managedArtifactWritePaths = /* @__PURE__ */ new Set();
     this.kanbanSyncDebounceId = null;
     this.pendingKanbanSyncPath = "";
   }
@@ -16411,6 +16412,20 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       }
     }
     throw lastError;
+  }
+  async withManagedArtifactWrite(path, operation) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+    this.managedArtifactWritePaths.add(normalizedPath);
+    try {
+      return await operation();
+    } finally {
+      window.setTimeout(() => {
+        this.managedArtifactWritePaths.delete(normalizedPath);
+      }, 250);
+    }
+  }
+  isManagedArtifactWritePath(path) {
+    return this.managedArtifactWritePaths.has((0, import_obsidian4.normalizePath)(path));
   }
   showDashboardNotice(message, timeout = 4e3, playSound = false) {
     new import_obsidian4.Notice(message, timeout);
@@ -17135,6 +17150,12 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         return;
       }
       const normalizedPath = (0, import_obsidian4.normalizePath)(file.path);
+      if (this.isManagedArtifactWritePath(normalizedPath)) {
+        if (file.extension === "md") {
+          this.scheduleNoteIndexRefresh();
+        }
+        return;
+      }
       if (normalizedPath === (0, import_obsidian4.normalizePath)(this.data.settings.masterTodoPath)) {
         this.scheduleAutomaticTodoArchive();
         this.refreshDashboardViews();
@@ -17157,6 +17178,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }));
     this.registerEvent(this.app.vault.on("create", (file) => {
       if (!(file instanceof import_obsidian4.TFile) || file.extension !== "md") {
+        return;
+      }
+      if (this.isManagedArtifactWritePath(file.path)) {
+        this.scheduleNoteIndexRefresh();
         return;
       }
       if ((0, import_obsidian4.normalizePath)(file.path) === (0, import_obsidian4.normalizePath)(this.data.settings.calendarDocumentPath)) {
@@ -26978,43 +27003,45 @@ ${body}`;
     return `"${safeValue.replace(/"/g, '""')}"`;
   }
   async upsertTextFile(path, content) {
-    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
-    const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
-    if (directory) {
-      await this.ensureFolder(directory);
-    }
-    const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (existing instanceof import_obsidian4.TFile) {
-      const current = await this.app.vault.read(existing);
-      if (current !== content) {
-        await this.app.vault.modify(existing, content);
+    return this.withManagedArtifactWrite(path, async () => {
+      const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+      const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
+      if (directory) {
+        await this.ensureFolder(directory);
       }
-      return existing;
-    }
-    if (existing) {
-      throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
-    }
-    try {
-      return await this.app.vault.create(normalizedPath, content);
-    } catch (error) {
-      const file = this.isFolderAlreadyExistsError(error) ? await this.waitForVaultFile(normalizedPath) : this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (file instanceof import_obsidian4.TFile) {
-        const current = await this.app.vault.read(file);
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing instanceof import_obsidian4.TFile) {
+        const current = await this.app.vault.read(existing);
         if (current !== content) {
-          await this.app.vault.modify(file, content);
+          await this.withAlreadyExistsRetry(() => this.app.vault.modify(existing, content));
         }
-        return file;
+        return existing;
       }
-      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (refreshed instanceof import_obsidian4.TFile) {
-        const current = await this.app.vault.read(refreshed);
-        if (current !== content) {
-          await this.app.vault.modify(refreshed, content);
+      if (existing) {
+        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+      }
+      try {
+        return await this.withAlreadyExistsRetry(() => this.app.vault.create(normalizedPath, content));
+      } catch (error) {
+        const file = this.isFolderAlreadyExistsError(error) ? await this.waitForVaultFile(normalizedPath) : this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (file instanceof import_obsidian4.TFile) {
+          const current = await this.app.vault.read(file);
+          if (current !== content) {
+            await this.withAlreadyExistsRetry(() => this.app.vault.modify(file, content));
+          }
+          return file;
         }
-        return refreshed;
+        const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (refreshed instanceof import_obsidian4.TFile) {
+          const current = await this.app.vault.read(refreshed);
+          if (current !== content) {
+            await this.withAlreadyExistsRetry(() => this.app.vault.modify(refreshed, content));
+          }
+          return refreshed;
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
   async ensureFolder(folderPath) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(folderPath);

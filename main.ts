@@ -300,6 +300,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private activeRoutineNotificationSignature = "";
   private notificationAudioContext: AudioContext | null = null;
   private kanbanManagedWritePaths = new Set<string>();
+  private managedArtifactWritePaths = new Set<string>();
   private kanbanSyncDebounceId: number | null = null;
   private pendingKanbanSyncPath = "";
 
@@ -437,6 +438,22 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     throw lastError;
+  }
+
+  private async withManagedArtifactWrite<T>(path: string, operation: () => Promise<T>): Promise<T> {
+    const normalizedPath = normalizePath(path);
+    this.managedArtifactWritePaths.add(normalizedPath);
+    try {
+      return await operation();
+    } finally {
+      window.setTimeout(() => {
+        this.managedArtifactWritePaths.delete(normalizedPath);
+      }, 250);
+    }
+  }
+
+  private isManagedArtifactWritePath(path: string): boolean {
+    return this.managedArtifactWritePaths.has(normalizePath(path));
   }
 
   private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
@@ -1270,6 +1287,13 @@ export default class DailyDashboardPlugin extends Plugin {
       }
 
       const normalizedPath = normalizePath(file.path);
+      if (this.isManagedArtifactWritePath(normalizedPath)) {
+        if (file.extension === "md") {
+          this.scheduleNoteIndexRefresh();
+        }
+        return;
+      }
+
       if (normalizedPath === normalizePath(this.data.settings.masterTodoPath)) {
         this.scheduleAutomaticTodoArchive();
         this.refreshDashboardViews();
@@ -1297,6 +1321,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
     this.registerEvent(this.app.vault.on("create", (file) => {
       if (!(file instanceof TFile) || file.extension !== "md") {
+        return;
+      }
+
+      if (this.isManagedArtifactWritePath(file.path)) {
+        this.scheduleNoteIndexRefresh();
         return;
       }
 
@@ -13221,53 +13250,55 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async upsertTextFile(path: string, content: string): Promise<TFile> {
-    const normalizedPath = normalizePath(path);
-    const directory = normalizedPath.includes("/")
-      ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
-      : "";
+    return this.withManagedArtifactWrite(path, async () => {
+      const normalizedPath = normalizePath(path);
+      const directory = normalizedPath.includes("/")
+        ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
+        : "";
 
-    if (directory) {
-      await this.ensureFolder(directory);
-    }
-
-    const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-    if (existing instanceof TFile) {
-      const current = await this.app.vault.read(existing);
-      if (current !== content) {
-        await this.app.vault.modify(existing, content);
+      if (directory) {
+        await this.ensureFolder(directory);
       }
-      return existing;
-    }
 
-    if (existing) {
-      throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
-    }
-
-    try {
-      return await this.app.vault.create(normalizedPath, content);
-    } catch (error) {
-      const file = this.isFolderAlreadyExistsError(error)
-        ? await this.waitForVaultFile(normalizedPath)
-        : this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (file instanceof TFile) {
-        const current = await this.app.vault.read(file);
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing instanceof TFile) {
+        const current = await this.app.vault.read(existing);
         if (current !== content) {
-          await this.app.vault.modify(file, content);
+          await this.withAlreadyExistsRetry(() => this.app.vault.modify(existing, content));
         }
-        return file;
+        return existing;
       }
 
-      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (refreshed instanceof TFile) {
-        const current = await this.app.vault.read(refreshed);
-        if (current !== content) {
-          await this.app.vault.modify(refreshed, content);
-        }
-        return refreshed;
+      if (existing) {
+        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
       }
 
-      throw error;
-    }
+      try {
+        return await this.withAlreadyExistsRetry(() => this.app.vault.create(normalizedPath, content));
+      } catch (error) {
+        const file = this.isFolderAlreadyExistsError(error)
+          ? await this.waitForVaultFile(normalizedPath)
+          : this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (file instanceof TFile) {
+          const current = await this.app.vault.read(file);
+          if (current !== content) {
+            await this.withAlreadyExistsRetry(() => this.app.vault.modify(file, content));
+          }
+          return file;
+        }
+
+        const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+        if (refreshed instanceof TFile) {
+          const current = await this.app.vault.read(refreshed);
+          if (current !== content) {
+            await this.withAlreadyExistsRetry(() => this.app.vault.modify(refreshed, content));
+          }
+          return refreshed;
+        }
+
+        throw error;
+      }
+    });
   }
 
   private async ensureFolder(folderPath: string): Promise<void> {
