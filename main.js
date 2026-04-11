@@ -15067,11 +15067,12 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       return;
     }
+    const popoverHost = laneEl.closest(".dash-kanban-project-board") instanceof HTMLElement ? laneEl.closest(".dash-kanban-project-board") : laneEl;
     lane.cards.forEach((card) => {
-      cards.append(this.renderCard(project, lane, card));
+      cards.append(this.renderCard(project, lane, card, popoverHost));
     });
   }
-  renderCard(project, lane, card) {
+  renderCard(project, lane, card, popoverHost) {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     const resolvedPriority = card.priority;
@@ -15513,8 +15514,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         });
         picker.appendChild(button);
       });
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), popoverHost);
     }
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
@@ -15680,8 +15681,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, void 0, 3);
       syncSaveState(saveButton);
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), popoverHost);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? dueParts.month.length >= 2 ? dueParts.day.length >= 2 ? dueParts.year.length >= 4 ? 3 : 2 : 1 : 0 : 0);
     }
     if (this.matchesCardKey(this.effortPickerKey, project.projectName, card.taskId)) {
@@ -15728,8 +15729,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.requestRefresh();
         }
       });
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), popoverHost);
       window.setTimeout(() => input.focus(), 0);
     }
     if (this.matchesCardKey(this.photoPickerKey, project.projectName, card.taskId)) {
@@ -15820,8 +15821,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.attachExistingPhotoToCard(project.projectName, card.taskId);
         })
       );
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), popoverHost);
     }
     return cardEl;
   }

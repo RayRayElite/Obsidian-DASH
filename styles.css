@@ -453,6 +453,7 @@
 
 .dash-kanban-project-board {
   position: relative;
+  overflow: visible;
   --dash-kanban-board-accent: var(--dash-kanban-accent);
   --dash-kanban-board-accent-strong: var(--dash-kanban-accent-strong);
   --dash-kanban-board-surface: color-mix(in srgb, var(--dash-kanban-surface) 92%, transparent);
@@ -1711,7 +1712,7 @@
 
 .dash-kanban-card-popover {
   position: absolute;
-  z-index: 40;
+  z-index: 80;
   width: min(240px, 72vw);
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));

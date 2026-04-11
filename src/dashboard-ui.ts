@@ -10905,12 +10905,15 @@ export class DashKanbanView extends ItemView {
       return;
     }
 
+    const popoverHost = laneEl.closest(".dash-kanban-project-board") instanceof HTMLElement
+      ? laneEl.closest(".dash-kanban-project-board") as HTMLElement
+      : laneEl;
     lane.cards.forEach((card) => {
-      cards.append(this.renderCard(project, lane, card));
+      cards.append(this.renderCard(project, lane, card, popoverHost));
     });
   }
 
-  private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard): HTMLElement {
+  private renderCard(project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], card: DashKanbanCard, popoverHost: HTMLElement): HTMLElement {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     const resolvedPriority = card.priority;
@@ -11392,8 +11395,8 @@ export class DashKanbanView extends ItemView {
         });
         picker.appendChild(button);
       });
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), popoverHost);
     }
 
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
@@ -11581,8 +11584,8 @@ export class DashKanbanView extends ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
       syncSaveState(saveButton);
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), popoverHost);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? (dueParts.month.length >= 2 ? (dueParts.day.length >= 2 ? (dueParts.year.length >= 4 ? 3 : 2) : 1) : 0) : 0);
     }
 
@@ -11630,8 +11633,8 @@ export class DashKanbanView extends ItemView {
           void this.requestRefresh();
         }
       });
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), popoverHost);
       window.setTimeout(() => input.focus(), 0);
     }
 
@@ -11731,8 +11734,8 @@ export class DashKanbanView extends ItemView {
         })
       );
 
-      this.mountCardPopover(picker, cardEl);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), cardEl);
+      this.mountCardPopover(picker, popoverHost);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), popoverHost);
     }
 
     return cardEl;
