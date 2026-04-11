@@ -16436,6 +16436,39 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     throw new Error(`Vault cache did not register generated file ${normalizedPath} after write.`);
   }
+  async writeManagedTextFile(path, content) {
+    await this.withManagedArtifactWrite(path, async () => {
+      const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+      const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
+      const adapter = this.app.vault.adapter;
+      if (directory) {
+        await this.ensureFolder(directory);
+      }
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing && !(existing instanceof import_obsidian4.TFile)) {
+        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+      }
+      if (existing instanceof import_obsidian4.TFile) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+        }
+        return;
+      }
+      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
+      if (fileExistsOnDisk) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+        }
+        return;
+      }
+      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+    });
+  }
+  async writeManagedMarkdownFile(path, content) {
+    await this.writeManagedTextFile(path, this.buildGeneratedMarkdownContent(path, content));
+  }
   showDashboardNotice(message, timeout = 4e3, playSound = false) {
     new import_obsidian4.Notice(message, timeout);
     if (playSound) {
@@ -20827,11 +20860,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return this.ensureSupportNote(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
   }
   async ensureCoreSupportNotesExist() {
-    await this.ensureBasicInformationNoteExists();
-    await this.ensureAiGuardrailsNoteExists();
-    await this.ensureCurrentSeasonNoteExists();
-    await this.ensureDecisionJournalNoteExists();
-    await this.ensureSystemMapNoteExists();
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.basicInfoNotePath, () => this.renderBasicInformationTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.aiGuardrailsNotePath, () => this.renderAiGuardrailsTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.decisionJournalNotePath, () => this.renderDecisionJournalTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
   }
   async initializeCompiledResearchWiki() {
     const { createdCount, homeFile } = await this.ensureCompiledResearchWikiScaffold();
@@ -21768,6 +21801,20 @@ ${context}`, resolvedModel);
   }
   async ensureSupportNote(pathValue, renderTemplate) {
     return (await this.ensureSupportNoteWithStatus(pathValue, renderTemplate)).file;
+  }
+  async ensureSupportNoteExistsWithoutStatus(pathValue, renderTemplate) {
+    const path = (0, import_obsidian4.normalizePath)(pathValue);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof import_obsidian4.TFile) {
+      return;
+    }
+    if (existing) {
+      throw new Error(`Path conflict at ${path}: a folder exists where the plugin expects a markdown file.`);
+    }
+    if (await this.app.vault.adapter.exists(path, false)) {
+      return;
+    }
+    await this.writeManagedMarkdownFile(path, renderTemplate());
   }
   async ensureSupportNoteWithStatus(pathValue, renderTemplate) {
     const path = (0, import_obsidian4.normalizePath)(pathValue);
@@ -26381,7 +26428,7 @@ No entries available.`;
   }
   async syncDailyLog(entry) {
     const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
-    await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+    await this.writeManagedMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
   buildLogicalDayPrompts(entry, referenceDate, lastActivityAt, inactiveMinutes, hasActiveSession, isRollover) {
     const prompts = [];
@@ -26500,7 +26547,7 @@ No entries available.`;
   }
   async syncCalendarDocument() {
     const content = this.renderCalendarDocument();
-    await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+    await this.writeManagedMarkdownFile(this.data.settings.calendarDocumentPath, content);
   }
   async importCalendarEventsFromMarkdown() {
     const payload = await this.readCalendarDocumentPayload();
@@ -27012,35 +27059,8 @@ ${body}`;
     return `"${safeValue.replace(/"/g, '""')}"`;
   }
   async upsertTextFile(path, content) {
-    return this.withManagedArtifactWrite(path, async () => {
-      const normalizedPath = (0, import_obsidian4.normalizePath)(path);
-      const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
-      const adapter = this.app.vault.adapter;
-      if (directory) {
-        await this.ensureFolder(directory);
-      }
-      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (existing) {
-        if (!(existing instanceof import_obsidian4.TFile)) {
-          throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
-        }
-        const current = await adapter.read(normalizedPath);
-        if (current !== content) {
-          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-        }
-        return existing;
-      }
-      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
-      if (fileExistsOnDisk) {
-        const current = await adapter.read(normalizedPath);
-        if (current !== content) {
-          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-        }
-        return await this.resolveVaultFileAfterWrite(normalizedPath);
-      }
-      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-      return await this.resolveVaultFileAfterWrite(normalizedPath);
-    });
+    await this.writeManagedTextFile(path, content);
+    return await this.resolveVaultFileAfterWrite(path);
   }
   async ensureFolder(folderPath) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(folderPath);

@@ -466,6 +466,48 @@ export default class DailyDashboardPlugin extends Plugin {
     throw new Error(`Vault cache did not register generated file ${normalizedPath} after write.`);
   }
 
+  private async writeManagedTextFile(path: string, content: string): Promise<void> {
+    await this.withManagedArtifactWrite(path, async () => {
+      const normalizedPath = normalizePath(path);
+      const directory = normalizedPath.includes("/")
+        ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
+        : "";
+      const adapter = this.app.vault.adapter;
+
+      if (directory) {
+        await this.ensureFolder(directory);
+      }
+
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing && !(existing instanceof TFile)) {
+        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+      }
+
+      if (existing instanceof TFile) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+        }
+        return;
+      }
+
+      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
+      if (fileExistsOnDisk) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+        }
+        return;
+      }
+
+      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+    });
+  }
+
+  private async writeManagedMarkdownFile(path: string, content: string): Promise<void> {
+    await this.writeManagedTextFile(path, this.buildGeneratedMarkdownContent(path, content));
+  }
+
   private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
     new Notice(message, timeout);
     if (playSound) {
@@ -5769,11 +5811,11 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async ensureCoreSupportNotesExist(): Promise<void> {
-    await this.ensureBasicInformationNoteExists();
-    await this.ensureAiGuardrailsNoteExists();
-    await this.ensureCurrentSeasonNoteExists();
-    await this.ensureDecisionJournalNoteExists();
-    await this.ensureSystemMapNoteExists();
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.basicInfoNotePath, () => this.renderBasicInformationTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.aiGuardrailsNotePath, () => this.renderAiGuardrailsTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.currentSeasonNotePath, () => this.renderCurrentSeasonTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.decisionJournalNotePath, () => this.renderDecisionJournalTemplate());
+    await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
   }
 
   async initializeCompiledResearchWiki(): Promise<void> {
@@ -6926,6 +6968,22 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async ensureSupportNote(pathValue: string, renderTemplate: () => string): Promise<TFile> {
     return (await this.ensureSupportNoteWithStatus(pathValue, renderTemplate)).file;
+  }
+
+  private async ensureSupportNoteExistsWithoutStatus(pathValue: string, renderTemplate: () => string): Promise<void> {
+    const path = normalizePath(pathValue);
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      return;
+    }
+    if (existing) {
+      throw new Error(`Path conflict at ${path}: a folder exists where the plugin expects a markdown file.`);
+    }
+    if (await this.app.vault.adapter.exists(path, false)) {
+      return;
+    }
+
+    await this.writeManagedMarkdownFile(path, renderTemplate());
   }
 
   private async ensureSupportNoteWithStatus(pathValue: string, renderTemplate: () => string): Promise<{ file: TFile; created: boolean }> {
@@ -12507,7 +12565,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async syncDailyLog(entry: DailyEntry): Promise<void> {
     const content = renderDailyLog(entry, this.getHabitDefinitions(), this.getNextEntry(entry.date), this.getCalendarOccurrencesForDate(entry.date));
-    await this.upsertMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
+    await this.writeManagedMarkdownFile(`${this.data.settings.dailyLogFolder}/${entry.date}.md`, content);
   }
 
   private buildLogicalDayPrompts(
@@ -12679,7 +12737,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async syncCalendarDocument(): Promise<void> {
     const content = this.renderCalendarDocument();
-    await this.upsertMarkdownFile(this.data.settings.calendarDocumentPath, content);
+    await this.writeManagedMarkdownFile(this.data.settings.calendarDocumentPath, content);
   }
 
   private async importCalendarEventsFromMarkdown(): Promise<void> {
@@ -13260,42 +13318,8 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async upsertTextFile(path: string, content: string): Promise<TFile> {
-    return this.withManagedArtifactWrite(path, async () => {
-      const normalizedPath = normalizePath(path);
-      const directory = normalizedPath.includes("/")
-        ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
-        : "";
-      const adapter = this.app.vault.adapter;
-
-      if (directory) {
-        await this.ensureFolder(directory);
-      }
-
-      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (existing) {
-        if (!(existing instanceof TFile)) {
-          throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
-        }
-
-        const current = await adapter.read(normalizedPath);
-        if (current !== content) {
-          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-        }
-        return existing;
-      }
-
-      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
-      if (fileExistsOnDisk) {
-        const current = await adapter.read(normalizedPath);
-        if (current !== content) {
-          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-        }
-        return await this.resolveVaultFileAfterWrite(normalizedPath);
-      }
-
-      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
-      return await this.resolveVaultFileAfterWrite(normalizedPath);
-    });
+    await this.writeManagedTextFile(path, content);
+    return await this.resolveVaultFileAfterWrite(path);
   }
 
   private async ensureFolder(folderPath: string): Promise<void> {
