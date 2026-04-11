@@ -9648,6 +9648,49 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
+  async renameKanbanColumn(projectName: string, columnKey: string, nextLabel: string): Promise<boolean> {
+    const normalizedProjectName = projectName.trim();
+    const normalizedColumnKey = columnKey.trim();
+    const normalizedLabel = nextLabel.trim();
+    if (!normalizedProjectName || !normalizedColumnKey || !normalizedLabel) {
+      return false;
+    }
+
+    const configuration = this.getKanbanBoardConfiguration(normalizedProjectName);
+    const baseLaneDefinitions = configuration.laneDefinitions.length > 0
+      ? configuration.laneDefinitions
+      : this.getKanbanLaneOptions(normalizedProjectName).map((lane) => ({
+        laneKey: lane.laneKey,
+        label: lane.label,
+        helperText: lane.helperText,
+        columnKey: lane.columnKey,
+        categoryKey: lane.categoryKey,
+        categoryLabel: lane.categoryLabel,
+        categorySubtitle: lane.categorySubtitle,
+        categoryColor: lane.categoryColor,
+        categoryTag: lane.categoryTag,
+        ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+        mappedSections: lane.targetSection ? [lane.targetSection] : [],
+        done: lane.done
+      }));
+    if (!baseLaneDefinitions.some((lane) => lane.columnKey === normalizedColumnKey)) {
+      return false;
+    }
+
+    await this.saveKanbanBoardConfiguration({
+      projectName: normalizedProjectName,
+      templateId: configuration.templateId,
+      showInHub: configuration.showInHub,
+      laneDefinitions: baseLaneDefinitions.map((lane) => lane.columnKey === normalizedColumnKey ? { ...lane, label: normalizedLabel } : lane),
+      boardHeight: configuration.boardHeight,
+      collapsedInHub: configuration.collapsedInHub,
+      showLaneCategories: configuration.showLaneCategories,
+      stickyHeaders: configuration.stickyHeaders,
+      theme: configuration.theme
+    });
+    return true;
+  }
+
   async generateMonthlyFinanceSnapshot(openAfterGenerate: boolean): Promise<TFile | null> {
     const today = new Date();
     const monthKey = formatDateKey(today).slice(0, 7);

@@ -10571,12 +10571,12 @@ export class DashKanbanView extends ItemView {
     return groups;
   }
 
-  private activateSwimlaneRename(container: HTMLElement, project: DashKanbanProjectBoard, groupKey: string, currentLabel: string): void {
-    if (!groupKey || container.querySelector(".dash-kanban-lane-rename")) {
+  private activateMatrixColumnRename(container: HTMLElement, project: DashKanbanProjectBoard, columnKey: string, currentLabel: string): void {
+    if (!columnKey || container.querySelector(".dash-kanban-lane-rename")) {
       return;
     }
 
-    const existingRow = container.querySelector(".dash-kanban-matrix-row-title-row");
+    const existingRow = container.querySelector(".dash-kanban-matrix-column-title-row");
     if (!existingRow) {
       return;
     }
@@ -10616,7 +10616,7 @@ export class DashKanbanView extends ItemView {
       }
 
       void (async () => {
-        await this.plugin.renameKanbanCategory(project.projectName, groupKey, nextLabel);
+        await this.plugin.renameKanbanColumn(project.projectName, columnKey, nextLabel);
         await this.requestRefresh();
       })();
     };
@@ -10679,7 +10679,33 @@ export class DashKanbanView extends ItemView {
       const header = matrix.createDiv({ cls: "dash-kanban-matrix-column-header" });
       header.style.setProperty("--dash-kanban-column-index", `${columnIndex + 1}`);
       const headerTop = header.createDiv({ cls: "dash-kanban-matrix-column-top" });
-      headerTop.createEl("h3", { text: column.label });
+      const headerTitleRow = headerTop.createDiv({ cls: "dash-kanban-matrix-column-title-row" });
+      const headerTitleButton = headerTitleRow.createEl("button", { cls: "dash-kanban-matrix-column-title", text: column.label });
+      headerTitleButton.type = "button";
+      headerTitleButton.title = `Rename ${column.label}`;
+      headerTitleButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.activateMatrixColumnRename(headerTop, project, column.key, column.label);
+      });
+      headerTitleButton.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.activateMatrixColumnRename(headerTop, project, column.key, column.label);
+      });
+      const headerEditButton = headerTitleRow.createEl("button", { cls: "dash-kanban-matrix-column-edit", attr: { "aria-label": `Rename ${column.label}` } });
+      headerEditButton.type = "button";
+      headerEditButton.title = `Rename ${column.label}`;
+      setIcon(headerEditButton, "pencil");
+      headerEditButton.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+      headerEditButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.activateMatrixColumnRename(headerTop, project, column.key, column.label);
+      });
       headerTop.createEl("span", { cls: "dash-kanban-matrix-column-kicker", text: `Stage ${columnIndex + 1}` });
       if (column.helperText) {
         header.createEl("p", { text: column.helperText });
@@ -10694,37 +10720,7 @@ export class DashKanbanView extends ItemView {
       }
       const rowHeaderTop = rowHeader.createDiv({ cls: "dash-kanban-matrix-row-top" });
       const rowHeaderLabels = rowHeaderTop.createDiv({ cls: "dash-kanban-matrix-row-labels" });
-      const rowTitleRow = rowHeaderLabels.createDiv({ cls: "dash-kanban-matrix-row-title-row" });
-      const rowTitleButton = rowTitleRow.createEl("button", { cls: "dash-kanban-matrix-row-title", text: row.label || "Board" });
-      rowTitleButton.type = "button";
-      rowTitleButton.title = `Rename ${row.label || "swimlane"}`;
-      rowTitleButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
-      });
-      rowTitleButton.addEventListener("dblclick", (event) => {
-        event.stopPropagation();
-        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
-      });
-      rowTitleButton.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
-      });
-      const rowEditButton = rowTitleRow.createEl("button", { cls: "dash-kanban-matrix-row-edit", attr: { "aria-label": `Rename ${row.label || "swimlane"}` } });
-      rowEditButton.type = "button";
-      rowEditButton.title = `Rename ${row.label || "swimlane"}`;
-      setIcon(rowEditButton, "pencil");
-      rowEditButton.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-      });
-      rowEditButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
-      });
+      rowHeaderLabels.createEl("strong", { text: row.label || "Board" });
       if (row.subtitle) {
         rowHeaderLabels.createEl("p", { text: row.subtitle });
       }
