@@ -9499,14 +9499,14 @@ export class DashKanbanView extends ItemView {
       : null;
   }
 
-  private ensurePopoverLayer(): HTMLElement {
+  private ensurePopoverLayer(ownerDocument: Document = this.contentEl.ownerDocument): HTMLElement {
     if (this.popoverLayerEl?.isConnected) {
       return this.popoverLayerEl;
     }
 
-    const layer = document.createElement("div");
+    const layer = ownerDocument.createElement("div");
     layer.className = "dash-kanban-popover-layer";
-    document.body.appendChild(layer);
+    ownerDocument.body.appendChild(layer);
     this.popoverLayerEl = layer;
     return layer;
   }
@@ -9587,12 +9587,14 @@ export class DashKanbanView extends ItemView {
         return false;
       }
 
+      const ownerDocument = anchor.ownerDocument;
+
       popover.style.visibility = "hidden";
       popover.style.position = "fixed";
       popover.style.left = "0px";
       popover.style.top = "0px";
 
-      const viewportRect = document.documentElement.getBoundingClientRect();
+      const viewportRect = ownerDocument.documentElement.getBoundingClientRect();
       const anchorRect = anchor.getBoundingClientRect();
       const popoverRect = popover.getBoundingClientRect();
       const horizontalPadding = 12;
@@ -9633,7 +9635,8 @@ export class DashKanbanView extends ItemView {
       return true;
     };
 
-    window.setTimeout(() => {
+    const ownerWindow = anchor.ownerDocument.defaultView ?? window;
+    ownerWindow.setTimeout(() => {
       let remainingFrames = 12;
       const tick = () => {
         const positioned = positionOnce();
@@ -9642,7 +9645,7 @@ export class DashKanbanView extends ItemView {
         }
         remainingFrames -= 1;
         if (remainingFrames > 0) {
-          window.requestAnimationFrame(tick);
+          ownerWindow.requestAnimationFrame(tick);
         }
       };
       tick();
@@ -9657,7 +9660,7 @@ export class DashKanbanView extends ItemView {
   }
 
   private mountCardPopover(popover: HTMLElement): void {
-    this.ensurePopoverLayer().appendChild(popover);
+    this.ensurePopoverLayer(popover.ownerDocument).appendChild(popover);
   }
 
   private closeInlineCardEditor(): void {
