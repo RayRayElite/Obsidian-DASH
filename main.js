@@ -13871,8 +13871,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       if (!popover.isConnected || !anchor.isConnected) {
         return false;
       }
+      const hostRect = this.contentEl.getBoundingClientRect();
+      const hostScrollLeft = this.contentEl.scrollLeft;
+      const hostScrollTop = this.contentEl.scrollTop;
       popover.style.visibility = "hidden";
-      popover.style.position = "fixed";
+      popover.style.position = "absolute";
       popover.style.left = "0px";
       popover.style.top = "0px";
       const anchorRect = anchor.getBoundingClientRect();
@@ -13897,8 +13900,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         viewportTop = Math.max(horizontalPadding, ((_d = anchorPoint == null ? void 0 : anchorPoint.y) != null ? _d : anchorRect.top) - popoverRect.height - verticalGap);
       }
       popover.style.width = `${width}px`;
-      popover.style.left = `${viewportLeft}px`;
-      popover.style.top = `${viewportTop}px`;
+      popover.style.left = `${viewportLeft - hostRect.left + hostScrollLeft}px`;
+      popover.style.top = `${viewportTop - hostRect.top + hostScrollTop}px`;
       popover.style.visibility = "visible";
       return true;
     };

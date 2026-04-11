@@ -31,6 +31,7 @@
   --dash-kanban-surface-strong: color-mix(in srgb, var(--background-primary) 86%, #091018);
   --dash-kanban-border: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-modifier-border));
   --dash-kanban-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+  position: relative;
   padding: 22px;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, #f1b46b 10%, transparent), transparent 28%),
@@ -1709,7 +1710,7 @@
 }
 
 .dash-kanban-card-popover {
-  position: fixed;
+  position: absolute;
   z-index: 40;
   width: min(240px, 72vw);
   padding: 12px;
