@@ -9365,6 +9365,7 @@ export class DashKanbanView extends ItemView {
   private duePickerKey: { projectName: string; taskId: string } | null = null;
   private effortPickerKey: { projectName: string; taskId: string } | null = null;
   private photoPickerKey: { projectName: string; taskId: string } | null = null;
+  private cardPopoverAnchorPoint: { type: "priority" | "due" | "effort" | "photo"; projectName: string; taskId: string; x: number; y: number } | null = null;
   private photoCardIndices = new Map<string, number>();
   private collapsedPhotoCards = new Set<string>();
   private detailEditState: {
@@ -9470,6 +9471,29 @@ export class DashKanbanView extends ItemView {
     this.duePickerKey = null;
     this.effortPickerKey = null;
     this.photoPickerKey = null;
+    this.cardPopoverAnchorPoint = null;
+  }
+
+  private setCardPopoverAnchorPoint(type: "priority" | "due" | "effort" | "photo", projectName: string, taskId: string, event: MouseEvent): void {
+    this.cardPopoverAnchorPoint = {
+      type,
+      projectName,
+      taskId,
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  private getCardPopoverAnchorPoint(type: "priority" | "due" | "effort" | "photo", projectName: string, taskId: string): { x: number; y: number } | null {
+    if (!this.cardPopoverAnchorPoint) {
+      return null;
+    }
+
+    return this.cardPopoverAnchorPoint.type === type
+      && this.cardPopoverAnchorPoint.projectName === projectName
+      && this.cardPopoverAnchorPoint.taskId === taskId
+      ? { x: this.cardPopoverAnchorPoint.x, y: this.cardPopoverAnchorPoint.y }
+      : null;
   }
 
   private setLaneDropTarget(target: HTMLElement | null): void {
@@ -9533,7 +9557,7 @@ export class DashKanbanView extends ItemView {
     parent.appendChild(pill);
   }
 
-  private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean): void {
+  private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean, anchorPoint: { x: number; y: number } | null = null): void {
     const positionOnce = () => {
       if (!popover.isConnected || !anchor.isConnected) {
         return false;
@@ -9549,18 +9573,27 @@ export class DashKanbanView extends ItemView {
       const horizontalPadding = 12;
       const verticalGap = 8;
       const width = Math.min(popoverRect.width || 240, window.innerWidth - horizontalPadding * 2);
-      const centeredLeft = anchorRect.left + (anchorRect.width / 2) - (width / 2);
-      const viewportLeft = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, centeredLeft));
+      const pointX = anchorPoint?.x ?? (anchorRect.left + anchorRect.width / 2);
+      const pointY = anchorPoint?.y ?? (preferBelow ? anchorRect.bottom : anchorRect.top);
+      const canAlignToPointerRight = pointX + width <= window.innerWidth - horizontalPadding;
+      const canAlignToPointerLeft = pointX - width >= horizontalPadding;
+      let viewportLeft = pointX;
+
+      if (!canAlignToPointerRight && canAlignToPointerLeft) {
+        viewportLeft = pointX - width;
+      }
+
+      viewportLeft = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, viewportLeft));
 
       let viewportTop = preferBelow
-        ? anchorRect.bottom + verticalGap
-        : anchorRect.top - popoverRect.height - verticalGap;
+        ? pointY + verticalGap
+        : pointY - popoverRect.height - verticalGap;
 
       if (viewportTop < horizontalPadding) {
-        viewportTop = anchorRect.bottom + verticalGap;
+        viewportTop = (anchorPoint?.y ?? anchorRect.bottom) + verticalGap;
       }
       if (viewportTop + popoverRect.height > window.innerHeight - horizontalPadding) {
-        viewportTop = Math.max(horizontalPadding, anchorRect.top - popoverRect.height - verticalGap);
+        viewportTop = Math.max(horizontalPadding, (anchorPoint?.y ?? anchorRect.top) - popoverRect.height - verticalGap);
       }
 
       popover.style.width = `${width}px`;
@@ -11274,6 +11307,7 @@ export class DashKanbanView extends ItemView {
     actionWrap.appendChild(actions);
     const priorityButton = this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
         event.stopPropagation();
+        this.setCardPopoverAnchorPoint("priority", project.projectName, card.taskId, event);
         this.priorityPickerKey = this.priorityPickerKey?.projectName === project.projectName && this.priorityPickerKey.taskId === card.taskId
           ? null
           : { projectName: project.projectName, taskId: card.taskId };
@@ -11285,6 +11319,7 @@ export class DashKanbanView extends ItemView {
       });
     const dueButton = this.createCardActionButton("calendar", resolvedDueDate ? `${card.isOverdue ? "Overdue" : "Due"} ${resolvedDueDate}` : "Set due date", (event) => {
         event.stopPropagation();
+        this.setCardPopoverAnchorPoint("due", project.projectName, card.taskId, event);
         this.duePickerKey = this.duePickerKey?.projectName === project.projectName && this.duePickerKey.taskId === card.taskId
           ? null
           : { projectName: project.projectName, taskId: card.taskId };
@@ -11296,6 +11331,7 @@ export class DashKanbanView extends ItemView {
       });
     const effortButton = this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
         event.stopPropagation();
+        this.setCardPopoverAnchorPoint("effort", project.projectName, card.taskId, event);
         this.effortPickerKey = this.effortPickerKey?.projectName === project.projectName && this.effortPickerKey.taskId === card.taskId
           ? null
           : { projectName: project.projectName, taskId: card.taskId };
@@ -11307,6 +11343,7 @@ export class DashKanbanView extends ItemView {
       });
     const photoButton = this.createCardActionButton("image", photoPaths.length > 0 ? `Manage photos (${photoPaths.length})` : "Attach photos", (event) => {
         event.stopPropagation();
+        this.setCardPopoverAnchorPoint("photo", project.projectName, card.taskId, event);
         this.photoPickerKey = this.photoPickerKey?.projectName === project.projectName && this.photoPickerKey.taskId === card.taskId
           ? null
           : { projectName: project.projectName, taskId: card.taskId };
@@ -11352,7 +11389,7 @@ export class DashKanbanView extends ItemView {
         picker.appendChild(button);
       });
       this.mountCardPopover(picker);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId));
     }
 
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
@@ -11541,7 +11578,7 @@ export class DashKanbanView extends ItemView {
       bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
       syncSaveState(saveButton);
       this.mountCardPopover(picker);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId));
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? (dueParts.month.length >= 2 ? (dueParts.day.length >= 2 ? (dueParts.year.length >= 4 ? 3 : 2) : 1) : 0) : 0);
     }
 
@@ -11590,7 +11627,7 @@ export class DashKanbanView extends ItemView {
         }
       });
       this.mountCardPopover(picker);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId));
       window.setTimeout(() => input.focus(), 0);
     }
 
@@ -11691,7 +11728,7 @@ export class DashKanbanView extends ItemView {
       );
 
       this.mountCardPopover(picker);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId));
     }
 
     return cardEl;
