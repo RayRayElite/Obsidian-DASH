@@ -163,6 +163,25 @@
   color: #152437 !important;
 }
 
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-title,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-title {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  color: #152437 !important;
+  appearance: none;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-title:hover,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-title:focus-visible,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-title:hover,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-title:focus-visible {
+  background: transparent !important;
+  color: #29405f !important;
+  box-shadow: none !important;
+}
+
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-summary,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-context-item,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-hint,
