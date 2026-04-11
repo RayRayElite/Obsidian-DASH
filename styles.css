@@ -2579,6 +2579,13 @@
   opacity: 0.08;
 }
 
+.dash-kanban-shell.is-compact .dash-kanban-card:hover .dash-kanban-card-actions,
+.dash-kanban-shell.is-compact .dash-kanban-card.is-selected .dash-kanban-card-actions,
+.dash-kanban-shell.is-compact .dash-kanban-card:focus-within .dash-kanban-card-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .dash-kanban-shell.is-compact .dash-kanban-card-status-row,
 .dash-kanban-shell.is-compact .dash-kanban-card-meta,
 .dash-kanban-shell.is-compact .dash-kanban-card-footer-info {
