@@ -3119,6 +3119,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
+      stickyHeaders: false,
       theme: "dark",
       updatedAt: ""
     };
@@ -3664,6 +3665,7 @@ export default class DailyDashboardPlugin extends Plugin {
     boardHeight: number;
     collapsedInHub: boolean;
     showLaneCategories: boolean;
+    stickyHeaders: boolean;
     theme: DashboardKanbanTheme;
   }): Promise<void> {
     const projectName = input.projectName.trim();
@@ -3713,6 +3715,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
+      stickyHeaders: Boolean(input.stickyHeaders),
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
       updatedAt: formatDateTimeKey(new Date())
     };
@@ -3949,7 +3952,7 @@ export default class DailyDashboardPlugin extends Plugin {
     };
   }
 
-  async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean; showLaneCategories?: boolean; theme?: DashboardKanbanTheme }): Promise<void> {
+  async updateKanbanBoardPresentation(projectName: string, input: { boardHeight?: number; collapsedInHub?: boolean; showLaneCategories?: boolean; stickyHeaders?: boolean; theme?: DashboardKanbanTheme }): Promise<void> {
     const normalizedProjectName = projectName.trim();
     if (!normalizedProjectName) {
       return;
@@ -3968,6 +3971,9 @@ export default class DailyDashboardPlugin extends Plugin {
       showLaneCategories: typeof input.showLaneCategories === "boolean"
         ? input.showLaneCategories
         : existing.showLaneCategories,
+      stickyHeaders: typeof input.stickyHeaders === "boolean"
+        ? input.stickyHeaders
+        : existing.stickyHeaders,
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark"
         ? input.theme
         : existing.theme,
@@ -4261,6 +4267,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: typeof configuration?.boardHeight === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
       collapsedInHub: Boolean(configuration?.collapsedInHub),
       showLaneCategories: Boolean(configuration?.showLaneCategories),
+      stickyHeaders: Boolean(configuration?.stickyHeaders),
       usesSharedColumnLayout: new Set(lanes.map((lane) => lane.categoryKey).filter((value) => value.length > 0)).size > 1
         && new Set(lanes.map((lane) => lane.columnKey).filter((value) => value.length > 0)).size < lanes.length,
       lanes
@@ -7351,6 +7358,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: input.kanbanShowLaneCategories,
+      stickyHeaders: false,
       theme: input.kanbanTheme
     });
     await this.refreshMasterHubPortfolioSnapshot(false);
@@ -7730,9 +7738,11 @@ export default class DailyDashboardPlugin extends Plugin {
         templateId: this.inferKanbanBoardTemplateId(project),
         showInHub: project.projectState !== "someday",
         laneDefinitions: [],
+        laneOrder: {},
         boardHeight: 420,
         collapsedInHub: false,
         showLaneCategories: false,
+        stickyHeaders: false,
         theme: "dark",
         updatedAt
       };
@@ -8037,6 +8047,7 @@ export default class DailyDashboardPlugin extends Plugin {
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
+        stickyHeaders: Boolean(entry.stickyHeaders),
         theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
@@ -9341,6 +9352,7 @@ export default class DailyDashboardPlugin extends Plugin {
       boardHeight: configuration.boardHeight,
       collapsedInHub: configuration.collapsedInHub,
       showLaneCategories: configuration.showLaneCategories,
+      stickyHeaders: configuration.stickyHeaders,
       theme: configuration.theme
     });
     return true;

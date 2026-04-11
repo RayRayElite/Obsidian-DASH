@@ -6381,6 +6381,14 @@ var DASH_KANBAN_THEME_LABELS = {
   rose: "Rose Workshop",
   aurora: "Aurora Signal"
 };
+var DASH_KANBAN_THEME_PREVIEW_TEXT = {
+  dark: "Neutral charcoal and brass for broad daily use.",
+  light: "Warm paper tones with quieter editorial contrast.",
+  ocean: "Cool ledger blues with cleaner triage emphasis.",
+  forest: "Field-note greens with softer operational depth.",
+  rose: "Workshop reds with warmer tactile surfaces.",
+  aurora: "High-contrast neon drift for more dramatic boards."
+};
 function kanbanTemplateSupportsLaneCategories(template) {
   return Boolean(template == null ? void 0 : template.laneDefinitions.some((lane) => lane.categoryLabel.trim().length > 0 || lane.categoryTag.trim().length > 0));
 }
@@ -11799,6 +11807,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.boardHeight = 420;
     this.collapsedInHub = false;
     this.showLaneCategories = false;
+    this.stickyHeaders = false;
     this.theme = "dark";
     this.laneDefinitions = [];
     this.plugin = plugin;
@@ -11818,6 +11827,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.boardHeight = configuration.boardHeight;
     this.collapsedInHub = configuration.collapsedInHub;
     this.showLaneCategories = configuration.showLaneCategories;
+    this.stickyHeaders = configuration.stickyHeaders;
     this.theme = configuration.theme;
     this.laneDefinitions = this.cloneLaneDefinitions(
       configuration.laneDefinitions.length > 0 ? configuration.laneDefinitions : (_c = fallbackTemplate == null ? void 0 : fallbackTemplate.laneDefinitions) != null ? _c : []
@@ -11894,6 +11904,31 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.laneDefinitions = next;
     this.onOpen();
   }
+  renderThemePreviewStrip(parent) {
+    const strip = parent.createDiv({ cls: "dash-kanban-theme-preview-strip" });
+    Object.entries(DASH_KANBAN_THEME_LABELS).forEach(([value, label]) => {
+      const button = strip.createEl("button", {
+        cls: `dash-kanban-theme-preview${this.theme === value ? " is-selected" : ""}`,
+        attr: {
+          "aria-pressed": this.theme === value ? "true" : "false",
+          "data-theme": value
+        }
+      });
+      button.type = "button";
+      button.title = `${label}: ${DASH_KANBAN_THEME_PREVIEW_TEXT[value]}`;
+      const swatch = button.createDiv({ cls: "dash-kanban-theme-preview-swatch" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-primary" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-secondary" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-surface" });
+      const copy = button.createDiv({ cls: "dash-kanban-theme-preview-copy" });
+      copy.createEl("strong", { text: label });
+      copy.createEl("span", { text: DASH_KANBAN_THEME_PREVIEW_TEXT[value] });
+      button.addEventListener("click", () => {
+        this.theme = value;
+        this.onOpen();
+      });
+    });
+  }
   onOpen() {
     this.setTitle("DASH Kanban Board Settings");
     const { contentEl } = this;
@@ -11953,10 +11988,17 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         this.theme = value;
       });
     });
+    this.renderThemePreviewStrip(contentEl);
     new import_obsidian3.Setting(contentEl).setName("Show swimlane categories").setDesc("Turn category bands on only for boards that actually need grouped swimlanes.").addToggle((toggle) => {
       toggle.setValue(this.showLaneCategories);
       toggle.onChange((value) => {
         this.showLaneCategories = value;
+      });
+    });
+    new import_obsidian3.Setting(contentEl).setName("Sticky orientation headers").setDesc("Keep matrix stage headers pinned near the top and swimlane row headers pinned while you scroll larger boards.").addToggle((toggle) => {
+      toggle.setValue(this.stickyHeaders);
+      toggle.onChange((value) => {
+        this.stickyHeaders = value;
       });
     });
     const template = this.getSelectedTemplate();
@@ -12063,6 +12105,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
           boardHeight: this.boardHeight,
           collapsedInHub: this.collapsedInHub,
           showLaneCategories: this.showLaneCategories,
+          stickyHeaders: this.stickyHeaders,
           theme: this.theme
         });
         new import_obsidian3.Notice("Kanban board settings saved.");
@@ -14918,7 +14961,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   renderProjectBoard(parent, project, mode, density) {
     var _a, _b, _c;
     const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
-    const board = parent.createDiv({ cls: `dash-kanban-project-board is-${mode}${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}` });
+    const board = parent.createDiv({ cls: `dash-kanban-project-board is-${mode}${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}${project.stickyHeaders ? " has-sticky-headers" : ""}` });
     board.dataset.theme = project.theme;
     board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const visibleCards = project.lanes.flatMap((lane) => lane.cards);
@@ -18686,6 +18729,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: false,
+      stickyHeaders: false,
       theme: "dark",
       updatedAt: ""
     };
@@ -19172,6 +19216,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: Math.min(Math.max(Math.round(input.boardHeight || 420), 260), 900),
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
+      stickyHeaders: Boolean(input.stickyHeaders),
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
@@ -19385,6 +19430,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: typeof input.boardHeight === "number" ? Math.min(Math.max(Math.round(input.boardHeight), 260), 900) : existing.boardHeight,
       collapsedInHub: typeof input.collapsedInHub === "boolean" ? input.collapsedInHub : existing.collapsedInHub,
       showLaneCategories: typeof input.showLaneCategories === "boolean" ? input.showLaneCategories : existing.showLaneCategories,
+      stickyHeaders: typeof input.stickyHeaders === "boolean" ? input.stickyHeaders : existing.stickyHeaders,
       theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark" ? input.theme : existing.theme,
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
@@ -19626,6 +19672,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       boardHeight: typeof (configuration == null ? void 0 : configuration.boardHeight) === "number" ? Math.min(Math.max(Math.round(configuration.boardHeight), 260), 900) : 420,
       collapsedInHub: Boolean(configuration == null ? void 0 : configuration.collapsedInHub),
       showLaneCategories: Boolean(configuration == null ? void 0 : configuration.showLaneCategories),
+      stickyHeaders: Boolean(configuration == null ? void 0 : configuration.stickyHeaders),
       usesSharedColumnLayout: new Set(lanes.map((lane) => lane.categoryKey).filter((value) => value.length > 0)).size > 1 && new Set(lanes.map((lane) => lane.columnKey).filter((value) => value.length > 0)).size < lanes.length,
       lanes
     };
@@ -22207,6 +22254,7 @@ ${context}`, resolvedModel);
       boardHeight: 420,
       collapsedInHub: false,
       showLaneCategories: input.kanbanShowLaneCategories,
+      stickyHeaders: false,
       theme: input.kanbanTheme
     });
     await this.refreshMasterHubPortfolioSnapshot(false);
@@ -22510,9 +22558,11 @@ ${context}`, resolvedModel);
         templateId: this.inferKanbanBoardTemplateId(project),
         showInHub: project.projectState !== "someday",
         laneDefinitions: [],
+        laneOrder: {},
         boardHeight: 420,
         collapsedInHub: false,
         showLaneCategories: false,
+        stickyHeaders: false,
         theme: "dark",
         updatedAt
       };
@@ -22762,6 +22812,7 @@ ${context}`, resolvedModel);
         boardHeight: typeof entry.boardHeight === "number" ? Math.min(Math.max(Math.round(entry.boardHeight), 260), 900) : 420,
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
+        stickyHeaders: Boolean(entry.stickyHeaders),
         theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
@@ -23812,6 +23863,7 @@ ${context}`, resolvedModel);
       boardHeight: configuration.boardHeight,
       collapsedInHub: configuration.collapsedInHub,
       showLaneCategories: configuration.showLaneCategories,
+      stickyHeaders: configuration.stickyHeaders,
       theme: configuration.theme
     });
     return true;

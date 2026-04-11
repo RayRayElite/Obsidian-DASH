@@ -683,6 +683,7 @@ export interface KanbanBoardConfiguration {
   boardHeight: number;
   collapsedInHub: boolean;
   showLaneCategories: boolean;
+  stickyHeaders: boolean;
   theme: DashboardKanbanTheme;
   updatedAt: string;
 }
@@ -782,6 +783,7 @@ export interface DashKanbanProjectBoard {
   boardHeight: number;
   collapsedInHub: boolean;
   showLaneCategories: boolean;
+  stickyHeaders: boolean;
   usesSharedColumnLayout: boolean;
   lanes: DashKanbanLane[];
 }

@@ -115,6 +115,15 @@ const DASH_KANBAN_THEME_LABELS: Record<DashboardKanbanTheme, string> = {
   aurora: "Aurora Signal"
 };
 
+const DASH_KANBAN_THEME_PREVIEW_TEXT: Record<DashboardKanbanTheme, string> = {
+  dark: "Neutral charcoal and brass for broad daily use.",
+  light: "Warm paper tones with quieter editorial contrast.",
+  ocean: "Cool ledger blues with cleaner triage emphasis.",
+  forest: "Field-note greens with softer operational depth.",
+  rose: "Workshop reds with warmer tactile surfaces.",
+  aurora: "High-contrast neon drift for more dramatic boards."
+};
+
 function kanbanTemplateSupportsLaneCategories(template: KanbanBoardTemplate | null | undefined): boolean {
   return Boolean(template?.laneDefinitions.some((lane) => lane.categoryLabel.trim().length > 0 || lane.categoryTag.trim().length > 0));
 }
@@ -6483,6 +6492,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
   private boardHeight = 420;
   private collapsedInHub = false;
   private showLaneCategories = false;
+  private stickyHeaders = false;
   private theme: DashboardKanbanTheme = "dark";
   private laneDefinitions: KanbanLaneDefinition[] = [];
 
@@ -6506,6 +6516,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
     this.boardHeight = configuration.boardHeight;
     this.collapsedInHub = configuration.collapsedInHub;
     this.showLaneCategories = configuration.showLaneCategories;
+    this.stickyHeaders = configuration.stickyHeaders;
     this.theme = configuration.theme;
     this.laneDefinitions = this.cloneLaneDefinitions(
       configuration.laneDefinitions.length > 0
@@ -6596,6 +6607,32 @@ export class DashKanbanBoardSettingsModal extends Modal {
     this.onOpen();
   }
 
+  private renderThemePreviewStrip(parent: HTMLElement): void {
+    const strip = parent.createDiv({ cls: "dash-kanban-theme-preview-strip" });
+    (Object.entries(DASH_KANBAN_THEME_LABELS) as Array<[DashboardKanbanTheme, string]>).forEach(([value, label]) => {
+      const button = strip.createEl("button", {
+        cls: `dash-kanban-theme-preview${this.theme === value ? " is-selected" : ""}`,
+        attr: {
+          "aria-pressed": this.theme === value ? "true" : "false",
+          "data-theme": value
+        }
+      });
+      button.type = "button";
+      button.title = `${label}: ${DASH_KANBAN_THEME_PREVIEW_TEXT[value]}`;
+      const swatch = button.createDiv({ cls: "dash-kanban-theme-preview-swatch" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-primary" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-secondary" });
+      swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-surface" });
+      const copy = button.createDiv({ cls: "dash-kanban-theme-preview-copy" });
+      copy.createEl("strong", { text: label });
+      copy.createEl("span", { text: DASH_KANBAN_THEME_PREVIEW_TEXT[value] });
+      button.addEventListener("click", () => {
+        this.theme = value;
+        this.onOpen();
+      });
+    });
+  }
+
   onOpen(): void {
     this.setTitle("DASH Kanban Board Settings");
     const { contentEl } = this;
@@ -6679,6 +6716,8 @@ export class DashKanbanBoardSettingsModal extends Modal {
         });
       });
 
+    this.renderThemePreviewStrip(contentEl);
+
     new Setting(contentEl)
       .setName("Show swimlane categories")
       .setDesc("Turn category bands on only for boards that actually need grouped swimlanes.")
@@ -6686,6 +6725,16 @@ export class DashKanbanBoardSettingsModal extends Modal {
         toggle.setValue(this.showLaneCategories);
         toggle.onChange((value) => {
           this.showLaneCategories = value;
+        });
+      });
+
+    new Setting(contentEl)
+      .setName("Sticky orientation headers")
+      .setDesc("Keep matrix stage headers pinned near the top and swimlane row headers pinned while you scroll larger boards.")
+      .addToggle((toggle) => {
+        toggle.setValue(this.stickyHeaders);
+        toggle.onChange((value) => {
+          this.stickyHeaders = value;
         });
       });
 
@@ -6825,6 +6874,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
             boardHeight: this.boardHeight,
             collapsedInHub: this.collapsedInHub,
             showLaneCategories: this.showLaneCategories,
+            stickyHeaders: this.stickyHeaders,
             theme: this.theme
           });
           new Notice("Kanban board settings saved.");
@@ -10718,7 +10768,7 @@ export class DashKanbanView extends ItemView {
 
   private renderProjectBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode, density: DashboardKanbanDensity): void {
     const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
-    const board = parent.createDiv({ cls: `dash-kanban-project-board is-${mode}${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}` });
+    const board = parent.createDiv({ cls: `dash-kanban-project-board is-${mode}${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}${project.stickyHeaders ? " has-sticky-headers" : ""}` });
     board.dataset.theme = project.theme;
     board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
     const visibleCards = project.lanes.flatMap((lane) => lane.cards);
