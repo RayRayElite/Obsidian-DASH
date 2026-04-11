@@ -13714,6 +13714,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.effortPickerKey = null;
     this.photoPickerKey = null;
     this.cardPopoverAnchorPoint = null;
+    this.popoverLayerEl = null;
     this.photoCardIndices = /* @__PURE__ */ new Map();
     this.collapsedPhotoCards = /* @__PURE__ */ new Set();
     this.detailEditState = null;
@@ -13731,9 +13732,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   }
   async onOpen() {
     this.contentEl.addClass("dash-kanban-view");
+    this.ensurePopoverLayer();
     await this.requestRefresh();
   }
   async onClose() {
+    this.destroyPopoverLayer();
     this.contentEl.empty();
     this.contentEl.removeClass("dash-kanban-view");
   }
@@ -13807,6 +13810,26 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     return this.cardPopoverAnchorPoint.type === type && this.cardPopoverAnchorPoint.projectName === projectName && this.cardPopoverAnchorPoint.taskId === taskId ? { x: this.cardPopoverAnchorPoint.x, y: this.cardPopoverAnchorPoint.y } : null;
   }
+  ensurePopoverLayer() {
+    var _a;
+    if ((_a = this.popoverLayerEl) == null ? void 0 : _a.isConnected) {
+      return this.popoverLayerEl;
+    }
+    const layer = document.createElement("div");
+    layer.className = "dash-kanban-popover-layer";
+    document.body.appendChild(layer);
+    this.popoverLayerEl = layer;
+    return layer;
+  }
+  clearPopoverLayer() {
+    var _a;
+    (_a = this.popoverLayerEl) == null ? void 0 : _a.empty();
+  }
+  destroyPopoverLayer() {
+    var _a;
+    (_a = this.popoverLayerEl) == null ? void 0 : _a.remove();
+    this.popoverLayerEl = null;
+  }
   setLaneDropTarget(target) {
     var _a, _b;
     if (this.activeLaneDropTarget === target) {
@@ -13865,44 +13888,46 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     pill.appendChild(valueEl);
     parent.appendChild(pill);
   }
-  positionCardPopover(popover, anchor, preferBelow, anchorPoint = null, host = null) {
+  positionCardPopover(popover, anchor, preferBelow, anchorPoint = null) {
     const positionOnce = () => {
       var _a, _b, _c, _d;
-      const resolvedHost = host != null ? host : this.contentEl;
-      if (!popover.isConnected || !anchor.isConnected || !resolvedHost.isConnected) {
+      if (!popover.isConnected || !anchor.isConnected) {
         return false;
       }
-      const hostRect = resolvedHost.getBoundingClientRect();
-      const hostScrollLeft = resolvedHost.scrollLeft;
-      const hostScrollTop = resolvedHost.scrollTop;
       popover.style.visibility = "hidden";
-      popover.style.position = "absolute";
+      popover.style.position = "fixed";
       popover.style.left = "0px";
       popover.style.top = "0px";
+      const viewportRect = document.documentElement.getBoundingClientRect();
       const anchorRect = anchor.getBoundingClientRect();
       const popoverRect = popover.getBoundingClientRect();
       const horizontalPadding = 12;
       const verticalGap = 8;
-      const width = Math.min(popoverRect.width || 240, window.innerWidth - horizontalPadding * 2);
+      const maxWidth = Math.max(180, viewportRect.width - horizontalPadding * 2);
+      const width = Math.min(popoverRect.width || 240, maxWidth);
       const pointX = (_a = anchorPoint == null ? void 0 : anchorPoint.x) != null ? _a : anchorRect.left + anchorRect.width / 2;
       const pointY = (_b = anchorPoint == null ? void 0 : anchorPoint.y) != null ? _b : preferBelow ? anchorRect.bottom : anchorRect.top;
-      const canAlignToPointerRight = pointX + width <= window.innerWidth - horizontalPadding;
-      const canAlignToPointerLeft = pointX - width >= horizontalPadding;
+      const leftLimit = viewportRect.left + horizontalPadding;
+      const rightLimit = viewportRect.right - horizontalPadding;
+      const topLimit = viewportRect.top + horizontalPadding;
+      const bottomLimit = viewportRect.bottom - horizontalPadding;
+      const canAlignToPointerRight = pointX + width <= rightLimit;
+      const canAlignToPointerLeft = pointX - width >= leftLimit;
       let viewportLeft = pointX;
       if (!canAlignToPointerRight && canAlignToPointerLeft) {
         viewportLeft = pointX - width;
       }
-      viewportLeft = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, viewportLeft));
+      viewportLeft = Math.max(leftLimit, Math.min(rightLimit - width, viewportLeft));
       let viewportTop = preferBelow ? pointY + verticalGap : pointY - popoverRect.height - verticalGap;
-      if (viewportTop < horizontalPadding) {
+      if (viewportTop < topLimit) {
         viewportTop = ((_c = anchorPoint == null ? void 0 : anchorPoint.y) != null ? _c : anchorRect.bottom) + verticalGap;
       }
-      if (viewportTop + popoverRect.height > window.innerHeight - horizontalPadding) {
-        viewportTop = Math.max(horizontalPadding, ((_d = anchorPoint == null ? void 0 : anchorPoint.y) != null ? _d : anchorRect.top) - popoverRect.height - verticalGap);
+      if (viewportTop + popoverRect.height > bottomLimit) {
+        viewportTop = Math.max(topLimit, ((_d = anchorPoint == null ? void 0 : anchorPoint.y) != null ? _d : anchorRect.top) - popoverRect.height - verticalGap);
       }
       popover.style.width = `${width}px`;
-      popover.style.left = `${viewportLeft - hostRect.left + hostScrollLeft}px`;
-      popover.style.top = `${viewportTop - hostRect.top + hostScrollTop}px`;
+      popover.style.left = `${viewportLeft}px`;
+      popover.style.top = `${viewportTop}px`;
       popover.style.visibility = "visible";
       return true;
     };
@@ -13927,8 +13952,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     separator.textContent = value;
     return separator;
   }
-  mountCardPopover(popover, host) {
-    host.appendChild(popover);
+  mountCardPopover(popover) {
+    this.ensurePopoverLayer().appendChild(popover);
   }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
@@ -13949,6 +13974,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   async renderBoard() {
     const snapshot = await this.plugin.getDashKanbanWorkspaceSnapshot();
     const viewState = this.plugin.getKanbanViewState();
+    this.clearPopoverLayer();
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
     const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density}` });
@@ -15067,12 +15093,11 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       return;
     }
-    const popoverHost = laneEl.closest(".dash-kanban-project-board") instanceof HTMLElement ? laneEl.closest(".dash-kanban-project-board") : laneEl;
     lane.cards.forEach((card) => {
-      cards.append(this.renderCard(project, lane, card, popoverHost));
+      cards.append(this.renderCard(project, lane, card));
     });
   }
-  renderCard(project, lane, card, popoverHost) {
+  renderCard(project, lane, card) {
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     const resolvedPriority = card.priority;
@@ -15514,8 +15539,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         });
         picker.appendChild(button);
       });
-      this.mountCardPopover(picker, popoverHost);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), popoverHost);
+      this.mountCardPopover(picker);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId));
     }
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
@@ -15681,8 +15706,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, void 0, 3);
       syncSaveState(saveButton);
-      this.mountCardPopover(picker, popoverHost);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), popoverHost);
+      this.mountCardPopover(picker);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId));
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? dueParts.month.length >= 2 ? dueParts.day.length >= 2 ? dueParts.year.length >= 4 ? 3 : 2 : 1 : 0 : 0);
     }
     if (this.matchesCardKey(this.effortPickerKey, project.projectName, card.taskId)) {
@@ -15729,8 +15754,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.requestRefresh();
         }
       });
-      this.mountCardPopover(picker, popoverHost);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), popoverHost);
+      this.mountCardPopover(picker);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId));
       window.setTimeout(() => input.focus(), 0);
     }
     if (this.matchesCardKey(this.photoPickerKey, project.projectName, card.taskId)) {
@@ -15821,8 +15846,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.attachExistingPhotoToCard(project.projectName, card.taskId);
         })
       );
-      this.mountCardPopover(picker, popoverHost);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), popoverHost);
+      this.mountCardPopover(picker);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId));
     }
     return cardEl;
   }

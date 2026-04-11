@@ -39,16 +39,17 @@
     linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 94%, #080d13), var(--background-primary));
 }
 
+.dash-kanban-popover-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  pointer-events: none;
+}
+
 .dash-kanban-shell {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.dash-kanban-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
-  gap: 14px;
 }
 
 .dash-kanban-header.is-collapsed {
@@ -1711,8 +1712,9 @@
 }
 
 .dash-kanban-card-popover {
-  position: absolute;
-  z-index: 80;
+  position: fixed;
+  z-index: 181;
+  pointer-events: auto;
   width: min(240px, 72vw);
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
@@ -3114,11 +3116,6 @@
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--food-log,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--sleep-and-notes,
 .daily-dashboard-view.is-view-mobile .daily-dashboard-card--searchable-work-log,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--project-health,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--stale-work-and-cleanup,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--day-flow,
-.daily-dashboard-view.is-view-mobile .daily-dashboard-card--ai-workspace {
-  grid-column: 1 / -1;
 }
 .daily-dashboard-view.is-view-mobile .daily-dashboard-dayflow-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
