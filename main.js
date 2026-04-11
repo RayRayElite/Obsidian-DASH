@@ -16383,6 +16383,35 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     const message = this.getErrorMessage(error).toLowerCase();
     return message.includes("folder already exists") || message.includes("already exists");
   }
+  async delay(milliseconds) {
+    await new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  }
+  async waitForVaultFile(path, attempts = 4) {
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing instanceof import_obsidian4.TFile) {
+        return existing;
+      }
+      await this.delay(25 * (attempt + 1));
+    }
+    return null;
+  }
+  async withAlreadyExistsRetry(operation, attempts = 3) {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (!this.isFolderAlreadyExistsError(error) || attempt === attempts - 1) {
+          throw error;
+        }
+        await this.delay(40 * (attempt + 1));
+      }
+    }
+    throw lastError;
+  }
   showDashboardNotice(message, timeout = 4e3, playSound = false) {
     new import_obsidian4.Notice(message, timeout);
     if (playSound) {
@@ -16507,6 +16536,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       console.error("Obsidian DASH - Daily Action & System Hub failed to load persisted plugin data", error);
       this.data = this.hydratePluginData(null);
       new import_obsidian4.Notice(`Obsidian DASH - Daily Action & System Hub could not load its saved data cleanly. It started with safe defaults instead. ${this.getErrorMessage(error)}`);
+    }
+    try {
+      await this.runStartupDataMaintenance();
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub startup data maintenance failed", error);
     }
     try {
       await this.initializeWorkspaceArtifacts();
@@ -25352,6 +25386,8 @@ No entries available.`;
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
+  }
+  async runStartupDataMaintenance() {
     if (this.reconcileDayStateWithOpenSessions()) {
       await this.savePluginData();
     }
@@ -26214,7 +26250,7 @@ No entries available.`;
     await this.rebuildAiNoteIndex(false);
   }
   async savePluginData() {
-    await this.saveData({
+    const payload = {
       settings: this.data.settings,
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
@@ -26223,7 +26259,8 @@ No entries available.`;
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex,
       uiState: this.data.uiState
-    });
+    };
+    await this.withAlreadyExistsRetry(() => this.saveData(payload));
   }
   async persistNoteIndex() {
     await this.savePluginData();
@@ -26947,16 +26984,21 @@ ${body}`;
     try {
       return await this.app.vault.create(normalizedPath, content);
     } catch (error) {
-      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (refreshed instanceof import_obsidian4.TFile || this.isFolderAlreadyExistsError(error)) {
-        const file = refreshed instanceof import_obsidian4.TFile ? refreshed : this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (file instanceof import_obsidian4.TFile) {
-          const current = await this.app.vault.read(file);
-          if (current !== content) {
-            await this.app.vault.modify(file, content);
-          }
-          return file;
+      const file = this.isFolderAlreadyExistsError(error) ? await this.waitForVaultFile(normalizedPath) : this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (file instanceof import_obsidian4.TFile) {
+        const current = await this.app.vault.read(file);
+        if (current !== content) {
+          await this.app.vault.modify(file, content);
         }
+        return file;
+      }
+      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (refreshed instanceof import_obsidian4.TFile) {
+        const current = await this.app.vault.read(refreshed);
+        if (current !== content) {
+          await this.app.vault.modify(refreshed, content);
+        }
+        return refreshed;
       }
       throw error;
     }

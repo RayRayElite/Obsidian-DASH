@@ -403,6 +403,42 @@ export default class DailyDashboardPlugin extends Plugin {
     return message.includes("folder already exists") || message.includes("already exists");
   }
 
+  private async delay(milliseconds: number): Promise<void> {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+  }
+
+  private async waitForVaultFile(path: string, attempts = 4): Promise<TFile | null> {
+    const normalizedPath = normalizePath(path);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (existing instanceof TFile) {
+        return existing;
+      }
+
+      await this.delay(25 * (attempt + 1));
+    }
+
+    return null;
+  }
+
+  private async withAlreadyExistsRetry<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (!this.isFolderAlreadyExistsError(error) || attempt === attempts - 1) {
+          throw error;
+        }
+
+        await this.delay(40 * (attempt + 1));
+      }
+    }
+
+    throw lastError;
+  }
+
   private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
     new Notice(message, timeout);
     if (playSound) {
@@ -545,6 +581,12 @@ export default class DailyDashboardPlugin extends Plugin {
       console.error("Obsidian DASH - Daily Action & System Hub failed to load persisted plugin data", error);
       this.data = this.hydratePluginData(null);
       new Notice(`Obsidian DASH - Daily Action & System Hub could not load its saved data cleanly. It started with safe defaults instead. ${this.getErrorMessage(error)}`);
+    }
+
+    try {
+      await this.runStartupDataMaintenance();
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub startup data maintenance failed", error);
     }
 
     try {
@@ -11240,6 +11282,9 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async loadPluginData(): Promise<void> {
     this.data = await this.buildDataFromStorage();
+  }
+
+  private async runStartupDataMaintenance(): Promise<void> {
     if (this.reconcileDayStateWithOpenSessions()) {
       await this.savePluginData();
     }
@@ -12306,7 +12351,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private async savePluginData(): Promise<void> {
-    await this.saveData({
+    const payload = {
       settings: this.data.settings,
       entries: this.data.entries,
       calendarEvents: this.data.calendarEvents,
@@ -12315,7 +12360,8 @@ export default class DailyDashboardPlugin extends Plugin {
       dayState: this.data.dayState,
       noteIndex: this.data.noteIndex,
       uiState: this.data.uiState
-    });
+    };
+    await this.withAlreadyExistsRetry(() => this.saveData(payload));
   }
 
   private async persistNoteIndex(): Promise<void> {
@@ -13185,18 +13231,24 @@ export default class DailyDashboardPlugin extends Plugin {
     try {
       return await this.app.vault.create(normalizedPath, content);
     } catch (error) {
-      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (refreshed instanceof TFile || this.isFolderAlreadyExistsError(error)) {
-        const file = refreshed instanceof TFile
-          ? refreshed
-          : this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (file instanceof TFile) {
-          const current = await this.app.vault.read(file);
-          if (current !== content) {
-            await this.app.vault.modify(file, content);
-          }
-          return file;
+      const file = this.isFolderAlreadyExistsError(error)
+        ? await this.waitForVaultFile(normalizedPath)
+        : this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (file instanceof TFile) {
+        const current = await this.app.vault.read(file);
+        if (current !== content) {
+          await this.app.vault.modify(file, content);
         }
+        return file;
+      }
+
+      const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (refreshed instanceof TFile) {
+        const current = await this.app.vault.read(refreshed);
+        if (current !== content) {
+          await this.app.vault.modify(refreshed, content);
+        }
+        return refreshed;
       }
 
       throw error;
