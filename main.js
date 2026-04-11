@@ -4740,7 +4740,7 @@ function renderKanbanProjectBoard(project, boardTemplates, boardConfigurations) 
 }
 function resolveKanbanBoardConfiguration(project, boardTemplates = {}, boardConfigurations = {}) {
   var _a, _b, _c;
-  const configuration = (_a = boardConfigurations[project.name]) != null ? _a : {
+  const configuration = (_a = findBoardConfigurationForProject(project.name, boardConfigurations)) != null ? _a : {
     projectName: project.name,
     templateId: "execution-default",
     showInHub: project.projectState !== "someday",
@@ -5114,9 +5114,21 @@ function resolveKanbanLaneOptionByLabel(projectName, laneLabel, boardTemplates, 
     unmapped: true
   };
 }
+function findBoardConfigurationForProject(projectName, boardConfigurations) {
+  const direct = boardConfigurations[projectName];
+  if (direct) {
+    return direct;
+  }
+  const normalizedProjectName = projectName.trim().toLowerCase();
+  if (!normalizedProjectName) {
+    return null;
+  }
+  const matchedKey = Object.keys(boardConfigurations).find((candidate) => candidate.trim().toLowerCase() === normalizedProjectName);
+  return matchedKey ? boardConfigurations[matchedKey] : null;
+}
 function resolveKanbanLaneDefinitionsForProject(projectName, boardTemplates, boardConfigurations) {
   var _a;
-  const configuration = boardConfigurations[projectName];
+  const configuration = findBoardConfigurationForProject(projectName, boardConfigurations);
   if (configuration == null ? void 0 : configuration.laneDefinitions.length) {
     return configuration.laneDefinitions;
   }
@@ -5206,6 +5218,26 @@ function updateTaskPhotoPathsByIdInProject(content, input) {
     taskText: normalizedTaskText,
     found: true,
     sectionName: match.section
+  };
+}
+function moveTaskByIdInProject(content, input) {
+  var _a;
+  const taskRegistry = (_a = input.taskRegistry) != null ? _a : {};
+  const location = findProjectTaskLocationById(content, input.projectName, input.taskId, taskRegistry);
+  if (!location) {
+    return { content, updated: false };
+  }
+  const removed = removeTaskByIdFromProject(content, input.projectName, input.taskId, taskRegistry);
+  if (!removed) {
+    return { content, updated: false };
+  }
+  const targetSection = input.sectionName.trim() || location.section;
+  const displayText = getTodoTaskDisplayText(removed.taskText, location.section);
+  const movedTaskText = targetSection.toLowerCase() === "waiting" ? displayText : stripBlockingTaskAnnotations(displayText);
+  const nextContent = insertTaskIntoProjectSection(removed.content, input.projectName, targetSection, movedTaskText);
+  return {
+    content: nextContent,
+    updated: nextContent !== content || location.section.toLowerCase() !== targetSection.toLowerCase()
   };
 }
 function transferTaskByIdBetweenProjects(content, input) {
@@ -18686,7 +18718,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     await this.savePluginData();
   }
   async moveKanbanTask(projectName, taskId, laneSection) {
-    var _a;
+    var _a, _b, _c, _d;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -18697,12 +18729,33 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       return false;
     }
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
+    const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || targetLane;
+    const content = await this.app.vault.read(todoFile);
+    const moved = moveTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      sectionName: effectiveTargetSection,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (moved.updated) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+        projectName,
+        sectionName: effectiveTargetSection,
+        laneKey: (_a = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _a : targetLane,
+        taskText: (_c = (_b = this.data.kanbanState.taskRegistry[taskId]) == null ? void 0 : _b.taskText) != null ? _c : "",
+        checked: false
+      });
+      await this.app.vault.modify(todoFile, moved.content);
+      await this.refreshAfterTodoMutation(true, true);
+      return true;
+    }
     const currentTaskText = await this.getKanbanTaskDisplayById(projectName, taskId);
     if (!currentTaskText) {
       new import_obsidian4.Notice("Could not find that Kanban task in the Master Task Hub.");
       return false;
     }
-    return this.editKanbanTask(projectName, taskId, currentTaskText, (_a = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _a : targetLane);
+    return this.editKanbanTask(projectName, taskId, currentTaskText, (_d = targetLaneOption == null ? void 0 : targetLaneOption.laneKey) != null ? _d : targetLane);
   }
   async transferKanbanTask(fromProjectName, toProjectName, taskId, laneSection) {
     var _a;
@@ -25986,9 +26039,20 @@ No entries available.`;
   }
   async buildDataFromStorage() {
     const loaded = await this.loadData();
-    const hydrated = this.hydratePluginData(loaded);
+    let hydrated;
+    try {
+      hydrated = this.hydratePluginData(loaded);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub fell back to partial data recovery during hydration", error);
+      hydrated = this.recoverPluginDataFromLoaded(loaded);
+    }
     const importedEntries = { ...hydrated.entries };
-    const dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+    let dailyLogEntries = {};
+    try {
+      dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not import daily logs during startup; keeping persisted plugin data", error);
+    }
     Object.entries(dailyLogEntries).forEach(([date, entry]) => {
       if (!importedEntries[date]) {
         importedEntries[date] = entry;
@@ -25998,6 +26062,69 @@ No entries available.`;
       ...hydrated,
       entries: importedEntries,
       dayState: normalizeDayState(hydrated.dayState, importedEntries)
+    };
+  }
+  recoverPluginDataFromLoaded(loaded) {
+    var _a;
+    const fallback = this.hydratePluginData(null);
+    let settings = fallback.settings;
+    try {
+      settings = sanitizeSettings({
+        ...DEFAULT_SETTINGS,
+        ...(_a = loaded == null ? void 0 : loaded.settings) != null ? _a : {}
+      });
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved settings", error);
+    }
+    const entries = {};
+    if ((loaded == null ? void 0 : loaded.entries) && typeof loaded.entries === "object") {
+      Object.entries(loaded.entries).forEach(([date, entry]) => {
+        try {
+          entries[date] = this.normalizeEntry(entry, date, settings);
+        } catch (error) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped malformed saved entry ${date} during recovery`, error);
+        }
+      });
+    }
+    let calendarEvents = fallback.calendarEvents;
+    try {
+      calendarEvents = Array.isArray(loaded == null ? void 0 : loaded.calendarEvents) ? loaded.calendarEvents.map((event) => this.normalizeCalendarEvent(event)).filter((event) => event !== null) : fallback.calendarEvents;
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved calendar events", error);
+    }
+    let financeData = fallback.financeData;
+    try {
+      financeData = this.normalizeFinanceData(loaded == null ? void 0 : loaded.financeData);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved finance data", error);
+    }
+    let kanbanState = fallback.kanbanState;
+    try {
+      kanbanState = this.normalizeKanbanState(loaded == null ? void 0 : loaded.kanbanState);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved Kanban state", error);
+    }
+    let noteIndex = fallback.noteIndex;
+    try {
+      noteIndex = normalizeNoteIndexCache(loaded == null ? void 0 : loaded.noteIndex);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved AI note index", error);
+    }
+    let uiState = fallback.uiState;
+    try {
+      uiState = this.normalizeUiState(loaded == null ? void 0 : loaded.uiState);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved UI state", error);
+    }
+    return {
+      settings,
+      entries,
+      calendarEvents,
+      financeData,
+      kanbanState,
+      dayState: normalizeDayState(loaded == null ? void 0 : loaded.dayState, entries),
+      noteIndex,
+      uiState
     };
   }
   scheduleNoteIndexRefresh() {

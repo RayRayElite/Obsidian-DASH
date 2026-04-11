@@ -103,6 +103,7 @@ import {
   completeTaskByIdInProject,
   deleteProjectFromTodo,
   deleteTaskByIdInProject,
+  moveTaskByIdInProject,
   renderKanbanHub,
   renderKanbanProjectBoardNote,
   renderExistingProjectNoteTemplate,
@@ -3292,6 +3293,27 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     const targetLaneOption = this.resolveKanbanLaneOption(projectName, targetLane);
+    const effectiveTargetSection = targetLaneOption?.targetSection || targetLane;
+    const content = await this.app.vault.read(todoFile);
+    const moved = moveTaskByIdInProject(content, {
+      projectName,
+      taskId,
+      sectionName: effectiveTargetSection,
+      taskRegistry: this.data.kanbanState.taskRegistry
+    });
+    if (moved.updated) {
+      this.removeTaskFromKanbanLaneOrder(projectName, taskId);
+      await this.syncKanbanRegistryAfterTaskEdit(taskId, {
+        projectName,
+        sectionName: effectiveTargetSection,
+        laneKey: targetLaneOption?.laneKey ?? targetLane,
+        taskText: this.data.kanbanState.taskRegistry[taskId]?.taskText ?? "",
+        checked: false
+      });
+      await this.app.vault.modify(todoFile, moved.content);
+      await this.refreshAfterTodoMutation(true, true);
+      return true;
+    }
 
     const currentTaskText = await this.getKanbanTaskDisplayById(projectName, taskId);
     if (!currentTaskText) {
@@ -12079,9 +12101,20 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async buildDataFromStorage(): Promise<DashboardPluginData> {
     const loaded = (await this.loadData()) as Partial<DashboardPluginData> | null;
-    const hydrated = this.hydratePluginData(loaded);
+    let hydrated: DashboardPluginData;
+    try {
+      hydrated = this.hydratePluginData(loaded);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub fell back to partial data recovery during hydration", error);
+      hydrated = this.recoverPluginDataFromLoaded(loaded);
+    }
     const importedEntries = { ...hydrated.entries };
-    const dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+    let dailyLogEntries: Record<string, DailyEntry> = {};
+    try {
+      dailyLogEntries = await this.loadDailyEntriesFromVault(hydrated.settings);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not import daily logs during startup; keeping persisted plugin data", error);
+    }
 
     Object.entries(dailyLogEntries).forEach(([date, entry]) => {
       if (!importedEntries[date]) {
@@ -12093,6 +12126,81 @@ export default class DailyDashboardPlugin extends Plugin {
       ...hydrated,
       entries: importedEntries,
       dayState: normalizeDayState(hydrated.dayState, importedEntries)
+    };
+  }
+
+  private recoverPluginDataFromLoaded(loaded: Partial<DashboardPluginData> | null | undefined): DashboardPluginData {
+    const fallback = this.hydratePluginData(null);
+
+    let settings = fallback.settings;
+    try {
+      settings = sanitizeSettings({
+        ...DEFAULT_SETTINGS,
+        ...(loaded?.settings ?? {})
+      });
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved settings", error);
+    }
+
+    const entries: Record<string, DailyEntry> = {};
+    if (loaded?.entries && typeof loaded.entries === "object") {
+      Object.entries(loaded.entries).forEach(([date, entry]) => {
+        try {
+          entries[date] = this.normalizeEntry(entry as Partial<DailyEntry>, date, settings);
+        } catch (error) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped malformed saved entry ${date} during recovery`, error);
+        }
+      });
+    }
+
+    let calendarEvents = fallback.calendarEvents;
+    try {
+      calendarEvents = Array.isArray(loaded?.calendarEvents)
+        ? loaded.calendarEvents
+            .map((event) => this.normalizeCalendarEvent(event))
+            .filter((event): event is CalendarEventEntry => event !== null)
+        : fallback.calendarEvents;
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved calendar events", error);
+    }
+
+    let financeData = fallback.financeData;
+    try {
+      financeData = this.normalizeFinanceData(loaded?.financeData);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved finance data", error);
+    }
+
+    let kanbanState = fallback.kanbanState;
+    try {
+      kanbanState = this.normalizeKanbanState(loaded?.kanbanState);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved Kanban state", error);
+    }
+
+    let noteIndex = fallback.noteIndex;
+    try {
+      noteIndex = normalizeNoteIndexCache(loaded?.noteIndex);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved AI note index", error);
+    }
+
+    let uiState = fallback.uiState;
+    try {
+      uiState = this.normalizeUiState(loaded?.uiState);
+    } catch (error) {
+      console.error("Obsidian DASH - Daily Action & System Hub could not fully recover saved UI state", error);
+    }
+
+    return {
+      settings,
+      entries,
+      calendarEvents,
+      financeData,
+      kanbanState,
+      dayState: normalizeDayState(loaded?.dayState, entries),
+      noteIndex,
+      uiState
     };
   }
 

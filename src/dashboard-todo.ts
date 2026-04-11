@@ -2161,7 +2161,7 @@ function resolveKanbanBoardConfiguration(
   boardTemplates: Record<string, KanbanBoardTemplate> = {},
   boardConfigurations: Record<string, KanbanBoardConfiguration> = {}
 ): { template: KanbanBoardTemplate; configuration: KanbanBoardConfiguration; laneDefinitions: KanbanLaneDefinition[]; showInHub: boolean } {
-  const configuration = boardConfigurations[project.name] ?? {
+  const configuration = findBoardConfigurationForProject(project.name, boardConfigurations) ?? {
     projectName: project.name,
     templateId: "execution-default",
     showInHub: project.projectState !== "someday",
@@ -2611,12 +2611,31 @@ function resolveKanbanLaneOptionByLabel(
   };
 }
 
+function findBoardConfigurationForProject(
+  projectName: string,
+  boardConfigurations: Record<string, KanbanBoardConfiguration>
+): KanbanBoardConfiguration | null {
+  const direct = boardConfigurations[projectName];
+  if (direct) {
+    return direct;
+  }
+
+  const normalizedProjectName = projectName.trim().toLowerCase();
+  if (!normalizedProjectName) {
+    return null;
+  }
+
+  const matchedKey = Object.keys(boardConfigurations)
+    .find((candidate) => candidate.trim().toLowerCase() === normalizedProjectName);
+  return matchedKey ? boardConfigurations[matchedKey] : null;
+}
+
 function resolveKanbanLaneDefinitionsForProject(
   projectName: string,
   boardTemplates: Record<string, KanbanBoardTemplate>,
   boardConfigurations: Record<string, KanbanBoardConfiguration>
 ): KanbanLaneDefinition[] {
-  const configuration = boardConfigurations[projectName];
+  const configuration = findBoardConfigurationForProject(projectName, boardConfigurations);
   if (configuration?.laneDefinitions.length) {
     return configuration.laneDefinitions;
   }
