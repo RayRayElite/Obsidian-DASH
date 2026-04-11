@@ -10616,11 +10616,12 @@ export class DashKanbanView extends ItemView {
         rowHeader.style.setProperty("--dash-kanban-category-color", row.color);
       }
       const rowHeaderTop = rowHeader.createDiv({ cls: "dash-kanban-matrix-row-top" });
-      rowHeaderTop.createEl("strong", { text: row.label || "Board" });
-      rowHeaderTop.createEl("span", { cls: "dash-kanban-matrix-row-count", text: `${rowCardCount} card${rowCardCount === 1 ? "" : "s"}` });
+      const rowHeaderLabels = rowHeaderTop.createDiv({ cls: "dash-kanban-matrix-row-labels" });
+      rowHeaderLabels.createEl("strong", { text: row.label || "Board" });
       if (row.subtitle) {
-        rowHeader.createEl("p", { text: row.subtitle });
+        rowHeaderLabels.createEl("p", { text: row.subtitle });
       }
+      rowHeaderTop.createEl("span", { cls: "dash-kanban-matrix-row-count", text: `${rowCardCount} card${rowCardCount === 1 ? "" : "s"}` });
 
       columns.forEach((column) => {
         const lane = row.lanes.find((candidate) => (candidate.columnKey || candidate.laneKey) === column.key) ?? null;

@@ -943,31 +943,50 @@
 
 .dash-kanban-matrix-row-header {
   min-height: var(--dash-kanban-board-height);
-  padding: 16px 16px;
-  border-left: 4px solid var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
-  border-radius: 18px;
-  background: var(--dash-kanban-row-rail-surface);
+  padding: 12px 14px;
+  border-left: 3px solid var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 8%, transparent), transparent 60%),
+    var(--dash-kanban-row-rail-surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .dash-kanban-matrix-row-top {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+}
+
+.dash-kanban-matrix-row-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dash-kanban-matrix-row-labels p {
+  margin: 0;
 }
 
 .dash-kanban-matrix-row-count {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 18%, var(--dash-kanban-border));
   background: var(--dash-kanban-header-tab-surface);
   color: var(--dash-kanban-header-tab-text);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .dash-kanban-matrix-empty-cell {
@@ -2485,7 +2504,7 @@
 }
 
 .dash-kanban-shell.is-compact .dash-kanban-matrix-row-header {
-  padding: 14px 12px;
+  padding: 10px 12px;
 }
 
 .dash-kanban-shell.is-compact .dash-kanban-matrix-column-header p,

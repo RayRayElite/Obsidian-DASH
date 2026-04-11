@@ -15015,11 +15015,12 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         rowHeader.style.setProperty("--dash-kanban-category-color", row.color);
       }
       const rowHeaderTop = rowHeader.createDiv({ cls: "dash-kanban-matrix-row-top" });
-      rowHeaderTop.createEl("strong", { text: row.label || "Board" });
-      rowHeaderTop.createEl("span", { cls: "dash-kanban-matrix-row-count", text: `${rowCardCount} card${rowCardCount === 1 ? "" : "s"}` });
+      const rowHeaderLabels = rowHeaderTop.createDiv({ cls: "dash-kanban-matrix-row-labels" });
+      rowHeaderLabels.createEl("strong", { text: row.label || "Board" });
       if (row.subtitle) {
-        rowHeader.createEl("p", { text: row.subtitle });
+        rowHeaderLabels.createEl("p", { text: row.subtitle });
       }
+      rowHeaderTop.createEl("span", { cls: "dash-kanban-matrix-row-count", text: `${rowCardCount} card${rowCardCount === 1 ? "" : "s"}` });
       columns.forEach((column) => {
         var _a;
         const lane = (_a = row.lanes.find((candidate) => (candidate.columnKey || candidate.laneKey) === column.key)) != null ? _a : null;
@@ -19371,7 +19372,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       if (currentTask && (currentTask.completedAt || "").trim().length > 0) {
         return true;
       }
-      return this.completeKanbanTask(projectName, taskId);
+      return this.completeKanbanTask(projectName, taskId, targetLaneOption.laneKey);
     }
     const effectiveTargetSection = (targetLaneOption == null ? void 0 : targetLaneOption.targetSection) || targetLane;
     const content = await this.app.vault.read(todoFile);
@@ -19473,8 +19474,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.refreshDashboardViews();
     return true;
   }
-  async completeKanbanTask(projectName, taskId) {
-    var _a, _b;
+  async completeKanbanTask(projectName, taskId, preferredDoneLaneKey = "") {
+    var _a, _b, _c, _d, _e, _f;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -19493,11 +19494,16 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (registryEntry) {
-      const doneLane = (_a = this.getKanbanLaneOptions(projectName).find((lane) => lane.done)) != null ? _a : null;
+      const laneOptions = this.getKanbanLaneOptions(projectName);
+      const currentLaneOption = this.resolveKanbanLaneOption(
+        projectName,
+        preferredDoneLaneKey || registryEntry.laneKey || registryEntry.sectionName || ""
+      );
+      const doneLane = (_e = (_d = (_c = (_b = (_a = laneOptions.find((lane) => lane.done && lane.laneKey === preferredDoneLaneKey)) != null ? _a : laneOptions.find((lane) => lane.done && (currentLaneOption == null ? void 0 : currentLaneOption.categoryKey) && lane.categoryKey === currentLaneOption.categoryKey)) != null ? _b : laneOptions.find((lane) => lane.done && (currentLaneOption == null ? void 0 : currentLaneOption.categoryTag) && lane.categoryTag === currentLaneOption.categoryTag)) != null ? _c : laneOptions.find((lane) => lane.done && (currentLaneOption == null ? void 0 : currentLaneOption.categoryLabel) && lane.categoryLabel === currentLaneOption.categoryLabel)) != null ? _d : laneOptions.find((lane) => lane.done)) != null ? _e : null;
       this.data.kanbanState.taskRegistry[taskId] = {
         ...registryEntry,
         sectionName: "Completed Archive",
-        laneKey: (_b = doneLane == null ? void 0 : doneLane.laneKey) != null ? _b : registryEntry.laneKey,
+        laneKey: (_f = doneLane == null ? void 0 : doneLane.laneKey) != null ? _f : registryEntry.laneKey,
         checked: true,
         updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
       };

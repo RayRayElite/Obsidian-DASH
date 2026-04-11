@@ -3678,7 +3678,7 @@ export default class DailyDashboardPlugin extends Plugin {
       if (currentTask && (currentTask.completedAt || "").trim().length > 0) {
         return true;
       }
-      return this.completeKanbanTask(projectName, taskId);
+      return this.completeKanbanTask(projectName, taskId, targetLaneOption.laneKey);
     }
     const effectiveTargetSection = targetLaneOption?.targetSection || targetLane;
     const content = await this.app.vault.read(todoFile);
@@ -3791,7 +3791,7 @@ export default class DailyDashboardPlugin extends Plugin {
     return true;
   }
 
-  async completeKanbanTask(projectName: string, taskId: string): Promise<boolean> {
+  async completeKanbanTask(projectName: string, taskId: string, preferredDoneLaneKey = ""): Promise<boolean> {
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new Notice("Master task hub not found. Set the path in plugin settings.");
@@ -3812,7 +3812,17 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (registryEntry) {
-      const doneLane = this.getKanbanLaneOptions(projectName).find((lane) => lane.done) ?? null;
+      const laneOptions = this.getKanbanLaneOptions(projectName);
+      const currentLaneOption = this.resolveKanbanLaneOption(
+        projectName,
+        preferredDoneLaneKey || registryEntry.laneKey || registryEntry.sectionName || ""
+      );
+      const doneLane = laneOptions.find((lane) => lane.done && lane.laneKey === preferredDoneLaneKey)
+        ?? laneOptions.find((lane) => lane.done && currentLaneOption?.categoryKey && lane.categoryKey === currentLaneOption.categoryKey)
+        ?? laneOptions.find((lane) => lane.done && currentLaneOption?.categoryTag && lane.categoryTag === currentLaneOption.categoryTag)
+        ?? laneOptions.find((lane) => lane.done && currentLaneOption?.categoryLabel && lane.categoryLabel === currentLaneOption.categoryLabel)
+        ?? laneOptions.find((lane) => lane.done)
+        ?? null;
       this.data.kanbanState.taskRegistry[taskId] = {
         ...registryEntry,
         sectionName: "Completed Archive",
