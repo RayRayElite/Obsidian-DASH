@@ -9540,17 +9540,11 @@ export class DashKanbanView extends ItemView {
       }
 
       popover.style.visibility = "hidden";
-      popover.style.position = "absolute";
+      popover.style.position = "fixed";
       popover.style.left = "0px";
       popover.style.top = "0px";
 
-      const host = popover.offsetParent instanceof HTMLElement
-        ? popover.offsetParent
-        : anchor.parentElement instanceof HTMLElement
-          ? anchor.parentElement
-          : anchor;
       const anchorRect = anchor.getBoundingClientRect();
-      const hostRect = host.getBoundingClientRect();
       const popoverRect = popover.getBoundingClientRect();
       const horizontalPadding = 12;
       const verticalGap = 8;
@@ -9570,8 +9564,8 @@ export class DashKanbanView extends ItemView {
       }
 
       popover.style.width = `${width}px`;
-      popover.style.left = `${viewportLeft - hostRect.left}px`;
-      popover.style.top = `${viewportTop - hostRect.top}px`;
+      popover.style.left = `${viewportLeft}px`;
+      popover.style.top = `${viewportTop}px`;
       popover.style.visibility = "visible";
     }, 0);
   }
