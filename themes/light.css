@@ -2,38 +2,40 @@
 {
   "id": "light",
   "name": "Day Shift",
-  "description": "Paper-light Kanban with solid surfaces, dark readable text, and no fade-heavy chrome.",
+  "description": "Paper-light Kanban with navy controls, stronger card depth, and dark readable text.",
   "builtIn": true,
   "preview": {
-    "board": "linear-gradient(160deg, #fafcff, #e8eef6)",
-    "primary": "#315fbc",
-    "secondary": "#1d3766",
+    "board": "linear-gradient(160deg, #f7f9fd, #e1e7f0)",
+    "primary": "#273a59",
+    "secondary": "#122033",
     "surface": "#ffffff"
   }
 }
 */
 
 .dash-kanban-shell[data-theme="light"] {
-  color: #1d2d44;
+  color: #1b2a3d;
 }
 
 .dash-kanban-shell[data-theme="light"] .dash-kanban-hero,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-controls,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-empty-state {
-  border-color: #c8d5e7;
-  background: linear-gradient(180deg, #fbfdff, #eef3f9);
-  box-shadow: 0 16px 30px rgba(33, 49, 73, 0.08);
+  border-color: #c8d2df;
+  background:
+    radial-gradient(circle at top right, rgba(104, 133, 176, 0.1), transparent 30%),
+    linear-gradient(180deg, #fbfcfe, #e9eef5);
+  box-shadow: 0 14px 28px rgba(28, 41, 61, 0.1);
 }
 
 .dash-kanban-shell[data-theme="light"] .dash-kanban-hero::before {
   background:
-    linear-gradient(125deg, rgba(255, 255, 255, 0.78), transparent 38%),
-    radial-gradient(circle at 100% 0%, rgba(49, 95, 188, 0.1), transparent 34%);
+    linear-gradient(125deg, rgba(255, 255, 255, 0.68), transparent 40%),
+    radial-gradient(circle at 100% 0%, rgba(39, 58, 89, 0.08), transparent 34%);
 }
 
 .dash-kanban-shell[data-theme="light"] .dash-kanban-kicker,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-control-label {
-  color: #4b6688;
+  color: #526987;
 }
 
 .dash-kanban-shell[data-theme="light"] .dash-kanban-title,
@@ -49,8 +51,8 @@
 .dash-kanban-shell[data-theme="light"] .dash-kanban-control-cluster,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-control-cluster.is-view,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-mode-toggle {
-  border-color: #d2dcec;
-  background: #f7faff;
+  border-color: #d1d9e6;
+  background: rgba(255, 255, 255, 0.74);
 }
 
 .dash-kanban-shell[data-theme="light"] .dash-kanban-search input,
@@ -61,7 +63,7 @@
 .dash-kanban-shell[data-theme="light"] .dash-kanban-collapse-button--hero,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-collapse-button--controls,
 .dash-kanban-shell[data-theme="light"] .daily-dashboard-semantic-chip {
-  border-color: #ccd8ea;
+  border-color: #ccd5e2;
   background: #ffffff;
   color: #18263a;
   box-shadow: none;
@@ -79,20 +81,20 @@
 .dash-kanban-shell[data-theme="light"] .dash-kanban-header-button.is-secondary,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-header-button.is-secondary:hover,
 .dash-kanban-shell[data-theme="light"] .dash-kanban-header-button.is-secondary:focus-visible {
-  background: #eef4fb;
+  background: #ecf1f8;
   color: #132338;
 }
 
 .dash-kanban-shell[data-theme="light"] .daily-dashboard-semantic-chip.is-focus {
-  background: #eef4ff;
+  background: #ebf2ff;
 }
 
 .dash-kanban-shell[data-theme="light"] .daily-dashboard-semantic-chip.is-capture {
-  background: #eef7ff;
+  background: #edf5ff;
 }
 
 .dash-kanban-shell[data-theme="light"] .daily-dashboard-semantic-chip.is-state {
-  background: #fff2e8;
+  background: #fff1e4;
 }
 
 .dash-kanban-shell[data-theme="light"] .daily-dashboard-semantic-chip.is-health {
@@ -113,35 +115,35 @@
 }
 
 .dash-kanban-project-board[data-theme="light"] {
-  --dash-kanban-board-accent: #315fbc;
-  --dash-kanban-board-accent-strong: #1d3766;
-  --dash-kanban-board-surface: #f4f8fd;
-  --dash-kanban-board-surface-strong: #e8eef6;
-  --dash-kanban-card-surface: linear-gradient(180deg, #ffffff, #f6f9fd);
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, #f8fbff, #eef3f9);
-  --dash-kanban-card-border: #cad7e8;
-  --dash-kanban-card-shadow: 0 10px 20px rgba(29, 47, 74, 0.08);
-  --dash-kanban-text-strong: #142235;
-  --dash-kanban-text-normal: #1c2d44;
-  --dash-kanban-text-muted: #334a66;
-  --dash-kanban-text-faint: #4d6480;
-  --dash-kanban-control-surface: #f2f6fb;
+  --dash-kanban-board-accent: #273a59;
+  --dash-kanban-board-accent-strong: #122033;
+  --dash-kanban-board-surface: #f3f6fb;
+  --dash-kanban-board-surface-strong: #e5ebf3;
+  --dash-kanban-card-surface: linear-gradient(180deg, #ffffff, #f5f8fc);
+  --dash-kanban-card-surface-strong: linear-gradient(180deg, #f7faff, #edf2f8);
+  --dash-kanban-card-border: #cfd8e3;
+  --dash-kanban-card-shadow: 0 10px 22px rgba(26, 39, 58, 0.1);
+  --dash-kanban-text-strong: #162437;
+  --dash-kanban-text-normal: #203248;
+  --dash-kanban-text-muted: #324a67;
+  --dash-kanban-text-faint: #516884;
+  --dash-kanban-control-surface: #f1f5fa;
   --dash-kanban-control-surface-strong: #ffffff;
-  --dash-kanban-control-surface-soft: #e8eef6;
+  --dash-kanban-control-surface-soft: #e6ecf3;
   --dash-kanban-control-text: #17263a;
-  --dash-kanban-control-muted: #35506f;
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(49, 95, 188, 0.06), transparent 28%);
-  --dash-kanban-board-atmosphere-secondary: linear-gradient(160deg, #f9fbff, #e9eff6);
-  --dash-kanban-header-surface: linear-gradient(180deg, #ffffff, #eef4fa);
+  --dash-kanban-control-muted: #425d7c;
+  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(39, 58, 89, 0.06), transparent 28%);
+  --dash-kanban-board-atmosphere-secondary: linear-gradient(160deg, #f8fafc, #e4eaf2);
+  --dash-kanban-header-surface: linear-gradient(180deg, #ffffff, #edf2f8);
   --dash-kanban-board-texture: none;
   --dash-kanban-lane-atmosphere: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, #fbfdff, #eef3f8);
+  --dash-kanban-lane-surface: linear-gradient(180deg, #fafcff, #edf2f7);
   --dash-kanban-lane-texture: none;
   --dash-kanban-card-overlay: none;
-  --dash-kanban-header-tab-surface: #edf3fa;
+  --dash-kanban-header-tab-surface: #edf2f8;
   --dash-kanban-header-tab-text: #17263a;
-  --dash-kanban-row-rail-surface: linear-gradient(180deg, #f7faff, #edf2f8);
-  --dash-kanban-empty-surface: linear-gradient(180deg, #f9fbff, #eef3f8);
+  --dash-kanban-row-rail-surface: linear-gradient(180deg, #f7f9fc, #ecf1f6);
+  --dash-kanban-empty-surface: linear-gradient(180deg, #f8fafc, #edf2f7);
 }
 
 .dash-kanban-project-board[data-theme="light"],
@@ -152,8 +154,8 @@
 }
 
 .dash-kanban-project-board[data-theme="light"] .daily-dashboard-semantic-chip {
-  border-color: #ccd8ea;
-  background: #f5f8fc;
+  border-color: #d1dae5;
+  background: #f7f9fc;
   color: #17263a;
 }
 
@@ -184,6 +186,10 @@
 .dash-kanban-project-board[data-theme="light"] .daily-dashboard-semantic-chip.is-log,
 .dash-kanban-project-board[data-theme="light"] .daily-dashboard-semantic-chip.is-neutral {
   background: #f4f7fb;
+}
+
+.dash-kanban-project-board[data-theme="light"] {
+  box-shadow: 0 18px 34px rgba(27, 42, 63, 0.1);
 }
 
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-board::before,
@@ -225,7 +231,7 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-empty,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-meta,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-detail-label {
-  color: #334a66;
+  color: #405774;
 }
 
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-context-item:not(:last-child)::after {
@@ -275,10 +281,23 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-add,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-edit,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-edit {
-  border-color: #ccd8ea;
+  border-color: #d0d9e4;
   background: #ffffff;
   color: #17263a;
   box-shadow: none;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-header-button.is-secondary {
+  border-color: #2b3f5f;
+  background: #263754;
+  color: #f7fbff;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-header-button.is-secondary:hover,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-header-button.is-secondary:focus-visible {
+  border-color: #162536;
+  background: #1e2d44;
+  color: #ffffff;
 }
 
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-header-button.is-secondary:hover,
@@ -294,6 +313,19 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-edit:hover {
   background: #eef4fb;
   color: #132338;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-inline-button.mod-cta,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-empty-action {
+  border-color: #2c405f;
+  background: #243550;
+  color: #f8fbff;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-inline-button.mod-cta:hover,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-empty-action:hover {
+  background: #1b2b41;
+  color: #ffffff;
 }
 
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label strong,
@@ -315,4 +347,48 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-due-time-label,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-due-separator {
   color: #17263a;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label[data-kind="priority"] {
+  background: #eef4ff;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label[data-kind="effort"] {
+  background: #fff4e8;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label[data-kind="blocked"] {
+  background: #fff1e4;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label[data-kind="photo"],
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-meta-pill[data-kind="due"] {
+  background: #f1f6fb;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-label[data-kind="done"],
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-meta-pill[data-kind="done"] {
+  background: #edf8ee;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-meta-pill[data-kind="effort"] {
+  background: #fff5ea;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-meta-pill[data-kind="priority"] {
+  background: #eef3fb;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-header,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-column-header,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-corner {
+  box-shadow: 0 8px 18px rgba(28, 41, 61, 0.06);
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card {
+  box-shadow: 0 12px 26px rgba(30, 44, 66, 0.1);
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card:hover {
+  box-shadow: 0 16px 30px rgba(24, 36, 55, 0.14);
 }
