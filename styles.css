@@ -552,6 +552,20 @@
   --dash-kanban-text-muted: color-mix(in srgb, var(--text-muted) 88%, white 12%);
   --dash-kanban-text-faint: color-mix(in srgb, var(--text-faint) 92%, white 8%);
   --dash-kanban-focus-shadow: 0 0 0 3px color-mix(in srgb, var(--dash-kanban-board-accent) 22%, transparent), 0 12px 24px rgba(0, 0, 0, 0.18);
+  --dash-kanban-control-surface: color-mix(in srgb, var(--background-primary) 78%, transparent);
+  --dash-kanban-control-surface-strong: color-mix(in srgb, var(--background-primary) 88%, transparent);
+  --dash-kanban-control-surface-soft: color-mix(in srgb, var(--background-primary-alt) 82%, transparent);
+  --dash-kanban-control-text: var(--dash-kanban-text-normal);
+  --dash-kanban-control-muted: var(--dash-kanban-text-muted);
+  --dash-kanban-board-texture: none;
+  --dash-kanban-lane-texture: none;
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 22%);
+  --dash-kanban-header-tab-surface: color-mix(in srgb, var(--background-primary) 76%, transparent);
+  --dash-kanban-header-tab-text: var(--dash-kanban-text-strong);
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 15%, transparent), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, rgba(255, 255, 255, 0.04) 100%, transparent), transparent 32%),
+    color-mix(in srgb, var(--background-primary) 58%, transparent);
   --dash-kanban-board-atmosphere: radial-gradient(circle at top right, color-mix(in srgb, var(--dash-kanban-board-accent) 14%, transparent), transparent 28%);
   --dash-kanban-board-atmosphere-secondary: linear-gradient(160deg, var(--dash-kanban-board-surface), var(--dash-kanban-board-surface-strong));
   --dash-kanban-header-surface:
@@ -574,6 +588,21 @@
     var(--dash-kanban-board-atmosphere-secondary);
 }
 
+.dash-kanban-project-board::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  background: var(--dash-kanban-board-texture);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.dash-kanban-project-board > * {
+  position: relative;
+  z-index: 1;
+}
+
 .dash-kanban-project-board[data-theme="dark"] {
   --dash-kanban-board-accent: #d8a062;
   --dash-kanban-board-accent-strong: #8f5a31;
@@ -587,7 +616,18 @@
     linear-gradient(180deg, rgba(216, 160, 98, 0.12), transparent 46%),
     linear-gradient(90deg, rgba(143, 90, 49, 0.12), transparent 60%),
     color-mix(in srgb, #181513 84%, var(--background-primary));
+  --dash-kanban-board-texture:
+    linear-gradient(90deg, rgba(216, 160, 98, 0.05) 0 1px, transparent 1px 96px),
+    linear-gradient(180deg, rgba(255, 219, 168, 0.025) 0 1px, transparent 1px 72px);
   --dash-kanban-lane-surface: linear-gradient(180deg, rgba(26, 23, 20, 0.96), rgba(16, 14, 13, 0.98));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(255, 220, 170, 0.035), transparent 42%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 233, 204, 0.05), transparent 22%);
+  --dash-kanban-header-tab-surface: rgba(37, 34, 31, 0.88);
+  --dash-kanban-header-tab-text: #f4e4cb;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(216, 160, 98, 0.12), transparent 34%),
+    linear-gradient(90deg, rgba(255, 234, 204, 0.03), transparent 70%),
+    rgba(20, 17, 15, 0.8);
   --dash-kanban-empty-surface:
     linear-gradient(180deg, rgba(255, 235, 204, 0.03), transparent 36%),
     radial-gradient(circle at center, rgba(216, 160, 98, 0.1), transparent 58%),
@@ -607,17 +647,33 @@
   --dash-kanban-text-normal: color-mix(in srgb, #24324a 88%, var(--text-normal));
   --dash-kanban-text-muted: color-mix(in srgb, #4b5d78 82%, var(--text-muted));
   --dash-kanban-text-faint: color-mix(in srgb, #70839f 76%, var(--text-faint));
+  --dash-kanban-control-surface: rgba(243, 247, 253, 0.96);
+  --dash-kanban-control-surface-strong: rgba(255, 255, 255, 0.98);
+  --dash-kanban-control-surface-soft: rgba(231, 238, 247, 0.96);
+  --dash-kanban-control-text: #21314b;
+  --dash-kanban-control-muted: #4e607b;
   --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(70, 111, 216, 0.12), transparent 28%), linear-gradient(135deg, rgba(255, 255, 255, 0.64), rgba(219, 228, 243, 0.3));
   --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(70, 111, 216, 0.12), transparent 50%),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.72), transparent 58%),
-    rgba(255, 255, 255, 0.78);
+    linear-gradient(180deg, rgba(70, 111, 216, 0.1), rgba(255, 255, 255, 0.82) 64%),
+    linear-gradient(90deg, rgba(201, 216, 244, 0.52), transparent 62%),
+    rgba(255, 255, 255, 0.9);
+  --dash-kanban-board-texture:
+    linear-gradient(90deg, rgba(116, 139, 189, 0.07) 0 1px, transparent 1px 98px),
+    linear-gradient(180deg, rgba(116, 139, 189, 0.05) 0 1px, transparent 1px 44px);
   --dash-kanban-lane-atmosphere: radial-gradient(circle at 100% 0%, rgba(70, 111, 216, 0.08), transparent 34%);
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(250, 252, 255, 0.96), rgba(234, 240, 248, 0.98));
+  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(254, 255, 255, 0.98), rgba(238, 244, 251, 0.99));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(70, 111, 216, 0.03), transparent 32%), linear-gradient(90deg, rgba(255, 255, 255, 0.72), transparent 58%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(70, 111, 216, 0.04), rgba(255, 255, 255, 0.48) 26%, transparent 54%);
+  --dash-kanban-header-tab-surface: rgba(224, 232, 245, 0.92);
+  --dash-kanban-header-tab-text: #1d2c45;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(70, 111, 216, 0.08), rgba(255, 255, 255, 0.24) 24%, transparent 48%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.82), transparent 60%),
+    rgba(234, 240, 248, 0.92);
   --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 40%),
-    radial-gradient(circle at center, rgba(70, 111, 216, 0.08), transparent 58%),
-    rgba(228, 234, 242, 0.72);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), transparent 40%),
+    radial-gradient(circle at center, rgba(70, 111, 216, 0.06), transparent 58%),
+    rgba(237, 242, 249, 0.92);
 }
 
 .dash-kanban-project-board[data-theme="ocean"] {
@@ -638,7 +694,18 @@
     linear-gradient(180deg, rgba(120, 216, 255, 0.11), transparent 46%),
     linear-gradient(90deg, rgba(18, 63, 96, 0.34), transparent 58%),
     rgba(11, 28, 43, 0.82);
+  --dash-kanban-board-texture:
+    linear-gradient(180deg, rgba(120, 216, 255, 0.05) 0 1px, transparent 1px 24px),
+    linear-gradient(90deg, rgba(15, 57, 84, 0.16), transparent 36%);
   --dash-kanban-lane-surface: linear-gradient(180deg, rgba(15, 35, 52, 0.98), rgba(8, 24, 37, 0.99));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(120, 216, 255, 0.03), transparent 28%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(120, 216, 255, 0.04), transparent 20%), linear-gradient(90deg, rgba(12, 39, 57, 0.12), transparent 40%);
+  --dash-kanban-header-tab-surface: rgba(31, 43, 53, 0.92);
+  --dash-kanban-header-tab-text: #dcf5ff;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(120, 216, 255, 0.08), transparent 28%),
+    linear-gradient(90deg, rgba(16, 58, 84, 0.18), transparent 58%),
+    rgba(10, 24, 36, 0.84);
   --dash-kanban-empty-surface:
     linear-gradient(180deg, rgba(221, 242, 255, 0.03), transparent 34%),
     radial-gradient(circle at center, rgba(120, 216, 255, 0.12), transparent 58%),
@@ -663,7 +730,18 @@
     linear-gradient(180deg, rgba(142, 200, 108, 0.11), transparent 46%),
     linear-gradient(90deg, rgba(71, 124, 85, 0.18), transparent 62%),
     rgba(18, 33, 24, 0.82);
+  --dash-kanban-board-texture:
+    linear-gradient(90deg, rgba(142, 200, 108, 0.04) 0 1px, transparent 1px 88px),
+    radial-gradient(circle at 20% 0%, rgba(205, 157, 86, 0.08), transparent 26%);
   --dash-kanban-lane-surface: linear-gradient(180deg, rgba(18, 36, 26, 0.98), rgba(11, 24, 17, 0.99));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(142, 200, 108, 0.035), transparent 28%), linear-gradient(90deg, rgba(34, 53, 38, 0.16), transparent 46%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(188, 220, 162, 0.04), transparent 22%), linear-gradient(90deg, rgba(79, 65, 34, 0.08), transparent 42%);
+  --dash-kanban-header-tab-surface: rgba(32, 45, 36, 0.92);
+  --dash-kanban-header-tab-text: #e4f1d7;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(142, 200, 108, 0.08), transparent 28%),
+    linear-gradient(90deg, rgba(93, 71, 34, 0.14), transparent 56%),
+    rgba(15, 28, 18, 0.84);
   --dash-kanban-empty-surface:
     linear-gradient(180deg, rgba(222, 245, 217, 0.03), transparent 34%),
     radial-gradient(circle at center, rgba(142, 200, 108, 0.11), transparent 58%),
@@ -688,7 +766,18 @@
     linear-gradient(180deg, rgba(210, 141, 118, 0.1), transparent 48%),
     linear-gradient(90deg, rgba(150, 77, 85, 0.16), transparent 62%),
     rgba(31, 17, 22, 0.82);
+  --dash-kanban-board-texture:
+    linear-gradient(135deg, rgba(210, 141, 118, 0.05) 0 1px, transparent 1px 18px),
+    linear-gradient(90deg, rgba(150, 77, 85, 0.08), transparent 44%);
   --dash-kanban-lane-surface: linear-gradient(180deg, rgba(45, 22, 29, 0.98), rgba(24, 12, 17, 0.99));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(210, 141, 118, 0.03), transparent 30%), linear-gradient(135deg, rgba(255, 222, 209, 0.03), transparent 34%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 220, 207, 0.04), transparent 22%), linear-gradient(90deg, rgba(140, 88, 64, 0.08), transparent 48%);
+  --dash-kanban-header-tab-surface: rgba(50, 26, 31, 0.92);
+  --dash-kanban-header-tab-text: #ffe6dc;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(210, 141, 118, 0.08), transparent 28%),
+    linear-gradient(90deg, rgba(150, 77, 85, 0.14), transparent 56%),
+    rgba(26, 13, 18, 0.84);
   --dash-kanban-empty-surface:
     linear-gradient(180deg, rgba(255, 230, 222, 0.03), transparent 34%),
     radial-gradient(circle at center, rgba(210, 141, 118, 0.12), transparent 58%),
@@ -713,7 +802,18 @@
     linear-gradient(180deg, rgba(255, 124, 199, 0.1), transparent 44%),
     linear-gradient(90deg, rgba(125, 114, 255, 0.18), transparent 60%),
     rgba(29, 20, 42, 0.84);
+  --dash-kanban-board-texture:
+    radial-gradient(circle at 14% 0%, rgba(125, 114, 255, 0.09), transparent 24%),
+    linear-gradient(115deg, rgba(255, 124, 199, 0.04) 0 12%, transparent 12% 28%, rgba(125, 114, 255, 0.04) 28% 40%, transparent 40% 100%);
   --dash-kanban-lane-surface: linear-gradient(180deg, rgba(35, 23, 50, 0.98), rgba(20, 15, 31, 0.99));
+  --dash-kanban-lane-texture: linear-gradient(180deg, rgba(255, 124, 199, 0.025), transparent 32%), linear-gradient(90deg, rgba(125, 114, 255, 0.08), transparent 36%);
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 124, 199, 0.04), transparent 22%), linear-gradient(90deg, rgba(125, 114, 255, 0.08), transparent 44%);
+  --dash-kanban-header-tab-surface: rgba(39, 27, 58, 0.92);
+  --dash-kanban-header-tab-text: #f6e5ff;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(255, 124, 199, 0.08), transparent 28%),
+    linear-gradient(90deg, rgba(125, 114, 255, 0.16), transparent 56%),
+    rgba(23, 16, 35, 0.86);
   --dash-kanban-empty-surface:
     linear-gradient(180deg, rgba(250, 232, 255, 0.03), transparent 34%),
     radial-gradient(circle at center, rgba(255, 124, 199, 0.12), transparent 56%),
@@ -1012,7 +1112,9 @@
   padding: 12px 14px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--dash-kanban-border));
   border-radius: 18px;
-  background: var(--dash-kanban-header-surface);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-header-tab-surface) 84%, transparent), transparent 72%),
+    var(--dash-kanban-header-surface);
 }
 
 .dash-kanban-matrix-corner {
@@ -1035,8 +1137,14 @@
 
 .dash-kanban-matrix-column-kicker {
   display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
   margin-bottom: 6px;
-  color: color-mix(in srgb, var(--dash-kanban-board-accent) 56%, var(--text-faint));
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
+  border-radius: 999px;
+  background: var(--dash-kanban-header-tab-surface);
+  color: var(--dash-kanban-header-tab-text);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -1057,10 +1165,7 @@
   padding: 16px 16px;
   border-left: 4px solid var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
   border-radius: 18px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 15%, transparent), transparent 38%),
-    linear-gradient(180deg, color-mix(in srgb, rgba(255, 255, 255, 0.04) 100%, transparent), transparent 32%),
-    color-mix(in srgb, var(--background-primary) 58%, transparent);
+  background: var(--dash-kanban-row-rail-surface);
 }
 
 .dash-kanban-matrix-row-top {
@@ -1078,8 +1183,8 @@
   padding: 0 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 18%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
-  color: var(--dash-kanban-text-muted);
+  background: var(--dash-kanban-header-tab-surface);
+  color: var(--dash-kanban-header-tab-text);
   font-size: 0.7rem;
   font-weight: 700;
 }
@@ -1100,7 +1205,7 @@
 
 .dash-kanban-matrix-empty-cell strong {
   font-size: 0.86rem;
-  color: color-mix(in srgb, var(--dash-kanban-board-accent) 60%, var(--text-normal));
+  color: color-mix(in srgb, var(--dash-kanban-board-accent) 60%, var(--dash-kanban-text-strong));
 }
 
 .dash-kanban-matrix-empty-cell.is-structural {
@@ -1167,6 +1272,21 @@
     var(--dash-kanban-lane-surface);
 }
 
+.dash-kanban-lane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dash-kanban-lane-texture);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.dash-kanban-lane > * {
+  position: relative;
+  z-index: 1;
+}
+
 .dash-kanban-lane.is-matrix-cell {
   min-width: 220px;
 }
@@ -1203,6 +1323,13 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  padding: 8px 10px 10px;
+  margin: -2px -2px 0;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--dash-kanban-border));
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-header-tab-surface) 76%, transparent), transparent 75%),
+    color-mix(in srgb, var(--dash-kanban-header-surface) 88%, transparent);
   padding-bottom: 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--dash-kanban-border));
 }
@@ -1237,8 +1364,8 @@
   padding: 6px 10px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface-strong);
+  color: var(--dash-kanban-control-text);
 }
 
 .dash-kanban-lane-rename-action {
@@ -1293,7 +1420,7 @@
 .dash-kanban-lane-edit:hover,
 .dash-kanban-lane-edit:focus-visible {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 22%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--dash-kanban-board-accent) 10%, var(--background-primary));
+  background: var(--dash-kanban-header-tab-surface);
   color: var(--dash-kanban-board-accent);
 }
 
@@ -1319,8 +1446,8 @@
   padding: 0 6px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
-  color: var(--dash-kanban-text-faint);
+  background: var(--dash-kanban-header-tab-surface);
+  color: var(--dash-kanban-header-tab-text);
   font-size: 0.66rem;
   font-weight: 800;
 }
@@ -1333,14 +1460,14 @@
 
 .dash-kanban-lane-heat-pill.is-blocked {
   border-color: color-mix(in srgb, #f3b86c 38%, var(--dash-kanban-border));
-  color: color-mix(in srgb, #f6d3a0 82%, var(--text-normal));
+  color: color-mix(in srgb, #f6d3a0 72%, var(--dash-kanban-header-tab-text));
   border-style: dashed;
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, #f3b86c 14%, var(--background-primary)) 0 6px, color-mix(in srgb, var(--background-primary) 96%, transparent) 6px 12px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, #f3b86c 16%, var(--dash-kanban-header-tab-surface)) 0 6px, color-mix(in srgb, var(--dash-kanban-header-tab-surface) 96%, transparent) 6px 12px);
 }
 
 .dash-kanban-lane-heat-pill.is-due {
   border-color: color-mix(in srgb, #77b7ff 38%, var(--dash-kanban-border));
-  color: color-mix(in srgb, #d6ebff 82%, var(--text-normal));
+  color: color-mix(in srgb, #d6ebff 72%, var(--dash-kanban-header-tab-text));
 }
 
 .dash-kanban-lane-heat-pill.is-blocked::before {
@@ -1357,8 +1484,8 @@
 
 .dash-kanban-lane-heat-pill.is-overdue {
   border-color: color-mix(in srgb, #ff8b7d 48%, var(--dash-kanban-border));
-  background: color-mix(in srgb, #ff8b7d 10%, var(--background-primary));
-  color: color-mix(in srgb, #ffd1cb 84%, var(--text-normal));
+  background: color-mix(in srgb, #ff8b7d 14%, var(--dash-kanban-header-tab-surface));
+  color: color-mix(in srgb, #ffd1cb 72%, var(--dash-kanban-header-tab-text));
 }
 
 .dash-kanban-lane-add {
@@ -1375,10 +1502,10 @@
   padding: 0 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 78%, transparent);
+  background: var(--dash-kanban-control-surface);
   font-size: 0.7rem;
   font-weight: 700;
-  color: var(--dash-kanban-text-strong);
+  color: var(--dash-kanban-control-text);
 }
 
 .dash-kanban-lane-helper {
@@ -1424,7 +1551,7 @@
   padding: 10px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
   border-radius: 16px;
-  background: color-mix(in srgb, var(--background-primary) 76%, transparent);
+  background: var(--dash-kanban-control-surface-strong);
 }
 
 .dash-kanban-lane-empty-state {
@@ -1450,7 +1577,7 @@
   height: 42px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+  background: var(--dash-kanban-control-surface);
   color: color-mix(in srgb, var(--dash-kanban-board-accent) 74%, var(--text-normal));
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
@@ -1466,12 +1593,12 @@
 .dash-kanban-lane-empty-title {
   font-size: 0.96rem;
   line-height: 1.2;
-  color: var(--text-normal);
+  color: var(--dash-kanban-text-strong);
 }
 
 .dash-kanban-lane-empty {
   max-width: 28ch;
-  color: color-mix(in srgb, var(--text-muted) 90%, white 10%);
+  color: var(--dash-kanban-text-muted);
   line-height: 1.4;
 }
 
@@ -1480,8 +1607,8 @@
   padding: 0 14px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 78%, transparent);
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-text);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -1498,8 +1625,8 @@
   padding: 10px 12px;
   border: 1px solid var(--dash-kanban-border);
   border-radius: 14px;
-  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface-strong);
+  color: var(--dash-kanban-control-text);
   line-height: 1.35;
 }
 
@@ -1514,8 +1641,8 @@
   padding: 6px 12px;
   border: 1px solid var(--dash-kanban-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 84%, transparent);
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-text);
 }
 
 .dash-kanban-inline-button.mod-cta {
@@ -1531,7 +1658,7 @@
   border: 1px solid var(--dash-kanban-card-border);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 22%),
+    var(--dash-kanban-card-overlay),
     var(--dash-kanban-card-surface);
   box-shadow: var(--dash-kanban-card-shadow);
   cursor: grab;
@@ -1608,11 +1735,11 @@
 }
 
 .dash-kanban-card.is-done .dash-kanban-card-title {
-  color: color-mix(in srgb, var(--text-normal) 82%, #cfe9d6 18%);
+  color: color-mix(in srgb, var(--dash-kanban-text-strong) 84%, #cfe9d6 16%);
 }
 
 .dash-kanban-card.is-done .dash-kanban-card-note {
-  color: color-mix(in srgb, var(--text-muted) 86%, #cfe9d6 14%);
+  color: color-mix(in srgb, var(--dash-kanban-text-muted) 88%, #cfe9d6 12%);
 }
 
 .dash-kanban-card[data-priority="urgent"] {
@@ -1708,7 +1835,7 @@
   font-size: 1.04rem;
   line-height: 1.28;
   letter-spacing: -0.018em;
-  color: color-mix(in srgb, var(--text-normal) 96%, white 4%);
+  color: var(--dash-kanban-text-strong);
 }
 
 .dash-kanban-card-photo-strip {
@@ -1734,8 +1861,8 @@
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 28%, var(--dash-kanban-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 78%, rgba(12, 15, 20, 0.92));
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-text);
   transform: translateY(-50%);
   backdrop-filter: blur(10px);
   box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
@@ -1772,7 +1899,7 @@
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 24%, var(--dash-kanban-border));
   border-radius: 16px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 82%, transparent), color-mix(in srgb, var(--background-primary-alt) 88%, transparent));
+    linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-control-surface-strong) 92%, transparent), color-mix(in srgb, var(--dash-kanban-control-surface-soft) 94%, transparent));
 }
 
 .dash-kanban-card-photo-preview:hover {
@@ -1806,9 +1933,9 @@
   width: 26px;
   height: 26px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 82%, rgba(0, 0, 0, 0.24));
+  background: var(--dash-kanban-control-surface);
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
-  color: var(--text-faint);
+  color: var(--dash-kanban-control-muted);
   opacity: 0.84;
 }
 
@@ -1824,14 +1951,14 @@
   padding: 0;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 80%, rgba(0, 0, 0, 0.2));
-  color: var(--text-faint);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-muted);
   opacity: 0.78;
 }
 
 .dash-kanban-card-photo-collapse-hint:hover {
   opacity: 1;
-  color: var(--text-normal);
+  color: var(--dash-kanban-control-text);
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 30%, var(--dash-kanban-border));
 }
 
@@ -1845,16 +1972,16 @@
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 84%, rgba(0, 0, 0, 0.2));
+  background: var(--dash-kanban-control-surface);
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--dash-kanban-border));
-  color: var(--text-faint);
+  color: var(--dash-kanban-control-muted);
   font-size: 0.68rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
 .dash-kanban-card-photo-status strong {
-  color: var(--text-normal);
+  color: var(--dash-kanban-control-text);
   font-size: 0.72rem;
 }
 
@@ -1867,8 +1994,8 @@
   padding: 4px 8px 4px 4px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 82%, transparent);
-  color: var(--text-muted);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-muted);
 }
 
 .dash-kanban-card-photo-compact-thumb {
@@ -1880,8 +2007,8 @@
   overflow: hidden;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary-alt) 86%, transparent);
-  color: var(--text-faint);
+  background: var(--dash-kanban-control-surface-soft);
+  color: var(--dash-kanban-control-muted);
 }
 
 .dash-kanban-card-photo-compact-thumb img {
@@ -1905,7 +2032,7 @@
 }
 
 .dash-kanban-card-photo-compact-meta strong {
-  color: var(--text-normal);
+  color: var(--dash-kanban-control-text);
   font-size: 0.8rem;
 }
 
@@ -1917,7 +2044,7 @@
 
 .dash-kanban-card-editor-hint {
   margin: -2px 0 0;
-  color: var(--text-faint);
+  color: var(--dash-kanban-text-faint);
   font-size: 0.76rem;
   line-height: 1.4;
 }
@@ -1934,7 +2061,7 @@
 
 .dash-kanban-card-note {
   margin: 0;
-  color: color-mix(in srgb, var(--text-muted) 92%, white 8%);
+  color: var(--dash-kanban-text-muted);
   font-size: 0.86rem;
   line-height: 1.42;
 }
@@ -1955,8 +2082,8 @@
   padding: 0 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 22%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 76%, transparent);
-  color: var(--text-normal);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-text);
   font-size: 0.78rem;
 }
 
@@ -1964,7 +2091,7 @@
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--dash-kanban-control-muted);
 }
 .dash-kanban-card-label[data-kind="due"] {
   border-color: color-mix(in srgb, #77b7ff 32%, var(--dash-kanban-border));
@@ -2015,7 +2142,7 @@
   border: 1px solid color-mix(in srgb, #74c98a 26%, var(--dash-kanban-border));
   border-radius: 14px;
   background: color-mix(in srgb, #74c98a 10%, var(--background-primary));
-  color: color-mix(in srgb, var(--text-muted) 88%, #d4f0dc 12%);
+  color: color-mix(in srgb, var(--dash-kanban-text-muted) 88%, #d4f0dc 12%);
   font-size: 0.77rem;
 }
 
@@ -2023,11 +2150,11 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.64rem;
-  color: color-mix(in srgb, var(--text-muted) 82%, #d4f0dc 18%);
+  color: color-mix(in srgb, var(--dash-kanban-text-muted) 82%, #d4f0dc 18%);
 }
 
 .dash-kanban-card-resolution-value {
-  color: var(--text-normal);
+  color: var(--dash-kanban-text-strong);
   font-weight: 600;
 }
 
@@ -2035,7 +2162,7 @@
   justify-content: space-between;
   align-items: flex-end;
   flex-wrap: wrap;
-  color: var(--text-faint);
+  color: var(--dash-kanban-text-faint);
   font-size: 0.8rem;
   gap: 6px 8px;
   padding-top: 2px;
@@ -2059,9 +2186,9 @@
   min-height: 24px;
   padding: 0 9px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+  background: var(--dash-kanban-control-surface);
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
-  color: var(--text-normal);
+  color: var(--dash-kanban-control-text);
   font-size: 0.76rem;
 }
 
@@ -2069,7 +2196,7 @@
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--dash-kanban-control-muted);
 }
 
 .dash-kanban-card-meta-pill[data-kind="priority"] {
@@ -2107,19 +2234,19 @@
 .dash-kanban-card:hover .dash-kanban-card-footer-info,
 .dash-kanban-card.is-selected .dash-kanban-card-footer-info,
 .dash-kanban-card:focus-within .dash-kanban-card-footer-info {
-  color: var(--text-muted);
+  color: var(--dash-kanban-text-muted);
 }
 
 .dash-kanban-card .dash-kanban-card-action {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--dash-kanban-border));
-  background: color-mix(in srgb, var(--background-primary) 68%, transparent);
-  color: color-mix(in srgb, var(--text-muted) 88%, white 12%);
+  background: var(--dash-kanban-control-surface);
+  color: var(--dash-kanban-control-muted);
 }
 
 .dash-kanban-card:hover .dash-kanban-card-action,
 .dash-kanban-card.is-selected .dash-kanban-card-action,
 .dash-kanban-card:focus-within .dash-kanban-card-action {
-  color: var(--text-normal);
+  color: var(--dash-kanban-control-text);
 }
 
 .dash-kanban-priority-picker {
