@@ -13810,10 +13810,16 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     }
     return this.cardPopoverAnchorPoint.type === type && this.cardPopoverAnchorPoint.projectName === projectName && this.cardPopoverAnchorPoint.taskId === taskId ? { x: this.cardPopoverAnchorPoint.x, y: this.cardPopoverAnchorPoint.y } : null;
   }
-  ensurePopoverLayer(ownerDocument = this.contentEl.ownerDocument) {
+  getViewDocument() {
+    return this.contentEl.ownerDocument;
+  }
+  ensurePopoverLayer(ownerDocument = this.getViewDocument()) {
     var _a;
     if ((_a = this.popoverLayerEl) == null ? void 0 : _a.isConnected) {
-      return this.popoverLayerEl;
+      if (this.popoverLayerEl.ownerDocument === ownerDocument) {
+        return this.popoverLayerEl;
+      }
+      this.destroyPopoverLayer();
     }
     const layer = ownerDocument.createElement("div");
     layer.className = "dash-kanban-popover-layer";
@@ -13956,7 +13962,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     return separator;
   }
   mountCardPopover(popover) {
-    this.ensurePopoverLayer(popover.ownerDocument).appendChild(popover);
+    this.ensurePopoverLayer(this.getViewDocument()).appendChild(popover);
   }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
@@ -13977,6 +13983,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
   async renderBoard() {
     const snapshot = await this.plugin.getDashKanbanWorkspaceSnapshot();
     const viewState = this.plugin.getKanbanViewState();
+    this.ensurePopoverLayer(this.getViewDocument());
     this.clearPopoverLayer();
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");

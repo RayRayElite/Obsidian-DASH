@@ -9499,9 +9499,17 @@ export class DashKanbanView extends ItemView {
       : null;
   }
 
-  private ensurePopoverLayer(ownerDocument: Document = this.contentEl.ownerDocument): HTMLElement {
+  private getViewDocument(): Document {
+    return this.contentEl.ownerDocument;
+  }
+
+  private ensurePopoverLayer(ownerDocument: Document = this.getViewDocument()): HTMLElement {
     if (this.popoverLayerEl?.isConnected) {
-      return this.popoverLayerEl;
+      if (this.popoverLayerEl.ownerDocument === ownerDocument) {
+        return this.popoverLayerEl;
+      }
+
+      this.destroyPopoverLayer();
     }
 
     const layer = ownerDocument.createElement("div");
@@ -9660,7 +9668,7 @@ export class DashKanbanView extends ItemView {
   }
 
   private mountCardPopover(popover: HTMLElement): void {
-    this.ensurePopoverLayer(popover.ownerDocument).appendChild(popover);
+    this.ensurePopoverLayer(this.getViewDocument()).appendChild(popover);
   }
 
   private closeInlineCardEditor(): void {
@@ -9684,6 +9692,7 @@ export class DashKanbanView extends ItemView {
   private async renderBoard(): Promise<void> {
     const snapshot = await this.plugin.getDashKanbanWorkspaceSnapshot();
     const viewState = this.plugin.getKanbanViewState();
+    this.ensurePopoverLayer(this.getViewDocument());
     this.clearPopoverLayer();
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
