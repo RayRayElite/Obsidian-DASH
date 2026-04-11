@@ -1198,6 +1198,7 @@
 .dash-kanban-lane-header.is-titleless {
   align-items: center;
   padding: 8px 10px;
+  justify-content: flex-end;
 }
 
 .dash-kanban-lane-title-wrap {

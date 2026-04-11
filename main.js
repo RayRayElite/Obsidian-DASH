@@ -15087,6 +15087,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       const rowTitleButton = rowTitleRow.createEl("button", { cls: "dash-kanban-matrix-row-title", text: row.label || "Board" });
       rowTitleButton.type = "button";
       rowTitleButton.title = `Rename ${row.label || "swimlane"}`;
+      rowTitleButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
+      });
       rowTitleButton.addEventListener("dblclick", (event) => {
         event.stopPropagation();
         this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
@@ -15413,10 +15417,14 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       if (lane.helperText) {
         titleWrap.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
       }
-    } else if (lane.helperText) {
-      titleWrap.createEl("span", { cls: "dash-kanban-lane-section-label", text: lane.helperText });
     }
     const laneTools = header.createDiv({ cls: "dash-kanban-lane-tools" });
+    if (!showTitle) {
+      const headerSummary = [lane.label.trim(), lane.helperText.trim()].filter((value) => value.length > 0).join(" - ");
+      if (headerSummary) {
+        header.title = headerSummary;
+      }
+    }
     const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action dash-kanban-lane-add", attr: { "aria-label": `Add card to ${lane.label}` } });
     addButton.type = "button";
     (0, import_obsidian3.setIcon)(addButton, "plus");
