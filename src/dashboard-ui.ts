@@ -9697,7 +9697,7 @@ export class DashKanbanView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
 
-    const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density}` });
+    const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density} is-${viewState.mode}` });
     shell.addEventListener("click", (event) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest(".dash-kanban-card, .dash-kanban-quick-add, .dash-kanban-lane-rename")) {
@@ -10238,14 +10238,16 @@ export class DashKanbanView extends ItemView {
       return;
     }
 
-    const hero = header.createDiv({ cls: "dash-kanban-hero" });
+    const hero = header.createDiv({ cls: `dash-kanban-hero is-${viewState.mode}` });
     const heroTop = hero.createDiv({ cls: "dash-kanban-hero-top" });
     const copy = heroTop.createDiv({ cls: "dash-kanban-hero-copy" });
     copy.createEl("div", { cls: "dash-kanban-kicker", text: "DASH BOARD WORKSPACE" });
     copy.createEl("h1", { cls: "dash-kanban-title", text: "Kanban" });
     copy.createEl("p", {
       cls: "dash-kanban-subtitle",
-      text: "A dedicated board view that stays anchored to the Master Task Hub instead of generating fake board notes as the main UI."
+      text: viewState.mode === "single-project"
+        ? "Single-project mode gives one board more breathing room while still staying anchored to the Master Task Hub."
+        : "Portfolio mode keeps multiple projects readable without turning the board into a wall of equally loud controls."
     });
 
     const summary = hero.createDiv({ cls: "dash-kanban-summary dash-kanban-summary--hero" });
@@ -10264,13 +10266,15 @@ export class DashKanbanView extends ItemView {
       createSemanticChip(summary, `${snapshot.repairCount} repair`, "alert");
     }
 
-    const controls = header.createDiv({ cls: "dash-kanban-controls" });
+    const controls = header.createDiv({ cls: `dash-kanban-controls is-${viewState.mode}` });
     if (viewState.headerCollapsed) {
       controls.addClass("is-collapsed");
     }
     const controlsTop = controls.createDiv({ cls: "dash-kanban-controls-top" });
-    const actionRow = controlsTop.createDiv({ cls: "dash-kanban-action-row" });
-    actionRow.append(
+    const primaryGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-primary" });
+    primaryGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Create & edit" });
+    const primaryActions = primaryGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+    primaryActions.append(
       this.createHeaderButton("folder-plus", "New project", () => {
         void this.plugin.openCreateProjectFlow();
       }),
@@ -10285,7 +10289,13 @@ export class DashKanbanView extends ItemView {
           return;
         }
         void this.plugin.openKanbanTaskEditFlow(targetProject);
-      }),
+      })
+    );
+
+    const boardGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-board" });
+    boardGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Board" });
+    const boardActions = boardGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+    boardActions.append(
       this.createHeaderButton("file-stack", "Open hub", () => {
         void this.plugin.openMasterTodo();
       }),
@@ -10312,7 +10322,10 @@ export class DashKanbanView extends ItemView {
     });
     controlsTop.appendChild(collapseButton);
 
-    const filterRow = controls.createDiv({ cls: "dash-kanban-filter-row" });
+    const viewGroup = controls.createDiv({ cls: "dash-kanban-control-cluster is-view" });
+    viewGroup.createEl("span", { cls: "dash-kanban-control-label", text: "View & filter" });
+
+    const filterRow = viewGroup.createDiv({ cls: "dash-kanban-filter-row" });
     const searchWrapper = filterRow.createDiv({ cls: "dash-kanban-search" });
     const searchIcon = searchWrapper.createSpan({ cls: "dash-kanban-search-icon" });
     setIcon(searchIcon, "search");
@@ -10363,7 +10376,7 @@ export class DashKanbanView extends ItemView {
     });
     doneToggle.createSpan({ text: "Show done" });
 
-    const focusRow = controls.createDiv({ cls: "dash-kanban-focus-row" });
+    const focusRow = viewGroup.createDiv({ cls: "dash-kanban-focus-row" });
     focusRow.append(
       this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "all" });
@@ -10704,9 +10717,12 @@ export class DashKanbanView extends ItemView {
 
   private renderProjectBoard(parent: HTMLElement, project: DashKanbanProjectBoard, mode: DashboardKanbanViewMode, density: DashboardKanbanDensity): void {
     const isCollapsedInWorkspace = project.collapsedInHub && mode === "all-projects";
-    const board = parent.createDiv({ cls: `dash-kanban-project-board${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}` });
+    const board = parent.createDiv({ cls: `dash-kanban-project-board is-${mode}${isCollapsedInWorkspace ? " is-collapsed" : ""}${project.usesSharedColumnLayout ? " is-matrix-board" : ""}${project.usesSharedColumnLayout && density === "compact" ? " is-dense-matrix" : ""}` });
     board.dataset.theme = project.theme;
     board.style.setProperty("--dash-kanban-board-height", `${project.boardHeight}px`);
+    const visibleCards = project.lanes.flatMap((lane) => lane.cards);
+    const blockedCount = visibleCards.filter((card) => card.isBlocked && !card.done).length;
+    const dueCount = visibleCards.filter((card) => !card.done && (card.isDueSoon || card.isOverdue)).length;
     const boardHeader = board.createDiv({ cls: "dash-kanban-project-header" });
     this.bindProjectCollapse(boardHeader, project, mode);
     const collapseButton = boardHeader.createEl("button", { cls: "dash-kanban-project-collapse-button" });
@@ -10720,6 +10736,12 @@ export class DashKanbanView extends ItemView {
     });
     const heading = boardHeader.createDiv({ cls: "dash-kanban-project-heading" });
     heading.createEl("h2", { text: project.projectName });
+    const summaryText = mode === "single-project"
+      ? (project.projectSummary.trim() || project.focus.trim())
+      : "";
+    if (summaryText) {
+      heading.createEl("p", { cls: "dash-kanban-project-summary", text: summaryText });
+    }
     const headingMeta = heading.createDiv({ cls: "dash-kanban-project-context" });
     headingMeta.createEl("span", { cls: "dash-kanban-project-context-item", text: project.templateName });
     headingMeta.createEl("span", { cls: "dash-kanban-project-context-item", text: project.status || (project.projectState === "active" ? "Active" : project.projectState) });
@@ -10730,6 +10752,12 @@ export class DashKanbanView extends ItemView {
     const projectMeta = boardHeader.createDiv({ cls: "dash-kanban-project-meta" });
     createSemanticChip(projectMeta, project.healthLabel, project.healthScore >= 75 ? "done" : project.healthScore >= 50 ? "neutral" : "alert");
     createSemanticChip(projectMeta, `${project.openCount} open`, "neutral");
+    if (blockedCount > 0) {
+      createSemanticChip(projectMeta, `${blockedCount} blocked`, "alert");
+    }
+    if (dueCount > 0) {
+      createSemanticChip(projectMeta, `${dueCount} due`, visibleCards.some((card) => card.isOverdue) ? "alert" : "capture");
+    }
 
     if (!isCollapsedInWorkspace) {
       const boardActions = boardHeader.createDiv({ cls: "dash-kanban-project-actions" });
@@ -10847,7 +10875,7 @@ export class DashKanbanView extends ItemView {
       titleWrap.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
     }
     const laneTools = header.createDiv({ cls: "dash-kanban-lane-tools" });
-    const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action", attr: { "aria-label": `Add card to ${lane.label}` } });
+    const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action dash-kanban-lane-add", attr: { "aria-label": `Add card to ${lane.label}` } });
     addButton.type = "button";
     setIcon(addButton, "plus");
     addButton.addEventListener("mousedown", (event) => {
@@ -10929,7 +10957,9 @@ export class DashKanbanView extends ItemView {
 
     if (lane.cards.length === 0) {
       const emptyState = cards.createDiv({ cls: "dash-kanban-lane-empty-state" });
-      emptyState.createEl("p", { cls: "dash-kanban-lane-empty", text: lane.done ? "No completed cards here yet." : "Drop work here or start a card in this stage." });
+      emptyState.createEl("span", { cls: "dash-kanban-lane-empty-kicker", text: lane.done ? "Done lane" : "Open stage" });
+      emptyState.createEl("strong", { cls: "dash-kanban-lane-empty-title", text: lane.done ? "Nothing finished here yet" : `No cards in ${lane.label}` });
+      emptyState.createEl("p", { cls: "dash-kanban-lane-empty", text: lane.done ? "Completed work will collect here when cards are checked off." : "Drop work here or start a card directly inside this stage." });
       if (!lane.done) {
         const emptyAction = emptyState.createEl("button", { cls: "dash-kanban-lane-empty-action", text: `Add card` });
         emptyAction.type = "button";
