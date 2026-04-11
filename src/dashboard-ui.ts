@@ -10537,9 +10537,10 @@ export class DashKanbanView extends ItemView {
       headerSpacer.createSpan({ text: "Swimlane" });
     }
 
-    columns.forEach((column) => {
+      columns.forEach((column, columnIndex) => {
       const header = matrix.createDiv({ cls: "dash-kanban-matrix-column-header" });
-      header.createEl("span", { cls: "dash-kanban-matrix-column-kicker", text: `Stage ${columns.indexOf(column) + 1}` });
+      header.style.setProperty("--dash-kanban-column-index", `${columnIndex + 1}`);
+      header.createEl("span", { cls: "dash-kanban-matrix-column-kicker", text: `Stage ${columnIndex + 1}` });
       header.createEl("h3", { text: column.label });
       if (column.helperText) {
         header.createEl("p", { text: column.helperText });
@@ -10835,10 +10836,21 @@ export class DashKanbanView extends ItemView {
   }
 
   private renderLane(parent: HTMLElement, project: DashKanbanProjectBoard, lane: DashKanbanProjectBoard["lanes"][number], extraClass = ""): void {
-    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${extraClass ? ` ${extraClass}` : ""}` });
+    const hasSelectedCardInLane = Boolean(this.selectedCardKey
+      && this.selectedCardKey.projectName === project.projectName
+      && lane.cards.some((candidate) => candidate.taskId === this.selectedCardKey?.taskId));
+    const hasSelectedCardElsewhere = Boolean(this.selectedCardKey
+      && this.selectedCardKey.projectName === project.projectName
+      && !hasSelectedCardInLane);
+    const laneBlockedCount = lane.cards.filter((card) => !card.done && card.isBlocked).length;
+    const laneDueCount = lane.cards.filter((card) => !card.done && (card.isDueSoon || card.isOverdue)).length;
+    const laneOverdueCount = lane.cards.filter((card) => !card.done && card.isOverdue).length;
+    const laneCardCount = lane.cards.length;
+    const laneEl = parent.createDiv({ cls: `dash-kanban-lane${lane.done ? " is-done" : ""}${hasSelectedCardInLane ? " is-focused" : ""}${hasSelectedCardElsewhere ? " is-muted" : ""}${extraClass ? ` ${extraClass}` : ""}` });
     laneEl.dataset.project = project.projectName;
     laneEl.dataset.section = lane.targetSection;
     laneEl.dataset.category = toClassSlug(lane.categoryLabel || lane.categoryTag || lane.label || "lane");
+    laneEl.dataset.heat = laneOverdueCount > 0 ? "overdue" : laneBlockedCount > 0 ? "blocked" : laneDueCount > 0 ? "due" : "calm";
     if (lane.categoryColor) {
       laneEl.style.setProperty("--dash-kanban-lane-accent", lane.categoryColor);
     }
@@ -10885,7 +10897,21 @@ export class DashKanbanView extends ItemView {
       event.stopPropagation();
       this.openInlineQuickAdd(project.projectName, lane.laneKey);
     });
-    laneTools.createSpan({ cls: "dash-kanban-lane-count", text: `${lane.cardCount}` });
+    const laneCount = laneTools.createSpan({ cls: "dash-kanban-lane-count", text: `${lane.cardCount}` });
+    laneCount.title = `${lane.cardCount} card${lane.cardCount === 1 ? "" : "s"}`;
+    if (laneBlockedCount > 0 || laneDueCount > 0) {
+      const heat = laneTools.createDiv({ cls: "dash-kanban-lane-heat", attr: { "aria-label": `Lane attention summary for ${lane.label}` } });
+      if (laneBlockedCount > 0) {
+        const blocked = heat.createSpan({ cls: `dash-kanban-lane-heat-pill${laneBlockedCount > 0 ? " is-blocked" : ""}`, text: `${laneBlockedCount}` });
+        blocked.title = `${laneBlockedCount} blocked card${laneBlockedCount === 1 ? "" : "s"}`;
+      }
+      if (laneDueCount > 0) {
+        const due = heat.createSpan({ cls: `dash-kanban-lane-heat-pill${laneOverdueCount > 0 ? " is-overdue" : " is-due"}`, text: `${laneDueCount}` });
+        due.title = laneOverdueCount > 0
+          ? `${laneOverdueCount} overdue and ${Math.max(0, laneDueCount - laneOverdueCount)} due-soon card${laneDueCount === 1 ? "" : "s"}`
+          : `${laneDueCount} due-soon card${laneDueCount === 1 ? "" : "s"}`;
+      }
+    }
 
     if (this.quickAddDraft?.projectName === project.projectName && this.quickAddDraft.laneKey === lane.laneKey) {
       const composer = laneEl.createDiv({ cls: "dash-kanban-quick-add" });
@@ -10961,6 +10987,8 @@ export class DashKanbanView extends ItemView {
       emptyState.createEl("strong", { cls: "dash-kanban-lane-empty-title", text: lane.done ? "Nothing finished here yet" : `No cards in ${lane.label}` });
       emptyState.createEl("p", { cls: "dash-kanban-lane-empty", text: lane.done ? "Completed work will collect here when cards are checked off." : "Drop work here or start a card directly inside this stage." });
       if (!lane.done) {
+        const emptyIcon = emptyState.createDiv({ cls: "dash-kanban-lane-empty-icon" });
+        setIcon(emptyIcon, laneCardCount === 0 ? "plus-square" : "sparkles");
         const emptyAction = emptyState.createEl("button", { cls: "dash-kanban-lane-empty-action", text: `Add card` });
         emptyAction.type = "button";
         emptyAction.addEventListener("mousedown", (event) => {

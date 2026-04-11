@@ -889,6 +889,7 @@
   border-radius: 18px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-board-accent) 11%, transparent), transparent 44%),
+    linear-gradient(90deg, color-mix(in srgb, var(--dash-kanban-board-accent) 8%, transparent), transparent 55%),
     color-mix(in srgb, var(--background-primary) 68%, transparent);
 }
 
@@ -1020,6 +1021,20 @@
   opacity: 0.96;
 }
 
+.dash-kanban-shell.is-single-project .dash-kanban-lane.is-muted {
+  opacity: 0.56;
+  filter: saturate(0.82);
+}
+
+.dash-kanban-shell.is-single-project .dash-kanban-lane.is-focused {
+  border-color: color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent-strong)) 42%, var(--dash-kanban-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 16%, transparent), var(--dash-kanban-shadow);
+}
+
+.dash-kanban-shell.is-single-project .dash-kanban-lane.is-focused[data-heat="overdue"] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #ff8b7d 22%, transparent), var(--dash-kanban-shadow);
+}
+
 .dash-kanban-lane.is-drop-target {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent-strong) 50%, var(--background-modifier-border));
   background:
@@ -1129,6 +1144,43 @@
   gap: 8px;
 }
 
+.dash-kanban-lane-heat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dash-kanban-lane-heat-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+  color: var(--text-faint);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.dash-kanban-lane-heat-pill.is-blocked {
+  border-color: color-mix(in srgb, #f3b86c 38%, var(--dash-kanban-border));
+  color: color-mix(in srgb, #f6d3a0 82%, var(--text-normal));
+}
+
+.dash-kanban-lane-heat-pill.is-due {
+  border-color: color-mix(in srgb, #77b7ff 38%, var(--dash-kanban-border));
+  color: color-mix(in srgb, #d6ebff 82%, var(--text-normal));
+}
+
+.dash-kanban-lane-heat-pill.is-overdue {
+  border-color: color-mix(in srgb, #ff8b7d 48%, var(--dash-kanban-border));
+  background: color-mix(in srgb, #ff8b7d 10%, var(--background-primary));
+  color: color-mix(in srgb, #ffd1cb 84%, var(--text-normal));
+}
+
 .dash-kanban-lane-add {
   width: 28px;
   height: 28px;
@@ -1211,6 +1263,19 @@
     radial-gradient(circle at center, color-mix(in srgb, var(--dash-kanban-board-accent) 10%, transparent), transparent 58%),
     color-mix(in srgb, var(--background-primary) 38%, transparent);
   text-align: center;
+}
+
+.dash-kanban-lane-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+  color: color-mix(in srgb, var(--dash-kanban-board-accent) 74%, var(--text-normal));
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
 
 .dash-kanban-lane-empty-kicker {
@@ -1803,6 +1868,12 @@
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
+.dash-kanban-card:hover .dash-kanban-card-footer-info,
+.dash-kanban-card.is-selected .dash-kanban-card-footer-info,
+.dash-kanban-card:focus-within .dash-kanban-card-footer-info {
+  color: var(--text-muted);
+}
+
 .dash-kanban-card .dash-kanban-card-action {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--dash-kanban-border));
   background: color-mix(in srgb, var(--background-primary) 68%, transparent);
@@ -2290,6 +2361,23 @@
 
 .dash-kanban-shell.is-compact .dash-kanban-card-actions {
   opacity: 0.08;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lane-heat {
+  gap: 4px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lane-heat-pill {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-size: 0.62rem;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lane-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
 }
 
 .dash-kanban-shell.is-compact .dash-kanban-control-cluster {
