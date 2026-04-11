@@ -3127,7 +3127,13 @@ export default class DailyDashboardPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
+  private async refreshKanbanAssetsForInteraction(): Promise<void> {
+    await this.reloadKanbanAssetRegistries(false);
+    this.refreshDashboardViews();
+  }
+
   async activateDashKanbanView(): Promise<void> {
+    await this.refreshKanbanAssetsForInteraction();
     const existingLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_KANBAN);
     const leaf = existingLeaves[0] ?? this.app.workspace.getLeaf(true);
 
@@ -4464,6 +4470,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   async openDashKanbanBoardSettings(initialProjectName = ""): Promise<void> {
+    await this.refreshKanbanAssetsForInteraction();
     const snapshot = await this.getTodoSnapshot();
     const projects = snapshot?.projects.filter((project) => project.projectState !== "someday") ?? [];
     if (projects.length === 0) {

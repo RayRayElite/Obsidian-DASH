@@ -19062,8 +19062,13 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     });
     this.app.workspace.revealLeaf(leaf);
   }
+  async refreshKanbanAssetsForInteraction() {
+    await this.reloadKanbanAssetRegistries(false);
+    this.refreshDashboardViews();
+  }
   async activateDashKanbanView() {
     var _a;
+    await this.refreshKanbanAssetsForInteraction();
     const existingLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_DASH_KANBAN);
     const leaf = (_a = existingLeaves[0]) != null ? _a : this.app.workspace.getLeaf(true);
     await leaf.setViewState({
@@ -20126,6 +20131,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   async openDashKanbanBoardSettings(initialProjectName = "") {
     var _a;
+    await this.refreshKanbanAssetsForInteraction();
     const snapshot = await this.getTodoSnapshot();
     const projects = (_a = snapshot == null ? void 0 : snapshot.projects.filter((project) => project.projectState !== "someday")) != null ? _a : [];
     if (projects.length === 0) {
