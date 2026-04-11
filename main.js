@@ -15189,6 +15189,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
   }
   renderCard(project, lane, card) {
+    var _a;
     const cardEl = document.createElement("article");
     const isSelected = this.matchesCardKey(this.selectedCardKey, project.projectName, card.taskId);
     const resolvedPriority = card.priority;
@@ -15202,7 +15203,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
-    cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
+    const blockedSummary = ((_a = card.blockedReason) != null ? _a : "").replace(/\s+/g, " ").trim();
+    const blockedLabel = blockedSummary.length > 34 ? `${blockedSummary.slice(0, 31).trimEnd()}...` : blockedSummary || "Needs unblock";
+    cardEl.className = `dash-kanban-card${card.done ? " is-done" : ""}${card.isOverdue ? " is-overdue" : ""}${card.isBlocked ? " is-blocked" : ""}${card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.dataset.priority = priorityTone;
     cardEl.draggable = card.taskId.trim().length > 0 && !this.isCardEditing(project.projectName, card.taskId);
     const selectCard = () => {
@@ -15227,12 +15230,12 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       selectCard();
     });
     cardEl.addEventListener("dragstart", (event) => {
-      var _a;
+      var _a2;
       this.suppressCardClickUntil = Date.now() + 250;
       this.clearDragTargets();
       this.dragCard = { projectName: project.projectName, taskId: card.taskId, laneKey: lane.laneKey };
       cardEl.addClass("is-dragging");
-      (_a = event.dataTransfer) == null ? void 0 : _a.setData("text/plain", `${project.projectName}:${card.taskId}`);
+      (_a2 = event.dataTransfer) == null ? void 0 : _a2.setData("text/plain", `${project.projectName}:${card.taskId}`);
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
       }
@@ -15305,13 +15308,17 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const toneRow = document.createElement("div");
     toneRow.className = "dash-kanban-card-tones";
     top.appendChild(toneRow);
-    if (card.isOverdue) {
-      createSemanticChip(toneRow, "Overdue", "alert");
-    } else if (card.isDueSoon) {
-      createSemanticChip(toneRow, "Due soon", "capture");
-    }
-    if (card.isBlocked) {
-      createSemanticChip(toneRow, "Blocked", "alert");
+    if (card.done) {
+      createSemanticChip(toneRow, "Done", "done");
+    } else {
+      if (card.isOverdue) {
+        createSemanticChip(toneRow, "Overdue", "alert");
+      } else if (card.isDueSoon) {
+        createSemanticChip(toneRow, "Due soon", "capture");
+      }
+      if (card.isBlocked) {
+        createSemanticChip(toneRow, "Blocked", "alert");
+      }
     }
     if (toneRow.childElementCount > 0) {
       top.appendChild(toneRow);
@@ -15319,10 +15326,13 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (top.childElementCount > 0) {
       cardEl.appendChild(top);
     }
+    const body = document.createElement("div");
+    body.className = "dash-kanban-card-body";
+    cardEl.appendChild(body);
     if (isSelected && this.isCardEditing(project.projectName, card.taskId) && this.detailEditState) {
       const editor = document.createElement("div");
       editor.className = "dash-kanban-inline-editor is-card-editor";
-      cardEl.appendChild(editor);
+      body.appendChild(editor);
       const textArea = document.createElement("textarea");
       textArea.className = "dash-kanban-inline-textarea dash-kanban-card-editor-text";
       textArea.value = this.detailEditState.taskText;
@@ -15398,24 +15408,28 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         note.textContent = card.notePreview;
         content.appendChild(note);
       }
-      const labelRow = document.createElement("div");
-      labelRow.className = "dash-kanban-card-label-row";
-      if (card.done && card.completedAt) {
-        this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
-      } else {
-        if (resolvedDueDate) {
-          this.appendCardLabel(labelRow, card.isOverdue ? "Overdue" : "Due", resolvedDueDate, "due", card.isOverdue ? "overdue" : card.isDueSoon ? "due-soon" : "");
-        }
-        if (resolvedEffort) {
-          this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
-        }
+      const statusRow = document.createElement("div");
+      statusRow.className = "dash-kanban-card-status-row";
+      if (!card.done && resolvedDueDate) {
+        this.appendCardLabel(statusRow, card.isOverdue ? "Overdue" : "Due", resolvedDueDate, "due", card.isOverdue ? "overdue" : card.isDueSoon ? "due-soon" : "");
       }
-      if (labelRow.childElementCount > 0) {
-        content.appendChild(labelRow);
+      if (!card.done && resolvedEffort) {
+        this.appendCardLabel(statusRow, "Effort", resolvedEffort, "effort");
       }
-      cardEl.appendChild(content);
+      if (!card.done && card.isBlocked) {
+        this.appendCardLabel(statusRow, "Blocked", blockedLabel, "blocked");
+      }
+      if (photoPaths.length > 0) {
+        this.appendCardLabel(statusRow, "Media", `${photoPaths.length} ${photoPaths.length === 1 ? "image" : "images"}`, "photo");
+      }
+      if (statusRow.childElementCount > 0) {
+        content.appendChild(statusRow);
+      }
+      body.appendChild(content);
     }
     if (activePhotoUrl) {
+      const media = document.createElement("div");
+      media.className = "dash-kanban-card-media";
       const gallery = document.createElement("div");
       gallery.className = `dash-kanban-card-photo-strip${photosCollapsed ? " is-collapsed" : ""}${photoPaths.length > 1 ? " has-multiple" : ""}`;
       if (photosCollapsed) {
@@ -15516,7 +15530,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         }
         gallery.appendChild(previewShell);
       }
-      cardEl.appendChild(gallery);
+      media.appendChild(gallery);
+      body.appendChild(media);
     }
     const metaRow = document.createElement("div");
     metaRow.className = "dash-kanban-card-meta";
@@ -15530,11 +15545,26 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       createSemanticChip(metaRow, `#${tag}`, "neutral");
     });
     if (metaRow.childElementCount > 0) {
-      cardEl.appendChild(metaRow);
+      body.appendChild(metaRow);
+    }
+    if (card.done) {
+      const resolution = document.createElement("div");
+      resolution.className = "dash-kanban-card-resolution";
+      const resolutionLabel = document.createElement("strong");
+      resolutionLabel.className = "dash-kanban-card-resolution-label";
+      resolutionLabel.textContent = "Completed";
+      resolution.appendChild(resolutionLabel);
+      if (card.completedAt) {
+        const resolutionValue = document.createElement("span");
+        resolutionValue.className = "dash-kanban-card-resolution-value";
+        resolutionValue.textContent = card.completedAt;
+        resolution.appendChild(resolutionValue);
+      }
+      body.appendChild(resolution);
     }
     const footer = document.createElement("div");
     footer.className = "dash-kanban-card-footer";
-    cardEl.appendChild(footer);
+    body.appendChild(footer);
     const footerInfo = document.createElement("div");
     footerInfo.className = "dash-kanban-card-footer-info";
     footer.appendChild(footerInfo);
@@ -15551,10 +15581,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     actions.className = "dash-kanban-card-actions";
     actionWrap.appendChild(actions);
     const priorityButton = this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
-      var _a;
+      var _a2;
       event.stopPropagation();
       this.setCardPopoverAnchorPoint("priority", project.projectName, card.taskId, event);
-      this.priorityPickerKey = ((_a = this.priorityPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
+      this.priorityPickerKey = ((_a2 = this.priorityPickerKey) == null ? void 0 : _a2.projectName) === project.projectName && this.priorityPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
       this.duePickerKey = null;
       this.effortPickerKey = null;
       this.photoPickerKey = null;
@@ -15562,10 +15592,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.requestRefresh();
     });
     const dueButton = this.createCardActionButton("calendar", resolvedDueDate ? `${card.isOverdue ? "Overdue" : "Due"} ${resolvedDueDate}` : "Set due date", (event) => {
-      var _a;
+      var _a2;
       event.stopPropagation();
       this.setCardPopoverAnchorPoint("due", project.projectName, card.taskId, event);
-      this.duePickerKey = ((_a = this.duePickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.duePickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
+      this.duePickerKey = ((_a2 = this.duePickerKey) == null ? void 0 : _a2.projectName) === project.projectName && this.duePickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
       this.priorityPickerKey = null;
       this.effortPickerKey = null;
       this.photoPickerKey = null;
@@ -15573,10 +15603,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.requestRefresh();
     });
     const effortButton = this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
-      var _a;
+      var _a2;
       event.stopPropagation();
       this.setCardPopoverAnchorPoint("effort", project.projectName, card.taskId, event);
-      this.effortPickerKey = ((_a = this.effortPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.effortPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
+      this.effortPickerKey = ((_a2 = this.effortPickerKey) == null ? void 0 : _a2.projectName) === project.projectName && this.effortPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
       this.priorityPickerKey = null;
       this.duePickerKey = null;
       this.photoPickerKey = null;
@@ -15584,10 +15614,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.requestRefresh();
     });
     const photoButton = this.createCardActionButton("image", photoPaths.length > 0 ? `Manage photos (${photoPaths.length})` : "Attach photos", (event) => {
-      var _a;
+      var _a2;
       event.stopPropagation();
       this.setCardPopoverAnchorPoint("photo", project.projectName, card.taskId, event);
-      this.photoPickerKey = ((_a = this.photoPickerKey) == null ? void 0 : _a.projectName) === project.projectName && this.photoPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
+      this.photoPickerKey = ((_a2 = this.photoPickerKey) == null ? void 0 : _a2.projectName) === project.projectName && this.photoPickerKey.taskId === card.taskId ? null : { projectName: project.projectName, taskId: card.taskId };
       this.priorityPickerKey = null;
       this.duePickerKey = null;
       this.effortPickerKey = null;
@@ -15599,28 +15629,33 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       void this.plugin.completeKanbanTask(project.projectName, card.taskId);
     });
     const deleteButton = this.createCardActionButton("trash-2", "Delete card", (event) => {
-      var _a, _b;
+      var _a2, _b;
       event.stopPropagation();
       const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
       if (!confirmed) {
         return;
       }
-      if (((_a = this.selectedCardKey) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.selectedCardKey) == null ? void 0 : _b.taskId) === card.taskId) {
+      if (((_a2 = this.selectedCardKey) == null ? void 0 : _a2.projectName) === project.projectName && ((_b = this.selectedCardKey) == null ? void 0 : _b.taskId) === card.taskId) {
         this.selectedCardKey = null;
       }
       this.clearCardPopovers();
       this.detailEditState = null;
       void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
     });
-    actions.append(priorityButton, dueButton, effortButton, photoButton, completeButton, deleteButton);
+    const actionButtons = [priorityButton, dueButton, effortButton, photoButton];
+    if (!card.done) {
+      actionButtons.push(completeButton);
+    }
+    actionButtons.push(deleteButton);
+    actions.append(...actionButtons);
     if (this.matchesCardKey(this.priorityPickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
       picker.className = `dash-kanban-card-popover dash-kanban-priority-picker${preferPopoverBelow ? " is-below" : ""}`;
       picker.addEventListener("click", (event) => event.stopPropagation());
       KANBAN_PRIORITY_OPTIONS.forEach(({ value, label }) => {
-        var _a, _b;
+        var _a2, _b;
         const button = document.createElement("button");
-        button.className = `dash-kanban-priority-option${(((_a = this.detailEditState) == null ? void 0 : _a.projectName) === project.projectName && ((_b = this.detailEditState) == null ? void 0 : _b.taskId) === card.taskId ? this.detailEditState.priority : resolvedPriority) === value ? " is-active" : ""}`;
+        button.className = `dash-kanban-priority-option${(((_a2 = this.detailEditState) == null ? void 0 : _a2.projectName) === project.projectName && ((_b = this.detailEditState) == null ? void 0 : _b.taskId) === card.taskId ? this.detailEditState.priority : resolvedPriority) === value ? " is-active" : ""}`;
         button.type = "button";
         button.dataset.priority = value || "none";
         button.textContent = label;

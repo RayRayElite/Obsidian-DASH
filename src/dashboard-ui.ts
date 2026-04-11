@@ -9567,7 +9567,7 @@ export class DashKanbanView extends ItemView {
     parent.appendChild(pill);
   }
 
-  private appendCardLabel(parent: HTMLElement, label: string, value: string, kind: "priority" | "due" | "effort" | "done", state = ""): void {
+  private appendCardLabel(parent: HTMLElement, label: string, value: string, kind: "priority" | "due" | "effort" | "done" | "blocked" | "photo", state = ""): void {
     if (!value.trim()) {
       return;
     }
@@ -11021,7 +11021,11 @@ export class DashKanbanView extends ItemView {
     const priorityTone = getKanbanPriorityTone(resolvedPriority);
     const cardIndex = lane.cards.findIndex((candidate) => candidate.taskId === card.taskId);
     const preferPopoverBelow = cardIndex >= 0 && cardIndex < 2;
-    cardEl.className = `dash-kanban-card${card.isOverdue ? " is-overdue" : card.isBlocked ? " is-blocked" : card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
+    const blockedSummary = (card.blockedReason ?? "").replace(/\s+/g, " ").trim();
+    const blockedLabel = blockedSummary.length > 34
+      ? `${blockedSummary.slice(0, 31).trimEnd()}...`
+      : blockedSummary || "Needs unblock";
+    cardEl.className = `dash-kanban-card${card.done ? " is-done" : ""}${card.isOverdue ? " is-overdue" : ""}${card.isBlocked ? " is-blocked" : ""}${card.isDueSoon ? " is-due-soon" : ""}${isSelected ? " is-selected" : ""}`;
     cardEl.dataset.priority = priorityTone;
     cardEl.draggable = card.taskId.trim().length > 0 && !this.isCardEditing(project.projectName, card.taskId);
 
@@ -11130,13 +11134,17 @@ export class DashKanbanView extends ItemView {
     const toneRow = document.createElement("div");
     toneRow.className = "dash-kanban-card-tones";
     top.appendChild(toneRow);
-    if (card.isOverdue) {
-      createSemanticChip(toneRow, "Overdue", "alert");
-    } else if (card.isDueSoon) {
-      createSemanticChip(toneRow, "Due soon", "capture");
-    }
-    if (card.isBlocked) {
-      createSemanticChip(toneRow, "Blocked", "alert");
+    if (card.done) {
+      createSemanticChip(toneRow, "Done", "done");
+    } else {
+      if (card.isOverdue) {
+        createSemanticChip(toneRow, "Overdue", "alert");
+      } else if (card.isDueSoon) {
+        createSemanticChip(toneRow, "Due soon", "capture");
+      }
+      if (card.isBlocked) {
+        createSemanticChip(toneRow, "Blocked", "alert");
+      }
     }
     if (toneRow.childElementCount > 0) {
       top.appendChild(toneRow);
@@ -11145,10 +11153,14 @@ export class DashKanbanView extends ItemView {
       cardEl.appendChild(top);
     }
 
+    const body = document.createElement("div");
+    body.className = "dash-kanban-card-body";
+    cardEl.appendChild(body);
+
     if (isSelected && this.isCardEditing(project.projectName, card.taskId) && this.detailEditState) {
       const editor = document.createElement("div");
       editor.className = "dash-kanban-inline-editor is-card-editor";
-      cardEl.appendChild(editor);
+      body.appendChild(editor);
 
       const textArea = document.createElement("textarea");
       textArea.className = "dash-kanban-inline-textarea dash-kanban-card-editor-text";
@@ -11232,26 +11244,30 @@ export class DashKanbanView extends ItemView {
         content.appendChild(note);
       }
 
-      const labelRow = document.createElement("div");
-      labelRow.className = "dash-kanban-card-label-row";
-      if (card.done && card.completedAt) {
-        this.appendCardLabel(labelRow, "Finished", card.completedAt, "done");
-      } else {
-        if (resolvedDueDate) {
-          this.appendCardLabel(labelRow, card.isOverdue ? "Overdue" : "Due", resolvedDueDate, "due", card.isOverdue ? "overdue" : card.isDueSoon ? "due-soon" : "");
-        }
-        if (resolvedEffort) {
-          this.appendCardLabel(labelRow, "Effort", resolvedEffort, "effort");
-        }
+      const statusRow = document.createElement("div");
+      statusRow.className = "dash-kanban-card-status-row";
+      if (!card.done && resolvedDueDate) {
+        this.appendCardLabel(statusRow, card.isOverdue ? "Overdue" : "Due", resolvedDueDate, "due", card.isOverdue ? "overdue" : card.isDueSoon ? "due-soon" : "");
       }
-      if (labelRow.childElementCount > 0) {
-        content.appendChild(labelRow);
+      if (!card.done && resolvedEffort) {
+        this.appendCardLabel(statusRow, "Effort", resolvedEffort, "effort");
+      }
+      if (!card.done && card.isBlocked) {
+        this.appendCardLabel(statusRow, "Blocked", blockedLabel, "blocked");
+      }
+      if (photoPaths.length > 0) {
+        this.appendCardLabel(statusRow, "Media", `${photoPaths.length} ${photoPaths.length === 1 ? "image" : "images"}`, "photo");
+      }
+      if (statusRow.childElementCount > 0) {
+        content.appendChild(statusRow);
       }
 
-      cardEl.appendChild(content);
+      body.appendChild(content);
     }
 
     if (activePhotoUrl) {
+      const media = document.createElement("div");
+      media.className = "dash-kanban-card-media";
       const gallery = document.createElement("div");
       gallery.className = `dash-kanban-card-photo-strip${photosCollapsed ? " is-collapsed" : ""}${photoPaths.length > 1 ? " has-multiple" : ""}`;
 
@@ -11368,7 +11384,8 @@ export class DashKanbanView extends ItemView {
 
       }
 
-      cardEl.appendChild(gallery);
+      media.appendChild(gallery);
+      body.appendChild(media);
     }
 
     const metaRow = document.createElement("div");
@@ -11383,12 +11400,28 @@ export class DashKanbanView extends ItemView {
       createSemanticChip(metaRow, `#${tag}`, "neutral");
     });
     if (metaRow.childElementCount > 0) {
-      cardEl.appendChild(metaRow);
+      body.appendChild(metaRow);
+    }
+
+    if (card.done) {
+      const resolution = document.createElement("div");
+      resolution.className = "dash-kanban-card-resolution";
+      const resolutionLabel = document.createElement("strong");
+      resolutionLabel.className = "dash-kanban-card-resolution-label";
+      resolutionLabel.textContent = "Completed";
+      resolution.appendChild(resolutionLabel);
+      if (card.completedAt) {
+        const resolutionValue = document.createElement("span");
+        resolutionValue.className = "dash-kanban-card-resolution-value";
+        resolutionValue.textContent = card.completedAt;
+        resolution.appendChild(resolutionValue);
+      }
+      body.appendChild(resolution);
     }
 
     const footer = document.createElement("div");
     footer.className = "dash-kanban-card-footer";
-    cardEl.appendChild(footer);
+    body.appendChild(footer);
     const footerInfo = document.createElement("div");
     footerInfo.className = "dash-kanban-card-footer-info";
     footer.appendChild(footerInfo);
@@ -11471,7 +11504,12 @@ export class DashKanbanView extends ItemView {
         this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
       });
-    actions.append(priorityButton, dueButton, effortButton, photoButton, completeButton, deleteButton);
+    const actionButtons = [priorityButton, dueButton, effortButton, photoButton];
+    if (!card.done) {
+      actionButtons.push(completeButton);
+    }
+    actionButtons.push(deleteButton);
+    actions.append(...actionButtons);
 
     if (this.matchesCardKey(this.priorityPickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
