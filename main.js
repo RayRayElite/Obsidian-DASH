@@ -1223,6 +1223,100 @@ function parseAiPromptTemplates(value) {
   flush();
   return templates;
 }
+function formatKanbanAssetLabel(id) {
+  return id.trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (match) => match.toUpperCase()).trim() || "Custom";
+}
+function normalizeKanbanThemePreview(value) {
+  const preview = value && typeof value === "object" ? value : {};
+  return {
+    board: typeof preview.board === "string" && preview.board.trim().length > 0 ? preview.board.trim() : "linear-gradient(160deg, #1a1a1a, #0f0f10)",
+    primary: typeof preview.primary === "string" && preview.primary.trim().length > 0 ? preview.primary.trim() : "#7c8aa5",
+    secondary: typeof preview.secondary === "string" && preview.secondary.trim().length > 0 ? preview.secondary.trim() : "#49566f",
+    surface: typeof preview.surface === "string" && preview.surface.trim().length > 0 ? preview.surface.trim() : "rgba(255, 255, 255, 0.12)"
+  };
+}
+function normalizeKanbanLaneDefinition(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const value = entry;
+  const laneKey = typeof value.laneKey === "string" ? value.laneKey.trim() : "";
+  const label = typeof value.label === "string" ? value.label.trim() : "";
+  if (!laneKey || !label) {
+    return null;
+  }
+  const mappedSections = Array.isArray(value.mappedSections) ? value.mappedSections.filter((section) => typeof section === "string" && section.trim().length > 0).map((section) => section.trim()) : [];
+  return {
+    laneKey,
+    label,
+    helperText: typeof value.helperText === "string" ? value.helperText.trim() : "",
+    columnKey: typeof value.columnKey === "string" && value.columnKey.trim().length > 0 ? value.columnKey.trim() : laneKey,
+    categoryKey: typeof value.categoryKey === "string" ? value.categoryKey.trim() : "",
+    categoryLabel: typeof value.categoryLabel === "string" ? value.categoryLabel.trim() : "",
+    categorySubtitle: typeof value.categorySubtitle === "string" ? value.categorySubtitle.trim() : "",
+    categoryColor: typeof value.categoryColor === "string" ? value.categoryColor.trim() : "",
+    categoryTag: typeof value.categoryTag === "string" ? value.categoryTag.trim() : "",
+    ruleType: value.ruleType === "completion-state" || value.ruleType === "custom" ? value.ruleType : "hub-section",
+    mappedSections,
+    done: Boolean(value.done)
+  };
+}
+function parseKanbanBoardTemplateFile(content, fallbackTemplateId, updatedAt = "") {
+  try {
+    const parsed = JSON.parse(content);
+    const templateId = typeof parsed.templateId === "string" && parsed.templateId.trim().length > 0 ? parsed.templateId.trim() : fallbackTemplateId.trim();
+    if (!templateId) {
+      return null;
+    }
+    const laneDefinitions = Array.isArray(parsed.laneDefinitions) ? parsed.laneDefinitions.map((entry) => normalizeKanbanLaneDefinition(entry)).filter((entry) => entry !== null) : [];
+    if (laneDefinitions.length === 0) {
+      return null;
+    }
+    return {
+      templateId,
+      name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
+      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+      laneDefinitions,
+      builtIn: Boolean(parsed.builtIn),
+      updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+    };
+  } catch (e) {
+    return null;
+  }
+}
+function parseKanbanThemeFile(content, fallbackThemeId, fileName, updatedAt = "") {
+  var _a, _b;
+  const metadataMatch = content.match(/^\s*\/\*([\s\S]*?)\*\//);
+  let metadata = {};
+  if (metadataMatch) {
+    const metadataText = (_b = (_a = metadataMatch[1]) == null ? void 0 : _a.trim()) != null ? _b : "";
+    if (metadataText.startsWith("{")) {
+      try {
+        metadata = JSON.parse(metadataText);
+      } catch (e) {
+        metadata = {};
+      }
+    }
+  }
+  const themeId = typeof metadata.id === "string" && metadata.id.trim().length > 0 ? metadata.id.trim() : fallbackThemeId.trim();
+  if (!themeId) {
+    return null;
+  }
+  const cssContent = metadataMatch ? content.slice(metadataMatch[0].length).trim() : content.trim();
+  if (!cssContent) {
+    return null;
+  }
+  return {
+    themeId,
+    name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
+    description: typeof metadata.description === "string" ? metadata.description.trim() : "",
+    preview: normalizeKanbanThemePreview(metadata.preview),
+    cssContent,
+    builtIn: Boolean(metadata.builtIn),
+    updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
+    fileName
+  };
+}
 function getDefaultIntakeQuickPresets(measurementSystem) {
   if (measurementSystem === "metric") {
     return [
@@ -6373,22 +6467,6 @@ var WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ];
-var DASH_KANBAN_THEME_LABELS = {
-  dark: "Midnight Grid",
-  light: "Day Shift",
-  ocean: "Night Harbor",
-  forest: "Pine Console",
-  rose: "Ember Atelier",
-  aurora: "Violet Signal"
-};
-var DASH_KANBAN_THEME_PREVIEW_TEXT = {
-  dark: "Neutral charcoal and brass for broad daily use.",
-  light: "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.",
-  ocean: "Deep harbor blues with cooler instrumentation and darker naval surfaces.",
-  forest: "Pine-and-moss depth with a steadier field-console atmosphere.",
-  rose: "Wine, ember, and studio neutrals instead of a simple pink wash.",
-  aurora: "Grounded indigo-violet panels with tighter neon signal accents."
-};
 function kanbanTemplateSupportsLaneCategories(template) {
   return Boolean(template == null ? void 0 : template.laneDefinitions.some((lane) => lane.categoryLabel.trim().length > 0 || lane.categoryTag.trim().length > 0));
 }
@@ -11175,20 +11253,22 @@ var FirstRunSetupWizardModal = class extends import_obsidian3.Modal {
 };
 var CreateProjectModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, categories) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     super(app);
     this.plugin = plugin;
     this.categories = categories;
     this.templates = this.plugin.getKanbanBoardTemplates();
+    this.themes = this.plugin.getKanbanThemeDefinitions();
     const defaultTemplateId = (_b = (_a = this.templates[0]) == null ? void 0 : _a.templateId) != null ? _b : "execution-default";
-    const defaultTemplate = (_c = this.templates.find((template) => template.templateId === defaultTemplateId)) != null ? _c : null;
+    const defaultThemeId = (_d = (_c = this.themes[0]) == null ? void 0 : _c.themeId) != null ? _d : "dark";
+    const defaultTemplate = (_e = this.templates.find((template) => template.templateId === defaultTemplateId)) != null ? _e : null;
     this.state = {
       projectName: "",
-      categoryName: (_d = categories[0]) != null ? _d : "Projects",
+      categoryName: (_f = categories[0]) != null ? _f : "Projects",
       status: "Planning",
       focus: "",
       kanbanTemplateId: defaultTemplateId,
-      kanbanTheme: "dark",
+      kanbanTheme: defaultThemeId,
       kanbanShowLaneCategories: kanbanTemplateSupportsLaneCategories(defaultTemplate),
       useCustomKanban: false
     };
@@ -11254,7 +11334,7 @@ var CreateProjectModal = class extends import_obsidian3.Modal {
       });
     });
     new import_obsidian3.Setting(contentEl).setName("Board theme").setDesc("Sets the starting Kanban board palette for this project.").addDropdown((dropdown) => {
-      Object.entries(DASH_KANBAN_THEME_LABELS).forEach(([value, label]) => dropdown.addOption(value, label));
+      this.themes.forEach((theme) => dropdown.addOption(theme.themeId, theme.name));
       dropdown.setValue(this.state.kanbanTheme);
       dropdown.onChange((value) => {
         this.state.kanbanTheme = value;
@@ -11801,7 +11881,7 @@ var KanbanQuickAddModal = class extends import_obsidian3.Modal {
 };
 var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, projects, initialProjectName = "") {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     super(app);
     this.showInHub = true;
     this.boardHeight = 420;
@@ -11814,8 +11894,10 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.plugin = plugin;
     this.projects = projects;
     this.templates = this.plugin.getKanbanBoardTemplates();
+    this.themes = this.plugin.getKanbanThemeDefinitions();
     this.selectedProjectName = (_d = (_c = (_a = projects.find((project) => project.name === initialProjectName)) == null ? void 0 : _a.name) != null ? _c : (_b = projects[0]) == null ? void 0 : _b.name) != null ? _d : "";
     this.selectedTemplateId = (_f = (_e = this.templates[0]) == null ? void 0 : _e.templateId) != null ? _f : "execution-default";
+    this.theme = (_h = (_g = this.themes[0]) == null ? void 0 : _g.themeId) != null ? _h : "dark";
     this.loadProjectDraft(this.selectedProjectName);
   }
   loadProjectDraft(projectName) {
@@ -11907,25 +11989,28 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
   }
   renderThemePreviewStrip(parent) {
     const strip = parent.createDiv({ cls: "dash-kanban-theme-preview-strip" });
-    Object.entries(DASH_KANBAN_THEME_LABELS).forEach(([value, label]) => {
+    this.themes.forEach((theme) => {
       const button = strip.createEl("button", {
-        cls: `dash-kanban-theme-preview${this.theme === value ? " is-selected" : ""}`,
+        cls: `dash-kanban-theme-preview${this.theme === theme.themeId ? " is-selected" : ""}`,
         attr: {
-          "aria-pressed": this.theme === value ? "true" : "false",
-          "data-theme": value
+          "aria-pressed": this.theme === theme.themeId ? "true" : "false"
         }
       });
       button.type = "button";
-      button.title = `${label}: ${DASH_KANBAN_THEME_PREVIEW_TEXT[value]}`;
+      button.title = theme.description ? `${theme.name}: ${theme.description}` : theme.name;
+      button.style.setProperty("--dash-kanban-theme-preview-board", theme.preview.board);
+      button.style.setProperty("--dash-kanban-theme-preview-primary", theme.preview.primary);
+      button.style.setProperty("--dash-kanban-theme-preview-secondary", theme.preview.secondary);
+      button.style.setProperty("--dash-kanban-theme-preview-surface", theme.preview.surface);
       const swatch = button.createDiv({ cls: "dash-kanban-theme-preview-swatch" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-primary" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-secondary" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-surface" });
       const copy = button.createDiv({ cls: "dash-kanban-theme-preview-copy" });
-      copy.createEl("strong", { text: label });
-      copy.createEl("span", { text: DASH_KANBAN_THEME_PREVIEW_TEXT[value] });
+      copy.createEl("strong", { text: theme.name });
+      copy.createEl("span", { text: theme.description || "Custom Kanban theme" });
       button.addEventListener("click", () => {
-        this.theme = value;
+        this.theme = theme.themeId;
         this.onOpen();
       });
     });
@@ -11984,7 +12069,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
       });
     });
     new import_obsidian3.Setting(contentEl).setName("Board theme").setDesc("Applies a project-specific board palette without changing the rest of DASH.").addDropdown((dropdown) => {
-      Object.entries(DASH_KANBAN_THEME_LABELS).forEach(([value, label]) => dropdown.addOption(value, label));
+      this.themes.forEach((theme) => dropdown.addOption(theme.themeId, theme.name));
       dropdown.setValue(this.theme);
       dropdown.onChange((value) => {
         this.theme = value;
@@ -16458,12 +16543,166 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.managedArtifactWritePaths = /* @__PURE__ */ new Set();
     this.kanbanSyncDebounceId = null;
     this.pendingKanbanSyncPath = "";
+    this.kanbanThemeDefinitions = {};
+    this.kanbanThemeStyleElement = null;
   }
   getErrorMessage(error) {
     if (error instanceof Error && error.message.trim()) {
       return error.message.trim();
     }
     return String(error);
+  }
+  getKanbanPluginDirectoryPath() {
+    var _a;
+    return (0, import_obsidian4.normalizePath)(((_a = this.manifest.dir) == null ? void 0 : _a.trim()) || `${this.app.vault.configDir}/plugins/${this.manifest.id}`);
+  }
+  getKanbanTemplatesDirectoryPath() {
+    return (0, import_obsidian4.normalizePath)(`${this.getKanbanPluginDirectoryPath()}/templates`);
+  }
+  getKanbanThemesDirectoryPath() {
+    return (0, import_obsidian4.normalizePath)(`${this.getKanbanPluginDirectoryPath()}/themes`);
+  }
+  getFallbackKanbanThemeDefinitions() {
+    const createFallback = (themeId, name, description, board, primary, secondary, surface) => ({
+      themeId,
+      name,
+      description,
+      preview: { board, primary, secondary, surface },
+      cssContent: "",
+      builtIn: true,
+      updatedAt: "",
+      fileName: `${themeId}.css`
+    });
+    return {
+      dark: createFallback("dark", "Midnight Grid", "Neutral charcoal and brass for broad daily use.", "linear-gradient(160deg, #181513, #0b0a09)", "#d8a062", "#8f5a31", "rgba(255, 248, 230, 0.12)"),
+      light: createFallback("light", "Day Shift", "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.", "linear-gradient(160deg, #f5f8fd, #dce4ef)", "#466fd8", "#223f91", "rgba(255, 255, 255, 0.78)"),
+      ocean: createFallback("ocean", "Night Harbor", "Deep harbor blues with cooler instrumentation and darker naval surfaces.", "linear-gradient(160deg, #10293d, #081520)", "#78d8ff", "#2f7fbb", "rgba(206, 233, 250, 0.16)"),
+      forest: createFallback("forest", "Pine Console", "Pine-and-moss depth with a steadier field-console atmosphere.", "linear-gradient(160deg, #173021, #0d1711)", "#8ec86c", "#497c55", "rgba(212, 236, 206, 0.14)"),
+      rose: createFallback("rose", "Ember Atelier", "Wine, ember, and studio neutrals instead of a simple pink wash.", "linear-gradient(160deg, #311820, #160d12)", "#d28d76", "#964d55", "rgba(244, 215, 206, 0.14)"),
+      aurora: createFallback("aurora", "Violet Signal", "Grounded indigo-violet panels with tighter neon signal accents.", "linear-gradient(160deg, #241736, #120d1a)", "#ff7cc7", "#7d72ff", "rgba(232, 219, 255, 0.14)")
+    };
+  }
+  getKanbanThemeDefinitions() {
+    return Object.values(this.kanbanThemeDefinitions).sort((left, right) => {
+      if (left.builtIn !== right.builtIn) {
+        return left.builtIn ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    }).map((theme) => ({
+      ...theme,
+      preview: { ...theme.preview }
+    }));
+  }
+  getResolvedKanbanThemeId(themeId) {
+    var _a;
+    const normalized = typeof themeId === "string" ? themeId.trim() : "";
+    if (normalized && this.kanbanThemeDefinitions[normalized]) {
+      return normalized;
+    }
+    if (this.kanbanThemeDefinitions.dark) {
+      return "dark";
+    }
+    return (_a = Object.keys(this.kanbanThemeDefinitions)[0]) != null ? _a : "dark";
+  }
+  async loadKanbanTemplateRegistry() {
+    var _a;
+    const adapter = this.app.vault.adapter;
+    const directory = this.getKanbanTemplatesDirectoryPath();
+    const templates = {};
+    const listing = await adapter.list(directory);
+    for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".json")).sort()) {
+      try {
+        const content = await adapter.read(path);
+        const fileName = (_a = path.split("/").pop()) != null ? _a : "";
+        const fallbackTemplateId = fileName.replace(/\.json$/i, "");
+        const parsed = parseKanbanBoardTemplateFile(content, fallbackTemplateId);
+        if (!parsed) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}`);
+          continue;
+        }
+        templates[parsed.templateId] = parsed;
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban template file ${path}`, error);
+      }
+    }
+    return templates;
+  }
+  async loadKanbanThemeRegistry() {
+    var _a;
+    const adapter = this.app.vault.adapter;
+    const directory = this.getKanbanThemesDirectoryPath();
+    const themes = {};
+    const listing = await adapter.list(directory);
+    for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".css")).sort()) {
+      try {
+        const content = await adapter.read(path);
+        const fileName = (_a = path.split("/").pop()) != null ? _a : "";
+        const fallbackThemeId = fileName.replace(/\.css$/i, "");
+        const parsed = parseKanbanThemeFile(content, fallbackThemeId, fileName);
+        if (!parsed) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}`);
+          continue;
+        }
+        themes[parsed.themeId] = parsed;
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban theme file ${path}`, error);
+      }
+    }
+    return Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions();
+  }
+  applyKanbanThemeCss() {
+    const cssText = Object.values(this.kanbanThemeDefinitions).map((theme) => theme.cssContent.trim()).filter((content) => content.length > 0).join("\n\n");
+    if (!this.kanbanThemeStyleElement) {
+      this.kanbanThemeStyleElement = document.createElement("style");
+      this.kanbanThemeStyleElement.id = "dash-kanban-theme-registry";
+      document.head.appendChild(this.kanbanThemeStyleElement);
+      this.register(() => {
+        var _a;
+        (_a = this.kanbanThemeStyleElement) == null ? void 0 : _a.remove();
+        this.kanbanThemeStyleElement = null;
+      });
+    }
+    this.kanbanThemeStyleElement.textContent = cssText;
+  }
+  async reloadKanbanAssetRegistries(showNotice = false) {
+    var _a;
+    await this.ensureFolder(this.getKanbanTemplatesDirectoryPath());
+    await this.ensureFolder(this.getKanbanThemesDirectoryPath());
+    const loadedTemplates = await this.loadKanbanTemplateRegistry();
+    this.data.kanbanState.boardTemplates = Object.keys(loadedTemplates).length > 0 ? loadedTemplates : this.getBuiltInKanbanBoardTemplates(formatDateTimeKey(/* @__PURE__ */ new Date()));
+    this.kanbanThemeDefinitions = await this.loadKanbanThemeRegistry();
+    this.applyKanbanThemeCss();
+    const fallbackTemplateId = this.data.kanbanState.boardTemplates["execution-default"] ? "execution-default" : (_a = Object.keys(this.data.kanbanState.boardTemplates)[0]) != null ? _a : "execution-default";
+    const fallbackThemeId = this.getResolvedKanbanThemeId("dark");
+    let changed = false;
+    Object.entries(this.data.kanbanState.boardConfigurations).forEach(([projectName, config]) => {
+      let nextConfig = config;
+      if (!this.data.kanbanState.boardTemplates[config.templateId]) {
+        nextConfig = {
+          ...nextConfig,
+          templateId: fallbackTemplateId,
+          updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+        };
+      }
+      const resolvedThemeId = this.getResolvedKanbanThemeId(config.theme);
+      if (resolvedThemeId !== config.theme) {
+        nextConfig = {
+          ...nextConfig,
+          theme: resolvedThemeId,
+          updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
+        };
+      }
+      if (nextConfig !== config) {
+        this.data.kanbanState.boardConfigurations[projectName] = nextConfig;
+        changed = true;
+      }
+    });
+    if (changed) {
+      await this.savePluginData();
+    }
+    if (showNotice) {
+      new import_obsidian4.Notice(`Reloaded ${Object.keys(this.data.kanbanState.boardTemplates).length} Kanban template${Object.keys(this.data.kanbanState.boardTemplates).length === 1 ? "" : "s"} and ${Object.keys(this.kanbanThemeDefinitions).length} Kanban theme${Object.keys(this.kanbanThemeDefinitions).length === 1 ? "" : "s"}.`);
+    }
   }
   hasExistingSetupSignals(data) {
     if (Object.keys(data.entries).length > 0) {
@@ -16790,6 +17029,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       name: "Open DASH Kanban board settings",
       callback: () => {
         void this.openDashKanbanBoardSettings();
+      }
+    });
+    this.addCommand({
+      id: "reload-dash-kanban-assets",
+      name: "Reload DASH Kanban templates and themes",
+      callback: () => {
+        void this.reloadKanbanAssetRegistries(true).then(() => {
+          this.refreshDashboardViews();
+        });
       }
     });
     this.addCommand({
@@ -19235,7 +19483,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
       stickyHeaders: Boolean(input.stickyHeaders),
-      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
+      theme: this.getResolvedKanbanThemeId(input.theme),
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     const categoryMetadataUpdated = await this.syncKanbanCategoryMetadataToMasterHub(projectName, normalizedLaneDefinitions);
@@ -19449,7 +19697,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       collapsedInHub: typeof input.collapsedInHub === "boolean" ? input.collapsedInHub : existing.collapsedInHub,
       showLaneCategories: typeof input.showLaneCategories === "boolean" ? input.showLaneCategories : existing.showLaneCategories,
       stickyHeaders: typeof input.stickyHeaders === "boolean" ? input.stickyHeaders : existing.stickyHeaders,
-      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark" ? input.theme : existing.theme,
+      theme: typeof input.theme === "string" ? this.getResolvedKanbanThemeId(input.theme) : this.getResolvedKanbanThemeId(existing.theme),
       updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
     };
     await this.savePluginData();
@@ -19677,7 +19925,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       projectName: project.name,
       templateId: usesCustomTemplate ? "custom" : template.templateId,
       templateName: usesCustomTemplate ? "Custom" : template.name,
-      theme: (configuration == null ? void 0 : configuration.theme) === "light" || (configuration == null ? void 0 : configuration.theme) === "ocean" || (configuration == null ? void 0 : configuration.theme) === "forest" || (configuration == null ? void 0 : configuration.theme) === "rose" || (configuration == null ? void 0 : configuration.theme) === "aurora" ? configuration.theme : "dark",
+      theme: this.getResolvedKanbanThemeId(configuration == null ? void 0 : configuration.theme),
       status: project.status,
       projectState: project.projectState,
       focus: project.focus,
@@ -22548,15 +22796,6 @@ ${context}`, resolvedModel);
   }
   ensureKanbanBoardModelState(snapshot, updatedAt) {
     let changed = 0;
-    const builtInTemplates = this.getBuiltInKanbanBoardTemplates(updatedAt);
-    Object.entries(builtInTemplates).forEach(([templateId, template]) => {
-      const existing = this.data.kanbanState.boardTemplates[templateId];
-      const sameLaneShape = existing && JSON.stringify(existing.laneDefinitions) === JSON.stringify(template.laneDefinitions);
-      if (!existing || existing.name !== template.name || existing.description !== template.description || existing.builtIn !== template.builtIn || !sameLaneShape) {
-        this.data.kanbanState.boardTemplates[templateId] = template;
-        changed += 1;
-      }
-    });
     snapshot.projects.forEach((project) => {
       const existingKey = this.findPersistedKanbanBoardConfigurationKey(project.name);
       const existing = existingKey ? this.data.kanbanState.boardConfigurations[existingKey] : null;
@@ -22581,7 +22820,7 @@ ${context}`, resolvedModel);
         collapsedInHub: false,
         showLaneCategories: false,
         stickyHeaders: false,
-        theme: "dark",
+        theme: this.getResolvedKanbanThemeId("dark"),
         updatedAt
       };
       changed += 1;
@@ -22831,7 +23070,7 @@ ${context}`, resolvedModel);
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
         stickyHeaders: Boolean(entry.stickyHeaders),
-        theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
+        theme: typeof entry.theme === "string" && entry.theme.trim().length > 0 ? entry.theme.trim() : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });
@@ -25634,6 +25873,7 @@ No entries available.`;
   }
   async loadPluginData() {
     this.data = await this.buildDataFromStorage();
+    await this.reloadKanbanAssetRegistries(false);
   }
   async runStartupDataMaintenance() {
     if (this.reconcileDayStateWithOpenSessions()) {

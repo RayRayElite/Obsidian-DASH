@@ -13,6 +13,7 @@ if (!targetDir) {
 }
 
 const requiredFiles = ["main.js", "manifest.json", "styles.css"];
+const optionalDirectories = ["templates", "themes", "Wallpapers"];
 for (const fileName of requiredFiles) {
   const fullPath = path.join(workspaceRoot, fileName);
   try {
@@ -30,15 +31,17 @@ for (const fileName of requiredFiles) {
   await cp(path.join(workspaceRoot, fileName), path.join(targetDir, fileName), { force: true });
 }
 
-const wallpapersSource = path.join(workspaceRoot, "Wallpapers");
-try {
-  await access(wallpapersSource);
-  await cp(wallpapersSource, path.join(targetDir, "Wallpapers"), {
-    recursive: true,
-    force: true
-  });
-} catch {
-  // Wallpapers are optional for deployment.
+for (const directoryName of optionalDirectories) {
+  const sourcePath = path.join(workspaceRoot, directoryName);
+  try {
+    await access(sourcePath);
+    await cp(sourcePath, path.join(targetDir, directoryName), {
+      recursive: true,
+      force: true
+    });
+  } catch {
+    // Optional directories are copied when present.
+  }
 }
 
 console.log(`Deployed plugin files to ${targetDir}`);

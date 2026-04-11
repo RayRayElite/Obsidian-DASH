@@ -1,0 +1,13 @@
+{
+  "templateId": "bug-triage",
+  "name": "Bug Triage",
+  "description": "Maintenance-oriented board vocabulary for fixes and verification.",
+  "builtIn": true,
+  "laneDefinitions": [
+    { "laneKey": "inbox", "label": "Inbox", "helperText": "Fresh defects or change requests", "columnKey": "inbox", "categoryKey": "defects", "categoryLabel": "Defects", "categorySubtitle": "", "categoryColor": "#ef8a17", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Next", "Add", "Fix"], "done": false },
+    { "laneKey": "fixing", "label": "Fixing", "helperText": "Work actively being solved", "columnKey": "fixing", "categoryKey": "defects", "categoryLabel": "Defects", "categorySubtitle": "", "categoryColor": "#ef8a17", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Now"], "done": false },
+    { "laneKey": "verify", "label": "Verify", "helperText": "Waiting on test or confirmation", "columnKey": "verify", "categoryKey": "defects", "categoryLabel": "Defects", "categorySubtitle": "", "categoryColor": "#ef8a17", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Waiting"], "done": false },
+    { "laneKey": "backlog", "label": "Backlog", "helperText": "Deferred maintenance", "columnKey": "backlog", "categoryKey": "triage", "categoryLabel": "Triage", "categorySubtitle": "", "categoryColor": "#5d7bd8", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Later", "Parking Lot"], "done": false },
+    { "laneKey": "shipped", "label": "Shipped", "helperText": "Completed fixes", "columnKey": "shipped", "categoryKey": "release", "categoryLabel": "Release", "categorySubtitle": "", "categoryColor": "#7d4bc6", "categoryTag": "", "ruleType": "completion-state", "mappedSections": ["Done", "Completed Archive"], "done": true }
+  ]
+}

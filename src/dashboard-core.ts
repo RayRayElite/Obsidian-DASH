@@ -12,6 +12,8 @@ import {
   type DailyEntry,
   type DashboardSettings,
   type DayLifecycleState,
+  type DashboardKanbanThemeDefinition,
+  type DashboardKanbanThemePreview,
   type ExerciseEntry,
   type ExerciseIntensity,
   type FoodEntry,
@@ -25,6 +27,8 @@ import {
   type NoteIndexCache,
   type NoteIndexChunk,
   type NoteIndexEntry,
+  type KanbanBoardTemplate,
+  type KanbanLaneDefinition,
   type SessionTrackerDefinition,
   type SymptomEntry,
   type TodayFocusItem,
@@ -1299,6 +1303,133 @@ export function parseAiPromptTemplates(value: string): Record<string, string> {
 
   flush();
   return templates;
+}
+
+function formatKanbanAssetLabel(id: string): string {
+  return id
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase())
+    .trim() || "Custom";
+}
+
+function normalizeKanbanThemePreview(value: unknown): DashboardKanbanThemePreview {
+  const preview = value && typeof value === "object" ? value as Partial<DashboardKanbanThemePreview> : {};
+  return {
+    board: typeof preview.board === "string" && preview.board.trim().length > 0
+      ? preview.board.trim()
+      : "linear-gradient(160deg, #1a1a1a, #0f0f10)",
+    primary: typeof preview.primary === "string" && preview.primary.trim().length > 0
+      ? preview.primary.trim()
+      : "#7c8aa5",
+    secondary: typeof preview.secondary === "string" && preview.secondary.trim().length > 0
+      ? preview.secondary.trim()
+      : "#49566f",
+    surface: typeof preview.surface === "string" && preview.surface.trim().length > 0
+      ? preview.surface.trim()
+      : "rgba(255, 255, 255, 0.12)"
+  };
+}
+
+function normalizeKanbanLaneDefinition(entry: unknown): KanbanLaneDefinition | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const value = entry as Partial<KanbanLaneDefinition>;
+  const laneKey = typeof value.laneKey === "string" ? value.laneKey.trim() : "";
+  const label = typeof value.label === "string" ? value.label.trim() : "";
+  if (!laneKey || !label) {
+    return null;
+  }
+
+  const mappedSections = Array.isArray(value.mappedSections)
+    ? value.mappedSections.filter((section): section is string => typeof section === "string" && section.trim().length > 0).map((section) => section.trim())
+    : [];
+
+  return {
+    laneKey,
+    label,
+    helperText: typeof value.helperText === "string" ? value.helperText.trim() : "",
+    columnKey: typeof value.columnKey === "string" && value.columnKey.trim().length > 0 ? value.columnKey.trim() : laneKey,
+    categoryKey: typeof value.categoryKey === "string" ? value.categoryKey.trim() : "",
+    categoryLabel: typeof value.categoryLabel === "string" ? value.categoryLabel.trim() : "",
+    categorySubtitle: typeof value.categorySubtitle === "string" ? value.categorySubtitle.trim() : "",
+    categoryColor: typeof value.categoryColor === "string" ? value.categoryColor.trim() : "",
+    categoryTag: typeof value.categoryTag === "string" ? value.categoryTag.trim() : "",
+    ruleType: value.ruleType === "completion-state" || value.ruleType === "custom" ? value.ruleType : "hub-section",
+    mappedSections,
+    done: Boolean(value.done)
+  };
+}
+
+export function parseKanbanBoardTemplateFile(content: string, fallbackTemplateId: string, updatedAt = ""): KanbanBoardTemplate | null {
+  try {
+    const parsed = JSON.parse(content) as Partial<KanbanBoardTemplate>;
+    const templateId = typeof parsed.templateId === "string" && parsed.templateId.trim().length > 0
+      ? parsed.templateId.trim()
+      : fallbackTemplateId.trim();
+    if (!templateId) {
+      return null;
+    }
+
+    const laneDefinitions = Array.isArray(parsed.laneDefinitions)
+      ? parsed.laneDefinitions.map((entry) => normalizeKanbanLaneDefinition(entry)).filter((entry): entry is KanbanLaneDefinition => entry !== null)
+      : [];
+    if (laneDefinitions.length === 0) {
+      return null;
+    }
+
+    return {
+      templateId,
+      name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
+      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+      laneDefinitions,
+      builtIn: Boolean(parsed.builtIn),
+      updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function parseKanbanThemeFile(content: string, fallbackThemeId: string, fileName: string, updatedAt = ""): DashboardKanbanThemeDefinition | null {
+  const metadataMatch = content.match(/^\s*\/\*([\s\S]*?)\*\//);
+  let metadata: Record<string, unknown> = {};
+  if (metadataMatch) {
+    const metadataText = metadataMatch[1]?.trim() ?? "";
+    if (metadataText.startsWith("{")) {
+      try {
+        metadata = JSON.parse(metadataText) as Record<string, unknown>;
+      } catch {
+        metadata = {};
+      }
+    }
+  }
+
+  const themeId = typeof metadata.id === "string" && metadata.id.trim().length > 0
+    ? metadata.id.trim()
+    : fallbackThemeId.trim();
+  if (!themeId) {
+    return null;
+  }
+
+  const cssContent = metadataMatch ? content.slice(metadataMatch[0].length).trim() : content.trim();
+  if (!cssContent) {
+    return null;
+  }
+
+  return {
+    themeId,
+    name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
+    description: typeof metadata.description === "string" ? metadata.description.trim() : "",
+    preview: normalizeKanbanThemePreview(metadata.preview),
+    cssContent,
+    builtIn: Boolean(metadata.builtIn),
+    updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
+    fileName
+  };
 }
 
 export function getDefaultIntakeQuickPresets(measurementSystem: DashboardSettings["measurementSystem"]): IntakeQuickPreset[] {

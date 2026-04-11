@@ -1,0 +1,46 @@
+/*
+{
+  "id": "forest",
+  "name": "Pine Console",
+  "description": "Pine-and-moss depth with a steadier field-console atmosphere.",
+  "builtIn": true,
+  "preview": {
+    "board": "linear-gradient(160deg, #173021, #0d1711)",
+    "primary": "#8ec86c",
+    "secondary": "#497c55",
+    "surface": "rgba(212, 236, 206, 0.14)"
+  }
+}
+*/
+.dash-kanban-project-board[data-theme="forest"] {
+  --dash-kanban-board-accent: #8ec86c;
+  --dash-kanban-board-accent-strong: #497c55;
+  --dash-kanban-board-surface: color-mix(in srgb, #15251b 76%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #0d1711 86%, var(--background-primary));
+  --dash-kanban-card-surface: linear-gradient(180deg, rgba(24, 46, 33, 0.98), rgba(16, 32, 23, 0.99));
+  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(18, 36, 26, 0.99), rgba(11, 24, 17, 0.99));
+  --dash-kanban-card-border: color-mix(in srgb, #7eb96d 22%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 18px 30px rgba(11, 24, 16, 0.24);
+  --dash-kanban-text-strong: color-mix(in srgb, #edf7ea 92%, var(--text-normal));
+  --dash-kanban-text-normal: color-mix(in srgb, #d8ead8 86%, var(--text-normal));
+  --dash-kanban-text-muted: color-mix(in srgb, #b5cfb5 80%, var(--text-muted));
+  --dash-kanban-text-faint: color-mix(in srgb, #8fac97 74%, var(--text-faint));
+  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(142, 200, 108, 0.16), transparent 30%), linear-gradient(135deg, rgba(80, 56, 24, 0.12), transparent 62%);
+  --dash-kanban-header-surface:
+    linear-gradient(180deg, rgba(142, 200, 108, 0.11), transparent 46%),
+    linear-gradient(90deg, rgba(71, 124, 85, 0.18), transparent 62%),
+    rgba(18, 33, 24, 0.82);
+  --dash-kanban-board-texture: none;
+  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(18, 36, 26, 0.98), rgba(11, 24, 17, 0.99));
+  --dash-kanban-lane-texture: none;
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(188, 220, 162, 0.04), transparent 22%), linear-gradient(90deg, rgba(79, 65, 34, 0.08), transparent 42%);
+  --dash-kanban-header-tab-surface: rgba(32, 45, 36, 0.92);
+  --dash-kanban-header-tab-text: #e4f1d7;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(142, 200, 108, 0.08), transparent 28%),
+    rgba(15, 28, 18, 0.84);
+  --dash-kanban-empty-surface:
+    linear-gradient(180deg, rgba(222, 245, 217, 0.03), transparent 34%),
+    radial-gradient(circle at center, rgba(142, 200, 108, 0.11), transparent 58%),
+    rgba(13, 28, 19, 0.84);
+}

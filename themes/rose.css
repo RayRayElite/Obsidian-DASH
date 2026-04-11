@@ -1,0 +1,46 @@
+/*
+{
+  "id": "rose",
+  "name": "Ember Atelier",
+  "description": "Wine, ember, and studio neutrals instead of a simple pink wash.",
+  "builtIn": true,
+  "preview": {
+    "board": "linear-gradient(160deg, #311820, #160d12)",
+    "primary": "#d28d76",
+    "secondary": "#964d55",
+    "surface": "rgba(244, 215, 206, 0.14)"
+  }
+}
+*/
+.dash-kanban-project-board[data-theme="rose"] {
+  --dash-kanban-board-accent: #d28d76;
+  --dash-kanban-board-accent-strong: #964d55;
+  --dash-kanban-board-surface: color-mix(in srgb, #29171d 76%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #160d12 86%, var(--background-primary));
+  --dash-kanban-card-surface: linear-gradient(180deg, rgba(49, 23, 32, 0.98), rgba(31, 14, 21, 0.99));
+  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(40, 19, 27, 0.99), rgba(23, 11, 17, 0.99));
+  --dash-kanban-card-border: color-mix(in srgb, #c67c74 24%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 18px 30px rgba(34, 12, 19, 0.24);
+  --dash-kanban-text-strong: color-mix(in srgb, #fff0eb 92%, var(--text-normal));
+  --dash-kanban-text-normal: color-mix(in srgb, #f3d8d0 86%, var(--text-normal));
+  --dash-kanban-text-muted: color-mix(in srgb, #d9b7af 80%, var(--text-muted));
+  --dash-kanban-text-faint: color-mix(in srgb, #ba958f 74%, var(--text-faint));
+  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(210, 141, 118, 0.16), transparent 30%), linear-gradient(135deg, rgba(131, 70, 54, 0.16), transparent 64%);
+  --dash-kanban-header-surface:
+    linear-gradient(180deg, rgba(210, 141, 118, 0.1), transparent 48%),
+    linear-gradient(90deg, rgba(150, 77, 85, 0.16), transparent 62%),
+    rgba(31, 17, 22, 0.82);
+  --dash-kanban-board-texture: none;
+  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(45, 22, 29, 0.98), rgba(24, 12, 17, 0.99));
+  --dash-kanban-lane-texture: none;
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 220, 207, 0.04), transparent 22%), linear-gradient(90deg, rgba(140, 88, 64, 0.08), transparent 48%);
+  --dash-kanban-header-tab-surface: rgba(50, 26, 31, 0.92);
+  --dash-kanban-header-tab-text: #ffe6dc;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(210, 141, 118, 0.08), transparent 28%),
+    rgba(26, 13, 18, 0.84);
+  --dash-kanban-empty-surface:
+    linear-gradient(180deg, rgba(255, 230, 222, 0.03), transparent 34%),
+    radial-gradient(circle at center, rgba(210, 141, 118, 0.12), transparent 58%),
+    rgba(25, 12, 18, 0.84);
+}

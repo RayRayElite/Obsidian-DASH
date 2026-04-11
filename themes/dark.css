@@ -1,0 +1,41 @@
+/*
+{
+  "id": "dark",
+  "name": "Midnight Grid",
+  "description": "Neutral charcoal and brass for broad daily use.",
+  "builtIn": true,
+  "preview": {
+    "board": "linear-gradient(160deg, #181513, #0b0a09)",
+    "primary": "#d8a062",
+    "secondary": "#8f5a31",
+    "surface": "rgba(255, 248, 230, 0.12)"
+  }
+}
+*/
+.dash-kanban-project-board[data-theme="dark"] {
+  --dash-kanban-board-accent: #d8a062;
+  --dash-kanban-board-accent-strong: #8f5a31;
+  --dash-kanban-board-surface: color-mix(in srgb, #151311 82%, var(--background-primary-alt));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #0c0b0a 88%, var(--background-primary));
+  --dash-kanban-card-surface: color-mix(in srgb, #1b1816 88%, var(--background-primary));
+  --dash-kanban-card-surface-strong: color-mix(in srgb, #12100f 90%, var(--background-primary-alt));
+  --dash-kanban-card-border: color-mix(in srgb, #d8a062 18%, var(--background-modifier-border));
+  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(216, 160, 98, 0.18), transparent 30%), linear-gradient(90deg, rgba(82, 54, 25, 0.12), transparent 42%);
+  --dash-kanban-header-surface:
+    linear-gradient(180deg, rgba(216, 160, 98, 0.12), transparent 46%),
+    linear-gradient(90deg, rgba(143, 90, 49, 0.12), transparent 60%),
+    color-mix(in srgb, #181513 84%, var(--background-primary));
+  --dash-kanban-board-texture: none;
+  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(26, 23, 20, 0.96), rgba(16, 14, 13, 0.98));
+  --dash-kanban-lane-texture: none;
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 233, 204, 0.035), transparent 20%);
+  --dash-kanban-header-tab-surface: rgba(31, 28, 25, 0.9);
+  --dash-kanban-header-tab-text: #f4e4cb;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(216, 160, 98, 0.08), transparent 30%),
+    rgba(20, 17, 15, 0.82);
+  --dash-kanban-empty-surface:
+    linear-gradient(180deg, rgba(255, 235, 204, 0.03), transparent 36%),
+    radial-gradient(circle at center, rgba(216, 160, 98, 0.1), transparent 58%),
+    color-mix(in srgb, #14110f 86%, var(--background-primary));
+}

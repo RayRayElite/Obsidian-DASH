@@ -41,6 +41,7 @@ import {
   type DashboardKanbanDensity,
   type DashboardKanbanFocusFilter,
   type DashboardKanbanTheme,
+  type DashboardKanbanThemeDefinition,
   type DashboardKanbanViewMode,
   type ActivitySessionKind,
   type DashboardFocusDisplayItem,
@@ -105,24 +106,6 @@ const WEEK_AT_A_GLANCE_SEGMENTS = [
   { kind: "poop", label: "Poop" },
   { kind: "unknown", label: "Unknown" }
 ] as const;
-
-const DASH_KANBAN_THEME_LABELS: Record<DashboardKanbanTheme, string> = {
-  dark: "Midnight Grid",
-  light: "Day Shift",
-  ocean: "Night Harbor",
-  forest: "Pine Console",
-  rose: "Ember Atelier",
-  aurora: "Violet Signal"
-};
-
-const DASH_KANBAN_THEME_PREVIEW_TEXT: Record<DashboardKanbanTheme, string> = {
-  dark: "Neutral charcoal and brass for broad daily use.",
-  light: "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.",
-  ocean: "Deep harbor blues with cooler instrumentation and darker naval surfaces.",
-  forest: "Pine-and-moss depth with a steadier field-console atmosphere.",
-  rose: "Wine, ember, and studio neutrals instead of a simple pink wash.",
-  aurora: "Grounded indigo-violet panels with tighter neon signal accents."
-};
 
 function kanbanTemplateSupportsLaneCategories(template: KanbanBoardTemplate | null | undefined): boolean {
   return Boolean(template?.laneDefinitions.some((lane) => lane.categoryLabel.trim().length > 0 || lane.categoryTag.trim().length > 0));
@@ -5674,13 +5657,16 @@ export class CreateProjectModal extends Modal {
   private categories: string[];
   private state: CreateProjectInput;
   private templates: KanbanBoardTemplate[];
+  private themes: DashboardKanbanThemeDefinition[];
 
   constructor(app: App, plugin: DailyDashboardPlugin, categories: string[]) {
     super(app);
     this.plugin = plugin;
     this.categories = categories;
     this.templates = this.plugin.getKanbanBoardTemplates();
+    this.themes = this.plugin.getKanbanThemeDefinitions();
     const defaultTemplateId = this.templates[0]?.templateId ?? "execution-default";
+    const defaultThemeId = this.themes[0]?.themeId ?? "dark";
     const defaultTemplate = this.templates.find((template) => template.templateId === defaultTemplateId) ?? null;
     this.state = {
       projectName: "",
@@ -5688,7 +5674,7 @@ export class CreateProjectModal extends Modal {
       status: "Planning",
       focus: "",
       kanbanTemplateId: defaultTemplateId,
-      kanbanTheme: "dark",
+      kanbanTheme: defaultThemeId,
       kanbanShowLaneCategories: kanbanTemplateSupportsLaneCategories(defaultTemplate),
       useCustomKanban: false
     };
@@ -5784,7 +5770,7 @@ export class CreateProjectModal extends Modal {
       .setName("Board theme")
       .setDesc("Sets the starting Kanban board palette for this project.")
       .addDropdown((dropdown) => {
-        (Object.entries(DASH_KANBAN_THEME_LABELS) as Array<[DashboardKanbanTheme, string]>).forEach(([value, label]) => dropdown.addOption(value, label));
+        this.themes.forEach((theme) => dropdown.addOption(theme.themeId, theme.name));
         dropdown.setValue(this.state.kanbanTheme);
         dropdown.onChange((value) => {
           this.state.kanbanTheme = value as DashboardKanbanTheme;
@@ -6486,6 +6472,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
   private plugin: DailyDashboardPlugin;
   private projects: TodoProjectSummary[];
   private templates: KanbanBoardTemplate[];
+  private themes: DashboardKanbanThemeDefinition[];
   private selectedProjectName: string;
   private selectedTemplateId: string;
   private showInHub = true;
@@ -6502,8 +6489,10 @@ export class DashKanbanBoardSettingsModal extends Modal {
     this.plugin = plugin;
     this.projects = projects;
     this.templates = this.plugin.getKanbanBoardTemplates();
+    this.themes = this.plugin.getKanbanThemeDefinitions();
     this.selectedProjectName = projects.find((project) => project.name === initialProjectName)?.name ?? projects[0]?.name ?? "";
     this.selectedTemplateId = this.templates[0]?.templateId ?? "execution-default";
+    this.theme = this.themes[0]?.themeId ?? "dark";
     this.loadProjectDraft(this.selectedProjectName);
   }
 
@@ -6610,25 +6599,28 @@ export class DashKanbanBoardSettingsModal extends Modal {
 
   private renderThemePreviewStrip(parent: HTMLElement): void {
     const strip = parent.createDiv({ cls: "dash-kanban-theme-preview-strip" });
-    (Object.entries(DASH_KANBAN_THEME_LABELS) as Array<[DashboardKanbanTheme, string]>).forEach(([value, label]) => {
+    this.themes.forEach((theme) => {
       const button = strip.createEl("button", {
-        cls: `dash-kanban-theme-preview${this.theme === value ? " is-selected" : ""}`,
+        cls: `dash-kanban-theme-preview${this.theme === theme.themeId ? " is-selected" : ""}`,
         attr: {
-          "aria-pressed": this.theme === value ? "true" : "false",
-          "data-theme": value
+          "aria-pressed": this.theme === theme.themeId ? "true" : "false"
         }
       });
       button.type = "button";
-      button.title = `${label}: ${DASH_KANBAN_THEME_PREVIEW_TEXT[value]}`;
+      button.title = theme.description ? `${theme.name}: ${theme.description}` : theme.name;
+      button.style.setProperty("--dash-kanban-theme-preview-board", theme.preview.board);
+      button.style.setProperty("--dash-kanban-theme-preview-primary", theme.preview.primary);
+      button.style.setProperty("--dash-kanban-theme-preview-secondary", theme.preview.secondary);
+      button.style.setProperty("--dash-kanban-theme-preview-surface", theme.preview.surface);
       const swatch = button.createDiv({ cls: "dash-kanban-theme-preview-swatch" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-primary" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-secondary" });
       swatch.createSpan({ cls: "dash-kanban-theme-preview-chip is-surface" });
       const copy = button.createDiv({ cls: "dash-kanban-theme-preview-copy" });
-      copy.createEl("strong", { text: label });
-      copy.createEl("span", { text: DASH_KANBAN_THEME_PREVIEW_TEXT[value] });
+      copy.createEl("strong", { text: theme.name });
+      copy.createEl("span", { text: theme.description || "Custom Kanban theme" });
       button.addEventListener("click", () => {
-        this.theme = value;
+        this.theme = theme.themeId;
         this.onOpen();
       });
     });
@@ -6711,7 +6703,7 @@ export class DashKanbanBoardSettingsModal extends Modal {
       .setName("Board theme")
       .setDesc("Applies a project-specific board palette without changing the rest of DASH.")
       .addDropdown((dropdown) => {
-        (Object.entries(DASH_KANBAN_THEME_LABELS) as Array<[DashboardKanbanTheme, string]>).forEach(([value, label]) => dropdown.addOption(value, label));
+        this.themes.forEach((theme) => dropdown.addOption(theme.themeId, theme.name));
         dropdown.setValue(this.theme);
         dropdown.onChange((value) => {
           this.theme = value as DashboardKanbanTheme;

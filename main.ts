@@ -33,6 +33,8 @@ import {
   normalizeNoteIndexCache,
   normalizeDayState,
   parseAiPromptTemplates,
+  parseKanbanBoardTemplateFile,
+  parseKanbanThemeFile,
   parseRoutineTemplates,
   renderAiRelevantNotes,
   renderRoutineSignalsForAi,
@@ -172,6 +174,7 @@ import {
   type DashboardFocusDisplayItem,
   type DashboardKanbanViewState,
   type DashboardKanbanTheme,
+  type DashboardKanbanThemeDefinition,
   type DashboardNotificationItem,
   type DashboardNotificationSound,
   type DashboardSettings,
@@ -303,6 +306,8 @@ export default class DailyDashboardPlugin extends Plugin {
   private managedArtifactWritePaths = new Set<string>();
   private kanbanSyncDebounceId: number | null = null;
   private pendingKanbanSyncPath = "";
+  private kanbanThemeDefinitions: Record<string, DashboardKanbanThemeDefinition> = {};
+  private kanbanThemeStyleElement: HTMLStyleElement | null = null;
 
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) {
@@ -310,6 +315,192 @@ export default class DailyDashboardPlugin extends Plugin {
     }
 
     return String(error);
+  }
+
+  private getKanbanPluginDirectoryPath(): string {
+    return normalizePath(this.manifest.dir?.trim() || `${this.app.vault.configDir}/plugins/${this.manifest.id}`);
+  }
+
+  private getKanbanTemplatesDirectoryPath(): string {
+    return normalizePath(`${this.getKanbanPluginDirectoryPath()}/templates`);
+  }
+
+  private getKanbanThemesDirectoryPath(): string {
+    return normalizePath(`${this.getKanbanPluginDirectoryPath()}/themes`);
+  }
+
+  private getFallbackKanbanThemeDefinitions(): Record<string, DashboardKanbanThemeDefinition> {
+    const createFallback = (
+      themeId: string,
+      name: string,
+      description: string,
+      board: string,
+      primary: string,
+      secondary: string,
+      surface: string
+    ): DashboardKanbanThemeDefinition => ({
+      themeId,
+      name,
+      description,
+      preview: { board, primary, secondary, surface },
+      cssContent: "",
+      builtIn: true,
+      updatedAt: "",
+      fileName: `${themeId}.css`
+    });
+
+    return {
+      dark: createFallback("dark", "Midnight Grid", "Neutral charcoal and brass for broad daily use.", "linear-gradient(160deg, #181513, #0b0a09)", "#d8a062", "#8f5a31", "rgba(255, 248, 230, 0.12)"),
+      light: createFallback("light", "Day Shift", "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.", "linear-gradient(160deg, #f5f8fd, #dce4ef)", "#466fd8", "#223f91", "rgba(255, 255, 255, 0.78)"),
+      ocean: createFallback("ocean", "Night Harbor", "Deep harbor blues with cooler instrumentation and darker naval surfaces.", "linear-gradient(160deg, #10293d, #081520)", "#78d8ff", "#2f7fbb", "rgba(206, 233, 250, 0.16)"),
+      forest: createFallback("forest", "Pine Console", "Pine-and-moss depth with a steadier field-console atmosphere.", "linear-gradient(160deg, #173021, #0d1711)", "#8ec86c", "#497c55", "rgba(212, 236, 206, 0.14)"),
+      rose: createFallback("rose", "Ember Atelier", "Wine, ember, and studio neutrals instead of a simple pink wash.", "linear-gradient(160deg, #311820, #160d12)", "#d28d76", "#964d55", "rgba(244, 215, 206, 0.14)"),
+      aurora: createFallback("aurora", "Violet Signal", "Grounded indigo-violet panels with tighter neon signal accents.", "linear-gradient(160deg, #241736, #120d1a)", "#ff7cc7", "#7d72ff", "rgba(232, 219, 255, 0.14)")
+    };
+  }
+
+  getKanbanThemeDefinitions(): DashboardKanbanThemeDefinition[] {
+    return Object.values(this.kanbanThemeDefinitions)
+      .sort((left, right) => {
+        if (left.builtIn !== right.builtIn) {
+          return left.builtIn ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name);
+      })
+      .map((theme) => ({
+        ...theme,
+        preview: { ...theme.preview }
+      }));
+  }
+
+  private getResolvedKanbanThemeId(themeId: string | null | undefined): string {
+    const normalized = typeof themeId === "string" ? themeId.trim() : "";
+    if (normalized && this.kanbanThemeDefinitions[normalized]) {
+      return normalized;
+    }
+    if (this.kanbanThemeDefinitions.dark) {
+      return "dark";
+    }
+    return Object.keys(this.kanbanThemeDefinitions)[0] ?? "dark";
+  }
+
+  private async loadKanbanTemplateRegistry(): Promise<Record<string, KanbanBoardTemplate>> {
+    const adapter = this.app.vault.adapter;
+    const directory = this.getKanbanTemplatesDirectoryPath();
+    const templates: Record<string, KanbanBoardTemplate> = {};
+    const listing = await adapter.list(directory);
+
+    for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".json")).sort()) {
+      try {
+        const content = await adapter.read(path);
+        const fileName = path.split("/").pop() ?? "";
+        const fallbackTemplateId = fileName.replace(/\.json$/i, "");
+        const parsed = parseKanbanBoardTemplateFile(content, fallbackTemplateId);
+        if (!parsed) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}`);
+          continue;
+        }
+        templates[parsed.templateId] = parsed;
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban template file ${path}`, error);
+      }
+    }
+
+    return templates;
+  }
+
+  private async loadKanbanThemeRegistry(): Promise<Record<string, DashboardKanbanThemeDefinition>> {
+    const adapter = this.app.vault.adapter;
+    const directory = this.getKanbanThemesDirectoryPath();
+    const themes: Record<string, DashboardKanbanThemeDefinition> = {};
+    const listing = await adapter.list(directory);
+
+    for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".css")).sort()) {
+      try {
+        const content = await adapter.read(path);
+        const fileName = path.split("/").pop() ?? "";
+        const fallbackThemeId = fileName.replace(/\.css$/i, "");
+        const parsed = parseKanbanThemeFile(content, fallbackThemeId, fileName);
+        if (!parsed) {
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}`);
+          continue;
+        }
+        themes[parsed.themeId] = parsed;
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban theme file ${path}`, error);
+      }
+    }
+
+    return Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions();
+  }
+
+  private applyKanbanThemeCss(): void {
+    const cssText = Object.values(this.kanbanThemeDefinitions)
+      .map((theme) => theme.cssContent.trim())
+      .filter((content) => content.length > 0)
+      .join("\n\n");
+
+    if (!this.kanbanThemeStyleElement) {
+      this.kanbanThemeStyleElement = document.createElement("style");
+      this.kanbanThemeStyleElement.id = "dash-kanban-theme-registry";
+      document.head.appendChild(this.kanbanThemeStyleElement);
+      this.register(() => {
+        this.kanbanThemeStyleElement?.remove();
+        this.kanbanThemeStyleElement = null;
+      });
+    }
+
+    this.kanbanThemeStyleElement.textContent = cssText;
+  }
+
+  private async reloadKanbanAssetRegistries(showNotice = false): Promise<void> {
+    await this.ensureFolder(this.getKanbanTemplatesDirectoryPath());
+    await this.ensureFolder(this.getKanbanThemesDirectoryPath());
+
+    const loadedTemplates = await this.loadKanbanTemplateRegistry();
+    this.data.kanbanState.boardTemplates = Object.keys(loadedTemplates).length > 0
+      ? loadedTemplates
+      : this.getBuiltInKanbanBoardTemplates(formatDateTimeKey(new Date()));
+
+    this.kanbanThemeDefinitions = await this.loadKanbanThemeRegistry();
+    this.applyKanbanThemeCss();
+
+    const fallbackTemplateId = this.data.kanbanState.boardTemplates["execution-default"]
+      ? "execution-default"
+      : Object.keys(this.data.kanbanState.boardTemplates)[0] ?? "execution-default";
+    const fallbackThemeId = this.getResolvedKanbanThemeId("dark");
+    let changed = false;
+
+    Object.entries(this.data.kanbanState.boardConfigurations).forEach(([projectName, config]) => {
+      let nextConfig = config;
+      if (!this.data.kanbanState.boardTemplates[config.templateId]) {
+        nextConfig = {
+          ...nextConfig,
+          templateId: fallbackTemplateId,
+          updatedAt: formatDateTimeKey(new Date())
+        };
+      }
+      const resolvedThemeId = this.getResolvedKanbanThemeId(config.theme);
+      if (resolvedThemeId !== config.theme) {
+        nextConfig = {
+          ...nextConfig,
+          theme: resolvedThemeId,
+          updatedAt: formatDateTimeKey(new Date())
+        };
+      }
+      if (nextConfig !== config) {
+        this.data.kanbanState.boardConfigurations[projectName] = nextConfig;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await this.savePluginData();
+    }
+
+    if (showNotice) {
+      new Notice(`Reloaded ${Object.keys(this.data.kanbanState.boardTemplates).length} Kanban template${Object.keys(this.data.kanbanState.boardTemplates).length === 1 ? "" : "s"} and ${Object.keys(this.kanbanThemeDefinitions).length} Kanban theme${Object.keys(this.kanbanThemeDefinitions).length === 1 ? "" : "s"}.`);
+    }
   }
 
   private hasExistingSetupSignals(data: DashboardPluginData): boolean {
@@ -712,6 +903,16 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open DASH Kanban board settings",
       callback: () => {
         void this.openDashKanbanBoardSettings();
+      }
+    });
+
+    this.addCommand({
+      id: "reload-dash-kanban-assets",
+      name: "Reload DASH Kanban templates and themes",
+      callback: () => {
+        void this.reloadKanbanAssetRegistries(true).then(() => {
+          this.refreshDashboardViews();
+        });
       }
     });
 
@@ -3716,7 +3917,7 @@ export default class DailyDashboardPlugin extends Plugin {
       collapsedInHub: Boolean(input.collapsedInHub),
       showLaneCategories: Boolean(input.showLaneCategories),
       stickyHeaders: Boolean(input.stickyHeaders),
-      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" ? input.theme : "dark",
+      theme: this.getResolvedKanbanThemeId(input.theme),
       updatedAt: formatDateTimeKey(new Date())
     };
     const categoryMetadataUpdated = await this.syncKanbanCategoryMetadataToMasterHub(projectName, normalizedLaneDefinitions);
@@ -3974,9 +4175,9 @@ export default class DailyDashboardPlugin extends Plugin {
       stickyHeaders: typeof input.stickyHeaders === "boolean"
         ? input.stickyHeaders
         : existing.stickyHeaders,
-      theme: input.theme === "light" || input.theme === "ocean" || input.theme === "forest" || input.theme === "rose" || input.theme === "aurora" || input.theme === "dark"
-        ? input.theme
-        : existing.theme,
+      theme: typeof input.theme === "string"
+        ? this.getResolvedKanbanThemeId(input.theme)
+        : this.getResolvedKanbanThemeId(existing.theme),
       updatedAt: formatDateTimeKey(new Date())
     };
     await this.savePluginData();
@@ -4254,7 +4455,7 @@ export default class DailyDashboardPlugin extends Plugin {
       projectName: project.name,
       templateId: usesCustomTemplate ? "custom" : template.templateId,
       templateName: usesCustomTemplate ? "Custom" : template.name,
-      theme: configuration?.theme === "light" || configuration?.theme === "ocean" || configuration?.theme === "forest" || configuration?.theme === "rose" || configuration?.theme === "aurora" ? configuration.theme : "dark",
+      theme: this.getResolvedKanbanThemeId(configuration?.theme),
       status: project.status,
       projectState: project.projectState,
       focus: project.focus,
@@ -7701,22 +7902,6 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private ensureKanbanBoardModelState(snapshot: TodoSnapshot, updatedAt: string): number {
     let changed = 0;
-    const builtInTemplates = this.getBuiltInKanbanBoardTemplates(updatedAt);
-
-    Object.entries(builtInTemplates).forEach(([templateId, template]) => {
-      const existing = this.data.kanbanState.boardTemplates[templateId];
-      const sameLaneShape = existing
-        && JSON.stringify(existing.laneDefinitions) === JSON.stringify(template.laneDefinitions);
-
-      if (!existing
-        || existing.name !== template.name
-        || existing.description !== template.description
-        || existing.builtIn !== template.builtIn
-        || !sameLaneShape) {
-        this.data.kanbanState.boardTemplates[templateId] = template;
-        changed += 1;
-      }
-    });
 
     snapshot.projects.forEach((project) => {
       const existingKey = this.findPersistedKanbanBoardConfigurationKey(project.name);
@@ -7743,7 +7928,7 @@ export default class DailyDashboardPlugin extends Plugin {
         collapsedInHub: false,
         showLaneCategories: false,
         stickyHeaders: false,
-        theme: "dark",
+        theme: this.getResolvedKanbanThemeId("dark"),
         updatedAt
       };
       changed += 1;
@@ -8048,7 +8233,7 @@ export default class DailyDashboardPlugin extends Plugin {
         collapsedInHub: Boolean(entry.collapsedInHub),
         showLaneCategories: Boolean(entry.showLaneCategories),
         stickyHeaders: Boolean(entry.stickyHeaders),
-        theme: entry.theme === "light" || entry.theme === "ocean" || entry.theme === "forest" || entry.theme === "rose" || entry.theme === "aurora" ? entry.theme : "dark",
+        theme: typeof entry.theme === "string" && entry.theme.trim().length > 0 ? entry.theme.trim() : "dark",
         updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt.trim() : ""
       };
     });
@@ -11406,6 +11591,7 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private async loadPluginData(): Promise<void> {
     this.data = await this.buildDataFromStorage();
+    await this.reloadKanbanAssetRegistries(false);
   }
 
   private async runStartupDataMaintenance(): Promise<void> {

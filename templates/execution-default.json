@@ -1,0 +1,92 @@
+{
+  "templateId": "execution-default",
+  "name": "Execution Default",
+  "description": "Classic personal execution flow for active projects.",
+  "builtIn": true,
+  "laneDefinitions": [
+    {
+      "laneKey": "now",
+      "label": "Now",
+      "helperText": "Current execution",
+      "columnKey": "now",
+      "categoryKey": "execution",
+      "categoryLabel": "Execution",
+      "categorySubtitle": "",
+      "categoryColor": "#d96b2b",
+      "categoryTag": "",
+      "ruleType": "hub-section",
+      "mappedSections": ["Now"],
+      "done": false
+    },
+    {
+      "laneKey": "next",
+      "label": "Next",
+      "helperText": "Queued next actions",
+      "columnKey": "next",
+      "categoryKey": "execution",
+      "categoryLabel": "Execution",
+      "categorySubtitle": "",
+      "categoryColor": "#d96b2b",
+      "categoryTag": "",
+      "ruleType": "hub-section",
+      "mappedSections": ["Next", "Add", "Fix"],
+      "done": false
+    },
+    {
+      "laneKey": "later",
+      "label": "Later",
+      "helperText": "Deferred but active",
+      "columnKey": "later",
+      "categoryKey": "planning",
+      "categoryLabel": "Planning",
+      "categorySubtitle": "",
+      "categoryColor": "#5d7bd8",
+      "categoryTag": "",
+      "ruleType": "hub-section",
+      "mappedSections": ["Later"],
+      "done": false
+    },
+    {
+      "laneKey": "waiting",
+      "label": "Waiting",
+      "helperText": "Dependencies or unblockers",
+      "columnKey": "waiting",
+      "categoryKey": "planning",
+      "categoryLabel": "Planning",
+      "categorySubtitle": "",
+      "categoryColor": "#5d7bd8",
+      "categoryTag": "",
+      "ruleType": "hub-section",
+      "mappedSections": ["Waiting"],
+      "done": false
+    },
+    {
+      "laneKey": "parking-lot",
+      "label": "Parking Lot",
+      "helperText": "Ideas and parked work",
+      "columnKey": "parking-lot",
+      "categoryKey": "parking",
+      "categoryLabel": "Parking",
+      "categorySubtitle": "",
+      "categoryColor": "#4ca86a",
+      "categoryTag": "",
+      "ruleType": "hub-section",
+      "mappedSections": ["Parking Lot"],
+      "done": false
+    },
+    {
+      "laneKey": "done",
+      "label": "Done",
+      "helperText": "Recently completed",
+      "columnKey": "done",
+      "categoryKey": "results",
+      "categoryLabel": "Results",
+      "categorySubtitle": "",
+      "categoryColor": "#8b5fd1",
+      "categoryTag": "",
+      "ruleType": "completion-state",
+      "mappedSections": ["Done", "Completed Archive"],
+      "done": true
+    }
+  ]
+}

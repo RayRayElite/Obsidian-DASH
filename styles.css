@@ -603,204 +603,6 @@
   z-index: 1;
 }
 
-.dash-kanban-project-board[data-theme="dark"] {
-  --dash-kanban-board-accent: #d8a062;
-  --dash-kanban-board-accent-strong: #8f5a31;
-  --dash-kanban-board-surface: color-mix(in srgb, #151311 82%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #0c0b0a 88%, var(--background-primary));
-  --dash-kanban-card-surface: color-mix(in srgb, #1b1816 88%, var(--background-primary));
-  --dash-kanban-card-surface-strong: color-mix(in srgb, #12100f 90%, var(--background-primary-alt));
-  --dash-kanban-card-border: color-mix(in srgb, #d8a062 18%, var(--background-modifier-border));
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(216, 160, 98, 0.18), transparent 30%), linear-gradient(90deg, rgba(82, 54, 25, 0.12), transparent 42%);
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(216, 160, 98, 0.12), transparent 46%),
-    linear-gradient(90deg, rgba(143, 90, 49, 0.12), transparent 60%),
-    color-mix(in srgb, #181513 84%, var(--background-primary));
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(26, 23, 20, 0.96), rgba(16, 14, 13, 0.98));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 233, 204, 0.035), transparent 20%);
-  --dash-kanban-header-tab-surface: rgba(31, 28, 25, 0.9);
-  --dash-kanban-header-tab-text: #f4e4cb;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(216, 160, 98, 0.08), transparent 30%),
-    rgba(20, 17, 15, 0.82);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(255, 235, 204, 0.03), transparent 36%),
-    radial-gradient(circle at center, rgba(216, 160, 98, 0.1), transparent 58%),
-    color-mix(in srgb, #14110f 86%, var(--background-primary));
-}
-
-.dash-kanban-project-board[data-theme="light"] {
-  --dash-kanban-board-accent: #466fd8;
-  --dash-kanban-board-accent-strong: #223f91;
-  --dash-kanban-board-surface: color-mix(in srgb, #eef3fb 94%, var(--background-primary));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #d7e0ee 88%, var(--background-primary-alt));
-  --dash-kanban-card-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(247, 250, 255, 0.985));
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(247, 250, 255, 0.99), rgba(239, 244, 251, 0.985));
-  --dash-kanban-card-border: color-mix(in srgb, #6c87bb 32%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 14px 26px rgba(33, 57, 94, 0.14);
-  --dash-kanban-text-strong: #122033;
-  --dash-kanban-text-normal: #1c2e47;
-  --dash-kanban-text-muted: #445b78;
-  --dash-kanban-text-faint: #647a97;
-  --dash-kanban-control-surface: rgba(238, 244, 252, 0.98);
-  --dash-kanban-control-surface-strong: rgba(255, 255, 255, 0.995);
-  --dash-kanban-control-surface-soft: rgba(225, 234, 246, 0.98);
-  --dash-kanban-control-text: #182941;
-  --dash-kanban-control-muted: #435873;
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(70, 111, 216, 0.1), transparent 26%), linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(222, 232, 245, 0.5));
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(70, 111, 216, 0.08), rgba(255, 255, 255, 0.92) 54%),
-    rgba(248, 250, 254, 0.96);
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-atmosphere: radial-gradient(circle at 100% 0%, rgba(70, 111, 216, 0.06), transparent 30%);
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(241, 246, 252, 0.995));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(70, 111, 216, 0.03), rgba(255, 255, 255, 0.32) 22%, transparent 50%);
-  --dash-kanban-header-tab-surface: rgba(220, 230, 244, 0.96);
-  --dash-kanban-header-tab-text: #172840;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(70, 111, 216, 0.06), rgba(255, 255, 255, 0.18) 22%, transparent 46%),
-    rgba(233, 239, 248, 0.96);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), transparent 38%),
-    radial-gradient(circle at center, rgba(70, 111, 216, 0.05), transparent 54%),
-    rgba(235, 241, 249, 0.96);
-}
-
-.dash-kanban-project-board[data-theme="ocean"] {
-  --dash-kanban-board-accent: #78d8ff;
-  --dash-kanban-board-accent-strong: #2f7fbb;
-  --dash-kanban-board-surface: color-mix(in srgb, #0f2232 76%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #081520 86%, var(--background-primary));
-  --dash-kanban-card-surface: linear-gradient(180deg, rgba(17, 39, 58, 0.98), rgba(12, 29, 45, 0.98));
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(11, 31, 48, 0.99), rgba(8, 23, 36, 0.99));
-  --dash-kanban-card-border: color-mix(in srgb, #6ab8ea 24%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 18px 32px rgba(4, 18, 29, 0.28);
-  --dash-kanban-text-strong: color-mix(in srgb, #eef8ff 94%, var(--text-normal));
-  --dash-kanban-text-normal: color-mix(in srgb, #dbedf8 88%, var(--text-normal));
-  --dash-kanban-text-muted: color-mix(in srgb, #bdd9ea 82%, var(--text-muted));
-  --dash-kanban-text-faint: color-mix(in srgb, #91b8d0 76%, var(--text-faint));
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(120, 216, 255, 0.18), transparent 30%), linear-gradient(135deg, rgba(7, 28, 48, 0.42), transparent 58%);
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(120, 216, 255, 0.11), transparent 46%),
-    linear-gradient(90deg, rgba(18, 63, 96, 0.34), transparent 58%),
-    rgba(11, 28, 43, 0.82);
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(15, 35, 52, 0.98), rgba(8, 24, 37, 0.99));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(120, 216, 255, 0.04), transparent 20%), linear-gradient(90deg, rgba(12, 39, 57, 0.12), transparent 40%);
-  --dash-kanban-header-tab-surface: rgba(31, 43, 53, 0.92);
-  --dash-kanban-header-tab-text: #dcf5ff;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(120, 216, 255, 0.08), transparent 28%),
-    rgba(10, 24, 36, 0.84);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(221, 242, 255, 0.03), transparent 34%),
-    radial-gradient(circle at center, rgba(120, 216, 255, 0.12), transparent 58%),
-    rgba(9, 22, 33, 0.84);
-}
-
-.dash-kanban-project-board[data-theme="forest"] {
-  --dash-kanban-board-accent: #8ec86c;
-  --dash-kanban-board-accent-strong: #497c55;
-  --dash-kanban-board-surface: color-mix(in srgb, #15251b 76%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #0d1711 86%, var(--background-primary));
-  --dash-kanban-card-surface: linear-gradient(180deg, rgba(24, 46, 33, 0.98), rgba(16, 32, 23, 0.99));
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(18, 36, 26, 0.99), rgba(11, 24, 17, 0.99));
-  --dash-kanban-card-border: color-mix(in srgb, #7eb96d 22%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 18px 30px rgba(11, 24, 16, 0.24);
-  --dash-kanban-text-strong: color-mix(in srgb, #edf7ea 92%, var(--text-normal));
-  --dash-kanban-text-normal: color-mix(in srgb, #d8ead8 86%, var(--text-normal));
-  --dash-kanban-text-muted: color-mix(in srgb, #b5cfb5 80%, var(--text-muted));
-  --dash-kanban-text-faint: color-mix(in srgb, #8fac97 74%, var(--text-faint));
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(142, 200, 108, 0.16), transparent 30%), linear-gradient(135deg, rgba(80, 56, 24, 0.12), transparent 62%);
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(142, 200, 108, 0.11), transparent 46%),
-    linear-gradient(90deg, rgba(71, 124, 85, 0.18), transparent 62%),
-    rgba(18, 33, 24, 0.82);
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(18, 36, 26, 0.98), rgba(11, 24, 17, 0.99));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(188, 220, 162, 0.04), transparent 22%), linear-gradient(90deg, rgba(79, 65, 34, 0.08), transparent 42%);
-  --dash-kanban-header-tab-surface: rgba(32, 45, 36, 0.92);
-  --dash-kanban-header-tab-text: #e4f1d7;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(142, 200, 108, 0.08), transparent 28%),
-    rgba(15, 28, 18, 0.84);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(222, 245, 217, 0.03), transparent 34%),
-    radial-gradient(circle at center, rgba(142, 200, 108, 0.11), transparent 58%),
-    rgba(13, 28, 19, 0.84);
-}
-
-.dash-kanban-project-board[data-theme="rose"] {
-  --dash-kanban-board-accent: #d28d76;
-  --dash-kanban-board-accent-strong: #964d55;
-  --dash-kanban-board-surface: color-mix(in srgb, #29171d 76%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #160d12 86%, var(--background-primary));
-  --dash-kanban-card-surface: linear-gradient(180deg, rgba(49, 23, 32, 0.98), rgba(31, 14, 21, 0.99));
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(40, 19, 27, 0.99), rgba(23, 11, 17, 0.99));
-  --dash-kanban-card-border: color-mix(in srgb, #c67c74 24%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 18px 30px rgba(34, 12, 19, 0.24);
-  --dash-kanban-text-strong: color-mix(in srgb, #fff0eb 92%, var(--text-normal));
-  --dash-kanban-text-normal: color-mix(in srgb, #f3d8d0 86%, var(--text-normal));
-  --dash-kanban-text-muted: color-mix(in srgb, #d9b7af 80%, var(--text-muted));
-  --dash-kanban-text-faint: color-mix(in srgb, #ba958f 74%, var(--text-faint));
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(210, 141, 118, 0.16), transparent 30%), linear-gradient(135deg, rgba(131, 70, 54, 0.16), transparent 64%);
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(210, 141, 118, 0.1), transparent 48%),
-    linear-gradient(90deg, rgba(150, 77, 85, 0.16), transparent 62%),
-    rgba(31, 17, 22, 0.82);
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(45, 22, 29, 0.98), rgba(24, 12, 17, 0.99));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 220, 207, 0.04), transparent 22%), linear-gradient(90deg, rgba(140, 88, 64, 0.08), transparent 48%);
-  --dash-kanban-header-tab-surface: rgba(50, 26, 31, 0.92);
-  --dash-kanban-header-tab-text: #ffe6dc;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(210, 141, 118, 0.08), transparent 28%),
-    rgba(26, 13, 18, 0.84);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(255, 230, 222, 0.03), transparent 34%),
-    radial-gradient(circle at center, rgba(210, 141, 118, 0.12), transparent 58%),
-    rgba(25, 12, 18, 0.84);
-}
-
-.dash-kanban-project-board[data-theme="aurora"] {
-  --dash-kanban-board-accent: #ff7cc7;
-  --dash-kanban-board-accent-strong: #7d72ff;
-  --dash-kanban-board-surface: color-mix(in srgb, #20172d 78%, var(--background-primary-alt));
-  --dash-kanban-board-surface-strong: color-mix(in srgb, #120d1a 88%, var(--background-primary));
-  --dash-kanban-card-surface: linear-gradient(180deg, rgba(40, 23, 56, 0.98), rgba(24, 17, 37, 0.99));
-  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(35, 21, 51, 0.99), rgba(21, 15, 32, 0.99));
-  --dash-kanban-card-border: color-mix(in srgb, #d174ff 22%, var(--background-modifier-border));
-  --dash-kanban-card-shadow: 0 20px 36px rgba(26, 17, 43, 0.32);
-  --dash-kanban-text-strong: color-mix(in srgb, #f8f0ff 92%, var(--text-normal));
-  --dash-kanban-text-normal: color-mix(in srgb, #eadcff 86%, var(--text-normal));
-  --dash-kanban-text-muted: color-mix(in srgb, #cfbee9 80%, var(--text-muted));
-  --dash-kanban-text-faint: color-mix(in srgb, #af9acb 72%, var(--text-faint));
-  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(255, 124, 199, 0.16), transparent 28%), radial-gradient(circle at 18% 0%, rgba(125, 114, 255, 0.12), transparent 34%), linear-gradient(135deg, rgba(80, 45, 122, 0.18), transparent 62%);
-  --dash-kanban-header-surface:
-    linear-gradient(180deg, rgba(255, 124, 199, 0.1), transparent 44%),
-    linear-gradient(90deg, rgba(125, 114, 255, 0.18), transparent 60%),
-    rgba(29, 20, 42, 0.84);
-  --dash-kanban-board-texture: none;
-  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(35, 23, 50, 0.98), rgba(20, 15, 31, 0.99));
-  --dash-kanban-lane-texture: none;
-  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(255, 124, 199, 0.04), transparent 22%), linear-gradient(90deg, rgba(125, 114, 255, 0.08), transparent 44%);
-  --dash-kanban-header-tab-surface: rgba(39, 27, 58, 0.92);
-  --dash-kanban-header-tab-text: #f6e5ff;
-  --dash-kanban-row-rail-surface:
-    linear-gradient(180deg, rgba(255, 124, 199, 0.08), transparent 28%),
-    rgba(23, 16, 35, 0.86);
-  --dash-kanban-empty-surface:
-    linear-gradient(180deg, rgba(250, 232, 255, 0.03), transparent 34%),
-    radial-gradient(circle at center, rgba(255, 124, 199, 0.12), transparent 56%),
-    rgba(23, 16, 35, 0.84);
-}
-
 .dash-kanban-detail-panel {
   padding: 18px;
   border: 1px solid var(--dash-kanban-border);
@@ -2847,6 +2649,10 @@
 }
 
 .dash-kanban-theme-preview {
+  --dash-kanban-theme-preview-board: linear-gradient(160deg, #181513, #0b0a09);
+  --dash-kanban-theme-preview-primary: #d8a062;
+  --dash-kanban-theme-preview-secondary: #8f5a31;
+  --dash-kanban-theme-preview-surface: rgba(255, 248, 230, 0.12);
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
@@ -2891,6 +2697,7 @@
   min-height: 86px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.08) 100%, var(--background-modifier-border));
+  background: var(--dash-kanban-theme-preview-board);
   overflow: hidden;
   flex: 0 0 auto;
 }
@@ -2917,6 +2724,7 @@
   right: 12px;
   top: 12px;
   height: 16px;
+  background: var(--dash-kanban-theme-preview-primary);
 }
 
 .dash-kanban-theme-preview-chip.is-secondary {
@@ -2924,6 +2732,7 @@
   width: 92px;
   top: 38px;
   height: 14px;
+  background: var(--dash-kanban-theme-preview-secondary);
 }
 
 .dash-kanban-theme-preview-chip.is-surface {
@@ -2931,6 +2740,7 @@
   right: 12px;
   bottom: 12px;
   height: 20px;
+  background: var(--dash-kanban-theme-preview-surface);
 }
 
 .dash-kanban-theme-preview-copy {
@@ -2949,102 +2759,6 @@
   color: var(--text-muted);
   font-size: 0.76rem;
   line-height: 1.38;
-}
-
-.dash-kanban-theme-preview[data-theme="dark"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #181513, #0b0a09);
-}
-
-.dash-kanban-theme-preview[data-theme="dark"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #d8a062;
-}
-
-.dash-kanban-theme-preview[data-theme="dark"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #8f5a31;
-}
-
-.dash-kanban-theme-preview[data-theme="dark"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(255, 248, 230, 0.12);
-}
-
-.dash-kanban-theme-preview[data-theme="light"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #f5f8fd, #dce4ef);
-}
-
-.dash-kanban-theme-preview[data-theme="light"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #466fd8;
-}
-
-.dash-kanban-theme-preview[data-theme="light"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #223f91;
-}
-
-.dash-kanban-theme-preview[data-theme="light"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.dash-kanban-theme-preview[data-theme="ocean"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #10293d, #081520);
-}
-
-.dash-kanban-theme-preview[data-theme="ocean"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #78d8ff;
-}
-
-.dash-kanban-theme-preview[data-theme="ocean"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #2f7fbb;
-}
-
-.dash-kanban-theme-preview[data-theme="ocean"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(206, 233, 250, 0.16);
-}
-
-.dash-kanban-theme-preview[data-theme="forest"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #173021, #0d1711);
-}
-
-.dash-kanban-theme-preview[data-theme="forest"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #8ec86c;
-}
-
-.dash-kanban-theme-preview[data-theme="forest"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #497c55;
-}
-
-.dash-kanban-theme-preview[data-theme="forest"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(212, 236, 206, 0.14);
-}
-
-.dash-kanban-theme-preview[data-theme="rose"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #311820, #160d12);
-}
-
-.dash-kanban-theme-preview[data-theme="rose"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #d28d76;
-}
-
-.dash-kanban-theme-preview[data-theme="rose"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #964d55;
-}
-
-.dash-kanban-theme-preview[data-theme="rose"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(244, 215, 206, 0.14);
-}
-
-.dash-kanban-theme-preview[data-theme="aurora"] .dash-kanban-theme-preview-swatch {
-  background: linear-gradient(160deg, #241736, #120d1a);
-}
-
-.dash-kanban-theme-preview[data-theme="aurora"] .dash-kanban-theme-preview-chip.is-primary {
-  background: #ff7cc7;
-}
-
-.dash-kanban-theme-preview[data-theme="aurora"] .dash-kanban-theme-preview-chip.is-secondary {
-  background: #7d72ff;
-}
-
-.dash-kanban-theme-preview[data-theme="aurora"] .dash-kanban-theme-preview-chip.is-surface {
-  background: rgba(232, 219, 255, 0.14);
 }
 
 .dash-kanban-settings-lane {

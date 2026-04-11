@@ -688,6 +688,24 @@ export interface KanbanBoardConfiguration {
   updatedAt: string;
 }
 
+export interface DashboardKanbanThemePreview {
+  board: string;
+  primary: string;
+  secondary: string;
+  surface: string;
+}
+
+export interface DashboardKanbanThemeDefinition {
+  themeId: string;
+  name: string;
+  description: string;
+  preview: DashboardKanbanThemePreview;
+  cssContent: string;
+  builtIn: boolean;
+  updatedAt: string;
+  fileName: string;
+}
+
 export interface KanbanRepairStateRecord {
   repairId: string;
   taskId: string;
@@ -710,7 +728,7 @@ export interface KanbanSyncConflict {
 export type DashboardKanbanViewMode = "all-projects" | "single-project";
 export type DashboardKanbanFocusFilter = "all" | "attention" | "blocked" | "due";
 export type DashboardKanbanDensity = "comfortable" | "compact";
-export type DashboardKanbanTheme = "dark" | "light" | "ocean" | "forest" | "rose" | "aurora";
+export type DashboardKanbanTheme = string;
 
 export interface DashboardKanbanViewState {
   mode: DashboardKanbanViewMode;

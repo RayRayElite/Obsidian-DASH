@@ -1,0 +1,13 @@
+{
+  "templateId": "research-publishing",
+  "name": "Research / Publishing",
+  "description": "Backlog-to-publish flow for notes, docs, and knowledge work.",
+  "builtIn": true,
+  "laneDefinitions": [
+    { "laneKey": "backlog", "label": "Backlog", "helperText": "Queued research topics", "columnKey": "backlog", "categoryKey": "research", "categoryLabel": "Research", "categorySubtitle": "", "categoryColor": "#5d7bd8", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Later", "Parking Lot"], "done": false },
+    { "laneKey": "active", "label": "Active", "helperText": "Current deep work", "columnKey": "active", "categoryKey": "research", "categoryLabel": "Research", "categorySubtitle": "", "categoryColor": "#5d7bd8", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Now"], "done": false },
+    { "laneKey": "review", "label": "Review", "helperText": "Ready for feedback or unblock", "columnKey": "review", "categoryKey": "review", "categoryLabel": "Review", "categorySubtitle": "", "categoryColor": "#ef8a17", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Waiting"], "done": false },
+    { "laneKey": "ready", "label": "Ready", "helperText": "Prepared next actions", "columnKey": "ready", "categoryKey": "review", "categoryLabel": "Review", "categorySubtitle": "", "categoryColor": "#ef8a17", "categoryTag": "", "ruleType": "hub-section", "mappedSections": ["Next", "Add", "Fix"], "done": false },
+    { "laneKey": "published", "label": "Published", "helperText": "Completed notes or outputs", "columnKey": "published", "categoryKey": "release", "categoryLabel": "Release", "categorySubtitle": "", "categoryColor": "#3ea0a0", "categoryTag": "", "ruleType": "completion-state", "mappedSections": ["Done", "Completed Archive"], "done": true }
+  ]
+}

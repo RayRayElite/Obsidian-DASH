@@ -1,0 +1,51 @@
+/*
+{
+  "id": "light",
+  "name": "Day Shift",
+  "description": "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.",
+  "builtIn": true,
+  "preview": {
+    "board": "linear-gradient(160deg, #f5f8fd, #dce4ef)",
+    "primary": "#466fd8",
+    "secondary": "#223f91",
+    "surface": "rgba(255, 255, 255, 0.78)"
+  }
+}
+*/
+.dash-kanban-project-board[data-theme="light"] {
+  --dash-kanban-board-accent: #466fd8;
+  --dash-kanban-board-accent-strong: #223f91;
+  --dash-kanban-board-surface: color-mix(in srgb, #eef3fb 94%, var(--background-primary));
+  --dash-kanban-board-surface-strong: color-mix(in srgb, #d7e0ee 88%, var(--background-primary-alt));
+  --dash-kanban-card-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(247, 250, 255, 0.985));
+  --dash-kanban-card-surface-strong: linear-gradient(180deg, rgba(247, 250, 255, 0.99), rgba(239, 244, 251, 0.985));
+  --dash-kanban-card-border: color-mix(in srgb, #6c87bb 32%, var(--background-modifier-border));
+  --dash-kanban-card-shadow: 0 14px 26px rgba(33, 57, 94, 0.14);
+  --dash-kanban-text-strong: #122033;
+  --dash-kanban-text-normal: #1c2e47;
+  --dash-kanban-text-muted: #445b78;
+  --dash-kanban-text-faint: #647a97;
+  --dash-kanban-control-surface: rgba(238, 244, 252, 0.98);
+  --dash-kanban-control-surface-strong: rgba(255, 255, 255, 0.995);
+  --dash-kanban-control-surface-soft: rgba(225, 234, 246, 0.98);
+  --dash-kanban-control-text: #182941;
+  --dash-kanban-control-muted: #435873;
+  --dash-kanban-board-atmosphere: radial-gradient(circle at top right, rgba(70, 111, 216, 0.1), transparent 26%), linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(222, 232, 245, 0.5));
+  --dash-kanban-header-surface:
+    linear-gradient(180deg, rgba(70, 111, 216, 0.08), rgba(255, 255, 255, 0.92) 54%),
+    rgba(248, 250, 254, 0.96);
+  --dash-kanban-board-texture: none;
+  --dash-kanban-lane-atmosphere: radial-gradient(circle at 100% 0%, rgba(70, 111, 216, 0.06), transparent 30%);
+  --dash-kanban-lane-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(241, 246, 252, 0.995));
+  --dash-kanban-lane-texture: none;
+  --dash-kanban-card-overlay: linear-gradient(180deg, rgba(70, 111, 216, 0.03), rgba(255, 255, 255, 0.32) 22%, transparent 50%);
+  --dash-kanban-header-tab-surface: rgba(220, 230, 244, 0.96);
+  --dash-kanban-header-tab-text: #172840;
+  --dash-kanban-row-rail-surface:
+    linear-gradient(180deg, rgba(70, 111, 216, 0.06), rgba(255, 255, 255, 0.18) 22%, transparent 46%),
+    rgba(233, 239, 248, 0.96);
+  --dash-kanban-empty-surface:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), transparent 38%),
+    radial-gradient(circle at center, rgba(70, 111, 216, 0.05), transparent 54%),
+    rgba(235, 241, 249, 0.96);
+}

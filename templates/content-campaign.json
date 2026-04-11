@@ -1,0 +1,12 @@
+{
+  "templateId": "content-campaign",
+  "name": "Simple",
+  "description": "Matches the pastel content-marketing example with a simple queue and delivery flow.",
+  "builtIn": true,
+  "laneDefinitions": [
+    { "laneKey": "to-do", "label": "To Do", "helperText": "Queued content ideas and tasks", "columnKey": "to-do", "categoryKey": "content-queue", "categoryLabel": "Content Queue", "categorySubtitle": "", "categoryColor": "#3ea0a0", "categoryTag": "content", "ruleType": "hub-section", "mappedSections": ["Next", "Parking Lot"], "done": false },
+    { "laneKey": "working", "label": "Working", "helperText": "Active content creation", "columnKey": "working", "categoryKey": "content-queue", "categoryLabel": "Content Queue", "categorySubtitle": "", "categoryColor": "#3ea0a0", "categoryTag": "content", "ruleType": "hub-section", "mappedSections": ["Now"], "done": false },
+    { "laneKey": "waiting", "label": "Waiting", "helperText": "Needs review or dependency follow-up", "columnKey": "waiting", "categoryKey": "content-queue", "categoryLabel": "Content Queue", "categorySubtitle": "", "categoryColor": "#3ea0a0", "categoryTag": "content", "ruleType": "hub-section", "mappedSections": ["Waiting"], "done": false },
+    { "laneKey": "done", "label": "Done", "helperText": "Published or delivered content", "columnKey": "done", "categoryKey": "content-queue", "categoryLabel": "Content Queue", "categorySubtitle": "", "categoryColor": "#3ea0a0", "categoryTag": "content", "ruleType": "completion-state", "mappedSections": ["Done", "Completed Archive"], "done": true }
+  ]
+}
