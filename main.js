@@ -13849,9 +13849,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     parent.appendChild(pill);
   }
   positionCardPopover(popover, anchor, preferBelow) {
-    window.setTimeout(() => {
+    const positionOnce = () => {
       if (!popover.isConnected || !anchor.isConnected) {
-        return;
+        return false;
       }
       popover.style.visibility = "hidden";
       popover.style.position = "fixed";
@@ -13875,6 +13875,21 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       popover.style.left = `${viewportLeft}px`;
       popover.style.top = `${viewportTop}px`;
       popover.style.visibility = "visible";
+      return true;
+    };
+    window.setTimeout(() => {
+      let remainingFrames = 12;
+      const tick = () => {
+        const positioned = positionOnce();
+        if (!positioned) {
+          return;
+        }
+        remainingFrames -= 1;
+        if (remainingFrames > 0) {
+          window.requestAnimationFrame(tick);
+        }
+      };
+      tick();
     }, 0);
   }
   createDueSeparator(value = "/") {

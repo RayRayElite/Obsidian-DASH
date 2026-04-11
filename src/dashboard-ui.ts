@@ -9534,9 +9534,9 @@ export class DashKanbanView extends ItemView {
   }
 
   private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean): void {
-    window.setTimeout(() => {
+    const positionOnce = () => {
       if (!popover.isConnected || !anchor.isConnected) {
-        return;
+        return false;
       }
 
       popover.style.visibility = "hidden";
@@ -9567,6 +9567,22 @@ export class DashKanbanView extends ItemView {
       popover.style.left = `${viewportLeft}px`;
       popover.style.top = `${viewportTop}px`;
       popover.style.visibility = "visible";
+      return true;
+    };
+
+    window.setTimeout(() => {
+      let remainingFrames = 12;
+      const tick = () => {
+        const positioned = positionOnce();
+        if (!positioned) {
+          return;
+        }
+        remainingFrames -= 1;
+        if (remainingFrames > 0) {
+          window.requestAnimationFrame(tick);
+        }
+      };
+      tick();
     }, 0);
   }
 
