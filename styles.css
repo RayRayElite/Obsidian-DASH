@@ -950,17 +950,36 @@
 }
 
 .dash-kanban-lane-title-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   flex: 1 1 auto;
+  padding: 12px 14px 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 18%, var(--dash-kanban-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 10%, transparent), transparent 58%),
+    color-mix(in srgb, var(--background-primary-alt) 74%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dash-kanban-lane-title-wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 82%, white), color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 36%, transparent));
 }
 
 .dash-kanban-lane-title-row {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -987,28 +1006,17 @@
 }
 
 .dash-kanban-lane-title {
+  flex: 1 1 auto;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--text-normal);
-  font-size: 1.08rem;
-  font-weight: 900;
-  letter-spacing: -0.025em;
-  line-height: 1.08;
+  font-size: 1.02rem;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
   text-align: left;
   text-wrap: balance;
-  position: relative;
-}
-
-.dash-kanban-lane-title::after {
-  content: "";
-  display: block;
-  width: 34px;
-  height: 2px;
-  margin-top: 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 44%, transparent);
-  transition: width 120ms ease, background 120ms ease;
 }
 
 .dash-kanban-lane-title:hover,
@@ -1016,15 +1024,9 @@
   color: var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent));
 }
 
-.dash-kanban-lane-title:hover::after,
-.dash-kanban-lane-title:focus-visible::after {
-  width: 54px;
-  background: color-mix(in srgb, var(--dash-kanban-lane-accent, var(--dash-kanban-board-accent)) 78%, transparent);
-}
-
 .dash-kanban-lane-edit {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -1355,14 +1357,12 @@
 }
 
 .dash-kanban-card-photo-strip {
-  display: flex;
-  align-items: stretch;
-  gap: 8px;
+  display: block;
   position: relative;
 }
 
 .dash-kanban-card-photo-strip.has-multiple {
-  align-items: center;
+  align-items: stretch;
 }
 
 .dash-kanban-card-photo-strip.is-collapsed {
@@ -1371,19 +1371,37 @@
 }
 
 .dash-kanban-card-photo-nav {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 20%, var(--dash-kanban-border));
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 28%, var(--dash-kanban-border));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
-  color: var(--text-faint);
+  background: color-mix(in srgb, var(--background-primary) 78%, rgba(12, 15, 20, 0.92));
+  color: var(--text-normal);
+  transform: translateY(-50%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.16);
+}
+
+.dash-kanban-card-photo-nav.is-previous {
+  left: 10px;
+}
+
+.dash-kanban-card-photo-nav.is-next {
+  right: 10px;
 }
 
 .dash-kanban-card-photo-nav:hover {
-  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 36%, var(--dash-kanban-border));
-  color: var(--text-normal);
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 42%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--dash-kanban-board-accent) 16%, var(--background-primary));
+}
+
+.dash-kanban-card-photo-shell {
+  position: relative;
+  width: 100%;
 }
 
 .dash-kanban-card-photo-preview {
@@ -1695,11 +1713,12 @@
   position: fixed;
   z-index: 40;
   width: min(240px, 72vw);
-  padding: 10px;
+  padding: 12px;
   border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 18%, var(--dash-kanban-border));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
-  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--background-primary) 94%, rgba(12, 15, 20, 0.9));
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
 }
 
 .dash-kanban-meta-popover {
@@ -1864,6 +1883,100 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--background-primary) 86%, transparent);
   color: var(--text-normal);
+}
+
+.dash-kanban-due-popover {
+  width: min(330px, calc(100vw - 24px));
+}
+
+.dash-kanban-due-helper {
+  margin: -2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.dash-kanban-due-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dash-kanban-due-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dash-kanban-due-group.is-date {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--dash-kanban-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-primary-alt) 58%, transparent);
+}
+
+.dash-kanban-due-group.is-time {
+  justify-content: flex-start;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 10%, var(--dash-kanban-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--background-primary-alt) 38%, transparent);
+}
+
+.dash-kanban-due-input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.dash-kanban-due-input.is-month,
+.dash-kanban-due-input.is-day,
+.dash-kanban-due-input.is-hour,
+.dash-kanban-due-input.is-minute {
+  width: 54px;
+}
+
+.dash-kanban-due-input.is-year {
+  width: 78px;
+}
+
+.dash-kanban-due-separator {
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+.dash-kanban-due-time-label {
+  margin-right: 4px;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-kanban-due-meridiem {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--dash-kanban-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--background-primary) 86%, transparent);
+  color: var(--text-normal);
+  font-weight: 700;
+}
+
+.dash-kanban-due-preview {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dash-kanban-board-accent) 10%, var(--background-primary));
+  color: var(--text-normal);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .dash-kanban-popover-actions,

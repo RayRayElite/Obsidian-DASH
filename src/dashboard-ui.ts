@@ -134,33 +134,76 @@ function getKanbanPriorityTone(priority: string): string {
     : "none";
 }
 
-function formatKanbanDueDateDraft(value: string): string {
-  const cleaned = value.toUpperCase().replace(/[^0-9AP]/g, "");
-  const meridiemLetter = cleaned.match(/[AP]/)?.[0] ?? "";
-  const digits = cleaned.replace(/[AP]/g, "").slice(0, 12);
-  const month = digits.slice(0, 2);
-  const day = digits.slice(2, 4);
-  const year = digits.slice(4, 8);
-  const hour = digits.slice(8, 10);
-  const minute = digits.slice(10, 12);
+type KanbanDueDateDraftParts = {
+  month: string;
+  day: string;
+  year: string;
+  hour: string;
+  minute: string;
+  meridiem: "AM" | "PM";
+};
 
-  let formatted = month;
-  if (digits.length > 2) {
-    formatted += `/${day}`;
+function parseKanbanDueDateDraft(value: string): KanbanDueDateDraftParts {
+  const trimmed = value.trim();
+  const dateMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if (!dateMatch) {
+    return {
+      month: "",
+      day: "",
+      year: "",
+      hour: "",
+      minute: "",
+      meridiem: "AM"
+    };
   }
-  if (digits.length > 4) {
-    formatted += `/${year}`;
+
+  return {
+    month: dateMatch[1] ?? "",
+    day: dateMatch[2] ?? "",
+    year: dateMatch[3] ?? "",
+    hour: dateMatch[4] ?? "",
+    minute: dateMatch[5] ?? "",
+    meridiem: dateMatch[6]?.toUpperCase() === "PM" ? "PM" : "AM"
+  };
+}
+
+function formatKanbanDueDateDraft(parts: KanbanDueDateDraftParts): string {
+  const month = parts.month.replace(/\D/g, "").slice(0, 2);
+  const day = parts.day.replace(/\D/g, "").slice(0, 2);
+  const year = parts.year.replace(/\D/g, "").slice(0, 4);
+  const hour = parts.hour.replace(/\D/g, "").slice(0, 2);
+  const minute = parts.minute.replace(/\D/g, "").slice(0, 2);
+
+  if (!month && !day && !year) {
+    return "";
   }
-  if (digits.length > 8) {
-    formatted += ` ${hour}`;
+
+  let formatted = `${month}/${day}/${year}`;
+  if (month.length < 2 || day.length < 2 || year.length < 4) {
+    return formatted.replace(/\/+$/g, "");
   }
-  if (digits.length > 10) {
-    formatted += `:${minute}`;
+
+  if (hour.length === 2 && minute.length === 2) {
+    formatted += ` ${hour}:${minute} ${parts.meridiem}`;
   }
-  if (meridiemLetter && digits.length >= 12) {
-    formatted += ` ${meridiemLetter}M`;
-  }
+
   return formatted;
+}
+
+function hasKanbanDueDateDateValue(parts: KanbanDueDateDraftParts): boolean {
+  return parts.month.length > 0 || parts.day.length > 0 || parts.year.length > 0;
+}
+
+function isKanbanDueDateComplete(parts: KanbanDueDateDraftParts): boolean {
+  return parts.month.length === 2 && parts.day.length === 2 && parts.year.length === 4;
+}
+
+function hasKanbanDueTimeValue(parts: KanbanDueDateDraftParts): boolean {
+  return parts.hour.length > 0 || parts.minute.length > 0;
+}
+
+function isKanbanDueTimeComplete(parts: KanbanDueDateDraftParts): boolean {
+  return parts.hour.length === 2 && parts.minute.length === 2;
 }
 
 const KANBAN_PRIORITY_OPTIONS: Array<{ value: string; label: string }> = [
@@ -9503,7 +9546,8 @@ export class DashKanbanView extends ItemView {
       const horizontalPadding = 12;
       const verticalGap = 8;
       const width = Math.min(popoverRect.width || 240, window.innerWidth - horizontalPadding * 2);
-      const left = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, anchorRect.right - width));
+      const centeredLeft = anchorRect.left + (anchorRect.width / 2) - (width / 2);
+      const left = Math.max(horizontalPadding, Math.min(window.innerWidth - width - horizontalPadding, centeredLeft));
 
       let top = preferBelow
         ? anchorRect.bottom + verticalGap
@@ -9521,6 +9565,13 @@ export class DashKanbanView extends ItemView {
       popover.style.top = `${top}px`;
       popover.style.visibility = "visible";
     }, 0);
+  }
+
+  private createDueSeparator(value = "/"): HTMLElement {
+    const separator = document.createElement("span");
+    separator.className = "dash-kanban-due-separator";
+    separator.textContent = value;
+    return separator;
   }
 
   private closeInlineCardEditor(): void {
@@ -11085,20 +11136,8 @@ export class DashKanbanView extends ItemView {
         });
         gallery.appendChild(compactButton);
       } else {
-        if (photoPaths.length > 1) {
-          const previousButton = document.createElement("button");
-          previousButton.className = "dash-kanban-card-photo-nav is-previous";
-          previousButton.type = "button";
-          previousButton.ariaLabel = "Show previous image";
-          previousButton.title = "Show previous image";
-          previousButton.addEventListener("click", (event) => {
-            event.stopPropagation();
-            this.cyclePhotoCard(project.projectName, card.taskId, photoPaths.length, -1);
-          });
-          setIcon(previousButton, "chevron-left");
-          gallery.appendChild(previousButton);
-        }
-
+        const previewShell = document.createElement("div");
+        previewShell.className = "dash-kanban-card-photo-shell";
         const previewButton = document.createElement("button");
         previewButton.className = "dash-kanban-card-photo-preview";
         previewButton.type = "button";
@@ -11140,9 +11179,21 @@ export class DashKanbanView extends ItemView {
           status.createEl("span", { text: "Use arrows" });
         }
 
-        gallery.appendChild(previewButton);
+        previewShell.appendChild(previewButton);
 
         if (photoPaths.length > 1) {
+          const previousButton = document.createElement("button");
+          previousButton.className = "dash-kanban-card-photo-nav is-previous";
+          previousButton.type = "button";
+          previousButton.ariaLabel = "Show previous image";
+          previousButton.title = "Show previous image";
+          previousButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this.cyclePhotoCard(project.projectName, card.taskId, photoPaths.length, -1);
+          });
+          setIcon(previousButton, "chevron-left");
+          previewShell.appendChild(previousButton);
+
           const nextButton = document.createElement("button");
           nextButton.className = "dash-kanban-card-photo-nav is-next";
           nextButton.type = "button";
@@ -11153,8 +11204,10 @@ export class DashKanbanView extends ItemView {
             this.cyclePhotoCard(project.projectName, card.taskId, photoPaths.length, 1);
           });
           setIcon(nextButton, "chevron-right");
-          gallery.appendChild(nextButton);
+          previewShell.appendChild(nextButton);
         }
+
+        gallery.appendChild(previewShell);
 
       }
 
@@ -11196,8 +11249,7 @@ export class DashKanbanView extends ItemView {
     const actions = document.createElement("div");
     actions.className = "dash-kanban-card-actions";
     actionWrap.appendChild(actions);
-    actions.append(
-      this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
+    const priorityButton = this.createCardActionButton("flag", formatKanbanPriorityLabel(resolvedPriority), (event) => {
         event.stopPropagation();
         this.priorityPickerKey = this.priorityPickerKey?.projectName === project.projectName && this.priorityPickerKey.taskId === card.taskId
           ? null
@@ -11207,8 +11259,8 @@ export class DashKanbanView extends ItemView {
         this.photoPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
-      }),
-      this.createCardActionButton("calendar", resolvedDueDate ? `Due ${resolvedDueDate}` : "Set due date", (event) => {
+      });
+    const dueButton = this.createCardActionButton("calendar", resolvedDueDate ? `Due ${resolvedDueDate}` : "Set due date", (event) => {
         event.stopPropagation();
         this.duePickerKey = this.duePickerKey?.projectName === project.projectName && this.duePickerKey.taskId === card.taskId
           ? null
@@ -11218,8 +11270,8 @@ export class DashKanbanView extends ItemView {
         this.photoPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
-      }),
-      this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
+      });
+    const effortButton = this.createCardActionButton("timer", resolvedEffort ? `Effort ${resolvedEffort}` : "Set effort", (event) => {
         event.stopPropagation();
         this.effortPickerKey = this.effortPickerKey?.projectName === project.projectName && this.effortPickerKey.taskId === card.taskId
           ? null
@@ -11229,8 +11281,8 @@ export class DashKanbanView extends ItemView {
         this.photoPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
-      }),
-      this.createCardActionButton("image", photoPaths.length > 0 ? `Manage photos (${photoPaths.length})` : "Attach photos", (event) => {
+      });
+    const photoButton = this.createCardActionButton("image", photoPaths.length > 0 ? `Manage photos (${photoPaths.length})` : "Attach photos", (event) => {
         event.stopPropagation();
         this.photoPickerKey = this.photoPickerKey?.projectName === project.projectName && this.photoPickerKey.taskId === card.taskId
           ? null
@@ -11240,12 +11292,12 @@ export class DashKanbanView extends ItemView {
         this.effortPickerKey = null;
         this.selectedCardKey = { projectName: project.projectName, taskId: card.taskId };
         void this.requestRefresh();
-      }),
-      this.createCardActionButton("check", "Complete card", (event) => {
+      });
+    const completeButton = this.createCardActionButton("check", "Complete card", (event) => {
         event.stopPropagation();
         void this.plugin.completeKanbanTask(project.projectName, card.taskId);
-      }),
-      this.createCardActionButton("trash-2", "Delete card", (event) => {
+      });
+    const deleteButton = this.createCardActionButton("trash-2", "Delete card", (event) => {
         event.stopPropagation();
         const confirmed = window.confirm(`Delete "${card.text}" from ${project.projectName}?`);
         if (!confirmed) {
@@ -11257,8 +11309,8 @@ export class DashKanbanView extends ItemView {
         this.clearCardPopovers();
         this.detailEditState = null;
         void this.plugin.deleteKanbanTask(project.projectName, card.taskId);
-      })
-    );
+      });
+    actions.append(priorityButton, dueButton, effortButton, photoButton, completeButton, deleteButton);
 
     if (this.matchesCardKey(this.priorityPickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
@@ -11277,47 +11329,175 @@ export class DashKanbanView extends ItemView {
         picker.appendChild(button);
       });
       actionWrap.appendChild(picker);
-      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow);
     }
 
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
-      picker.className = `dash-kanban-card-popover dash-kanban-meta-popover${preferPopoverBelow ? " is-below" : ""}`;
+      picker.className = `dash-kanban-card-popover dash-kanban-meta-popover dash-kanban-due-popover${preferPopoverBelow ? " is-below" : ""}`;
       picker.addEventListener("click", (event) => event.stopPropagation());
       const label = document.createElement("span");
       label.className = "dash-kanban-detail-label";
       label.textContent = "Due";
       picker.appendChild(label);
-      const input = document.createElement("input");
-      input.className = "dash-kanban-popover-input";
-      input.type = "text";
-      input.placeholder = "MM/DD/YYYY HH:MM AM";
-      input.value = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : resolvedDueDate;
-      input.inputMode = "text";
-      picker.appendChild(input);
-      input.addEventListener("input", () => {
-        const formatted = formatKanbanDueDateDraft(input.value);
-        if (input.value !== formatted) {
-          input.value = formatted;
+      const helper = document.createElement("p");
+      helper.className = "dash-kanban-due-helper";
+      helper.textContent = "Date is required. Time is optional.";
+      picker.appendChild(helper);
+      const initialValue = this.isCardEditing(project.projectName, card.taskId) && this.detailEditState ? this.detailEditState.dueDate : resolvedDueDate;
+      const dueParts = parseKanbanDueDateDraft(initialValue);
+      const fields: HTMLInputElement[] = [];
+      const fieldRow = document.createElement("div");
+      fieldRow.className = "dash-kanban-due-fields";
+      picker.appendChild(fieldRow);
+
+      const dateGroup = document.createElement("div");
+      dateGroup.className = "dash-kanban-due-group is-date";
+      fieldRow.appendChild(dateGroup);
+
+      const timeGroup = document.createElement("div");
+      timeGroup.className = "dash-kanban-due-group is-time";
+      fieldRow.appendChild(timeGroup);
+
+      const preview = document.createElement("div");
+      preview.className = "dash-kanban-due-preview";
+      picker.appendChild(preview);
+
+      const updatePreview = () => {
+        const formatted = formatKanbanDueDateDraft(dueParts);
+        preview.textContent = formatted || "MM/DD/YYYY";
+      };
+
+      const canSaveDueDate = () => isKanbanDueDateComplete(dueParts) && (!hasKanbanDueTimeValue(dueParts) || isKanbanDueTimeComplete(dueParts));
+
+      const syncSaveState = (saveButton: HTMLButtonElement) => {
+        saveButton.disabled = !canSaveDueDate();
+      };
+
+      const focusFieldAt = (index: number) => {
+        const target = fields[index];
+        if (!target) {
+          return;
         }
-        const position = input.value.length;
-        window.setTimeout(() => input.setSelectionRange(position, position), 0);
-      });
-      const pickerActions = document.createElement("div");
-      pickerActions.className = "dash-kanban-popover-actions";
-      picker.appendChild(pickerActions);
-      pickerActions.append(
-        this.createInlineEditorButton("Save", () => {
-          void this.saveCardDraft(project, card, { dueDate: input.value.trim() }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
-        }, true),
-        this.createInlineEditorButton("Clear", () => {
-          void this.saveCardDraft(project, card, { dueDate: "" }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
-        })
+        window.setTimeout(() => {
+          target.focus();
+          target.select();
+        }, 0);
+      };
+
+      const bindSegmentField = (
+        input: HTMLInputElement,
+        key: keyof Pick<KanbanDueDateDraftParts, "month" | "day" | "year" | "hour" | "minute">,
+        maxLength: number,
+        fieldIndex: number,
+        nextIndex?: number,
+        previousIndex?: number
+      ) => {
+        fields[fieldIndex] = input;
+        input.addEventListener("input", () => {
+          const sanitized = input.value.replace(/\D/g, "").slice(0, maxLength);
+          if (input.value !== sanitized) {
+            input.value = sanitized;
+          }
+          dueParts[key] = sanitized;
+          updatePreview();
+          syncSaveState(saveButton);
+          if (sanitized.length === maxLength && typeof nextIndex === "number") {
+            focusFieldAt(nextIndex);
+          }
+        });
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Backspace" && input.selectionStart === 0 && input.selectionEnd === 0 && input.value.length === 0 && typeof previousIndex === "number") {
+            event.preventDefault();
+            focusFieldAt(previousIndex);
+            return;
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (canSaveDueDate()) {
+              void this.saveCardDraft(project, card, { dueDate: formatKanbanDueDateDraft(dueParts) }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
+            }
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            this.duePickerKey = null;
+            void this.requestRefresh();
+          }
+        });
+      };
+
+      const monthInput = document.createElement("input");
+      monthInput.className = "dash-kanban-popover-input dash-kanban-due-input is-month";
+      monthInput.type = "text";
+      monthInput.placeholder = "MM";
+      monthInput.inputMode = "numeric";
+      monthInput.maxLength = 2;
+      monthInput.value = dueParts.month;
+      dateGroup.appendChild(monthInput);
+      dateGroup.appendChild(this.createDueSeparator());
+
+      const dayInput = document.createElement("input");
+      dayInput.className = "dash-kanban-popover-input dash-kanban-due-input is-day";
+      dayInput.type = "text";
+      dayInput.placeholder = "DD";
+      dayInput.inputMode = "numeric";
+      dayInput.maxLength = 2;
+      dayInput.value = dueParts.day;
+      dateGroup.appendChild(dayInput);
+      dateGroup.appendChild(this.createDueSeparator());
+
+      const yearInput = document.createElement("input");
+      yearInput.className = "dash-kanban-popover-input dash-kanban-due-input is-year";
+      yearInput.type = "text";
+      yearInput.placeholder = "YYYY";
+      yearInput.inputMode = "numeric";
+      yearInput.maxLength = 4;
+      yearInput.value = dueParts.year;
+      dateGroup.appendChild(yearInput);
+
+      const timeLabel = document.createElement("span");
+      timeLabel.className = "dash-kanban-due-time-label";
+      timeLabel.textContent = "Optional";
+      timeGroup.appendChild(timeLabel);
+
+      const hourInput = document.createElement("input");
+      hourInput.className = "dash-kanban-popover-input dash-kanban-due-input is-hour";
+      hourInput.type = "text";
+      hourInput.placeholder = "HH";
+      hourInput.inputMode = "numeric";
+      hourInput.maxLength = 2;
+      hourInput.value = dueParts.hour;
+      timeGroup.appendChild(hourInput);
+      timeGroup.appendChild(this.createDueSeparator(":"));
+
+      const minuteInput = document.createElement("input");
+      minuteInput.className = "dash-kanban-popover-input dash-kanban-due-input is-minute";
+      minuteInput.type = "text";
+      minuteInput.placeholder = "MM";
+      minuteInput.inputMode = "numeric";
+      minuteInput.maxLength = 2;
+      minuteInput.value = dueParts.minute;
+      timeGroup.appendChild(minuteInput);
+
+      const meridiemSelect = document.createElement("select");
+      meridiemSelect.className = "dash-kanban-due-meridiem";
+      meridiemSelect.append(
+        new Option("AM", "AM"),
+        new Option("PM", "PM")
       );
-      input.addEventListener("keydown", (event) => {
+      meridiemSelect.value = dueParts.meridiem;
+      meridiemSelect.addEventListener("change", () => {
+        dueParts.meridiem = meridiemSelect.value === "PM" ? "PM" : "AM";
+        updatePreview();
+      });
+      meridiemSelect.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
-          void this.saveCardDraft(project, card, { dueDate: input.value.trim() }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
+          if (canSaveDueDate()) {
+            void this.saveCardDraft(project, card, { dueDate: formatKanbanDueDateDraft(dueParts) }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
+          }
+          return;
         }
         if (event.key === "Escape") {
           event.preventDefault();
@@ -11325,9 +11505,33 @@ export class DashKanbanView extends ItemView {
           void this.requestRefresh();
         }
       });
+      timeGroup.appendChild(meridiemSelect);
+
+      const pickerActions = document.createElement("div");
+      pickerActions.className = "dash-kanban-popover-actions";
+      picker.appendChild(pickerActions);
+      const saveButton = this.createInlineEditorButton("Save", () => {
+        if (!canSaveDueDate()) {
+          return;
+        }
+        void this.saveCardDraft(project, card, { dueDate: formatKanbanDueDateDraft(dueParts) }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
+      }, true);
+      pickerActions.append(
+        saveButton,
+        this.createInlineEditorButton("Clear", () => {
+          void this.saveCardDraft(project, card, { dueDate: "" }, { preserveEditState: this.isCardEditing(project.projectName, card.taskId) });
+        })
+      );
+      bindSegmentField(monthInput, "month", 2, 0, 1);
+      bindSegmentField(dayInput, "day", 2, 1, 2, 0);
+      bindSegmentField(yearInput, "year", 4, 2, 3, 1);
+      bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
+      bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
+      updatePreview();
+      syncSaveState(saveButton);
       actionWrap.appendChild(picker);
-      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
-      window.setTimeout(() => input.focus(), 0);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow);
+      focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? (dueParts.month.length >= 2 ? (dueParts.day.length >= 2 ? (dueParts.year.length >= 4 ? 3 : 2) : 1) : 0) : 0);
     }
 
     if (this.matchesCardKey(this.effortPickerKey, project.projectName, card.taskId)) {
@@ -11375,7 +11579,7 @@ export class DashKanbanView extends ItemView {
         }
       });
       actionWrap.appendChild(picker);
-      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow);
       window.setTimeout(() => input.focus(), 0);
     }
 
@@ -11476,7 +11680,7 @@ export class DashKanbanView extends ItemView {
       );
 
       actionWrap.appendChild(picker);
-      this.positionCardPopover(picker, actionWrap, preferPopoverBelow);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow);
     }
 
     return cardEl;
