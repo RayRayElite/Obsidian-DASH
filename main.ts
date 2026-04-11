@@ -33,8 +33,8 @@ import {
   normalizeNoteIndexCache,
   normalizeDayState,
   parseAiPromptTemplates,
-  parseKanbanBoardTemplateFile,
-  parseKanbanThemeFile,
+  inspectKanbanBoardTemplateFile,
+  inspectKanbanThemeFile,
   parseRoutineTemplates,
   renderAiRelevantNotes,
   renderRoutineSignalsForAi,
@@ -308,6 +308,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private pendingKanbanSyncPath = "";
   private kanbanThemeDefinitions: Record<string, DashboardKanbanThemeDefinition> = {};
   private kanbanThemeStyleElement: HTMLStyleElement | null = null;
+  private kanbanAssetLoadWarnings: string[] = [];
 
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error && error.message.trim()) {
@@ -360,10 +361,23 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   getKanbanThemeDefinitions(): DashboardKanbanThemeDefinition[] {
+    const builtInOrder = ["dark", "light", "ocean", "forest", "rose", "aurora"];
+    const getSortWeight = (theme: DashboardKanbanThemeDefinition): number => {
+      if (!theme.builtIn) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+      const index = builtInOrder.indexOf(theme.themeId);
+      return index >= 0 ? index : builtInOrder.length;
+    };
+
     return Object.values(this.kanbanThemeDefinitions)
       .sort((left, right) => {
         if (left.builtIn !== right.builtIn) {
           return left.builtIn ? -1 : 1;
+        }
+        const weightDelta = getSortWeight(left) - getSortWeight(right);
+        if (weightDelta !== 0) {
+          return weightDelta;
         }
         return left.name.localeCompare(right.name);
       })
@@ -384,10 +398,11 @@ export default class DailyDashboardPlugin extends Plugin {
     return Object.keys(this.kanbanThemeDefinitions)[0] ?? "dark";
   }
 
-  private async loadKanbanTemplateRegistry(): Promise<Record<string, KanbanBoardTemplate>> {
+  private async loadKanbanTemplateRegistry(): Promise<{ templates: Record<string, KanbanBoardTemplate>; warnings: string[] }> {
     const adapter = this.app.vault.adapter;
     const directory = this.getKanbanTemplatesDirectoryPath();
     const templates: Record<string, KanbanBoardTemplate> = {};
+    const warnings: string[] = [];
     const listing = await adapter.list(directory);
 
     for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".json")).sort()) {
@@ -395,24 +410,29 @@ export default class DailyDashboardPlugin extends Plugin {
         const content = await adapter.read(path);
         const fileName = path.split("/").pop() ?? "";
         const fallbackTemplateId = fileName.replace(/\.json$/i, "");
-        const parsed = parseKanbanBoardTemplateFile(content, fallbackTemplateId);
-        if (!parsed) {
-          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}`);
+        const result = inspectKanbanBoardTemplateFile(content, fallbackTemplateId);
+        if (!result.template) {
+          const message = `${fileName}: ${result.error ?? "Template file is invalid."}`;
+          warnings.push(message);
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}: ${result.error ?? "Template file is invalid."}`);
           continue;
         }
-        templates[parsed.templateId] = parsed;
+        templates[result.template.templateId] = result.template;
       } catch (error) {
+        const fileName = path.split("/").pop() ?? path;
+        warnings.push(`${fileName}: ${this.getErrorMessage(error)}`);
         console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban template file ${path}`, error);
       }
     }
 
-    return templates;
+    return { templates, warnings };
   }
 
-  private async loadKanbanThemeRegistry(): Promise<Record<string, DashboardKanbanThemeDefinition>> {
+  private async loadKanbanThemeRegistry(): Promise<{ themes: Record<string, DashboardKanbanThemeDefinition>; warnings: string[] }> {
     const adapter = this.app.vault.adapter;
     const directory = this.getKanbanThemesDirectoryPath();
     const themes: Record<string, DashboardKanbanThemeDefinition> = {};
+    const warnings: string[] = [];
     const listing = await adapter.list(directory);
 
     for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".css")).sort()) {
@@ -420,18 +440,25 @@ export default class DailyDashboardPlugin extends Plugin {
         const content = await adapter.read(path);
         const fileName = path.split("/").pop() ?? "";
         const fallbackThemeId = fileName.replace(/\.css$/i, "");
-        const parsed = parseKanbanThemeFile(content, fallbackThemeId, fileName);
-        if (!parsed) {
-          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}`);
+        const result = inspectKanbanThemeFile(content, fallbackThemeId, fileName);
+        if (!result.theme) {
+          const message = `${fileName}: ${result.error ?? "Theme file is invalid."}`;
+          warnings.push(message);
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}: ${result.error ?? "Theme file is invalid."}`);
           continue;
         }
-        themes[parsed.themeId] = parsed;
+        themes[result.theme.themeId] = result.theme;
       } catch (error) {
+        const fileName = path.split("/").pop() ?? path;
+        warnings.push(`${fileName}: ${this.getErrorMessage(error)}`);
         console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban theme file ${path}`, error);
       }
     }
 
-    return Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions();
+    return {
+      themes: Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions(),
+      warnings
+    };
   }
 
   private applyKanbanThemeCss(): void {
@@ -457,12 +484,15 @@ export default class DailyDashboardPlugin extends Plugin {
     await this.ensureFolder(this.getKanbanTemplatesDirectoryPath());
     await this.ensureFolder(this.getKanbanThemesDirectoryPath());
 
-    const loadedTemplates = await this.loadKanbanTemplateRegistry();
-    this.data.kanbanState.boardTemplates = Object.keys(loadedTemplates).length > 0
-      ? loadedTemplates
+    const templateRegistry = await this.loadKanbanTemplateRegistry();
+    const themeRegistry = await this.loadKanbanThemeRegistry();
+    this.kanbanAssetLoadWarnings = [...templateRegistry.warnings, ...themeRegistry.warnings];
+
+    this.data.kanbanState.boardTemplates = Object.keys(templateRegistry.templates).length > 0
+      ? templateRegistry.templates
       : this.getBuiltInKanbanBoardTemplates(formatDateTimeKey(new Date()));
 
-    this.kanbanThemeDefinitions = await this.loadKanbanThemeRegistry();
+    this.kanbanThemeDefinitions = themeRegistry.themes;
     this.applyKanbanThemeCss();
 
     const fallbackTemplateId = this.data.kanbanState.boardTemplates["execution-default"]
@@ -500,6 +530,10 @@ export default class DailyDashboardPlugin extends Plugin {
 
     if (showNotice) {
       new Notice(`Reloaded ${Object.keys(this.data.kanbanState.boardTemplates).length} Kanban template${Object.keys(this.data.kanbanState.boardTemplates).length === 1 ? "" : "s"} and ${Object.keys(this.kanbanThemeDefinitions).length} Kanban theme${Object.keys(this.kanbanThemeDefinitions).length === 1 ? "" : "s"}.`);
+    }
+
+    if (this.kanbanAssetLoadWarnings.length > 0) {
+      new Notice(`Skipped ${this.kanbanAssetLoadWarnings.length} malformed DASH Kanban asset file${this.kanbanAssetLoadWarnings.length === 1 ? "" : "s"}. Check the developer console for details.`);
     }
   }
 

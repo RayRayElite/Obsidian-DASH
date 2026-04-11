@@ -1364,37 +1364,52 @@ function normalizeKanbanLaneDefinition(entry: unknown): KanbanLaneDefinition | n
   };
 }
 
-export function parseKanbanBoardTemplateFile(content: string, fallbackTemplateId: string, updatedAt = ""): KanbanBoardTemplate | null {
+export function inspectKanbanBoardTemplateFile(content: string, fallbackTemplateId: string, updatedAt = ""): { template: KanbanBoardTemplate | null; error: string | null } {
   try {
     const parsed = JSON.parse(content) as Partial<KanbanBoardTemplate>;
     const templateId = typeof parsed.templateId === "string" && parsed.templateId.trim().length > 0
       ? parsed.templateId.trim()
       : fallbackTemplateId.trim();
     if (!templateId) {
-      return null;
+      return { template: null, error: "Template file needs a templateId or a file name that can be used as the id." };
     }
 
-    const laneDefinitions = Array.isArray(parsed.laneDefinitions)
-      ? parsed.laneDefinitions.map((entry) => normalizeKanbanLaneDefinition(entry)).filter((entry): entry is KanbanLaneDefinition => entry !== null)
-      : [];
+    if (!Array.isArray(parsed.laneDefinitions)) {
+      return { template: null, error: "Template file needs a laneDefinitions array." };
+    }
+
+    const laneDefinitions = parsed.laneDefinitions
+      .map((entry) => normalizeKanbanLaneDefinition(entry))
+      .filter((entry): entry is KanbanLaneDefinition => entry !== null);
     if (laneDefinitions.length === 0) {
-      return null;
+      return { template: null, error: "Template file needs at least one lane definition with both laneKey and label." };
+    }
+
+    if (laneDefinitions.length !== parsed.laneDefinitions.length) {
+      return { template: null, error: "One or more laneDefinitions are missing a valid laneKey or label." };
     }
 
     return {
-      templateId,
-      name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
-      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
-      laneDefinitions,
-      builtIn: Boolean(parsed.builtIn),
-      updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+      template: {
+        templateId,
+        name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
+        description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+        laneDefinitions,
+        builtIn: Boolean(parsed.builtIn),
+        updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+      },
+      error: null
     };
   } catch {
-    return null;
+    return { template: null, error: "Template file is not valid JSON." };
   }
 }
 
-export function parseKanbanThemeFile(content: string, fallbackThemeId: string, fileName: string, updatedAt = ""): DashboardKanbanThemeDefinition | null {
+export function parseKanbanBoardTemplateFile(content: string, fallbackTemplateId: string, updatedAt = ""): KanbanBoardTemplate | null {
+  return inspectKanbanBoardTemplateFile(content, fallbackTemplateId, updatedAt).template;
+}
+
+export function inspectKanbanThemeFile(content: string, fallbackThemeId: string, fileName: string, updatedAt = ""): { theme: DashboardKanbanThemeDefinition | null; error: string | null } {
   const metadataMatch = content.match(/^\s*\/\*([\s\S]*?)\*\//);
   let metadata: Record<string, unknown> = {};
   if (metadataMatch) {
@@ -1403,7 +1418,7 @@ export function parseKanbanThemeFile(content: string, fallbackThemeId: string, f
       try {
         metadata = JSON.parse(metadataText) as Record<string, unknown>;
       } catch {
-        metadata = {};
+        return { theme: null, error: "Theme metadata header must contain valid JSON when present." };
       }
     }
   }
@@ -1412,24 +1427,31 @@ export function parseKanbanThemeFile(content: string, fallbackThemeId: string, f
     ? metadata.id.trim()
     : fallbackThemeId.trim();
   if (!themeId) {
-    return null;
+    return { theme: null, error: "Theme file needs an id in the metadata header or a file name that can be used as the id." };
   }
 
   const cssContent = metadataMatch ? content.slice(metadataMatch[0].length).trim() : content.trim();
   if (!cssContent) {
-    return null;
+    return { theme: null, error: "Theme file needs CSS content after the optional metadata header." };
   }
 
   return {
-    themeId,
-    name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
-    description: typeof metadata.description === "string" ? metadata.description.trim() : "",
-    preview: normalizeKanbanThemePreview(metadata.preview),
-    cssContent,
-    builtIn: Boolean(metadata.builtIn),
-    updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
-    fileName
+    theme: {
+      themeId,
+      name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
+      description: typeof metadata.description === "string" ? metadata.description.trim() : "",
+      preview: normalizeKanbanThemePreview(metadata.preview),
+      cssContent,
+      builtIn: Boolean(metadata.builtIn),
+      updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
+      fileName
+    },
+    error: null
   };
+}
+
+export function parseKanbanThemeFile(content: string, fallbackThemeId: string, fileName: string, updatedAt = ""): DashboardKanbanThemeDefinition | null {
+  return inspectKanbanThemeFile(content, fallbackThemeId, fileName, updatedAt).theme;
 }
 
 export function getDefaultIntakeQuickPresets(measurementSystem: DashboardSettings["measurementSystem"]): IntakeQuickPreset[] {

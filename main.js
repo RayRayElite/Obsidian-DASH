@@ -1261,30 +1261,39 @@ function normalizeKanbanLaneDefinition(entry) {
     done: Boolean(value.done)
   };
 }
-function parseKanbanBoardTemplateFile(content, fallbackTemplateId, updatedAt = "") {
+function inspectKanbanBoardTemplateFile(content, fallbackTemplateId, updatedAt = "") {
   try {
     const parsed = JSON.parse(content);
     const templateId = typeof parsed.templateId === "string" && parsed.templateId.trim().length > 0 ? parsed.templateId.trim() : fallbackTemplateId.trim();
     if (!templateId) {
-      return null;
+      return { template: null, error: "Template file needs a templateId or a file name that can be used as the id." };
     }
-    const laneDefinitions = Array.isArray(parsed.laneDefinitions) ? parsed.laneDefinitions.map((entry) => normalizeKanbanLaneDefinition(entry)).filter((entry) => entry !== null) : [];
+    if (!Array.isArray(parsed.laneDefinitions)) {
+      return { template: null, error: "Template file needs a laneDefinitions array." };
+    }
+    const laneDefinitions = parsed.laneDefinitions.map((entry) => normalizeKanbanLaneDefinition(entry)).filter((entry) => entry !== null);
     if (laneDefinitions.length === 0) {
-      return null;
+      return { template: null, error: "Template file needs at least one lane definition with both laneKey and label." };
+    }
+    if (laneDefinitions.length !== parsed.laneDefinitions.length) {
+      return { template: null, error: "One or more laneDefinitions are missing a valid laneKey or label." };
     }
     return {
-      templateId,
-      name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
-      description: typeof parsed.description === "string" ? parsed.description.trim() : "",
-      laneDefinitions,
-      builtIn: Boolean(parsed.builtIn),
-      updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+      template: {
+        templateId,
+        name: typeof parsed.name === "string" && parsed.name.trim().length > 0 ? parsed.name.trim() : formatKanbanAssetLabel(templateId),
+        description: typeof parsed.description === "string" ? parsed.description.trim() : "",
+        laneDefinitions,
+        builtIn: Boolean(parsed.builtIn),
+        updatedAt: typeof parsed.updatedAt === "string" && parsed.updatedAt.trim().length > 0 ? parsed.updatedAt.trim() : updatedAt
+      },
+      error: null
     };
   } catch (e) {
-    return null;
+    return { template: null, error: "Template file is not valid JSON." };
   }
 }
-function parseKanbanThemeFile(content, fallbackThemeId, fileName, updatedAt = "") {
+function inspectKanbanThemeFile(content, fallbackThemeId, fileName, updatedAt = "") {
   var _a, _b;
   const metadataMatch = content.match(/^\s*\/\*([\s\S]*?)\*\//);
   let metadata = {};
@@ -1294,27 +1303,30 @@ function parseKanbanThemeFile(content, fallbackThemeId, fileName, updatedAt = ""
       try {
         metadata = JSON.parse(metadataText);
       } catch (e) {
-        metadata = {};
+        return { theme: null, error: "Theme metadata header must contain valid JSON when present." };
       }
     }
   }
   const themeId = typeof metadata.id === "string" && metadata.id.trim().length > 0 ? metadata.id.trim() : fallbackThemeId.trim();
   if (!themeId) {
-    return null;
+    return { theme: null, error: "Theme file needs an id in the metadata header or a file name that can be used as the id." };
   }
   const cssContent = metadataMatch ? content.slice(metadataMatch[0].length).trim() : content.trim();
   if (!cssContent) {
-    return null;
+    return { theme: null, error: "Theme file needs CSS content after the optional metadata header." };
   }
   return {
-    themeId,
-    name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
-    description: typeof metadata.description === "string" ? metadata.description.trim() : "",
-    preview: normalizeKanbanThemePreview(metadata.preview),
-    cssContent,
-    builtIn: Boolean(metadata.builtIn),
-    updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
-    fileName
+    theme: {
+      themeId,
+      name: typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name.trim() : formatKanbanAssetLabel(themeId),
+      description: typeof metadata.description === "string" ? metadata.description.trim() : "",
+      preview: normalizeKanbanThemePreview(metadata.preview),
+      cssContent,
+      builtIn: Boolean(metadata.builtIn),
+      updatedAt: typeof metadata.updatedAt === "string" && metadata.updatedAt.trim().length > 0 ? metadata.updatedAt.trim() : updatedAt,
+      fileName
+    },
+    error: null
   };
 }
 function getDefaultIntakeQuickPresets(measurementSystem) {
@@ -16545,6 +16557,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     this.pendingKanbanSyncPath = "";
     this.kanbanThemeDefinitions = {};
     this.kanbanThemeStyleElement = null;
+    this.kanbanAssetLoadWarnings = [];
   }
   getErrorMessage(error) {
     if (error instanceof Error && error.message.trim()) {
@@ -16583,9 +16596,21 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     };
   }
   getKanbanThemeDefinitions() {
+    const builtInOrder = ["dark", "light", "ocean", "forest", "rose", "aurora"];
+    const getSortWeight = (theme) => {
+      if (!theme.builtIn) {
+        return Number.MAX_SAFE_INTEGER;
+      }
+      const index = builtInOrder.indexOf(theme.themeId);
+      return index >= 0 ? index : builtInOrder.length;
+    };
     return Object.values(this.kanbanThemeDefinitions).sort((left, right) => {
       if (left.builtIn !== right.builtIn) {
         return left.builtIn ? -1 : 1;
+      }
+      const weightDelta = getSortWeight(left) - getSortWeight(right);
+      if (weightDelta !== 0) {
+        return weightDelta;
       }
       return left.name.localeCompare(right.name);
     }).map((theme) => ({
@@ -16605,50 +16630,63 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return (_a = Object.keys(this.kanbanThemeDefinitions)[0]) != null ? _a : "dark";
   }
   async loadKanbanTemplateRegistry() {
-    var _a;
+    var _a, _b, _c, _d;
     const adapter = this.app.vault.adapter;
     const directory = this.getKanbanTemplatesDirectoryPath();
     const templates = {};
+    const warnings = [];
     const listing = await adapter.list(directory);
     for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".json")).sort()) {
       try {
         const content = await adapter.read(path);
         const fileName = (_a = path.split("/").pop()) != null ? _a : "";
         const fallbackTemplateId = fileName.replace(/\.json$/i, "");
-        const parsed = parseKanbanBoardTemplateFile(content, fallbackTemplateId);
-        if (!parsed) {
-          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}`);
+        const result = inspectKanbanBoardTemplateFile(content, fallbackTemplateId);
+        if (!result.template) {
+          const message = `${fileName}: ${(_b = result.error) != null ? _b : "Template file is invalid."}`;
+          warnings.push(message);
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban template file ${path}: ${(_c = result.error) != null ? _c : "Template file is invalid."}`);
           continue;
         }
-        templates[parsed.templateId] = parsed;
+        templates[result.template.templateId] = result.template;
       } catch (error) {
+        const fileName = (_d = path.split("/").pop()) != null ? _d : path;
+        warnings.push(`${fileName}: ${this.getErrorMessage(error)}`);
         console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban template file ${path}`, error);
       }
     }
-    return templates;
+    return { templates, warnings };
   }
   async loadKanbanThemeRegistry() {
-    var _a;
+    var _a, _b, _c, _d;
     const adapter = this.app.vault.adapter;
     const directory = this.getKanbanThemesDirectoryPath();
     const themes = {};
+    const warnings = [];
     const listing = await adapter.list(directory);
     for (const path of listing.files.filter((filePath) => filePath.toLowerCase().endsWith(".css")).sort()) {
       try {
         const content = await adapter.read(path);
         const fileName = (_a = path.split("/").pop()) != null ? _a : "";
         const fallbackThemeId = fileName.replace(/\.css$/i, "");
-        const parsed = parseKanbanThemeFile(content, fallbackThemeId, fileName);
-        if (!parsed) {
-          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}`);
+        const result = inspectKanbanThemeFile(content, fallbackThemeId, fileName);
+        if (!result.theme) {
+          const message = `${fileName}: ${(_b = result.error) != null ? _b : "Theme file is invalid."}`;
+          warnings.push(message);
+          console.error(`Obsidian DASH - Daily Action & System Hub skipped invalid Kanban theme file ${path}: ${(_c = result.error) != null ? _c : "Theme file is invalid."}`);
           continue;
         }
-        themes[parsed.themeId] = parsed;
+        themes[result.theme.themeId] = result.theme;
       } catch (error) {
+        const fileName = (_d = path.split("/").pop()) != null ? _d : path;
+        warnings.push(`${fileName}: ${this.getErrorMessage(error)}`);
         console.error(`Obsidian DASH - Daily Action & System Hub could not load Kanban theme file ${path}`, error);
       }
     }
-    return Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions();
+    return {
+      themes: Object.keys(themes).length > 0 ? themes : this.getFallbackKanbanThemeDefinitions(),
+      warnings
+    };
   }
   applyKanbanThemeCss() {
     const cssText = Object.values(this.kanbanThemeDefinitions).map((theme) => theme.cssContent.trim()).filter((content) => content.length > 0).join("\n\n");
@@ -16668,9 +16706,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     var _a;
     await this.ensureFolder(this.getKanbanTemplatesDirectoryPath());
     await this.ensureFolder(this.getKanbanThemesDirectoryPath());
-    const loadedTemplates = await this.loadKanbanTemplateRegistry();
-    this.data.kanbanState.boardTemplates = Object.keys(loadedTemplates).length > 0 ? loadedTemplates : this.getBuiltInKanbanBoardTemplates(formatDateTimeKey(/* @__PURE__ */ new Date()));
-    this.kanbanThemeDefinitions = await this.loadKanbanThemeRegistry();
+    const templateRegistry = await this.loadKanbanTemplateRegistry();
+    const themeRegistry = await this.loadKanbanThemeRegistry();
+    this.kanbanAssetLoadWarnings = [...templateRegistry.warnings, ...themeRegistry.warnings];
+    this.data.kanbanState.boardTemplates = Object.keys(templateRegistry.templates).length > 0 ? templateRegistry.templates : this.getBuiltInKanbanBoardTemplates(formatDateTimeKey(/* @__PURE__ */ new Date()));
+    this.kanbanThemeDefinitions = themeRegistry.themes;
     this.applyKanbanThemeCss();
     const fallbackTemplateId = this.data.kanbanState.boardTemplates["execution-default"] ? "execution-default" : (_a = Object.keys(this.data.kanbanState.boardTemplates)[0]) != null ? _a : "execution-default";
     const fallbackThemeId = this.getResolvedKanbanThemeId("dark");
@@ -16702,6 +16742,9 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     if (showNotice) {
       new import_obsidian4.Notice(`Reloaded ${Object.keys(this.data.kanbanState.boardTemplates).length} Kanban template${Object.keys(this.data.kanbanState.boardTemplates).length === 1 ? "" : "s"} and ${Object.keys(this.kanbanThemeDefinitions).length} Kanban theme${Object.keys(this.kanbanThemeDefinitions).length === 1 ? "" : "s"}.`);
+    }
+    if (this.kanbanAssetLoadWarnings.length > 0) {
+      new import_obsidian4.Notice(`Skipped ${this.kanbanAssetLoadWarnings.length} malformed DASH Kanban asset file${this.kanbanAssetLoadWarnings.length === 1 ? "" : "s"}. Check the developer console for details.`);
     }
   }
   hasExistingSetupSignals(data) {

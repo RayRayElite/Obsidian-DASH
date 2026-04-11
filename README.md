@@ -38,6 +38,51 @@ The current Kanban slice now has two surfaces. The older note-first path still e
 
 Kanban templates and themes now also live as shareable files inside the installed plugin folder. Built-in board templates ship as JSON files under `templates/`, built-in and user themes ship as raw CSS files under `themes/` with a small metadata header for display name and preview colors, and the command palette includes `Reload DASH Kanban templates and themes` so manual file edits can be picked up without reinstalling the plugin.
 
+For custom template files, keep the shape close to the built-ins:
+
+```json
+{
+	"templateId": "my-template",
+	"name": "My Template",
+	"description": "Optional description",
+	"builtIn": false,
+	"laneDefinitions": [
+		{
+			"laneKey": "next",
+			"label": "Next",
+			"mappedSections": ["Next"],
+			"ruleType": "hub-section",
+			"done": false
+		}
+	]
+}
+```
+
+Each lane needs at least `laneKey` and `label`. The file must also contain a `laneDefinitions` array.
+
+For custom theme files, use raw CSS with an optional JSON metadata header at the top:
+
+```css
+/*
+{
+	"id": "my-theme",
+	"name": "My Theme",
+	"description": "Optional description",
+	"preview": {
+		"board": "linear-gradient(160deg, #1a2230, #0f141d)",
+		"primary": "#7cc7ff",
+		"secondary": "#4479b8",
+		"surface": "rgba(220, 235, 255, 0.16)"
+	}
+}
+*/
+.dash-kanban-project-board[data-theme="my-theme"] {
+	--dash-kanban-board-accent: #7cc7ff;
+}
+```
+
+If a custom template or theme file is malformed, DASH now skips it, shows a concise notice, and logs the specific reason in the developer console instead of failing silently.
+
 The compact Kanban header now keeps the title and summary chips anchored on the left while the primary board actions sit together on the top-right with the collapse control at the far edge, matching the intended quick-scan layout instead of stretching the action row across the full header width. The expanded header now also uses a minimal arrow-only collapse control in the hero's upper-right corner while keeping the status chips visually anchored lower on the left side of the hero panel. The next readability pass also groups the expanded header controls by job, gives single-project mode a more editorial project-header treatment, quiets most card chrome until hover or focus, strengthens swimlane and stage rhythm in matrix boards, turns empty lanes into more intentional drop-target states instead of dead blank cells, adds subtle lane heat indicators for blocked and due pressure, mutes non-selected lanes in single-project mode once you are actively working inside one lane, collapses each card body dynamically based on the data it actually carries, composes attached images inside a clearer media frame, gives completed work a resolved stamp instead of treating done cards as merely darker copies, adds a visual theme preview strip inside board settings, keeps that preview as a stable horizontal card rail instead of letting it collapse into cramped pills, lets each board opt into sticky matrix stage and row headers when larger boards need stronger orientation, separates Kanban text tiers more aggressively from decorative accents, adds clearer keyboard focus rings across board controls, gives blocked and overdue attention states shape cues beyond color alone, pushes comfortable versus dense mode farther apart so each layout now earns its place, and hides the lane-override editor behind a collapsible section so routine board tweaks do not force a long scroll just to save.
 
 Card photo handling in the DASH board now supports a searchable `Link vault image` picker, working upload actions, drag-and-drop image attachment directly onto a card, and clipboard-image paste while editing a card. Project headers also now expose a direct `Delete` action that removes the project from the Master Task Hub and deletes its linked project note so project cleanup no longer requires manual hub surgery.

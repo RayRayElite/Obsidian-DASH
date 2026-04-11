@@ -1456,6 +1456,14 @@
   transform: translateY(0);
 }
 
+.dash-kanban-card:hover .dash-kanban-card-action,
+.dash-kanban-card.is-selected .dash-kanban-card-action,
+.dash-kanban-card:focus-within .dash-kanban-card-action {
+  border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 32%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--dash-kanban-control-surface-strong) 88%, var(--dash-kanban-board-accent) 12%);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.18);
+}
+
 .dash-kanban-card.is-dragging {
   opacity: 0.62;
   cursor: grabbing;
@@ -1607,6 +1615,7 @@
 
 .dash-kanban-card-action:hover {
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 28%, var(--dash-kanban-border));
+  background: color-mix(in srgb, var(--dash-kanban-control-surface-strong) 80%, var(--dash-kanban-board-accent) 20%);
 }
 
 .dash-kanban-card-title {
@@ -2020,6 +2029,7 @@
   border-color: color-mix(in srgb, var(--dash-kanban-board-accent) 12%, var(--dash-kanban-border));
   background: var(--dash-kanban-control-surface);
   color: var(--dash-kanban-control-muted);
+  box-shadow: none;
 }
 
 .dash-kanban-card:hover .dash-kanban-card-action,
@@ -2694,7 +2704,7 @@
 
 .dash-kanban-theme-preview-swatch {
   position: relative;
-  min-height: 86px;
+  min-height: 88px;
   border-radius: 14px;
   border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.08) 100%, var(--background-modifier-border));
   background: var(--dash-kanban-theme-preview-board);
@@ -2723,14 +2733,14 @@
   left: 12px;
   right: 12px;
   top: 12px;
-  height: 16px;
+  height: 14px;
   background: var(--dash-kanban-theme-preview-primary);
 }
 
 .dash-kanban-theme-preview-chip.is-secondary {
   left: 12px;
-  width: 92px;
-  top: 38px;
+  right: 12px;
+  top: 37px;
   height: 14px;
   background: var(--dash-kanban-theme-preview-secondary);
 }
@@ -2738,8 +2748,8 @@
 .dash-kanban-theme-preview-chip.is-surface {
   left: 12px;
   right: 12px;
-  bottom: 12px;
-  height: 20px;
+  top: 62px;
+  height: 14px;
   background: var(--dash-kanban-theme-preview-surface);
 }
 
