@@ -18424,12 +18424,25 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   stripMappedSectionsFromLaneDefinitions(laneDefinitions) {
     return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
   }
+  findPersistedKanbanBoardConfigurationKey(projectName) {
+    var _a;
+    const normalizedProjectName = projectName.trim().toLowerCase();
+    if (!normalizedProjectName) {
+      return null;
+    }
+    if (this.data.kanbanState.boardConfigurations[projectName]) {
+      return projectName;
+    }
+    return (_a = Object.keys(this.data.kanbanState.boardConfigurations).find((candidate) => candidate.trim().toLowerCase() === normalizedProjectName)) != null ? _a : null;
+  }
   getKanbanBoardConfiguration(projectName) {
     var _a;
-    const existing = this.data.kanbanState.boardConfigurations[projectName];
+    const existingKey = this.findPersistedKanbanBoardConfigurationKey(projectName);
+    const existing = existingKey ? this.data.kanbanState.boardConfigurations[existingKey] : null;
     if (existing) {
       return {
         ...existing,
+        projectName: projectName.trim() || existing.projectName,
         laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane })),
         laneOrder: Object.fromEntries(Object.entries((_a = existing.laneOrder) != null ? _a : {}).map(([laneKey, taskIds]) => [laneKey, [...taskIds]]))
       };
@@ -18764,6 +18777,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     return true;
   }
   async completeKanbanTask(projectName, taskId) {
+    var _a, _b;
     const todoFile = this.getMasterTodoFile();
     if (!todoFile) {
       new import_obsidian4.Notice("Master task hub not found. Set the path in plugin settings.");
@@ -18782,9 +18796,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (registryEntry) {
+      const doneLane = (_a = this.getKanbanLaneOptions(projectName).find((lane) => lane.done)) != null ? _a : null;
       this.data.kanbanState.taskRegistry[taskId] = {
         ...registryEntry,
         sectionName: "Completed Archive",
+        laneKey: (_b = doneLane == null ? void 0 : doneLane.laneKey) != null ? _b : registryEntry.laneKey,
         checked: true,
         updatedAt: formatDateTimeKey(/* @__PURE__ */ new Date())
       };
@@ -19310,7 +19326,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   buildDashKanbanProjectBoard(project, liveTaskMetadata) {
     var _a;
-    const configuration = this.data.kanbanState.boardConfigurations[project.name];
+    const configuration = this.getKanbanBoardConfiguration(project.name);
     const template = this.getResolvedKanbanBoardTemplate((configuration == null ? void 0 : configuration.templateId) || "");
     const laneOptions = this.getKanbanLaneOptions(project.name);
     const openTasks = this.getProjectOpenTaskDetails(project);
@@ -22211,8 +22227,17 @@ ${context}`, resolvedModel);
       }
     });
     snapshot.projects.forEach((project) => {
-      const existing = this.data.kanbanState.boardConfigurations[project.name];
+      const existingKey = this.findPersistedKanbanBoardConfigurationKey(project.name);
+      const existing = existingKey ? this.data.kanbanState.boardConfigurations[existingKey] : null;
       if (existing) {
+        if (existingKey !== project.name) {
+          this.data.kanbanState.boardConfigurations[project.name] = {
+            ...existing,
+            projectName: project.name
+          };
+          delete this.data.kanbanState.boardConfigurations[existingKey];
+          changed += 1;
+        }
         return;
       }
       this.data.kanbanState.boardConfigurations[project.name] = {

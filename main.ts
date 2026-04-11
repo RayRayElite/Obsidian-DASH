@@ -2945,11 +2945,27 @@ export default class DailyDashboardPlugin extends Plugin {
     return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
   }
 
+  private findPersistedKanbanBoardConfigurationKey(projectName: string): string | null {
+    const normalizedProjectName = projectName.trim().toLowerCase();
+    if (!normalizedProjectName) {
+      return null;
+    }
+
+    if (this.data.kanbanState.boardConfigurations[projectName]) {
+      return projectName;
+    }
+
+    return Object.keys(this.data.kanbanState.boardConfigurations)
+      .find((candidate) => candidate.trim().toLowerCase() === normalizedProjectName) ?? null;
+  }
+
   getKanbanBoardConfiguration(projectName: string): KanbanBoardConfiguration {
-    const existing = this.data.kanbanState.boardConfigurations[projectName];
+    const existingKey = this.findPersistedKanbanBoardConfigurationKey(projectName);
+    const existing = existingKey ? this.data.kanbanState.boardConfigurations[existingKey] : null;
     if (existing) {
       return {
         ...existing,
+        projectName: projectName.trim() || existing.projectName,
         laneDefinitions: existing.laneDefinitions.map((lane) => ({ ...lane })),
         laneOrder: Object.fromEntries(Object.entries(existing.laneOrder ?? {}).map(([laneKey, taskIds]) => [laneKey, [...taskIds]]))
       };
@@ -3387,9 +3403,11 @@ export default class DailyDashboardPlugin extends Plugin {
 
     const registryEntry = this.data.kanbanState.taskRegistry[taskId];
     if (registryEntry) {
+      const doneLane = this.getKanbanLaneOptions(projectName).find((lane) => lane.done) ?? null;
       this.data.kanbanState.taskRegistry[taskId] = {
         ...registryEntry,
         sectionName: "Completed Archive",
+        laneKey: doneLane?.laneKey ?? registryEntry.laneKey,
         checked: true,
         updatedAt: formatDateTimeKey(new Date())
       };
@@ -4028,7 +4046,7 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private buildDashKanbanProjectBoard(project: TodoProjectSummary, liveTaskMetadata: DashKanbanLiveTaskMetadataLookup): DashKanbanProjectBoard {
-    const configuration = this.data.kanbanState.boardConfigurations[project.name];
+    const configuration = this.getKanbanBoardConfiguration(project.name);
     const template = this.getResolvedKanbanBoardTemplate(configuration?.templateId || "");
     const laneOptions = this.getKanbanLaneOptions(project.name);
     const openTasks = this.getProjectOpenTaskDetails(project);
@@ -7517,8 +7535,17 @@ export default class DailyDashboardPlugin extends Plugin {
     });
 
     snapshot.projects.forEach((project) => {
-      const existing = this.data.kanbanState.boardConfigurations[project.name];
+      const existingKey = this.findPersistedKanbanBoardConfigurationKey(project.name);
+      const existing = existingKey ? this.data.kanbanState.boardConfigurations[existingKey] : null;
       if (existing) {
+        if (existingKey !== project.name) {
+          this.data.kanbanState.boardConfigurations[project.name] = {
+            ...existing,
+            projectName: project.name
+          };
+          delete this.data.kanbanState.boardConfigurations[existingKey];
+          changed += 1;
+        }
         return;
       }
 

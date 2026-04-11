@@ -41,7 +41,11 @@
 
 .dash-kanban-popover-layer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
   z-index: 180;
   pointer-events: none;
 }
