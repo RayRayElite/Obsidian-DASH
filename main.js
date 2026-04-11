@@ -11810,6 +11810,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.stickyHeaders = false;
     this.theme = "dark";
     this.laneDefinitions = [];
+    this.laneOverridesExpanded = false;
     this.plugin = plugin;
     this.projects = projects;
     this.templates = this.plugin.getKanbanBoardTemplates();
@@ -11933,6 +11934,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     this.setTitle("DASH Kanban Board Settings");
     const { contentEl } = this;
     contentEl.empty();
+    contentEl.addClass("dash-kanban-board-settings-modal");
     new import_obsidian3.Setting(contentEl).setName("Project").setDesc("Choose which project board you want to configure.").addDropdown((dropdown) => {
       this.projects.forEach((project) => dropdown.addOption(project.name, project.name));
       dropdown.setValue(this.selectedProjectName);
@@ -11988,7 +11990,8 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         this.theme = value;
       });
     });
-    this.renderThemePreviewStrip(contentEl);
+    const themePreviewSection = contentEl.createDiv({ cls: "dash-kanban-settings-section dash-kanban-settings-section--preview" });
+    this.renderThemePreviewStrip(themePreviewSection);
     new import_obsidian3.Setting(contentEl).setName("Show swimlane categories").setDesc("Turn category bands on only for boards that actually need grouped swimlanes.").addToggle((toggle) => {
       toggle.setValue(this.showLaneCategories);
       toggle.onChange((value) => {
@@ -12005,14 +12008,29 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
     if (template == null ? void 0 : template.description) {
       contentEl.createEl("p", { cls: "setting-item-description", text: template.description });
     }
-    const lanesSection = contentEl.createDiv({ cls: "dash-kanban-settings-section" });
-    lanesSection.createEl("h3", { text: "Lane Overrides" });
-    lanesSection.createEl("p", {
+    const lanesSection = contentEl.createEl("details", { cls: "dash-kanban-settings-section dash-kanban-settings-collapsible" });
+    lanesSection.open = this.laneOverridesExpanded;
+    const lanesSummary = lanesSection.createEl("summary", { cls: "dash-kanban-settings-collapsible-summary" });
+    const lanesSummaryCopy = lanesSummary.createDiv({ cls: "dash-kanban-settings-collapsible-copy" });
+    lanesSummaryCopy.createEl("strong", { text: "Lane Overrides" });
+    lanesSummaryCopy.createEl("span", {
+      text: `${this.laneDefinitions.length} lane${this.laneDefinitions.length === 1 ? "" : "s"}${this.isCurrentTemplateCustom() ? " \xB7 custom layout" : " \xB7 template layout"}`
+    });
+    const lanesHint = lanesSummary.createEl("span", {
+      cls: "dash-kanban-settings-collapsible-hint",
+      text: this.laneOverridesExpanded ? "Collapse" : "Expand"
+    });
+    lanesSection.addEventListener("toggle", () => {
+      this.laneOverridesExpanded = lanesSection.open;
+      lanesHint.setText(lanesSection.open ? "Collapse" : "Expand");
+    });
+    const lanesBody = lanesSection.createDiv({ cls: "dash-kanban-settings-collapsible-body" });
+    lanesBody.createEl("p", {
       cls: "setting-item-description",
       text: "Edit labels, helper text, mapped Master Task Hub sections, and whether a lane counts as done. Blank mapped sections create custom lanes."
     });
     this.laneDefinitions.forEach((lane, index) => {
-      const row = lanesSection.createDiv({ cls: "dash-kanban-settings-lane" });
+      const row = lanesBody.createDiv({ cls: "dash-kanban-settings-lane" });
       row.createEl("h4", { text: `Lane ${index + 1}` });
       new import_obsidian3.Setting(row).setName("Label").addText((text) => {
         text.setValue(lane.label).onChange((value) => {
@@ -12061,7 +12079,7 @@ var DashKanbanBoardSettingsModal = class extends import_obsidian3.Modal {
         this.onOpen();
       });
     });
-    const laneButtons = lanesSection.createDiv({ cls: "dash-kanban-settings-lane-actions is-footer" });
+    const laneButtons = lanesBody.createDiv({ cls: "dash-kanban-settings-lane-actions is-footer" });
     const addLaneButton = laneButtons.createEl("button", { cls: "mod-cta", text: "Add lane" });
     addLaneButton.addEventListener("click", () => {
       this.laneDefinitions = [
