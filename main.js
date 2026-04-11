@@ -16522,12 +16522,25 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }, 700);
   }
   async initializeWorkspaceArtifacts() {
-    await this.importCalendarEventsFromMarkdown();
-    await this.ensureTodayEntry();
-    await this.ensureCoreSupportNotesExist();
-    await this.backfillDailyLogsFromEntries();
-    await this.syncCalendarArtifacts();
-    await this.refreshWallpaperOptions();
+    const failures = [];
+    const steps = [
+      { label: "calendar import", run: () => this.importCalendarEventsFromMarkdown() },
+      { label: "today entry", run: () => this.ensureTodayEntry() },
+      { label: "core support notes", run: () => this.ensureCoreSupportNotesExist() },
+      { label: "calendar artifacts", run: () => this.syncCalendarArtifacts() },
+      { label: "wallpaper catalog", run: () => this.refreshWallpaperOptions() }
+    ];
+    for (const step of steps) {
+      try {
+        await step.run();
+      } catch (error) {
+        console.error(`Obsidian DASH - Daily Action & System Hub startup step failed: ${step.label}`, error);
+        failures.push(`${step.label}: ${this.getErrorMessage(error)}`);
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(failures.join(" | "));
+    }
   }
   async onload() {
     try {
