@@ -411,7 +411,7 @@ export default class DailyDashboardPlugin extends Plugin {
   private async waitForVaultFile(path: string, attempts = 4): Promise<TFile | null> {
     const normalizedPath = normalizePath(path);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      const existing = this.app.vault.getFileByPath(normalizedPath);
       if (existing instanceof TFile) {
         return existing;
       }
@@ -454,6 +454,16 @@ export default class DailyDashboardPlugin extends Plugin {
 
   private isManagedArtifactWritePath(path: string): boolean {
     return this.managedArtifactWritePaths.has(normalizePath(path));
+  }
+
+  private async resolveVaultFileAfterWrite(path: string): Promise<TFile> {
+    const normalizedPath = normalizePath(path);
+    const file = this.app.vault.getFileByPath(normalizedPath) ?? await this.waitForVaultFile(normalizedPath);
+    if (file instanceof TFile) {
+      return file;
+    }
+
+    throw new Error(`Vault cache did not register generated file ${normalizedPath} after write.`);
   }
 
   private showDashboardNotice(message: string, timeout = 4000, playSound = false): void {
@@ -13255,49 +13265,36 @@ export default class DailyDashboardPlugin extends Plugin {
       const directory = normalizedPath.includes("/")
         ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/"))
         : "";
+      const adapter = this.app.vault.adapter;
 
       if (directory) {
         await this.ensureFolder(directory);
       }
 
       const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (existing instanceof TFile) {
-        const current = await this.app.vault.read(existing);
+      if (existing) {
+        if (!(existing instanceof TFile)) {
+          throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+        }
+
+        const current = await adapter.read(normalizedPath);
         if (current !== content) {
-          await this.withAlreadyExistsRetry(() => this.app.vault.modify(existing, content));
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
         }
         return existing;
       }
 
-      if (existing) {
-        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
+      if (fileExistsOnDisk) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+        }
+        return await this.resolveVaultFileAfterWrite(normalizedPath);
       }
 
-      try {
-        return await this.withAlreadyExistsRetry(() => this.app.vault.create(normalizedPath, content));
-      } catch (error) {
-        const file = this.isFolderAlreadyExistsError(error)
-          ? await this.waitForVaultFile(normalizedPath)
-          : this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (file instanceof TFile) {
-          const current = await this.app.vault.read(file);
-          if (current !== content) {
-            await this.withAlreadyExistsRetry(() => this.app.vault.modify(file, content));
-          }
-          return file;
-        }
-
-        const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (refreshed instanceof TFile) {
-          const current = await this.app.vault.read(refreshed);
-          if (current !== content) {
-            await this.withAlreadyExistsRetry(() => this.app.vault.modify(refreshed, content));
-          }
-          return refreshed;
-        }
-
-        throw error;
-      }
+      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+      return await this.resolveVaultFileAfterWrite(normalizedPath);
     });
   }
 

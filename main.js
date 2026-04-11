@@ -16390,7 +16390,7 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   async waitForVaultFile(path, attempts = 4) {
     const normalizedPath = (0, import_obsidian4.normalizePath)(path);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
+      const existing = this.app.vault.getFileByPath(normalizedPath);
       if (existing instanceof import_obsidian4.TFile) {
         return existing;
       }
@@ -16426,6 +16426,15 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   isManagedArtifactWritePath(path) {
     return this.managedArtifactWritePaths.has((0, import_obsidian4.normalizePath)(path));
+  }
+  async resolveVaultFileAfterWrite(path) {
+    var _a;
+    const normalizedPath = (0, import_obsidian4.normalizePath)(path);
+    const file = (_a = this.app.vault.getFileByPath(normalizedPath)) != null ? _a : await this.waitForVaultFile(normalizedPath);
+    if (file instanceof import_obsidian4.TFile) {
+      return file;
+    }
+    throw new Error(`Vault cache did not register generated file ${normalizedPath} after write.`);
   }
   showDashboardNotice(message, timeout = 4e3, playSound = false) {
     new import_obsidian4.Notice(message, timeout);
@@ -27006,41 +27015,31 @@ ${body}`;
     return this.withManagedArtifactWrite(path, async () => {
       const normalizedPath = (0, import_obsidian4.normalizePath)(path);
       const directory = normalizedPath.includes("/") ? normalizedPath.slice(0, normalizedPath.lastIndexOf("/")) : "";
+      const adapter = this.app.vault.adapter;
       if (directory) {
         await this.ensureFolder(directory);
       }
       const existing = this.app.vault.getAbstractFileByPath(normalizedPath);
-      if (existing instanceof import_obsidian4.TFile) {
-        const current = await this.app.vault.read(existing);
+      if (existing) {
+        if (!(existing instanceof import_obsidian4.TFile)) {
+          throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
+        }
+        const current = await adapter.read(normalizedPath);
         if (current !== content) {
-          await this.withAlreadyExistsRetry(() => this.app.vault.modify(existing, content));
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
         }
         return existing;
       }
-      if (existing) {
-        throw new Error(`Path conflict at ${normalizedPath}: a folder exists where the plugin expects a markdown file.`);
-      }
-      try {
-        return await this.withAlreadyExistsRetry(() => this.app.vault.create(normalizedPath, content));
-      } catch (error) {
-        const file = this.isFolderAlreadyExistsError(error) ? await this.waitForVaultFile(normalizedPath) : this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (file instanceof import_obsidian4.TFile) {
-          const current = await this.app.vault.read(file);
-          if (current !== content) {
-            await this.withAlreadyExistsRetry(() => this.app.vault.modify(file, content));
-          }
-          return file;
+      const fileExistsOnDisk = await adapter.exists(normalizedPath, false);
+      if (fileExistsOnDisk) {
+        const current = await adapter.read(normalizedPath);
+        if (current !== content) {
+          await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
         }
-        const refreshed = this.app.vault.getAbstractFileByPath(normalizedPath);
-        if (refreshed instanceof import_obsidian4.TFile) {
-          const current = await this.app.vault.read(refreshed);
-          if (current !== content) {
-            await this.withAlreadyExistsRetry(() => this.app.vault.modify(refreshed, content));
-          }
-          return refreshed;
-        }
-        throw error;
+        return await this.resolveVaultFileAfterWrite(normalizedPath);
       }
+      await this.withAlreadyExistsRetry(() => adapter.write(normalizedPath, content));
+      return await this.resolveVaultFileAfterWrite(normalizedPath);
     });
   }
   async ensureFolder(folderPath) {
