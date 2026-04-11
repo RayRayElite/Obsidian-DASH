@@ -18150,20 +18150,11 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
   }
   reconcileUniqueLabelLaneMappingsToProjectSections(project, laneDefinitions) {
     const sectionNamesByNormalized = new Map(project.sectionNames.map((section) => [section.trim().toLowerCase(), section.trim()]));
-    const labelCounts = /* @__PURE__ */ new Map();
-    laneDefinitions.forEach((lane) => {
-      var _a;
-      const key = lane.label.trim().toLowerCase();
-      if (key) {
-        labelCounts.set(key, ((_a = labelCounts.get(key)) != null ? _a : 0) + 1);
-      }
-    });
     let updated = false;
     laneDefinitions.forEach((lane) => {
-      var _a;
       const label = lane.label.trim();
       const normalizedLabel = label.toLowerCase();
-      if (!label || ((_a = labelCounts.get(normalizedLabel)) != null ? _a : 0) !== 1) {
+      if (!label) {
         return;
       }
       const matchingSection = sectionNamesByNormalized.get(normalizedLabel);
@@ -18175,7 +18166,8 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
         return;
       }
       const normalizedPrimary = primarySection.toLowerCase();
-      if (primarySection && sectionNamesByNormalized.has(normalizedPrimary)) {
+      const shouldPreferMatchingLabelSection = Boolean(primarySection) && matchingSection.toLowerCase() === normalizedLabel && normalizedPrimary !== normalizedLabel && this.isGenericKanbanSectionName(primarySection);
+      if (primarySection && sectionNamesByNormalized.has(normalizedPrimary) && !shouldPreferMatchingLabelSection) {
         return;
       }
       const trailingSections = lane.mappedSections.map((section) => section.trim()).filter((section) => section.length > 0 && section.toLowerCase() === "completed archive");
@@ -18183,6 +18175,10 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
       updated = true;
     });
     return updated;
+  }
+  isGenericKanbanSectionName(sectionName) {
+    const normalized = sectionName.trim().toLowerCase();
+    return normalized === "now" || normalized === "next" || normalized === "later" || normalized === "waiting" || normalized === "parking lot" || normalized === "add" || normalized === "fix";
   }
   stripMappedSectionsFromLaneDefinitions(laneDefinitions) {
     return laneDefinitions.map(({ mappedSections, ...laneDefinition }) => laneDefinition);
@@ -18648,6 +18644,14 @@ var _DailyDashboardPlugin = class _DailyDashboardPlugin extends import_obsidian4
     }));
     if (persistedExisting) {
       normalizedLaneDefinitions = this.alignTemplateSwitchLaneDefinitions(existing.templateId, templateId, previousLaneDefinitions, normalizedLaneDefinitions);
+    }
+    const todoFile = this.getMasterTodoFile();
+    if (todoFile) {
+      const snapshot = parseTodoSnapshot(await this.app.vault.read(todoFile));
+      const project = snapshot.projects.find((candidate) => candidate.name === projectName);
+      if (project) {
+        this.reconcileUniqueLabelLaneMappingsToProjectSections(project, normalizedLaneDefinitions);
+      }
     }
     const hubRenameResult = await this.applyCleanKanbanLaneSectionRenames(projectName, previousLaneDefinitions, normalizedLaneDefinitions);
     normalizedLaneDefinitions = hubRenameResult.laneDefinitions;
