@@ -13865,15 +13865,16 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     pill.appendChild(valueEl);
     parent.appendChild(pill);
   }
-  positionCardPopover(popover, anchor, preferBelow, anchorPoint = null) {
+  positionCardPopover(popover, anchor, preferBelow, anchorPoint = null, host = null) {
     const positionOnce = () => {
       var _a, _b, _c, _d;
-      if (!popover.isConnected || !anchor.isConnected) {
+      const resolvedHost = host != null ? host : this.contentEl;
+      if (!popover.isConnected || !anchor.isConnected || !resolvedHost.isConnected) {
         return false;
       }
-      const hostRect = this.contentEl.getBoundingClientRect();
-      const hostScrollLeft = this.contentEl.scrollLeft;
-      const hostScrollTop = this.contentEl.scrollTop;
+      const hostRect = resolvedHost.getBoundingClientRect();
+      const hostScrollLeft = resolvedHost.scrollLeft;
+      const hostScrollTop = resolvedHost.scrollTop;
       popover.style.visibility = "hidden";
       popover.style.position = "absolute";
       popover.style.left = "0px";
@@ -13926,8 +13927,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     separator.textContent = value;
     return separator;
   }
-  mountCardPopover(popover) {
-    this.contentEl.appendChild(popover);
+  mountCardPopover(popover, host) {
+    host.appendChild(popover);
   }
   closeInlineCardEditor() {
     this.selectedCardKey = null;
@@ -15512,8 +15513,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         });
         picker.appendChild(button);
       });
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), cardEl);
     }
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
       const picker = document.createElement("div");
@@ -15679,8 +15680,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, void 0, 3);
       syncSaveState(saveButton);
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), cardEl);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? dueParts.month.length >= 2 ? dueParts.day.length >= 2 ? dueParts.year.length >= 4 ? 3 : 2 : 1 : 0 : 0);
     }
     if (this.matchesCardKey(this.effortPickerKey, project.projectName, card.taskId)) {
@@ -15727,8 +15728,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.requestRefresh();
         }
       });
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), cardEl);
       window.setTimeout(() => input.focus(), 0);
     }
     if (this.matchesCardKey(this.photoPickerKey, project.projectName, card.taskId)) {
@@ -15819,8 +15820,8 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           void this.attachExistingPhotoToCard(project.projectName, card.taskId);
         })
       );
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), cardEl);
     }
     return cardEl;
   }

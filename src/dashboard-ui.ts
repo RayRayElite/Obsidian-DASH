@@ -9557,15 +9557,16 @@ export class DashKanbanView extends ItemView {
     parent.appendChild(pill);
   }
 
-  private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean, anchorPoint: { x: number; y: number } | null = null): void {
+  private positionCardPopover(popover: HTMLElement, anchor: HTMLElement, preferBelow: boolean, anchorPoint: { x: number; y: number } | null = null, host: HTMLElement | null = null): void {
     const positionOnce = () => {
-      if (!popover.isConnected || !anchor.isConnected) {
+      const resolvedHost = host ?? this.contentEl;
+      if (!popover.isConnected || !anchor.isConnected || !resolvedHost.isConnected) {
         return false;
       }
 
-      const hostRect = this.contentEl.getBoundingClientRect();
-      const hostScrollLeft = this.contentEl.scrollLeft;
-      const hostScrollTop = this.contentEl.scrollTop;
+      const hostRect = resolvedHost.getBoundingClientRect();
+      const hostScrollLeft = resolvedHost.scrollLeft;
+      const hostScrollTop = resolvedHost.scrollTop;
       popover.style.visibility = "hidden";
       popover.style.position = "absolute";
       popover.style.left = "0px";
@@ -9629,8 +9630,8 @@ export class DashKanbanView extends ItemView {
     return separator;
   }
 
-  private mountCardPopover(popover: HTMLElement): void {
-    this.contentEl.appendChild(popover);
+  private mountCardPopover(popover: HTMLElement, host: HTMLElement): void {
+    host.appendChild(popover);
   }
 
   private closeInlineCardEditor(): void {
@@ -11391,8 +11392,8 @@ export class DashKanbanView extends ItemView {
         });
         picker.appendChild(button);
       });
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, priorityButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("priority", project.projectName, card.taskId), cardEl);
     }
 
     if (this.matchesCardKey(this.duePickerKey, project.projectName, card.taskId)) {
@@ -11580,8 +11581,8 @@ export class DashKanbanView extends ItemView {
       bindSegmentField(hourInput, "hour", 2, 3, 4, 2);
       bindSegmentField(minuteInput, "minute", 2, 4, undefined, 3);
       syncSaveState(saveButton);
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, dueButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("due", project.projectName, card.taskId), cardEl);
       focusFieldAt(hasKanbanDueDateDateValue(dueParts) ? (dueParts.month.length >= 2 ? (dueParts.day.length >= 2 ? (dueParts.year.length >= 4 ? 3 : 2) : 1) : 0) : 0);
     }
 
@@ -11629,8 +11630,8 @@ export class DashKanbanView extends ItemView {
           void this.requestRefresh();
         }
       });
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, effortButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("effort", project.projectName, card.taskId), cardEl);
       window.setTimeout(() => input.focus(), 0);
     }
 
@@ -11730,8 +11731,8 @@ export class DashKanbanView extends ItemView {
         })
       );
 
-      this.mountCardPopover(picker);
-      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId));
+      this.mountCardPopover(picker, cardEl);
+      this.positionCardPopover(picker, photoButton, preferPopoverBelow, this.getCardPopoverAnchorPoint("photo", project.projectName, card.taskId), cardEl);
     }
 
     return cardEl;
