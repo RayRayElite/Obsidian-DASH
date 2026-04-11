@@ -9760,6 +9760,10 @@ export class DashKanbanView extends ItemView {
     this.contentEl.addClass("dash-kanban-view");
 
     const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density} is-${viewState.mode}` });
+    const activeShellTheme = this.getActiveShellTheme(snapshot, viewState);
+    if (activeShellTheme) {
+      shell.dataset.theme = activeShellTheme;
+    }
     shell.addEventListener("click", (event) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest(".dash-kanban-card, .dash-kanban-quick-add, .dash-kanban-lane-rename")) {
@@ -9800,6 +9804,20 @@ export class DashKanbanView extends ItemView {
     visibleProjects.forEach((project) => {
       this.renderProjectBoard(workspace, project, viewState.mode, viewState.density);
     });
+  }
+
+  private getActiveShellTheme(
+    snapshot: DashKanbanWorkspaceSnapshot,
+    viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string }
+  ): DashboardKanbanTheme | "" {
+    if (viewState.mode !== "single-project") {
+      return "";
+    }
+
+    const activeProject = snapshot.projects.find((project) => project.projectName === viewState.selectedProjectName)
+      ?? snapshot.projects[0]
+      ?? null;
+    return activeProject?.theme ?? "";
   }
 
   private getSelectedCard(projects: DashKanbanProjectBoard[]): { project: DashKanbanProjectBoard; card: DashKanbanCard } | null {

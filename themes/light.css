@@ -50,6 +50,59 @@
     rgba(228, 235, 244, 0.97);
 }
 
+.dash-kanban-shell[data-theme="light"] .dash-kanban-kicker {
+  color: #bfd2ff;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-title,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-summary .daily-dashboard-semantic-chip {
+  color: #f6fbff;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-subtitle,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-control-label,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-search-icon {
+  color: #d5deed;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-control-cluster {
+  border-color: rgba(140, 160, 194, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 38%),
+    rgba(17, 23, 34, 0.44);
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-control-cluster.is-view {
+  background:
+    linear-gradient(180deg, rgba(70, 111, 216, 0.12), transparent 42%),
+    rgba(17, 23, 34, 0.5);
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-search input,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-project-select,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-header-button,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-toggle-button,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-checkbox {
+  border-color: rgba(146, 167, 203, 0.32);
+  background: rgba(245, 249, 255, 0.12);
+  color: #f4f8ff;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-search input::placeholder {
+  color: #d5deed;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-header-button.is-secondary {
+  color: #e2eaf7;
+}
+
+.dash-kanban-shell[data-theme="light"] .dash-kanban-header-button:hover,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-toggle-button:hover,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-checkbox:hover,
+.dash-kanban-shell[data-theme="light"] .dash-kanban-toggle-button.is-active {
+  color: #ffffff;
+}
+
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-matrix-corner,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-subtitle,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-project-focus,
@@ -71,8 +124,17 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-card-photo-compact,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-card-photo-collapse-hint,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-card-photo-open-hint,
-.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-empty {
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-empty,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-project-context-item,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-project-hint,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-meta,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-detail-label,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-card-footer-info {
   color: #26384e;
+}
+
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-project-context-item:not(:last-child)::after {
+  color: #516783;
 }
 
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-category-header span,
@@ -89,7 +151,16 @@
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-heat-pill,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-inline-button,
 .dash-kanban-project-board[data-theme="light"] .dash-kanban-lane-empty-action,
-.dash-kanban-project-board[data-theme="light"] .dash-kanban-quick-add-input {
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-quick-add-input,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-name-button,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-thumb-button,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-photo-remove,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-popover-input,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-popover-option,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-priority-option,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-due-meridiem,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-due-time-label,
+.dash-kanban-project-board[data-theme="light"] .dash-kanban-due-separator {
   color: #162538;
 }
 

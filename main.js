@@ -14262,6 +14262,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("dash-kanban-view");
     const shell = this.contentEl.createDiv({ cls: `dash-kanban-shell is-${viewState.density} is-${viewState.mode}` });
+    const activeShellTheme = this.getActiveShellTheme(snapshot, viewState);
+    if (activeShellTheme) {
+      shell.dataset.theme = activeShellTheme;
+    }
     shell.addEventListener("click", (event) => {
       const target = event.target;
       if (target == null ? void 0 : target.closest(".dash-kanban-card, .dash-kanban-quick-add, .dash-kanban-lane-rename")) {
@@ -14299,6 +14303,14 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     visibleProjects.forEach((project) => {
       this.renderProjectBoard(workspace, project, viewState.mode, viewState.density);
     });
+  }
+  getActiveShellTheme(snapshot, viewState) {
+    var _a, _b, _c;
+    if (viewState.mode !== "single-project") {
+      return "";
+    }
+    const activeProject = (_b = (_a = snapshot.projects.find((project) => project.projectName === viewState.selectedProjectName)) != null ? _a : snapshot.projects[0]) != null ? _b : null;
+    return (_c = activeProject == null ? void 0 : activeProject.theme) != null ? _c : "";
   }
   getSelectedCard(projects) {
     if (!this.selectedCardKey) {
