@@ -14975,6 +14975,72 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     });
     return groups;
   }
+  activateSwimlaneRename(container, project, groupKey, currentLabel) {
+    if (!groupKey || container.querySelector(".dash-kanban-lane-rename")) {
+      return;
+    }
+    const existingRow = container.querySelector(".dash-kanban-matrix-row-title-row");
+    if (!existingRow) {
+      return;
+    }
+    existingRow.remove();
+    const form = document.createElement("div");
+    form.className = "dash-kanban-lane-rename";
+    container.prepend(form);
+    const input = document.createElement("input");
+    input.className = "dash-kanban-lane-rename-input";
+    input.type = "text";
+    input.value = currentLabel;
+    form.appendChild(input);
+    const saveButton = document.createElement("button");
+    saveButton.className = "dash-kanban-card-action dash-kanban-lane-rename-action";
+    saveButton.type = "button";
+    saveButton.ariaLabel = "Save swimlane title";
+    saveButton.title = "Save swimlane title";
+    (0, import_obsidian3.setIcon)(saveButton, "check");
+    form.appendChild(saveButton);
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "dash-kanban-card-action dash-kanban-lane-rename-action";
+    cancelButton.type = "button";
+    cancelButton.ariaLabel = "Cancel swimlane rename";
+    cancelButton.title = "Cancel swimlane rename";
+    (0, import_obsidian3.setIcon)(cancelButton, "x");
+    form.appendChild(cancelButton);
+    const submit = () => {
+      const nextLabel = input.value.trim();
+      if (!nextLabel || nextLabel === currentLabel) {
+        void this.requestRefresh();
+        return;
+      }
+      void (async () => {
+        await this.plugin.renameKanbanCategory(project.projectName, groupKey, nextLabel);
+        await this.requestRefresh();
+      })();
+    };
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void this.requestRefresh();
+      }
+    });
+    saveButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      submit();
+    });
+    cancelButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      void this.requestRefresh();
+    });
+    window.setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  }
   getProjectLaneColumns(project) {
     const columns = [];
     project.lanes.forEach((lane) => {
@@ -15017,7 +15083,33 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       const rowHeaderTop = rowHeader.createDiv({ cls: "dash-kanban-matrix-row-top" });
       const rowHeaderLabels = rowHeaderTop.createDiv({ cls: "dash-kanban-matrix-row-labels" });
-      rowHeaderLabels.createEl("strong", { text: row.label || "Board" });
+      const rowTitleRow = rowHeaderLabels.createDiv({ cls: "dash-kanban-matrix-row-title-row" });
+      const rowTitleButton = rowTitleRow.createEl("button", { cls: "dash-kanban-matrix-row-title", text: row.label || "Board" });
+      rowTitleButton.type = "button";
+      rowTitleButton.title = `Rename ${row.label || "swimlane"}`;
+      rowTitleButton.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
+      });
+      rowTitleButton.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
+      });
+      const rowEditButton = rowTitleRow.createEl("button", { cls: "dash-kanban-matrix-row-edit", attr: { "aria-label": `Rename ${row.label || "swimlane"}` } });
+      rowEditButton.type = "button";
+      rowEditButton.title = `Rename ${row.label || "swimlane"}`;
+      (0, import_obsidian3.setIcon)(rowEditButton, "pencil");
+      rowEditButton.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+      rowEditButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.activateSwimlaneRename(rowHeaderLabels, project, row.key, row.label || "");
+      });
       if (row.subtitle) {
         rowHeaderLabels.createEl("p", { text: row.subtitle });
       }
@@ -15031,7 +15123,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
           emptyCell.createSpan({ text: "This stage is not used in this swimlane." });
           return;
         }
-        this.renderLane(matrix, project, lane, "is-matrix-cell");
+        this.renderLane(matrix, project, lane, { extraClass: "is-matrix-cell", showTitle: false });
       });
     });
   }
@@ -15267,8 +15359,10 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     resizeHandle.createSpan({ text: "Drag to resize board height" });
     this.bindProjectResize(resizeHandle, board, project);
   }
-  renderLane(parent, project, lane, extraClass = "") {
-    var _a;
+  renderLane(parent, project, lane, options = {}) {
+    var _a, _b, _c;
+    const extraClass = (_a = options.extraClass) != null ? _a : "";
+    const showTitle = (_b = options.showTitle) != null ? _b : true;
     const hasSelectedCardInLane = Boolean(this.selectedCardKey && this.selectedCardKey.projectName === project.projectName && lane.cards.some((candidate) => {
       var _a2;
       return candidate.taskId === ((_a2 = this.selectedCardKey) == null ? void 0 : _a2.taskId);
@@ -15286,37 +15380,41 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     if (lane.categoryColor) {
       laneEl.style.setProperty("--dash-kanban-lane-accent", lane.categoryColor);
     }
-    const header = laneEl.createDiv({ cls: "dash-kanban-lane-header" });
+    const header = laneEl.createDiv({ cls: `dash-kanban-lane-header${showTitle ? "" : " is-titleless"}` });
     const titleWrap = header.createDiv({ cls: "dash-kanban-lane-title-wrap" });
-    const titleRow = titleWrap.createDiv({ cls: "dash-kanban-lane-title-row" });
-    const titleButton = titleRow.createEl("button", { cls: "dash-kanban-lane-title", text: lane.label });
-    titleButton.type = "button";
-    titleButton.title = `Rename ${lane.label}`;
-    titleButton.addEventListener("dblclick", (event) => {
-      event.stopPropagation();
-      this.activateLaneRename(titleButton, project, lane);
-    });
-    titleButton.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
+    if (showTitle) {
+      const titleRow = titleWrap.createDiv({ cls: "dash-kanban-lane-title-row" });
+      const titleButton = titleRow.createEl("button", { cls: "dash-kanban-lane-title", text: lane.label });
+      titleButton.type = "button";
+      titleButton.title = `Rename ${lane.label}`;
+      titleButton.addEventListener("dblclick", (event) => {
+        event.stopPropagation();
+        this.activateLaneRename(titleButton, project, lane);
+      });
+      titleButton.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.activateLaneRename(titleButton, project, lane);
+      });
+      const renameButton = titleRow.createEl("button", { cls: "dash-kanban-lane-edit", attr: { "aria-label": `Rename ${lane.label}` } });
+      renameButton.type = "button";
+      renameButton.title = `Rename ${lane.label}`;
+      (0, import_obsidian3.setIcon)(renameButton, "pencil");
+      renameButton.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+      });
+      renameButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.activateLaneRename(titleButton, project, lane);
+      });
+      if (lane.helperText) {
+        titleWrap.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
       }
-      event.preventDefault();
-      event.stopPropagation();
-      this.activateLaneRename(titleButton, project, lane);
-    });
-    const renameButton = titleRow.createEl("button", { cls: "dash-kanban-lane-edit", attr: { "aria-label": `Rename ${lane.label}` } });
-    renameButton.type = "button";
-    renameButton.title = `Rename ${lane.label}`;
-    (0, import_obsidian3.setIcon)(renameButton, "pencil");
-    renameButton.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-    renameButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      this.activateLaneRename(titleButton, project, lane);
-    });
-    if (lane.helperText) {
-      titleWrap.createEl("p", { cls: "dash-kanban-lane-helper", text: lane.helperText });
+    } else if (lane.helperText) {
+      titleWrap.createEl("span", { cls: "dash-kanban-lane-section-label", text: lane.helperText });
     }
     const laneTools = header.createDiv({ cls: "dash-kanban-lane-tools" });
     const addButton = laneTools.createEl("button", { cls: "dash-kanban-card-action dash-kanban-lane-add", attr: { "aria-label": `Add card to ${lane.label}` } });
@@ -15342,7 +15440,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         due.title = laneOverdueCount > 0 ? `${laneOverdueCount} overdue and ${Math.max(0, laneDueCount - laneOverdueCount)} due-soon card${laneDueCount === 1 ? "" : "s"}` : `${laneDueCount} due-soon card${laneDueCount === 1 ? "" : "s"}`;
       }
     }
-    if (((_a = this.quickAddDraft) == null ? void 0 : _a.projectName) === project.projectName && this.quickAddDraft.laneKey === lane.laneKey) {
+    if (((_c = this.quickAddDraft) == null ? void 0 : _c.projectName) === project.projectName && this.quickAddDraft.laneKey === lane.laneKey) {
       const composer = laneEl.createDiv({ cls: "dash-kanban-quick-add" });
       const input = composer.createEl("textarea", {
         cls: "dash-kanban-quick-add-input",
@@ -24262,6 +24360,44 @@ ${context}`, resolvedModel);
       templateId: configuration.templateId,
       showInHub: configuration.showInHub,
       laneDefinitions: baseLaneDefinitions.map((lane) => lane.laneKey === normalizedLaneKey ? { ...lane, label: normalizedLabel } : lane),
+      boardHeight: configuration.boardHeight,
+      collapsedInHub: configuration.collapsedInHub,
+      showLaneCategories: configuration.showLaneCategories,
+      stickyHeaders: configuration.stickyHeaders,
+      theme: configuration.theme
+    });
+    return true;
+  }
+  async renameKanbanCategory(projectName, categoryKey, nextLabel) {
+    const normalizedProjectName = projectName.trim();
+    const normalizedCategoryKey = categoryKey.trim();
+    const normalizedLabel = nextLabel.trim();
+    if (!normalizedProjectName || !normalizedCategoryKey || !normalizedLabel) {
+      return false;
+    }
+    const configuration = this.getKanbanBoardConfiguration(normalizedProjectName);
+    const baseLaneDefinitions = configuration.laneDefinitions.length > 0 ? configuration.laneDefinitions : this.getKanbanLaneOptions(normalizedProjectName).map((lane) => ({
+      laneKey: lane.laneKey,
+      label: lane.label,
+      helperText: lane.helperText,
+      columnKey: lane.columnKey,
+      categoryKey: lane.categoryKey,
+      categoryLabel: lane.categoryLabel,
+      categorySubtitle: lane.categorySubtitle,
+      categoryColor: lane.categoryColor,
+      categoryTag: lane.categoryTag,
+      ruleType: lane.done ? "completion-state" : lane.unmapped ? "custom" : "hub-section",
+      mappedSections: lane.targetSection ? [lane.targetSection] : [],
+      done: lane.done
+    }));
+    if (!baseLaneDefinitions.some((lane) => lane.categoryKey === normalizedCategoryKey)) {
+      return false;
+    }
+    await this.saveKanbanBoardConfiguration({
+      projectName: normalizedProjectName,
+      templateId: configuration.templateId,
+      showInHub: configuration.showInHub,
+      laneDefinitions: baseLaneDefinitions.map((lane) => lane.categoryKey === normalizedCategoryKey ? { ...lane, categoryLabel: normalizedLabel } : lane),
       boardHeight: configuration.boardHeight,
       collapsedInHub: configuration.collapsedInHub,
       showLaneCategories: configuration.showLaneCategories,

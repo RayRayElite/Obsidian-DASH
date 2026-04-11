@@ -977,6 +977,62 @@
   flex: 1 1 auto;
 }
 
+.dash-kanban-matrix-row-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dash-kanban-matrix-row-title {
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dash-kanban-text-strong);
+  font-family: "Aptos Serif", "Iowan Old Style", Georgia, serif;
+  font-size: 1.06rem;
+  font-weight: 800;
+  line-height: 1.08;
+  text-align: left;
+}
+
+.dash-kanban-matrix-row-title:hover,
+.dash-kanban-matrix-row-title:focus-visible {
+  color: var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
+  outline: none;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.16em;
+}
+
+.dash-kanban-matrix-row-edit {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dash-kanban-text-faint);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease, border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.dash-kanban-matrix-row-title-row:hover .dash-kanban-matrix-row-edit,
+.dash-kanban-matrix-row-title-row:focus-within .dash-kanban-matrix-row-edit,
+.dash-kanban-matrix-row-edit:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dash-kanban-matrix-row-edit:hover,
+.dash-kanban-matrix-row-edit:focus-visible {
+  border-color: color-mix(in srgb, var(--dash-kanban-category-color, var(--dash-kanban-board-accent)) 22%, var(--dash-kanban-border));
+  background: var(--dash-kanban-header-tab-surface);
+  color: var(--dash-kanban-category-color, var(--dash-kanban-board-accent));
+}
+
 .dash-kanban-matrix-row-labels p {
   margin: 0;
 }
@@ -1137,6 +1193,11 @@
   background: var(--dash-kanban-header-surface);
   padding-bottom: 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--dash-kanban-board-accent) 14%, var(--dash-kanban-border));
+}
+
+.dash-kanban-lane-header.is-titleless {
+  align-items: center;
+  padding: 8px 10px;
 }
 
 .dash-kanban-lane-title-wrap {
@@ -1318,6 +1379,17 @@
   color: var(--dash-kanban-text-muted);
   font-size: 0.7rem;
   line-height: 1.3;
+}
+
+.dash-kanban-lane-section-label {
+  display: block;
+  max-width: 100%;
+  color: var(--dash-kanban-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dash-kanban-card-stack {
@@ -2513,6 +2585,10 @@
 
 .dash-kanban-shell.is-compact .dash-kanban-matrix-column-top {
   gap: 8px;
+}
+
+.dash-kanban-shell.is-compact .dash-kanban-lane-header.is-titleless {
+  padding: 7px 8px;
 }
 
 .dash-kanban-shell.is-compact .dash-kanban-lane-empty-state,
