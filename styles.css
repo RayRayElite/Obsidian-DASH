@@ -425,6 +425,28 @@
   gap: 8px;
 }
 
+.dash-kanban-view-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(220px, 0.82fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.dash-kanban-view-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash-kanban-view-column.is-mode {
+  align-items: flex-start;
+}
+
+.dash-kanban-view-column.is-project {
+  align-items: stretch;
+}
+
 .dash-kanban-focus-row {
   flex-wrap: wrap;
   gap: 8px;
@@ -453,6 +475,15 @@
 .dash-kanban-project-select {
   flex: 0 0 220px;
   padding: 8px 12px;
+}
+
+.dash-kanban-view-column.is-project .dash-kanban-project-select,
+.dash-kanban-view-column.is-project .dash-kanban-checkbox {
+  width: 100%;
+}
+
+.dash-kanban-view-column.is-project .dash-kanban-checkbox {
+  justify-content: flex-end;
 }
 
 .dash-kanban-search-icon {
@@ -2585,6 +2616,19 @@
 
   .dash-kanban-controls-top {
     grid-template-columns: 1fr;
+  }
+
+  .dash-kanban-view-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-kanban-view-column.is-mode,
+  .dash-kanban-view-column.is-project {
+    align-items: stretch;
+  }
+
+  .dash-kanban-view-column.is-project .dash-kanban-checkbox {
+    justify-content: flex-start;
   }
 
   .dash-kanban-collapse-button--controls {
