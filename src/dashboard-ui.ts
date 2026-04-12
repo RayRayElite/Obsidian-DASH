@@ -10405,12 +10405,10 @@ export class DashKanbanView extends ItemView {
     const viewGroup = controls.createDiv({ cls: "dash-kanban-control-cluster is-view" });
     viewGroup.createEl("span", { cls: "dash-kanban-control-label", text: "View & filter" });
 
-    const viewLayout = viewGroup.createDiv({ cls: "dash-kanban-view-layout" });
-    const searchColumn = viewLayout.createDiv({ cls: "dash-kanban-view-column is-search" });
-    const modeColumn = viewLayout.createDiv({ cls: "dash-kanban-view-column is-mode" });
-    const projectColumn = viewLayout.createDiv({ cls: "dash-kanban-view-column is-project" });
+    const viewTopRow = viewGroup.createDiv({ cls: "dash-kanban-view-row is-top" });
+    const viewBottomRow = viewGroup.createDiv({ cls: "dash-kanban-view-row is-bottom" });
 
-    const searchWrapper = searchColumn.createDiv({ cls: "dash-kanban-search" });
+    const searchWrapper = viewTopRow.createDiv({ cls: "dash-kanban-search" });
     const searchIcon = searchWrapper.createSpan({ cls: "dash-kanban-search-icon" });
     setIcon(searchIcon, "search");
     const searchInput = searchWrapper.createEl("input", {
@@ -10423,7 +10421,7 @@ export class DashKanbanView extends ItemView {
       void this.requestRefresh();
     });
 
-    const modeToggle = modeColumn.createDiv({ cls: "dash-kanban-mode-toggle" });
+    const modeToggle = viewTopRow.createDiv({ cls: "dash-kanban-mode-toggle" });
     modeToggle.append(
       this.createToggleButton("All Projects", viewState.mode === "all-projects", async () => {
         await this.plugin.updateKanbanViewState({ mode: "all-projects" });
@@ -10433,7 +10431,7 @@ export class DashKanbanView extends ItemView {
       })
     );
 
-    const densityToggle = modeColumn.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
+    const densityToggle = viewBottomRow.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
     densityToggle.append(
       this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
         await this.plugin.updateKanbanViewState({ density: "comfortable" });
@@ -10443,7 +10441,7 @@ export class DashKanbanView extends ItemView {
       })
     );
 
-    const projectSelect = projectColumn.createEl("select", { cls: "dash-kanban-project-select" });
+    const projectSelect = viewTopRow.createEl("select", { cls: "dash-kanban-project-select" });
     snapshot.projects.forEach((project) => {
       projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
     });
@@ -10452,7 +10450,7 @@ export class DashKanbanView extends ItemView {
       void this.plugin.updateKanbanViewState({ selectedProjectName: projectSelect.value });
     });
 
-    const doneToggle = projectColumn.createEl("label", { cls: "dash-kanban-checkbox" });
+    const doneToggle = viewBottomRow.createEl("label", { cls: "dash-kanban-checkbox" });
     const doneInput = doneToggle.createEl("input", { type: "checkbox" });
     doneInput.checked = viewState.showDone;
     doneInput.addEventListener("change", () => {
@@ -10460,7 +10458,7 @@ export class DashKanbanView extends ItemView {
     });
     doneToggle.createSpan({ text: "Show done" });
 
-    const focusRow = searchColumn.createDiv({ cls: "dash-kanban-focus-row" });
+    const focusRow = viewBottomRow.createDiv({ cls: "dash-kanban-focus-row" });
     focusRow.append(
       this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "all" });

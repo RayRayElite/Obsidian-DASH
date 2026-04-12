@@ -425,31 +425,26 @@
   gap: 8px;
 }
 
-.dash-kanban-view-layout {
+.dash-kanban-view-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) auto minmax(220px, 0.82fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.dash-kanban-view-column {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
+  align-items: center;
   min-width: 0;
 }
 
-.dash-kanban-view-column.is-mode {
-  align-items: flex-start;
+.dash-kanban-view-row.is-top {
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(220px, 0.8fr);
 }
 
-.dash-kanban-view-column.is-project {
-  align-items: stretch;
+.dash-kanban-view-row.is-bottom {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .dash-kanban-focus-row {
+  display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
 }
 
 .dash-kanban-search {
@@ -477,13 +472,12 @@
   padding: 8px 12px;
 }
 
-.dash-kanban-view-column.is-project .dash-kanban-project-select,
-.dash-kanban-view-column.is-project .dash-kanban-checkbox {
+.dash-kanban-view-row.is-top .dash-kanban-project-select {
   width: 100%;
 }
 
-.dash-kanban-view-column.is-project .dash-kanban-checkbox {
-  justify-content: flex-end;
+.dash-kanban-view-row.is-bottom .dash-kanban-checkbox {
+  justify-self: end;
 }
 
 .dash-kanban-search-icon {
@@ -2618,17 +2612,14 @@
     grid-template-columns: 1fr;
   }
 
-  .dash-kanban-view-layout {
+  .dash-kanban-view-row.is-top,
+  .dash-kanban-view-row.is-bottom {
     grid-template-columns: 1fr;
-  }
-
-  .dash-kanban-view-column.is-mode,
-  .dash-kanban-view-column.is-project {
     align-items: stretch;
   }
 
-  .dash-kanban-view-column.is-project .dash-kanban-checkbox {
-    justify-content: flex-start;
+  .dash-kanban-view-row.is-bottom .dash-kanban-checkbox {
+    justify-self: start;
   }
 
   .dash-kanban-collapse-button--controls {
