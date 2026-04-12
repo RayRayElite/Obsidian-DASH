@@ -10431,16 +10431,6 @@ export class DashKanbanView extends ItemView {
       })
     );
 
-    const densityToggle = viewBottomRow.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
-    densityToggle.append(
-      this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
-        await this.plugin.updateKanbanViewState({ density: "comfortable" });
-      }),
-      this.createToggleButton("Dense", viewState.density === "compact", async () => {
-        await this.plugin.updateKanbanViewState({ density: "compact" });
-      })
-    );
-
     const projectSelect = viewTopRow.createEl("select", { cls: "dash-kanban-project-select" });
     snapshot.projects.forEach((project) => {
       projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
@@ -10450,17 +10440,7 @@ export class DashKanbanView extends ItemView {
       void this.plugin.updateKanbanViewState({ selectedProjectName: projectSelect.value });
     });
 
-    const trailingFilters = viewBottomRow.createDiv({ cls: "dash-kanban-view-trailing" });
-
-    const doneToggle = trailingFilters.createEl("label", { cls: "dash-kanban-checkbox" });
-    const doneInput = doneToggle.createEl("input", { type: "checkbox" });
-    doneInput.checked = viewState.showDone;
-    doneInput.addEventListener("change", () => {
-      void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
-    });
-    doneToggle.createSpan({ text: "Show done" });
-
-    const focusRow = trailingFilters.createDiv({ cls: "dash-kanban-focus-row" });
+    const focusRow = viewBottomRow.createDiv({ cls: "dash-kanban-focus-row" });
     focusRow.append(
       this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "all" });
@@ -10475,6 +10455,24 @@ export class DashKanbanView extends ItemView {
         await this.plugin.updateKanbanViewState({ focusFilter: "due" });
       })
     );
+
+    const densityToggle = viewBottomRow.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
+    densityToggle.append(
+      this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
+        await this.plugin.updateKanbanViewState({ density: "comfortable" });
+      }),
+      this.createToggleButton("Dense", viewState.density === "compact", async () => {
+        await this.plugin.updateKanbanViewState({ density: "compact" });
+      })
+    );
+
+    const doneToggle = viewBottomRow.createEl("label", { cls: "dash-kanban-checkbox" });
+    const doneInput = doneToggle.createEl("input", { type: "checkbox" });
+    doneInput.checked = viewState.showDone;
+    doneInput.addEventListener("change", () => {
+      void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
+    });
+    doneToggle.createSpan({ text: "Show done" });
   }
 
   private getScopedProjects(snapshot: DashKanbanWorkspaceSnapshot, viewState: { mode: DashboardKanbanViewMode; selectedProjectName: string; showDone: boolean }): DashKanbanProjectBoard[] {
