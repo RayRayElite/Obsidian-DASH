@@ -10441,8 +10441,6 @@ export class DashKanbanView extends ItemView {
       })
     );
 
-    viewBottomRow.createDiv({ cls: "dash-kanban-view-spacer" });
-
     const projectSelect = viewTopRow.createEl("select", { cls: "dash-kanban-project-select" });
     snapshot.projects.forEach((project) => {
       projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
@@ -10452,7 +10450,9 @@ export class DashKanbanView extends ItemView {
       void this.plugin.updateKanbanViewState({ selectedProjectName: projectSelect.value });
     });
 
-    const doneToggle = viewBottomRow.createEl("label", { cls: "dash-kanban-checkbox" });
+    const trailingFilters = viewBottomRow.createDiv({ cls: "dash-kanban-view-trailing" });
+
+    const doneToggle = trailingFilters.createEl("label", { cls: "dash-kanban-checkbox" });
     const doneInput = doneToggle.createEl("input", { type: "checkbox" });
     doneInput.checked = viewState.showDone;
     doneInput.addEventListener("change", () => {
@@ -10460,7 +10460,7 @@ export class DashKanbanView extends ItemView {
     });
     doneToggle.createSpan({ text: "Show done" });
 
-    const focusRow = viewBottomRow.createDiv({ cls: "dash-kanban-focus-row" });
+    const focusRow = trailingFilters.createDiv({ cls: "dash-kanban-focus-row" });
     focusRow.append(
       this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "all" });

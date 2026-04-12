@@ -14779,7 +14779,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     const controlsTop = controls.createDiv({ cls: "dash-kanban-controls-top" });
     const primaryGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-primary" });
     primaryGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Create & edit" });
-    const primaryActions = primaryGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+    const primaryActions = primaryGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group dash-kanban-primary-action-row" });
     primaryActions.append(
       this.createHeaderButton("folder-plus", "New project", () => {
         void this.plugin.openCreateProjectFlow();
@@ -14801,7 +14801,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     );
     const boardGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-board" });
     boardGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Board" });
-    const boardActions = boardGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+    const boardActions = boardGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group dash-kanban-board-action-row" });
     boardActions.append(
       this.createHeaderButton("file-stack", "Open hub", () => {
         void this.plugin.openMasterTodo();
@@ -14830,8 +14830,9 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     controlsTop.appendChild(collapseButton);
     const viewGroup = controls.createDiv({ cls: "dash-kanban-control-cluster is-view" });
     viewGroup.createEl("span", { cls: "dash-kanban-control-label", text: "View & filter" });
-    const filterRow = viewGroup.createDiv({ cls: "dash-kanban-filter-row" });
-    const searchWrapper = filterRow.createDiv({ cls: "dash-kanban-search" });
+    const viewTopRow = viewGroup.createDiv({ cls: "dash-kanban-view-row is-top" });
+    const viewBottomRow = viewGroup.createDiv({ cls: "dash-kanban-view-row is-bottom" });
+    const searchWrapper = viewTopRow.createDiv({ cls: "dash-kanban-search" });
     const searchIcon = searchWrapper.createSpan({ cls: "dash-kanban-search-icon" });
     (0, import_obsidian3.setIcon)(searchIcon, "search");
     const searchInput = searchWrapper.createEl("input", {
@@ -14843,7 +14844,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       this.searchText = searchInput.value;
       void this.requestRefresh();
     });
-    const modeToggle = filterRow.createDiv({ cls: "dash-kanban-mode-toggle" });
+    const modeToggle = viewTopRow.createDiv({ cls: "dash-kanban-mode-toggle" });
     modeToggle.append(
       this.createToggleButton("All Projects", viewState.mode === "all-projects", async () => {
         await this.plugin.updateKanbanViewState({ mode: "all-projects" });
@@ -14852,7 +14853,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         await this.plugin.updateKanbanViewState({ mode: "single-project" });
       })
     );
-    const densityToggle = filterRow.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
+    const densityToggle = viewBottomRow.createDiv({ cls: "dash-kanban-mode-toggle dash-kanban-density-toggle" });
     densityToggle.append(
       this.createToggleButton("Comfortable", viewState.density === "comfortable", async () => {
         await this.plugin.updateKanbanViewState({ density: "comfortable" });
@@ -14861,7 +14862,7 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
         await this.plugin.updateKanbanViewState({ density: "compact" });
       })
     );
-    const projectSelect = filterRow.createEl("select", { cls: "dash-kanban-project-select" });
+    const projectSelect = viewTopRow.createEl("select", { cls: "dash-kanban-project-select" });
     snapshot.projects.forEach((project) => {
       projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
     });
@@ -14869,14 +14870,15 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
     projectSelect.addEventListener("change", () => {
       void this.plugin.updateKanbanViewState({ selectedProjectName: projectSelect.value });
     });
-    const doneToggle = filterRow.createEl("label", { cls: "dash-kanban-checkbox" });
+    const trailingFilters = viewBottomRow.createDiv({ cls: "dash-kanban-view-trailing" });
+    const doneToggle = trailingFilters.createEl("label", { cls: "dash-kanban-checkbox" });
     const doneInput = doneToggle.createEl("input", { type: "checkbox" });
     doneInput.checked = viewState.showDone;
     doneInput.addEventListener("change", () => {
       void this.plugin.updateKanbanViewState({ showDone: doneInput.checked });
     });
     doneToggle.createSpan({ text: "Show done" });
-    const focusRow = viewGroup.createDiv({ cls: "dash-kanban-focus-row" });
+    const focusRow = trailingFilters.createDiv({ cls: "dash-kanban-focus-row" });
     focusRow.append(
       this.createToggleButton(`All ${filterCounts.all}`, viewState.focusFilter === "all", async () => {
         await this.plugin.updateKanbanViewState({ focusFilter: "all" });
@@ -15776,9 +15778,6 @@ var DashKanbanView = class extends import_obsidian3.ItemView {
       }
       if (!card.done && card.isBlocked) {
         this.appendCardLabel(statusRow, "Blocked", blockedLabel, "blocked");
-      }
-      if (photoPaths.length > 0) {
-        this.appendCardLabel(statusRow, "Media", `${photoPaths.length} ${photoPaths.length === 1 ? "image" : "images"}`, "photo");
       }
       if (statusRow.childElementCount > 0) {
         content.appendChild(statusRow);
