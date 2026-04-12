@@ -58,7 +58,7 @@
 
 .dash-kanban-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.32fr) minmax(320px, 860px);
+  grid-template-columns: minmax(0, 1.38fr) minmax(320px, 920px);
   align-items: stretch;
   gap: 14px;
 }
@@ -321,7 +321,7 @@
   gap: 10px;
   min-width: 0;
   width: 100%;
-  max-width: 860px;
+  max-width: 920px;
   justify-self: end;
 }
 
@@ -331,7 +331,7 @@
 
 .dash-kanban-controls-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.92fr) auto;
+  grid-template-columns: max-content max-content auto;
   align-items: start;
   gap: 10px;
   min-width: 0;
@@ -354,6 +354,9 @@
 .dash-kanban-control-cluster.is-primary,
 .dash-kanban-control-cluster.is-board {
   min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 0 auto;
 }
 
 .dash-kanban-control-cluster.is-view {
@@ -440,7 +443,7 @@
 
 .dash-kanban-view-row.is-top {
   display: grid;
-  grid-template-columns: minmax(360px, 540px) max-content minmax(260px, 330px);
+  grid-template-columns: minmax(300px, 440px) max-content minmax(220px, 280px);
   align-items: center;
   column-gap: 12px;
   justify-content: start;
@@ -448,7 +451,7 @@
 
 .dash-kanban-view-row.is-bottom {
   display: grid;
-  grid-template-columns: minmax(360px, 540px) max-content minmax(260px, 330px);
+  grid-template-columns: minmax(300px, 440px) max-content minmax(220px, 280px);
   align-items: center;
   column-gap: 12px;
   justify-content: start;
