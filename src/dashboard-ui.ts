@@ -10353,7 +10353,7 @@ export class DashKanbanView extends ItemView {
     const controlsTop = controls.createDiv({ cls: "dash-kanban-controls-top" });
     const primaryGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-primary" });
     primaryGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Create & edit" });
-    const primaryActions = primaryGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+      const primaryActions = primaryGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group dash-kanban-primary-action-row" });
     primaryActions.append(
       this.createHeaderButton("folder-plus", "New project", () => {
         void this.plugin.openCreateProjectFlow();
@@ -10374,7 +10374,7 @@ export class DashKanbanView extends ItemView {
 
     const boardGroup = controlsTop.createDiv({ cls: "dash-kanban-control-cluster is-board" });
     boardGroup.createEl("span", { cls: "dash-kanban-control-label", text: "Board" });
-    const boardActions = boardGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group" });
+      const boardActions = boardGroup.createDiv({ cls: "dash-kanban-action-row dash-kanban-action-row--group dash-kanban-board-action-row" });
     boardActions.append(
       this.createHeaderButton("file-stack", "Open hub", () => {
         void this.plugin.openMasterTodo();
@@ -11448,9 +11448,6 @@ export class DashKanbanView extends ItemView {
       }
       if (!card.done && card.isBlocked) {
         this.appendCardLabel(statusRow, "Blocked", blockedLabel, "blocked");
-      }
-      if (photoPaths.length > 0) {
-        this.appendCardLabel(statusRow, "Media", `${photoPaths.length} ${photoPaths.length === 1 ? "image" : "images"}`, "photo");
       }
       if (statusRow.childElementCount > 0) {
         content.appendChild(statusRow);

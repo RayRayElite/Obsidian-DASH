@@ -327,10 +327,10 @@
 }
 
 .dash-kanban-controls-top {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.92fr) auto;
+  align-items: start;
   gap: 10px;
-  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -346,6 +346,11 @@
   background:
     linear-gradient(180deg, color-mix(in srgb, rgba(255, 255, 255, 0.04) 100%, transparent), transparent 38%),
     color-mix(in srgb, var(--background-primary) 56%, transparent);
+}
+
+.dash-kanban-control-cluster.is-primary,
+.dash-kanban-control-cluster.is-board {
+  min-width: 0;
 }
 
 .dash-kanban-control-cluster.is-view {
@@ -392,8 +397,23 @@
   flex: 0 1 auto;
 }
 
+.dash-kanban-primary-action-row,
+.dash-kanban-board-action-row {
+  display: grid;
+  gap: 8px;
+  justify-content: start;
+}
+
+.dash-kanban-primary-action-row {
+  grid-template-columns: repeat(3, minmax(0, max-content));
+}
+
+.dash-kanban-board-action-row {
+  grid-template-columns: repeat(3, minmax(0, max-content));
+}
+
 .dash-kanban-collapse-button--controls {
-  margin-left: auto;
+  margin-left: 0;
   align-self: flex-start;
   background: color-mix(in srgb, var(--background-primary) 72%, transparent);
   border-color: color-mix(in srgb, var(--dash-kanban-border) 72%, transparent);
@@ -516,6 +536,24 @@
 
 .dash-kanban-header-button.is-danger:hover {
   background: color-mix(in srgb, #e17c72 12%, var(--background-primary));
+}
+
+.dash-kanban-lane-title,
+.dash-kanban-matrix-column-title {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.dash-kanban-lane-title:hover,
+.dash-kanban-lane-title:focus-visible,
+.dash-kanban-matrix-column-title:hover,
+.dash-kanban-matrix-column-title:focus-visible {
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .dash-kanban-density-toggle .dash-kanban-toggle-button {
@@ -2539,16 +2577,24 @@
     align-items: stretch;
   }
 
-  .dash-kanban-controls-top,
   .dash-kanban-hero-top,
   .dash-kanban-collapsed-bottom {
     flex-direction: column;
     align-items: stretch;
   }
 
+  .dash-kanban-controls-top {
+    grid-template-columns: 1fr;
+  }
+
   .dash-kanban-collapse-button--controls {
     margin-left: 0;
     align-self: flex-end;
+  }
+
+  .dash-kanban-primary-action-row,
+  .dash-kanban-board-action-row {
+    grid-template-columns: repeat(auto-fit, minmax(140px, max-content));
   }
 
   .dash-kanban-collapsed-controls,
