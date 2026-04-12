@@ -2619,6 +2619,22 @@
   gap: 10px;
 }
 
+@media (max-width: 1320px) {
+  .dash-kanban-header {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-kanban-controls {
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .dash-kanban-control-cluster.is-view {
+    width: 100%;
+    align-self: stretch;
+  }
+}
+
 @media (max-width: 920px) {
   .dash-kanban-collapsed-bottom {
     flex-direction: column;
