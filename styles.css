@@ -426,18 +426,20 @@
 }
 
 .dash-kanban-view-row {
-  display: grid;
+  display: flex;
   gap: 10px;
   align-items: center;
   min-width: 0;
 }
 
 .dash-kanban-view-row.is-top {
-  grid-template-columns: minmax(0, 1.2fr) auto minmax(220px, 0.8fr);
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) auto minmax(220px, 0.76fr);
+  align-items: center;
 }
 
 .dash-kanban-view-row.is-bottom {
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
 }
 
 .dash-kanban-focus-row {
@@ -445,6 +447,12 @@
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+  justify-content: flex-end;
+}
+
+.dash-kanban-view-spacer {
+  flex: 1 1 auto;
+  min-width: 20px;
 }
 
 .dash-kanban-search {
@@ -477,7 +485,7 @@
 }
 
 .dash-kanban-view-row.is-bottom .dash-kanban-checkbox {
-  justify-self: end;
+  flex: 0 0 auto;
 }
 
 .dash-kanban-search-icon {
@@ -2614,12 +2622,21 @@
 
   .dash-kanban-view-row.is-top,
   .dash-kanban-view-row.is-bottom {
+    display: grid;
     grid-template-columns: 1fr;
     align-items: stretch;
   }
 
+  .dash-kanban-view-spacer {
+    display: none;
+  }
+
   .dash-kanban-view-row.is-bottom .dash-kanban-checkbox {
     justify-self: start;
+  }
+
+  .dash-kanban-focus-row {
+    justify-content: flex-start;
   }
 
   .dash-kanban-collapse-button--controls {

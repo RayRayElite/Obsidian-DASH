@@ -10441,6 +10441,8 @@ export class DashKanbanView extends ItemView {
       })
     );
 
+    viewBottomRow.createDiv({ cls: "dash-kanban-view-spacer" });
+
     const projectSelect = viewTopRow.createEl("select", { cls: "dash-kanban-project-select" });
     snapshot.projects.forEach((project) => {
       projectSelect.add(new Option(project.projectName, project.projectName, project.projectName === snapshot.selectedProjectName, project.projectName === snapshot.selectedProjectName));
