@@ -58,7 +58,7 @@
 
 .dash-kanban-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+  grid-template-columns: minmax(0, 1.32fr) minmax(320px, 860px);
   align-items: stretch;
   gap: 14px;
 }
@@ -320,6 +320,9 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  width: 100%;
+  max-width: 860px;
+  justify-self: end;
 }
 
 .dash-kanban-controls.is-single-project {
