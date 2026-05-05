@@ -27,10 +27,20 @@ Recommended baseline per project:
 
 ## 4. Use A Narrow First-Week Workflow
 
-- Start the day from the dashboard.
+- Start the day from the dashboard with `Begin logical day` when you wake up.
 - Pull or quick-add work from projects.
 - Track only the data that actually helps planning.
-- End the logical day cleanly so the logs remain trustworthy.
+- End the logical day with `End logical day` when you go to bed so sleep tracking and day tracking stay trustworthy.
+
+### Logical Day Rule
+
+DASH uses a logical day, not a strict midnight-to-midnight day.
+
+- your tracked day starts when you use `Begin logical day`
+- your tracked day ends when you use `End logical day`
+- sleep timing, day logs, and reports depend on using those two actions consistently
+
+This matters most if you are awake late at night or after midnight. Until you end the day, DASH still treats that time as part of the same day.
 
 ## 5. Add Features In This Order
 

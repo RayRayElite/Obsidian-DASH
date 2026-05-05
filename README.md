@@ -49,6 +49,18 @@ Start with:
 
 Inside the plugin, the same docs are also available through the searchable DASH documentation center.
 
+## Logical Day Flow
+
+One concept that matters early is the logical day.
+
+DASH does not assume that your day starts and ends exactly at midnight. Instead, day tracking and sleep tracking depend on when you explicitly start the day after waking up and end the day when you go to bed.
+
+- use `Begin day` when you wake up and are actually starting the day
+- use `End day` when you are done for the day and going to bed
+- if you work late past midnight, DASH will still treat that time as part of the same day until you end it
+
+That start-day and end-day flow is what keeps sleep timing, daily logs, and reports lined up correctly.
+
 ## What You Can Do With It
 
 ### Daily Operations

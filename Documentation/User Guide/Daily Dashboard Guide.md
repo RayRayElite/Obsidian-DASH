@@ -47,7 +47,13 @@ Everything else can come later if it proves useful in actual use.
 
 ## Logical Day Rule
 
-If late-night work matters to your schedule, use `Begin logical day` and `End logical day` consistently so the logs and reports stay accurate.
+DASH uses a logical day instead of assuming that your real day resets at midnight.
+
+- use `Begin logical day` when you wake up and are actually starting the day
+- use `End logical day` when you are going to bed and the day is really over
+- sleep tracking, daily logs, and reports depend on those two actions being used consistently
+
+If you stay up past midnight, DASH will keep treating that time as part of the same day until you end it. That is what keeps late-night work and sleep timing attached to the day you actually mean.
 
 ## Where History Lives
 
