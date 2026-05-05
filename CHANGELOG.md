@@ -2,12 +2,15 @@
 
 This project is still in public beta preparation, so the changelog is intentionally short and release-focused.
 
+## 0.5.2
+
+- fixed the sticky Ko-fi support ribbon so it stays anchored as the last bottom-of-dashboard section instead of drifting into the middle of the page
+
 ## 0.5.1
 
 - fixed BRAT installs so built-in Kanban themes and templates are seeded automatically when the plugin folder does not already contain those assets
 - clarified the public beta install docs so users know BRAT installs the release assets while DASH generates docs in-vault and treats wallpapers as optional
 
-## Unreleased
 
 ## Release Notes Habit
 
