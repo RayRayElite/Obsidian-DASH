@@ -98,8 +98,9 @@ The hero area is not decorative only. It is the dashboard control rail.
 
 ### Support Footer Ribbon
 
-- at the bottom of the dashboard page, DASH shows a separate support ribbon instead of taking space from the hero area
+- DASH can keep a support ribbon anchored to the bottom of the dashboard view while you scroll
 - use the `Support on Ko-fi` button if you want to support development; it does not affect dashboard behavior or unlock features
+- if you do not want that persistent footer, turn off `Show sticky support footer` in settings
 
 ### Status Pills In The Hero Footer
 

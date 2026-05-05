@@ -1142,6 +1142,7 @@ export class DailyDashboardView extends ItemView {
       contentEl.addClass("daily-dashboard-view");
       contentEl.removeClass("is-view-mobile", "is-view-compact", "is-view-widescreen");
       contentEl.addClass(`is-view-${viewMode}`);
+      contentEl.toggleClass("has-support-footer", settings.showSupportFooter);
 
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
 
@@ -3473,17 +3474,19 @@ export class DailyDashboardView extends ItemView {
 
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
 
-      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-footer" });
-      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
-      supportCopy.createEl("strong", { text: "Support DASH development" });
-      supportCopy.createEl("span", {
-        cls: "daily-dashboard-row-meta",
-        text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
-      });
-      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline" });
-      createButton(supportActions, "Support on Ko-fi", async () => {
-        window.open("https://ko-fi.com/rayrayelite");
-      }, false, "heart");
+      if (settings.showSupportFooter) {
+        const supportDock = contentEl.createDiv({ cls: "daily-dashboard-support-dock" });
+        const supportCopy = supportDock.createDiv({ cls: "daily-dashboard-stack" });
+        supportCopy.createEl("strong", { text: "Support DASH development" });
+        supportCopy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
+        });
+        const supportActions = supportDock.createDiv({ cls: "daily-dashboard-actions-inline" });
+        createButton(supportActions, "Support on Ko-fi", async () => {
+          window.open("https://ko-fi.com/rayrayelite");
+        }, false, "heart");
+      }
 
       this.lastRenderAt = Date.now();
     } catch (error) {
@@ -8157,6 +8160,18 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
           await this.plugin.updateSettings({
             ...this.plugin.getSettings(),
             showUndoNotifications: value
+          });
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Show sticky support footer")
+      .setDesc("Keep the Ko-fi support bar anchored to the bottom of the dashboard view. Turn it off here if you do not want that persistent reminder.")
+      .addToggle((toggle) => {
+        toggle.setValue(settings.showSupportFooter).onChange(async (value) => {
+          await this.plugin.updateSettings({
+            ...this.plugin.getSettings(),
+            showSupportFooter: value
           });
         });
       });

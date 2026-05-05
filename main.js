@@ -204,6 +204,7 @@ var DEFAULT_SETTINGS = {
   ],
   habitAutomations: [],
   showUndoNotifications: true,
+  showSupportFooter: true,
   notificationSound: "chime",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
@@ -220,7 +221,7 @@ var DEFAULT_SETTINGS = {
 
 // src/dashboard-core.ts
 function sanitizeSettings(settings) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z;
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, __;
   const parsedHabitDefinitions = Array.isArray(settings.habitDefinitions) ? settings.habitDefinitions.map((habit) => {
     var _a2, _b2;
     return {
@@ -243,62 +244,63 @@ function sanitizeSettings(settings) {
   const intakeQuickPresets = Array.isArray(settings.intakeQuickPresets) ? settings.intakeQuickPresets.map((preset, index) => normalizeIntakeQuickPreset(preset, index)).filter((preset) => preset !== null) : getDefaultIntakeQuickPresets(measurementSystem);
   const habitAutomations = Array.isArray(settings.habitAutomations) ? settings.habitAutomations.map((automation, index) => normalizeHabitAutomation(automation, index, parsedHabitDefinitions)).filter((automation) => automation !== null) : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = (_d = settings.showUndoNotifications) != null ? _d : DEFAULT_SETTINGS.showUndoNotifications;
+  const showSupportFooter = (_e = settings.showSupportFooter) != null ? _e : DEFAULT_SETTINGS.showSupportFooter;
   const sessionTrackers = Array.isArray(settings.sessionTrackers) ? settings.sessionTrackers.map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index)).filter((tracker) => tracker !== null) : [];
   const mergedSessionTrackers = mergeSessionTrackerDefinitions(sessionTrackers, DEFAULT_SESSION_TRACKERS);
   const notificationSound = settings.notificationSound === "off" || settings.notificationSound === "ping" || settings.notificationSound === "alert" ? settings.notificationSound : DEFAULT_SETTINGS.notificationSound;
   return {
-    dashboardTitle: ((_e = settings.dashboardTitle) == null ? void 0 : _e.trim()) || DEFAULT_SETTINGS.dashboardTitle,
-    masterTodoPath: ((_f = settings.masterTodoPath) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.masterTodoPath,
-    projectNotesFolder: normalizeFolderPath2(((_g = settings.projectNotesFolder) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
-    dailyLogFolder: ((_h = settings.dailyLogFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
-    weeklyReportFolder: ((_i = settings.weeklyReportFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
-    monthlyReportFolder: ((_j = settings.monthlyReportFolder) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
-    exportFolder: normalizeFolderPath2(((_k = settings.exportFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.exportFolder),
+    dashboardTitle: ((_f = settings.dashboardTitle) == null ? void 0 : _f.trim()) || DEFAULT_SETTINGS.dashboardTitle,
+    masterTodoPath: ((_g = settings.masterTodoPath) == null ? void 0 : _g.trim()) || DEFAULT_SETTINGS.masterTodoPath,
+    projectNotesFolder: normalizeFolderPath2(((_h = settings.projectNotesFolder) == null ? void 0 : _h.trim()) || DEFAULT_SETTINGS.projectNotesFolder),
+    dailyLogFolder: ((_i = settings.dailyLogFolder) == null ? void 0 : _i.trim()) || DEFAULT_SETTINGS.dailyLogFolder,
+    weeklyReportFolder: ((_j = settings.weeklyReportFolder) == null ? void 0 : _j.trim()) || DEFAULT_SETTINGS.weeklyReportFolder,
+    monthlyReportFolder: ((_k = settings.monthlyReportFolder) == null ? void 0 : _k.trim()) || DEFAULT_SETTINGS.monthlyReportFolder,
+    exportFolder: normalizeFolderPath2(((_l = settings.exportFolder) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.exportFolder),
     generatedDocumentTags: typeof settings.generatedDocumentTags === "string" ? settings.generatedDocumentTags : DEFAULT_SETTINGS.generatedDocumentTags,
-    aiApiKey: ((_l = settings.aiApiKey) == null ? void 0 : _l.trim()) || DEFAULT_SETTINGS.aiApiKey,
+    aiApiKey: ((_m = settings.aiApiKey) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiApiKey,
     aiApiKeySource,
-    aiApiKeyEnvVar: ((_m = settings.aiApiKeyEnvVar) == null ? void 0 : _m.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
-    aiModel: ((_n = settings.aiModel) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiModel,
-    aiBaseUrl: ((_o = settings.aiBaseUrl) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
-    researchAiModel: ((_p = settings.researchAiModel) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.researchAiModel,
-    researchResponsesApiUrl: ((_q = settings.researchResponsesApiUrl) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.researchResponsesApiUrl,
-    aiOutputFolder: normalizeFolderPath2(((_r = settings.aiOutputFolder) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
-    knowledgeBaseRawFolder: normalizeFolderPath2(((_s = settings.knowledgeBaseRawFolder) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
-    knowledgeBaseSourcesFolder: normalizeFolderPath2(((_t = settings.knowledgeBaseSourcesFolder) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),
-    knowledgeBaseConceptsFolder: normalizeFolderPath2(((_u = settings.knowledgeBaseConceptsFolder) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder),
-    knowledgeBaseIndexesFolder: normalizeFolderPath2(((_v = settings.knowledgeBaseIndexesFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder),
-    knowledgeBaseOutputsFolder: normalizeFolderPath2(((_w = settings.knowledgeBaseOutputsFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder),
-    knowledgeBaseAssetsFolder: normalizeFolderPath2(((_x = settings.knowledgeBaseAssetsFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder),
-    basicInfoNotePath: ((_y = settings.basicInfoNotePath) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
-    includeBasicInfoInAi: (_z = settings.includeBasicInfoInAi) != null ? _z : DEFAULT_SETTINGS.includeBasicInfoInAi,
-    aiGuardrailsNotePath: ((_A = settings.aiGuardrailsNotePath) == null ? void 0 : _A.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
-    includeAiGuardrailsInAi: (_B = settings.includeAiGuardrailsInAi) != null ? _B : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
-    currentSeasonNotePath: ((_C = settings.currentSeasonNotePath) == null ? void 0 : _C.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
-    includeCurrentSeasonInAi: (_D = settings.includeCurrentSeasonInAi) != null ? _D : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
-    peopleDependenciesNotePath: ((_E = settings.peopleDependenciesNotePath) == null ? void 0 : _E.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
-    includePeopleDependenciesInAi: (_F = settings.includePeopleDependenciesInAi) != null ? _F : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
-    decisionJournalNotePath: ((_G = settings.decisionJournalNotePath) == null ? void 0 : _G.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
-    systemMapNotePath: ((_H = settings.systemMapNotePath) == null ? void 0 : _H.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
+    aiApiKeyEnvVar: ((_n = settings.aiApiKeyEnvVar) == null ? void 0 : _n.trim()) || DEFAULT_SETTINGS.aiApiKeyEnvVar,
+    aiModel: ((_o = settings.aiModel) == null ? void 0 : _o.trim()) || DEFAULT_SETTINGS.aiModel,
+    aiBaseUrl: ((_p = settings.aiBaseUrl) == null ? void 0 : _p.trim()) || DEFAULT_SETTINGS.aiBaseUrl,
+    researchAiModel: ((_q = settings.researchAiModel) == null ? void 0 : _q.trim()) || DEFAULT_SETTINGS.researchAiModel,
+    researchResponsesApiUrl: ((_r = settings.researchResponsesApiUrl) == null ? void 0 : _r.trim()) || DEFAULT_SETTINGS.researchResponsesApiUrl,
+    aiOutputFolder: normalizeFolderPath2(((_s = settings.aiOutputFolder) == null ? void 0 : _s.trim()) || DEFAULT_SETTINGS.aiOutputFolder),
+    knowledgeBaseRawFolder: normalizeFolderPath2(((_t = settings.knowledgeBaseRawFolder) == null ? void 0 : _t.trim()) || DEFAULT_SETTINGS.knowledgeBaseRawFolder),
+    knowledgeBaseSourcesFolder: normalizeFolderPath2(((_u = settings.knowledgeBaseSourcesFolder) == null ? void 0 : _u.trim()) || DEFAULT_SETTINGS.knowledgeBaseSourcesFolder),
+    knowledgeBaseConceptsFolder: normalizeFolderPath2(((_v = settings.knowledgeBaseConceptsFolder) == null ? void 0 : _v.trim()) || DEFAULT_SETTINGS.knowledgeBaseConceptsFolder),
+    knowledgeBaseIndexesFolder: normalizeFolderPath2(((_w = settings.knowledgeBaseIndexesFolder) == null ? void 0 : _w.trim()) || DEFAULT_SETTINGS.knowledgeBaseIndexesFolder),
+    knowledgeBaseOutputsFolder: normalizeFolderPath2(((_x = settings.knowledgeBaseOutputsFolder) == null ? void 0 : _x.trim()) || DEFAULT_SETTINGS.knowledgeBaseOutputsFolder),
+    knowledgeBaseAssetsFolder: normalizeFolderPath2(((_y = settings.knowledgeBaseAssetsFolder) == null ? void 0 : _y.trim()) || DEFAULT_SETTINGS.knowledgeBaseAssetsFolder),
+    basicInfoNotePath: ((_z = settings.basicInfoNotePath) == null ? void 0 : _z.trim()) || DEFAULT_SETTINGS.basicInfoNotePath,
+    includeBasicInfoInAi: (_A = settings.includeBasicInfoInAi) != null ? _A : DEFAULT_SETTINGS.includeBasicInfoInAi,
+    aiGuardrailsNotePath: ((_B = settings.aiGuardrailsNotePath) == null ? void 0 : _B.trim()) || DEFAULT_SETTINGS.aiGuardrailsNotePath,
+    includeAiGuardrailsInAi: (_C = settings.includeAiGuardrailsInAi) != null ? _C : DEFAULT_SETTINGS.includeAiGuardrailsInAi,
+    currentSeasonNotePath: ((_D = settings.currentSeasonNotePath) == null ? void 0 : _D.trim()) || DEFAULT_SETTINGS.currentSeasonNotePath,
+    includeCurrentSeasonInAi: (_E = settings.includeCurrentSeasonInAi) != null ? _E : DEFAULT_SETTINGS.includeCurrentSeasonInAi,
+    peopleDependenciesNotePath: ((_F = settings.peopleDependenciesNotePath) == null ? void 0 : _F.trim()) || DEFAULT_SETTINGS.peopleDependenciesNotePath,
+    includePeopleDependenciesInAi: (_G = settings.includePeopleDependenciesInAi) != null ? _G : DEFAULT_SETTINGS.includePeopleDependenciesInAi,
+    decisionJournalNotePath: ((_H = settings.decisionJournalNotePath) == null ? void 0 : _H.trim()) || DEFAULT_SETTINGS.decisionJournalNotePath,
+    systemMapNotePath: ((_I = settings.systemMapNotePath) == null ? void 0 : _I.trim()) || DEFAULT_SETTINGS.systemMapNotePath,
     aiPromptTemplates: typeof settings.aiPromptTemplates === "string" ? settings.aiPromptTemplates : DEFAULT_SETTINGS.aiPromptTemplates,
-    aiContextDays: clamp(Number((_I = settings.aiContextDays) != null ? _I : DEFAULT_SETTINGS.aiContextDays), 3, 60),
-    aiRelatedNotesLimit: clamp(Number((_J = settings.aiRelatedNotesLimit) != null ? _J : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
-    aiIndexEnabled: (_K = settings.aiIndexEnabled) != null ? _K : DEFAULT_SETTINGS.aiIndexEnabled,
+    aiContextDays: clamp(Number((_J = settings.aiContextDays) != null ? _J : DEFAULT_SETTINGS.aiContextDays), 3, 60),
+    aiRelatedNotesLimit: clamp(Number((_K = settings.aiRelatedNotesLimit) != null ? _K : DEFAULT_SETTINGS.aiRelatedNotesLimit), 2, 16),
+    aiIndexEnabled: (_L = settings.aiIndexEnabled) != null ? _L : DEFAULT_SETTINGS.aiIndexEnabled,
     aiIndexedFolders: typeof settings.aiIndexedFolders === "string" ? settings.aiIndexedFolders : DEFAULT_SETTINGS.aiIndexedFolders,
-    aiChunkCharLimit: clamp(Number((_L = settings.aiChunkCharLimit) != null ? _L : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
-    aiEmbeddingsEnabled: (_M = settings.aiEmbeddingsEnabled) != null ? _M : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
-    aiEmbeddingModel: ((_N = settings.aiEmbeddingModel) == null ? void 0 : _N.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
-    aiEmbeddingApiUrl: ((_O = settings.aiEmbeddingApiUrl) == null ? void 0 : _O.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
-    calendarEnabled: (_P = settings.calendarEnabled) != null ? _P : DEFAULT_SETTINGS.calendarEnabled,
-    calendarDocumentPath: ((_Q = settings.calendarDocumentPath) == null ? void 0 : _Q.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
+    aiChunkCharLimit: clamp(Number((_M = settings.aiChunkCharLimit) != null ? _M : DEFAULT_SETTINGS.aiChunkCharLimit), 300, 3e3),
+    aiEmbeddingsEnabled: (_N = settings.aiEmbeddingsEnabled) != null ? _N : DEFAULT_SETTINGS.aiEmbeddingsEnabled,
+    aiEmbeddingModel: ((_O = settings.aiEmbeddingModel) == null ? void 0 : _O.trim()) || DEFAULT_SETTINGS.aiEmbeddingModel,
+    aiEmbeddingApiUrl: ((_P = settings.aiEmbeddingApiUrl) == null ? void 0 : _P.trim()) || DEFAULT_SETTINGS.aiEmbeddingApiUrl,
+    calendarEnabled: (_Q = settings.calendarEnabled) != null ? _Q : DEFAULT_SETTINGS.calendarEnabled,
+    calendarDocumentPath: ((_R = settings.calendarDocumentPath) == null ? void 0 : _R.trim()) || DEFAULT_SETTINGS.calendarDocumentPath,
     calendarLookaheadHours,
     calendarWarningHours,
-    kanbanEnabled: (_R = settings.kanbanEnabled) != null ? _R : DEFAULT_SETTINGS.kanbanEnabled,
-    kanbanHubPath: ((_S = settings.kanbanHubPath) == null ? void 0 : _S.trim()) || DEFAULT_SETTINGS.kanbanHubPath,
-    kanbanBoardNotesFolder: normalizeFolderPath2(((_T = settings.kanbanBoardNotesFolder) == null ? void 0 : _T.trim()) || DEFAULT_SETTINGS.kanbanBoardNotesFolder),
-    kanbanPluginCompatibilityMode: (_U = settings.kanbanPluginCompatibilityMode) != null ? _U : DEFAULT_SETTINGS.kanbanPluginCompatibilityMode,
-    kanbanAutoSyncEnabled: (_V = settings.kanbanAutoSyncEnabled) != null ? _V : DEFAULT_SETTINGS.kanbanAutoSyncEnabled,
-    budgetingEnabled: (_W = settings.budgetingEnabled) != null ? _W : DEFAULT_SETTINGS.budgetingEnabled,
-    subscriptionsTrackerEnabled: (_X = settings.subscriptionsTrackerEnabled) != null ? _X : DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
+    kanbanEnabled: (_S = settings.kanbanEnabled) != null ? _S : DEFAULT_SETTINGS.kanbanEnabled,
+    kanbanHubPath: ((_T = settings.kanbanHubPath) == null ? void 0 : _T.trim()) || DEFAULT_SETTINGS.kanbanHubPath,
+    kanbanBoardNotesFolder: normalizeFolderPath2(((_U = settings.kanbanBoardNotesFolder) == null ? void 0 : _U.trim()) || DEFAULT_SETTINGS.kanbanBoardNotesFolder),
+    kanbanPluginCompatibilityMode: (_V = settings.kanbanPluginCompatibilityMode) != null ? _V : DEFAULT_SETTINGS.kanbanPluginCompatibilityMode,
+    kanbanAutoSyncEnabled: (_W = settings.kanbanAutoSyncEnabled) != null ? _W : DEFAULT_SETTINGS.kanbanAutoSyncEnabled,
+    budgetingEnabled: (_X = settings.budgetingEnabled) != null ? _X : DEFAULT_SETTINGS.budgetingEnabled,
+    subscriptionsTrackerEnabled: (_Y = settings.subscriptionsTrackerEnabled) != null ? _Y : DEFAULT_SETTINGS.subscriptionsTrackerEnabled,
     measurementSystem,
     weightGoalTarget,
     weightGoalMode,
@@ -306,9 +308,10 @@ function sanitizeSettings(settings) {
     intakeQuickPresets,
     habitAutomations,
     showUndoNotifications,
+    showSupportFooter,
     notificationSound,
-    wallpaperFolder: normalizeFolderPath2(((_Y = settings.wallpaperFolder) == null ? void 0 : _Y.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
-    selectedWallpaper: ((_Z = settings.selectedWallpaper) == null ? void 0 : _Z.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
+    wallpaperFolder: normalizeFolderPath2(((_Z = settings.wallpaperFolder) == null ? void 0 : _Z.trim()) || DEFAULT_SETTINGS.wallpaperFolder),
+    selectedWallpaper: ((__ = settings.selectedWallpaper) == null ? void 0 : __.trim()) || DEFAULT_SETTINGS.selectedWallpaper,
     habitDefinitions: parsedHabitDefinitions.length > 0 ? parsedHabitDefinitions : DEFAULT_SETTINGS.habitDefinitions,
     routineTemplates: typeof settings.routineTemplates === "string" ? settings.routineTemplates : DEFAULT_SETTINGS.routineTemplates,
     sessionTrackers: mergedSessionTrackers
@@ -7436,6 +7439,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       contentEl.addClass("daily-dashboard-view");
       contentEl.removeClass("is-view-mobile", "is-view-compact", "is-view-widescreen");
       contentEl.addClass(`is-view-${viewMode}`);
+      contentEl.toggleClass("has-support-footer", settings.showSupportFooter);
       const page = contentEl.createDiv({ cls: "daily-dashboard-page" });
       const hero = page.createDiv({ cls: "daily-dashboard-hero" });
       if (wallpaperUrl) {
@@ -9653,17 +9657,19 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
-      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-footer" });
-      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
-      supportCopy.createEl("strong", { text: "Support DASH development" });
-      supportCopy.createEl("span", {
-        cls: "daily-dashboard-row-meta",
-        text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
-      });
-      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline" });
-      createButton(supportActions, "Support on Ko-fi", async () => {
-        window.open("https://ko-fi.com/rayrayelite");
-      }, false, "heart");
+      if (settings.showSupportFooter) {
+        const supportDock = contentEl.createDiv({ cls: "daily-dashboard-support-dock" });
+        const supportCopy = supportDock.createDiv({ cls: "daily-dashboard-stack" });
+        supportCopy.createEl("strong", { text: "Support DASH development" });
+        supportCopy.createEl("span", {
+          cls: "daily-dashboard-row-meta",
+          text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
+        });
+        const supportActions = supportDock.createDiv({ cls: "daily-dashboard-actions-inline" });
+        createButton(supportActions, "Support on Ko-fi", async () => {
+          window.open("https://ko-fi.com/rayrayelite");
+        }, false, "heart");
+      }
       this.lastRenderAt = Date.now();
     } catch (error) {
       console.error("Daily dashboard render failed", error);
@@ -13201,6 +13207,14 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
           showUndoNotifications: value
+        });
+      });
+    });
+    new import_obsidian3.Setting(containerEl).setName("Show sticky support footer").setDesc("Keep the Ko-fi support bar anchored to the bottom of the dashboard view. Turn it off here if you do not want that persistent reminder.").addToggle((toggle) => {
+      toggle.setValue(settings.showSupportFooter).onChange(async (value) => {
+        await this.plugin.updateSettings({
+          ...this.plugin.getSettings(),
+          showSupportFooter: value
         });
       });
     });
@@ -25989,8 +26003,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- refresh icon: sync repeating project tasks",
       "",
       "### Support Footer Ribbon",
-      "- at the bottom of the dashboard page, DASH shows a separate support ribbon instead of taking space from the hero area",
+      "- DASH can keep a support ribbon anchored to the bottom of the dashboard view while you scroll",
       "- use the Support on Ko-fi button if you want to support development; it does not affect dashboard behavior or unlock features",
+      "- if you do not want that persistent footer, turn off Show sticky support footer in settings",
       "",
       "### Status Pills In The Hero Footer",
       "- date: the active dashboard date",

@@ -71,6 +71,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
         .filter((automation): automation is HabitAutomation => automation !== null)
     : DEFAULT_SETTINGS.habitAutomations;
   const showUndoNotifications = settings.showUndoNotifications ?? DEFAULT_SETTINGS.showUndoNotifications;
+  const showSupportFooter = settings.showSupportFooter ?? DEFAULT_SETTINGS.showSupportFooter;
   const sessionTrackers = Array.isArray(settings.sessionTrackers)
     ? settings.sessionTrackers
         .map((tracker, index) => normalizeSessionTrackerDefinition(tracker, index))
@@ -143,6 +144,7 @@ export function sanitizeSettings(settings: DashboardSettings): DashboardSettings
     intakeQuickPresets,
     habitAutomations,
     showUndoNotifications,
+    showSupportFooter,
     notificationSound,
     wallpaperFolder: normalizeFolderPath(settings.wallpaperFolder?.trim() || DEFAULT_SETTINGS.wallpaperFolder),
     selectedWallpaper: settings.selectedWallpaper?.trim() || DEFAULT_SETTINGS.selectedWallpaper,

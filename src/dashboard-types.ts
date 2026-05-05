@@ -519,6 +519,7 @@ export interface DashboardSettings {
   intakeQuickPresets: IntakeQuickPreset[];
   habitAutomations: HabitAutomation[];
   showUndoNotifications: boolean;
+  showSupportFooter: boolean;
   notificationSound: DashboardNotificationSound;
   wallpaperFolder: string;
   selectedWallpaper: string;
@@ -1342,6 +1343,7 @@ export const DEFAULT_SETTINGS: DashboardSettings = {
   ],
   habitAutomations: [],
   showUndoNotifications: true,
+  showSupportFooter: true,
   notificationSound: "chime",
   wallpaperFolder: "Wallpapers",
   selectedWallpaper: "",
