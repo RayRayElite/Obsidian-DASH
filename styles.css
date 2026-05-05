@@ -3658,6 +3658,10 @@
   order: 1;
 }
 
+.daily-dashboard-page > .daily-dashboard-support-dock {
+  order: 999;
+}
+
 .daily-dashboard-card--week-at-a-glance {
   gap: 12px;
 }
