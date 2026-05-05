@@ -55,37 +55,12 @@ One concept that matters early is the logical day.
 
 DASH does not assume that your day starts and ends exactly at midnight. Instead, day tracking and sleep tracking depend on when you explicitly start the day after waking up and end the day when you go to bed.
 
-- use `Begin logical day` when you wake up and are actually starting the day
-- use `End logical day` when you are done for the day and going to bed
+- use `Begin day` when you wake up and are actually starting the day
+- use `End day` when you are done for the day and going to bed
 - if you work late past midnight, DASH will still treat that time as part of the same day until you end it
 
 That start-day and end-day flow is what keeps sleep timing, daily logs, and reports lined up correctly.
 
-## What You Can Do With It
-
-### Daily Operations
-
-- plan the day, capture tasks, and review progress from one dashboard
-- track sessions, habits, calendar pressure, and notes in one operational surface
-- keep a readable daily-log history in normal vault files
-
-### Projects And Kanban
-
-- use a markdown-first `Master Task Hub` as the source of truth
-- open a dedicated DASH Kanban board on top of that hub
-- create projects, move work visually, and keep the markdown structure inspectable
-- customize the board with file-backed templates and themes
-
-### Reports And Review
-
-- generate daily logs, weekly or monthly reports, exports, and support notes
-- review project pressure, blockers, and follow-through without manually assembling notes
-
-### AI And Research
-
-- AI usage is optional
-- generate planning, synthesis, and review outputs as normal vault files
-- use the compiled research wiki flow when you want note-grounded research support
 
 ## Feature Highlights And Use Cases
 
@@ -134,7 +109,8 @@ The `Master Task Hub` and `DASH Kanban` are designed to work together rather tha
 ### Customization And Recovery Modules
 
 - `Project Notes`: use them for durable context, definitions, risks, and decisions that should not clutter the hub
-- `Themes And Templates`: use them to change Kanban appearance and board structure without editing plugin code
+- `Themes And Templates`: use them to change Kanban appearance and board structure, including creating your own custom themes and templates without editing plugin code
+- `Header Wallpapers`: use them to change the dashboard hero image by adding your own image files to the wallpaper folder and selecting one in settings
 - `Repair And Refresh Flows`: use them when state drifts or generated artifacts need to be rebuilt, instead of guessing at manual fixes
 
 This is meant to be a modular system, not an all-or-nothing one. If only a few modules fit your workflow, that is a normal way to use DASH.
@@ -172,9 +148,14 @@ AI features are optional. Core dashboard, project, and Kanban workflows should r
 
 If you configure AI features, they may involve external model calls depending on your settings and provider choice.
 
-## Custom Themes And Templates
+## Custom Themes, Templates, And Wallpapers
 
-If you want to customize board assets, start with [Documentation/User Guide/Kanban Themes and Templates Guide.md](Documentation/User%20Guide/Kanban%20Themes%20and%20Templates%20Guide.md).
+You can customize parts of DASH without changing plugin code.
+
+- create your own Kanban themes and templates by following [Documentation/User Guide/Kanban Themes and Templates Guide.md](Documentation/User%20Guide/Kanban%20Themes%20and%20Templates%20Guide.md)
+- add your own dashboard header wallpaper by placing an image inside the configured wallpaper folder, then selecting it in settings
+
+The default wallpaper folder is `Wallpapers`, but the setting can point somewhere else if you want to organize those images differently.
 
 ## Support
 
