@@ -14,6 +14,12 @@
     linear-gradient(180deg, color-mix(in srgb, var(--background-primary) 94%, #090c12), var(--background-primary));
 }
 
+.daily-dashboard-view.has-support-footer {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .daily-dashboard-page {
   display: flex;
   flex-direction: column;
@@ -24,8 +30,10 @@
   isolation: isolate;
 }
 
-.daily-dashboard-view.has-support-footer {
-  padding-bottom: 108px;
+.daily-dashboard-view.has-support-footer .daily-dashboard-page {
+  flex: 1 0 auto;
+  min-height: 100%;
+  width: 100%;
 }
 
 .dash-kanban-view {
@@ -3989,8 +3997,6 @@
 .daily-dashboard-view.is-view-mobile .daily-dashboard-support-dock {
   flex-direction: column;
   align-items: stretch;
-  left: 18px;
-  right: 18px;
   bottom: 18px;
 }
 
@@ -4991,16 +4997,13 @@
 .daily-dashboard-support-dock {
   position: sticky;
   bottom: 24px;
-  left: 24px;
-  right: 24px;
   z-index: 16;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  width: min(1280px, calc(100% - 48px));
-  margin: 0 auto;
-  margin-top: calc(-84px - 22px);
+  width: 100%;
+  margin-top: auto;
   padding: 12px 16px;
   border: 1px solid color-mix(in srgb, #d85b5b 44%, var(--background-modifier-border));
   border-radius: 18px;

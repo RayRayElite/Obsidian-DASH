@@ -9658,7 +9658,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
       if (settings.showSupportFooter) {
-        const supportDock = contentEl.createDiv({ cls: "daily-dashboard-support-dock" });
+        const supportDock = page.createDiv({ cls: "daily-dashboard-support-dock" });
         const supportCopy = supportDock.createDiv({ cls: "daily-dashboard-stack" });
         supportCopy.createEl("strong", { text: "Support DASH development" });
         supportCopy.createEl("span", {

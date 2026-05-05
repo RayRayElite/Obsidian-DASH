@@ -3475,7 +3475,7 @@ export class DailyDashboardView extends ItemView {
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
 
       if (settings.showSupportFooter) {
-        const supportDock = contentEl.createDiv({ cls: "daily-dashboard-support-dock" });
+        const supportDock = page.createDiv({ cls: "daily-dashboard-support-dock" });
         const supportCopy = supportDock.createDiv({ cls: "daily-dashboard-stack" });
         supportCopy.createEl("strong", { text: "Support DASH development" });
         supportCopy.createEl("span", {
