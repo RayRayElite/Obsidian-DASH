@@ -1042,6 +1042,15 @@ export interface DashboardNotificationItem {
   dismissible: boolean;
 }
 
+export interface DashboardDocumentationEntry {
+  id: string;
+  title: string;
+  description: string;
+  section: string;
+  path: string;
+  keywords: string[];
+}
+
 export interface QuickAddState {
   projectName: string;
   sectionName: string;

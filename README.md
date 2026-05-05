@@ -1,30 +1,75 @@
 # Obsidian DASH - Daily Action & System Hub
 
-Obsidian DASH - Daily Action & System Hub is an Obsidian plugin that opens as its own dashboard tab instead of injecting a panel into the workspace chrome.
+Obsidian DASH is a desktop-first Obsidian plugin for running your day, your projects, and your review system from one place without hiding everything behind opaque plugin state.
 
-## What It Does
+It combines:
 
-- tracks repeat daily habits with per-day counts, preferred completion windows, difficulty weights, and per-habit miss notes
-- stores mood, energy, wake quality, a richer execution stack with active focus items, notes, effort estimates, drag reordering, a Next Up queue, routine cues, calendar blocking actions, suggested focus candidates, friction log, timestamped food entries, timestamped intake logs for water/caffeine/supplements/medication, symptom and pain entries, sleep log, dream log, micro-reflections, and daily notes
-- supports user-controlled logical days with begin-day/end-day tracking, inactivity-based day-end nudges, and late-night rollover warnings so late-night work does not roll into the wrong calendar day
-- tracks work sessions, nap sessions, and bowel movement count plus duration and quality tags inside the active logical day for more accurate sleep and activity history, with optional session tags like deep work, admin, creative, errands, and recovery, and keeps bowel tracking inside Vitals instead of a separate day-flow block
-- includes a built-in monthly calendar where you can click a day to add one-off or recurring events, categorize them as work, health, errands, social, or personal, link them to a tracked project, add per-event prep and travel lead times, span events across multiple days, edit a single recurring occurrence without touching the whole series, skip or cancel one occurrence, surface upcoming reminders below the Execution block, see a weekly agenda card, and sync events into markdown for later AI analysis
-- includes an optional budgeting card with an overview, subscriptions tracker, simple category targets, and a generated monthly finance snapshot note so recurring charges and renewal pressure can live in the dashboard without turning the plugin into a full accounting app
-- writes a markdown daily log note for every tracked day
-- generates weekly reviews plus weekly and monthly markdown reports from those daily logs
-- exports dashboard history into a markdown summary plus CSV dumps for daily metrics, habits, completed tasks, and calendar events
-- can call OpenAI for AI-powered morning startup briefs, shutdown summaries, weekly planning, project risk scans, anomaly detection, period comparisons, project synthesis, "why today felt off" analysis, active-note analysis, and freeform questions grounded in dashboard context
-- can initialize a compiled research wiki scaffold with raw/source/concept/index/output folders plus a generated health-check note for maintenance review
-- reads a master todo note to show project workload snapshots, stale work, health trends, linked notes, and completion progress
-- can generate a note-first `Kanban Hub` companion document from the master task hub, with per-project boards for `Now`, `Next`, `Later`, `Waiting`, `Parking Lot`, and recent `Done` work
-- automatically archives completed checklist items from the master todo into a per-project completed archive section with date and time
-- lets you quick-add tasks into project sections, promote project tasks into today focus, quick-capture new focus items, pause active sessions into a break, search archived work history, sync repeating tasks, and offload project references into project notes
-- includes switchable mobile, compact, and widescreen dashboard modes, a layout editor for card order / hidden / pinned preferences, fixed keyboard shortcuts for major actions, undo for dashboard-side destructive actions, a hero-bar notification popover for reminders and system notices, a first-run setup wizard, and collapsible subsections to keep dense cards usable
-- lets you pick a hero wallpaper from a vault folder in plugin settings
+- a daily dashboard for planning, tracking, and review
+- a readable `Master Task Hub` as the source of truth for project work
+- a native DASH Kanban board layered on top of that hub
+- generated daily logs, reports, exports, and review notes
+- optional AI and compiled research workflows for note-grounded synthesis
 
-The first-run setup wizard now behaves like a true onboarding flow: it should open automatically only for a fresh install, skipping it counts as "don't prompt me again," and you can always reopen it later from the command palette or settings.
+## Who It Is For
 
-Task lines in the master hub can now include lightweight annotations such as `[priority: high]`, `[due: 2026-04-05]`, `[blocked: waiting on API key]`, `[unblock: 2026-04-08]`, `[effort: 30m]`, `[energy: low]`, `[context: admin]`, `[trigger: after call with vendor]`, and `[minimum-step: draft the first outline]`. The dashboard strips those tags out for display, but uses them to surface due-soon, overdue, blocked, and priority-ranked work in project health, cleanup alerts, promotion flows, AI context, and suggested next actions.
+Use DASH if you want:
+
+- one operational home for your day inside Obsidian
+- readable vault artifacts instead of hidden app-only state
+- project planning that still works in plain markdown
+- stronger review, reporting, and AI context without turning your system into a spreadsheet graveyard
+
+## Start Here
+
+If you are new to the plugin, use the user guide set instead of reading the entire README front to back.
+
+### User Guide Index
+
+- [Documentation/User Guide/README.md](Documentation/User%20Guide/README.md)
+- [Documentation/User Guide/Quick Start.md](Documentation/User%20Guide/Quick%20Start.md)
+- [Documentation/User Guide/Daily Dashboard Guide.md](Documentation/User%20Guide/Daily%20Dashboard%20Guide.md)
+- [Documentation/User Guide/Projects and Kanban Guide.md](Documentation/User%20Guide/Projects%20and%20Kanban%20Guide.md)
+- [Documentation/User Guide/AI and Research Guide.md](Documentation/User%20Guide/AI%20and%20Research%20Guide.md)
+- [Documentation/User Guide/Reports, Reviews, and Exports.md](Documentation/User%20Guide/Reports,%20Reviews,%20and%20Exports.md)
+- [Documentation/User Guide/FAQ.md](Documentation/User%20Guide/FAQ.md)
+
+## What DASH Actually Does
+
+At a high level, DASH helps you:
+
+- plan the current day without losing historical context
+- track habits, sessions, calendar events, state, and friction in one operational surface
+- keep project work readable in markdown while still getting a richer board UI
+- generate logs, reports, exports, and review artifacts automatically
+- add AI only where it improves planning, synthesis, and retrieval
+
+## Core Product Surfaces
+
+### Daily Dashboard
+
+The main dashboard is for action, tracking, reminders, quick capture, and review. It includes layout customization, notifications, keyboard shortcuts, multiple view modes, and generated history.
+
+### Master Task Hub
+
+The hub is still the readable source of truth for project work. DASH reads from it, writes back to it, and uses it to drive the board, review, and reporting layers.
+
+### DASH Kanban
+
+The DASH Kanban board gives you a faster visual project surface with search, filters, template-driven lanes, project and all-project views, drag-and-drop, and themed board shells while still syncing against the hub.
+
+### Generated Artifacts
+
+DASH writes normal vault files for daily logs, AI outputs, reports, finance snapshots, wins archives, dependency reviews, review notes, exports, and documentation.
+
+## Documentation Strategy
+
+This README is the front door.
+
+The detailed how-to material now lives in the user guide set under [Documentation/User Guide/README.md](Documentation/User%20Guide/README.md), and the plugin also exposes the same docs from inside DASH through a searchable documentation center.
+
+## FAQ Shortcut
+
+If you mainly want common answers rather than full walkthroughs, start with [Documentation/User Guide/FAQ.md](Documentation/User%20Guide/FAQ.md).
 
 ## Master Todo Workflow
 

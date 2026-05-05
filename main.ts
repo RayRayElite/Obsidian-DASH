@@ -171,6 +171,7 @@ import {
   type DayRepairInput,
   type DailyEntry,
   type DashboardPluginData,
+  type DashboardDocumentationEntry,
   type DashboardFocusDisplayItem,
   type DashboardKanbanViewState,
   type DashboardKanbanTheme,
@@ -228,6 +229,13 @@ import {
   type MoodCheckIn,
   type WorkSession
 } from "./src/dashboard-types";
+
+const DASH_DOCUMENTATION_FOLDER = "Obsidian DASH/Documentation";
+
+type DashboardDocumentationPageDefinition = {
+  entry: DashboardDocumentationEntry;
+  render: () => string;
+};
 
 type DashKanbanLiveTaskMetadata = {
   rawText: string;
@@ -865,6 +873,7 @@ export default class DailyDashboardPlugin extends Plugin {
       { label: "calendar import", run: () => this.importCalendarEventsFromMarkdown() },
       { label: "today entry", run: () => this.ensureTodayEntry() },
       { label: "core support notes", run: () => this.ensureCoreSupportNotesExist() },
+      { label: "documentation notes", run: () => this.ensureDocumentationNotesExist() },
       { label: "calendar artifacts", run: () => this.syncCalendarArtifacts() },
       { label: "wallpaper catalog", run: () => this.refreshWallpaperOptions() }
     ];
@@ -1043,6 +1052,30 @@ export default class DailyDashboardPlugin extends Plugin {
       name: "Open System Map note",
       callback: () => {
         void this.openSystemMapNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-dash-documentation-home",
+      name: "Open DASH documentation home",
+      callback: () => {
+        void this.openDocumentationHomeNote();
+      }
+    });
+
+    this.addCommand({
+      id: "open-dash-documentation-faq",
+      name: "Open DASH documentation FAQ",
+      callback: () => {
+        void this.openDocumentationFaqNote();
+      }
+    });
+
+    this.addCommand({
+      id: "refresh-dash-documentation-notes",
+      name: "Refresh DASH documentation notes",
+      callback: () => {
+        void this.refreshDocumentationNotes(true);
       }
     });
 
@@ -6087,6 +6120,45 @@ export default class DailyDashboardPlugin extends Plugin {
     return this.ensureSupportNote(this.data.settings.systemMapNotePath, () => this.renderSystemMapTemplate());
   }
 
+  getDocumentationCenterEntries(): DashboardDocumentationEntry[] {
+    return this.getDocumentationPageDefinitions().map((page) => ({ ...page.entry }));
+  }
+
+  async openDocumentationPage(pageId: string): Promise<void> {
+    const page = this.getDocumentationPageDefinitions().find((candidate) => candidate.entry.id === pageId);
+    if (!page) {
+      new Notice("That documentation page is no longer available.");
+      return;
+    }
+
+    const file = await this.ensureSupportNote(page.entry.path, page.render);
+    await this.openFile(file);
+  }
+
+  async openDocumentationHomeNote(): Promise<void> {
+    await this.openDocumentationPage("docs-home");
+  }
+
+  async openDocumentationFaqNote(): Promise<void> {
+    await this.openDocumentationPage("docs-faq");
+  }
+
+  async ensureDocumentationNotesExist(): Promise<void> {
+    for (const page of this.getDocumentationPageDefinitions()) {
+      await this.ensureSupportNoteExistsWithoutStatus(page.entry.path, page.render);
+    }
+  }
+
+  async refreshDocumentationNotes(showNotice = false): Promise<void> {
+    for (const page of this.getDocumentationPageDefinitions()) {
+      await this.writeManagedMarkdownFile(page.entry.path, page.render());
+    }
+
+    if (showNotice) {
+      new Notice("DASH documentation notes refreshed.");
+    }
+  }
+
   async ensureCoreSupportNotesExist(): Promise<void> {
     await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.basicInfoNotePath, () => this.renderBasicInformationTemplate());
     await this.ensureSupportNoteExistsWithoutStatus(this.data.settings.aiGuardrailsNotePath, () => this.renderAiGuardrailsTemplate());
@@ -10715,6 +10787,396 @@ export default class DailyDashboardPlugin extends Plugin {
       "- History lives in logs and reviews.",
       "- Stable context lives in evergreen notes.",
       "- AI behavior rules live in AI Guardrails."
+    ].join("\n");
+  }
+
+  private getDocumentationPageDefinitions(): DashboardDocumentationPageDefinition[] {
+    return [
+      {
+        entry: {
+          id: "docs-home",
+          title: "Start Here",
+          description: "The one-page documentation hub with the fastest path into setup, daily use, and deeper guides.",
+          section: "Start here",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - Start Here.md`,
+          keywords: ["index", "overview", "docs", "guide", "start", "help"]
+        },
+        render: () => this.renderDocumentationHomeTemplate()
+      },
+      {
+        entry: {
+          id: "docs-quick-start",
+          title: "Quick Start",
+          description: "A short setup and first-week guide for getting DASH useful without over-configuring it.",
+          section: "Start here",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - Quick Start.md`,
+          keywords: ["setup", "onboarding", "first run", "quick start", "begin"]
+        },
+        render: () => this.renderDocumentationQuickStartTemplate()
+      },
+      {
+        entry: {
+          id: "docs-dashboard-guide",
+          title: "Daily Dashboard Guide",
+          description: "How to use the main dashboard surface for planning, tracking, notifications, and day flow.",
+          section: "Core workflows",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - Daily Dashboard Guide.md`,
+          keywords: ["dashboard", "cards", "notifications", "layout", "logical day", "daily use"]
+        },
+        render: () => this.renderDocumentationDashboardGuideTemplate()
+      },
+      {
+        entry: {
+          id: "docs-projects-kanban",
+          title: "Projects and Kanban Guide",
+          description: "How the Master Task Hub, project notes, and DASH Kanban fit together in normal use.",
+          section: "Core workflows",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - Projects and Kanban Guide.md`,
+          keywords: ["projects", "master task hub", "kanban", "tasks", "boards", "project notes"]
+        },
+        render: () => this.renderDocumentationProjectsKanbanTemplate()
+      },
+      {
+        entry: {
+          id: "docs-ai-research",
+          title: "AI and Research Guide",
+          description: "When to use AI Workspace, how vault retrieval works, and how the compiled research wiki fits in.",
+          section: "Deep dives",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - AI and Research Guide.md`,
+          keywords: ["ai", "research", "workspace", "retrieval", "wiki", "openai"]
+        },
+        render: () => this.renderDocumentationAiResearchTemplate()
+      },
+      {
+        entry: {
+          id: "docs-reports-review",
+          title: "Reports, Reviews, and Exports",
+          description: "Where generated outputs go, what they are for, and which reports matter for weekly and monthly review.",
+          section: "Deep dives",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - Reports, Reviews, and Exports.md`,
+          keywords: ["reports", "review", "exports", "weekly", "monthly", "logs"]
+        },
+        render: () => this.renderDocumentationReportsTemplate()
+      },
+      {
+        entry: {
+          id: "docs-faq",
+          title: "FAQ",
+          description: "Answers to common setup, workflow, AI, and Kanban questions without digging through long notes.",
+          section: "Reference",
+          path: `${DASH_DOCUMENTATION_FOLDER}/DASH Docs - FAQ.md`,
+          keywords: ["faq", "questions", "troubleshooting", "common issues", "how do i"]
+        },
+        render: () => this.renderDocumentationFaqTemplate()
+      }
+    ];
+  }
+
+  private renderDocumentationHomeTemplate(): string {
+    return [
+      "# DASH Docs - Start Here",
+      "",
+      "Welcome to the user-facing documentation hub for Obsidian DASH.",
+      "",
+      "Use this note when you want the shortest path to the right answer instead of hunting through planning docs or old release notes.",
+      "",
+      "## What DASH Is",
+      "- DASH is a daily operations workspace for one person inside Obsidian.",
+      "- It combines a daily dashboard, a Master Task Hub driven project system, a native Kanban board, AI workflows, reviews, and generated vault artifacts.",
+      "- The goal is not to replace every note in your vault. The goal is to give action, review, and context a stable home.",
+      "",
+      "## Start With These Guides",
+      "- [[DASH Docs - Quick Start]]",
+      "- [[DASH Docs - Daily Dashboard Guide]]",
+      "- [[DASH Docs - Projects and Kanban Guide]]",
+      "- [[DASH Docs - FAQ]]",
+      "",
+      "## Documentation Map",
+      "### Start Here",
+      "- [[DASH Docs - Quick Start]]: minimum setup and first-week workflow.",
+      "",
+      "### Core Workflows",
+      "- [[DASH Docs - Daily Dashboard Guide]]: daily planning, tracking, notifications, layout, and action flow.",
+      "- [[DASH Docs - Projects and Kanban Guide]]: Master Task Hub, project notes, task movement, and the board.",
+      "",
+      "### Deep Dives",
+      "- [[DASH Docs - AI and Research Guide]]: AI Workspace, indexed-note retrieval, and the compiled research wiki.",
+      "- [[DASH Docs - Reports, Reviews, and Exports]]: weekly and monthly reports, exports, logs, and review notes.",
+      "",
+      "### Reference",
+      "- [[DASH Docs - FAQ]]: common setup and workflow questions.",
+      "",
+      "## If You Are Brand New",
+      "1. Run the first-run setup wizard.",
+      "2. Point DASH at your Master Task Hub.",
+      "3. Open the dashboard and start using only the cards you actually need.",
+      "4. Open DASH Kanban only after your project sections are readable in the hub.",
+      "5. Add AI only after the base workflow already feels stable.",
+      "",
+      "## Search",
+      "- From the dashboard, use the documentation button to open the searchable docs center.",
+      "- Inside Obsidian, the docs live in the folder `Obsidian DASH/Documentation` so vault search can also find them.",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationQuickStartTemplate(): string {
+    return [
+      "# DASH Docs - Quick Start",
+      "",
+      "Use this guide if you want DASH useful quickly without turning setup into its own project.",
+      "",
+      "## 1. Finish Core Setup",
+      "- Open the first-run setup wizard if it has not already completed.",
+      "- Set the Master Task Hub path.",
+      "- Confirm your reporting folders and daily log location.",
+      "- Leave AI off until the manual workflow already makes sense.",
+      "",
+      "## 2. Make Sure Your Hub Is Usable",
+      "Recommended baseline per project:",
+      "- a `## Project Name` heading",
+      "- a few useful metadata lines like `Status::` or `Project Note::`",
+      "- active work sections such as `### Now`, `### Next`, `### Later`, `### Waiting`, and `### Reference`",
+      "",
+      "## 3. Learn The Three Main Surfaces",
+      "- Daily Dashboard: daily action, tracking, reminders, and review.",
+      "- Master Task Hub: the readable source of truth for project work.",
+      "- DASH Kanban: a faster visual board on top of the same project data.",
+      "",
+      "## 4. Use A Narrow First-Week Workflow",
+      "- Start the day from the dashboard.",
+      "- Promote or quick-add work from your projects.",
+      "- Track sessions only if they are helpful, not because the feature exists.",
+      "- End the day cleanly so the daily log remains trustworthy.",
+      "",
+      "## 5. Add Features In This Order",
+      "1. Dashboard and Master Task Hub",
+      "2. Project notes",
+      "3. DASH Kanban",
+      "4. Weekly and monthly reports",
+      "5. AI Workspace",
+      "6. Compiled research wiki",
+      "",
+      "## Common First Mistakes",
+      "- Over-customizing cards before using the defaults for a few days.",
+      "- Treating every note as an action list instead of separating action, reference, and history.",
+      "- Turning on AI before the underlying notes are readable.",
+      "- Using Kanban as the source of truth instead of the hub.",
+      "",
+      "## Next Guides",
+      "- [[DASH Docs - Daily Dashboard Guide]]",
+      "- [[DASH Docs - Projects and Kanban Guide]]",
+      "- [[DASH Docs - FAQ]]",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationDashboardGuideTemplate(): string {
+    return [
+      "# DASH Docs - Daily Dashboard Guide",
+      "",
+      "The dashboard is the operational surface. It should help you decide, track, and review. It should not feel like a second vault inside your vault.",
+      "",
+      "## What The Dashboard Is For",
+      "- seeing today clearly",
+      "- capturing and promoting work quickly",
+      "- tracking habits, sessions, calendar items, and basic state data",
+      "- noticing drift before it becomes a full review problem",
+      "",
+      "## Core Daily Workflow",
+      "### Morning or start of work",
+      "- Open the dashboard.",
+      "- Check notifications, suggested focus, and calendar pressure.",
+      "- Pull the next task from the hub or Kanban instead of inventing new work.",
+      "",
+      "### During the day",
+      "- Use quick add when something belongs in a project.",
+      "- Track sessions only when the information helps planning or review.",
+      "- Keep notes short and operational. Durable explanation belongs in project notes.",
+      "",
+      "### End of day",
+      "- close open loops if possible",
+      "- end the logical day cleanly",
+      "- let DASH write the day into readable history",
+      "",
+      "## Cards To Care About First",
+      "- Action Queue or your main action surfaces",
+      "- Session Deck",
+      "- Weekly Agenda",
+      "- Timeline Search",
+      "- Notifications and quick utility actions",
+      "",
+      "## Layout Tips",
+      "- Use the layout editor to hide cards you do not use often.",
+      "- Pin only a few cards. If many cards are pinned, nothing is prioritized.",
+      "- Use compact versus widescreen mode intentionally instead of leaving the view in whatever mode you clicked last.",
+      "",
+      "## Logical Day Rule",
+      "If late-night work matters to your schedule, use Begin logical day and End logical day consistently so logs and reports stay accurate.",
+      "",
+      "## Related Guides",
+      "- [[DASH Docs - Projects and Kanban Guide]]",
+      "- [[DASH Docs - Reports, Reviews, and Exports]]",
+      "- [[DASH Docs - FAQ]]",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationProjectsKanbanTemplate(): string {
+    return [
+      "# DASH Docs - Projects and Kanban Guide",
+      "",
+      "DASH project work is built on one rule: the Master Task Hub stays readable and remains the canonical action source.",
+      "",
+      "## The Three Project Layers",
+      "- Master Task Hub: readable task source of truth",
+      "- Project note: durable context, decisions, risks, and reference material",
+      "- DASH Kanban: fast visual planning and movement on top of that source",
+      "",
+      "## What Belongs In The Hub",
+      "- active checklist work",
+      "- a small amount of project metadata",
+      "- lane or section structure that humans can still scan in plain markdown",
+      "",
+      "## What Belongs In Project Notes",
+      "- why the project matters",
+      "- definitions, links, and context",
+      "- durable decisions",
+      "- support material that would clutter the hub",
+      "",
+      "## When To Use DASH Kanban",
+      "Use the board when visual grouping or drag-and-drop is faster than editing markdown directly. Do not use the board to hide a messy hub structure you have not fixed yet.",
+      "",
+      "## Recommended Workflow",
+      "1. Keep project headings and sections sane in the hub.",
+      "2. Open DASH Kanban when you want faster sorting, filtering, or review.",
+      "3. Let the board sync back into the hub instead of treating them as different systems.",
+      "",
+      "## Good Task Hygiene",
+      "- keep tasks concrete",
+      "- use metadata only when it changes decisions, not because it is available",
+      "- archive completed work instead of deleting history",
+      "",
+      "## Kanban Tips",
+      "- Single Project mode is for depth.",
+      "- All Projects mode is for triage and portfolio visibility.",
+      "- Search and focus filters are for finding pressure, not for replacing task wording discipline.",
+      "",
+      "## Related Guides",
+      "- [[DASH Docs - Quick Start]]",
+      "- [[DASH Docs - Daily Dashboard Guide]]",
+      "- [[DASH Docs - FAQ]]",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationAiResearchTemplate(): string {
+    return [
+      "# DASH Docs - AI and Research Guide",
+      "",
+      "AI in DASH is there to help with planning, review, synthesis, and note-grounded answers. It should clarify your system, not make the system harder to trust.",
+      "",
+      "## AI Workspace",
+      "Use AI Workspace for:",
+      "- startup and shutdown summaries",
+      "- weekly planning and project risk scans",
+      "- note-grounded questions",
+      "- latest-output review and extracted actions",
+      "",
+      "## Before You Turn AI On",
+      "- make sure your basic notes are readable",
+      "- keep indexed folders explicit",
+      "- decide whether you want environment-variable or stored-key setup",
+      "",
+      "## Support Notes Matter",
+      "The AI layer becomes much better when stable context lives in support notes like Basic Information, AI Guardrails, Current Season, Dependencies, and System Map.",
+      "",
+      "## Retrieval Rule",
+      "Good retrieval starts with better source notes, not larger note dumps. Index the folders that actually hold useful context.",
+      "",
+      "## Compiled Research Wiki",
+      "Use the compiled research workflow when you want a durable knowledge layer rather than one-off chat output.",
+      "",
+      "## When Not To Use AI",
+      "- when the task is just normal project maintenance",
+      "- when the source notes are too messy to support reliable output",
+      "- when a direct manual decision is cheaper than prompt-designing around ambiguity",
+      "",
+      "## Related Guides",
+      "- [[DASH Docs - Reports, Reviews, and Exports]]",
+      "- [[DASH Docs - FAQ]]",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationReportsTemplate(): string {
+    return [
+      "# DASH Docs - Reports, Reviews, and Exports",
+      "",
+      "DASH generates history so you can review patterns without rereading your whole vault.",
+      "",
+      "## Main Output Types",
+      "- Daily logs: day-level history",
+      "- Weekly reports: short-term review and planning surface",
+      "- Monthly reports: broader drift, trend, and pressure review",
+      "- Gamification reports: deterministic score breakdowns",
+      "- Cleanup and review notes: portfolio maintenance surfaces",
+      "- Exports: markdown and CSV bundles for external analysis or archival use",
+      "",
+      "## What To Read Regularly",
+      "- Daily logs when you need factual recall",
+      "- Weekly review notes when deciding next focus",
+      "- Monthly reports when adjusting the system itself",
+      "",
+      "## Review By Exception",
+      "Do not reread everything every week. Look for repeated blockers, stale projects, missed-habit clusters, recovery warnings, and open-loop pressure that keeps growing.",
+      "",
+      "## Good Review Rhythm",
+      "- daily: quick dashboard scan and clean shutdown",
+      "- weekly: planning, project review, stale-work triage",
+      "- monthly: system-level adjustments, not just task cleanup",
+      "",
+      "## Related Guides",
+      "- [[DASH Docs - Daily Dashboard Guide]]",
+      "- [[DASH Docs - AI and Research Guide]]",
+      "- [[DASH Docs - FAQ]]",
+      ""
+    ].join("\n");
+  }
+
+  private renderDocumentationFaqTemplate(): string {
+    return [
+      "# DASH Docs - FAQ",
+      "",
+      "## Do I need to use every feature?",
+      "No. Start with the dashboard, hub, and whichever review surfaces are actually useful.",
+      "",
+      "## What is the real source of truth for project work?",
+      "The Master Task Hub. DASH Kanban is a faster visual surface over that data, not a separate planning universe.",
+      "",
+      "## When should I use project notes?",
+      "When context is durable enough that repeating it in the hub would make the hub harder to scan.",
+      "",
+      "## Do I need AI for DASH to be worth using?",
+      "No. The core workflow should already be useful without AI.",
+      "",
+      "## Where do the generated files go?",
+      "Into normal vault folders such as Dashboard Logs, report folders, and documentation folders.",
+      "",
+      "## What should I do if the dashboard feels too busy?",
+      "Hide cards, pin fewer sections, and narrow your workflow.",
+      "",
+      "## What should I do if Kanban feels confusing?",
+      "Simplify the hub structure first. If the source note is unclear, the board will only hide the problem temporarily.",
+      "",
+      "## Can I search the documentation?",
+      "Yes. Use the dashboard documentation center search, or search the folder `Obsidian DASH/Documentation` inside Obsidian.",
+      "",
+      "## Where should I go next?",
+      "- [[DASH Docs - Start Here]]",
+      "- [[DASH Docs - Quick Start]]",
+      "- [[DASH Docs - Projects and Kanban Guide]]",
+      ""
     ].join("\n");
   }
 

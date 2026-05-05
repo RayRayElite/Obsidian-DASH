@@ -39,6 +39,7 @@ import {
   type DashKanbanProjectBoard,
   type DashKanbanWorkspaceSnapshot,
   type DashboardKanbanDensity,
+  type DashboardDocumentationEntry,
   type DashboardKanbanFocusFilter,
   type DashboardKanbanTheme,
   type DashboardKanbanThemeDefinition,
@@ -548,6 +549,10 @@ export class DailyDashboardView extends ItemView {
         await this.render();
       }
     }).open();
+  }
+
+  private openDocumentationCenterFlow(): void {
+    new DashboardDocumentationModal(this.app, this.plugin).open();
   }
 
   private openShortcutHelpFlow(): void {
@@ -1307,6 +1312,9 @@ export class DailyDashboardView extends ItemView {
 
       const utilityActions = heroFooter.createDiv({ cls: "daily-dashboard-hero-utility-actions" });
       createIconButton(utilityActions, viewModeMeta.icon, `View mode ${viewModeMeta.label}. Switch to ${viewModeMeta.nextLabel}.`, async () => this.cycleViewMode());
+      createIconButton(utilityActions, "book-open", "Open DASH documentation", async () => {
+        this.openDocumentationCenterFlow();
+      });
       createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
         this.openShortcutHelpFlow();
       });
@@ -5136,6 +5144,113 @@ export class SessionDeckCustomizationModal extends Modal {
 
   private normalizeTrackerId(value: string): string {
     return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "custom-session";
+  }
+}
+
+export class DashboardDocumentationModal extends Modal {
+  private plugin: DailyDashboardPlugin;
+  private query = "";
+  private entries: DashboardDocumentationEntry[];
+
+  constructor(app: App, plugin: DailyDashboardPlugin) {
+    super(app);
+    this.plugin = plugin;
+    this.entries = plugin.getDocumentationCenterEntries();
+  }
+
+  onOpen(): void {
+    this.modalEl.addClass("daily-dashboard-layout-modal");
+    this.setTitle("DASH Documentation");
+    this.renderContent();
+  }
+
+  onClose(): void {
+    this.modalEl.removeClass("daily-dashboard-layout-modal");
+    this.contentEl.empty();
+  }
+
+  private renderContent(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl("p", {
+      cls: "daily-dashboard-row-meta",
+      text: "Search the user guides, open the right note directly, and keep the docs in the vault instead of buried in repo planning files."
+    });
+
+    const quickActions = contentEl.createDiv({ cls: "daily-dashboard-actions-inline" });
+    createButton(quickActions, "Start here", async () => {
+      await this.plugin.openDocumentationHomeNote();
+      this.close();
+    }, true, "book-open");
+    createButton(quickActions, "FAQ", async () => {
+      await this.plugin.openDocumentationFaqNote();
+      this.close();
+    }, false, "circle-help");
+    createButton(quickActions, "Refresh docs", async () => {
+      await this.plugin.refreshDocumentationNotes(true);
+      this.entries = this.plugin.getDocumentationCenterEntries();
+      this.renderContent();
+    }, false, "refresh-cw");
+
+    const searchInput = contentEl.createEl("input", {
+      cls: "daily-dashboard-input",
+      attr: { type: "search", placeholder: "Search docs, features, workflows, and common questions" }
+    });
+    searchInput.value = this.query;
+    searchInput.addEventListener("input", () => {
+      this.query = searchInput.value;
+      this.renderContent();
+    });
+
+    const normalizedQuery = this.query.trim().toLowerCase();
+    const filteredEntries = this.entries.filter((entry) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const haystack = [entry.title, entry.description, entry.section, entry.path, ...entry.keywords]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+
+    const summary = contentEl.createDiv({ cls: "daily-dashboard-chip-row" });
+    createSemanticChip(summary, `${filteredEntries.length} results`, filteredEntries.length > 0 ? "focus" : "neutral");
+    createSemanticChip(summary, `${new Set(filteredEntries.map((entry) => entry.section)).size} sections`, "log");
+
+    if (filteredEntries.length === 0) {
+      contentEl.createDiv({
+        cls: "daily-dashboard-empty-state",
+        text: "No documentation pages matched that search. Try a feature name like Kanban, AI, reports, quick start, or FAQ."
+      });
+      return;
+    }
+
+    let currentSection = "";
+    filteredEntries.forEach((entry) => {
+      if (entry.section !== currentSection) {
+        currentSection = entry.section;
+        contentEl.createEl("h4", { text: currentSection });
+      }
+
+      const row = contentEl.createDiv({ cls: "daily-dashboard-layout-row" });
+      const copy = row.createDiv({ cls: "daily-dashboard-stack" });
+      copy.createEl("strong", { text: entry.title });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: entry.description });
+      copy.createEl("span", { cls: "daily-dashboard-row-meta", text: entry.path });
+
+      const actions = row.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(actions, "Open", async () => {
+        await this.plugin.openDocumentationPage(entry.id);
+        this.close();
+      }, true, "arrow-up-right");
+    });
+
+    window.setTimeout(() => {
+      searchInput.focus();
+      searchInput.setSelectionRange(this.query.length, this.query.length);
+    }, 0);
   }
 }
 
