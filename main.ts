@@ -1,4 +1,10 @@
 import { Notice, Plugin, TFile, TFolder, normalizePath } from "obsidian";
+import auroraThemeCss from "./themes/aurora.css";
+import darkThemeCss from "./themes/dark.css";
+import forestThemeCss from "./themes/forest.css";
+import lightThemeCss from "./themes/light.css";
+import oceanThemeCss from "./themes/ocean.css";
+import roseThemeCss from "./themes/rose.css";
 
 import {
   buildAiSearchTerms,
@@ -232,6 +238,15 @@ import {
 
 const DASH_DOCUMENTATION_FOLDER = "Obsidian DASH/Documentation";
 
+const BUNDLED_KANBAN_THEME_FILES: Record<string, string> = {
+  "aurora.css": auroraThemeCss,
+  "dark.css": darkThemeCss,
+  "forest.css": forestThemeCss,
+  "light.css": lightThemeCss,
+  "ocean.css": oceanThemeCss,
+  "rose.css": roseThemeCss
+};
+
 type DashboardDocumentationPageDefinition = {
   entry: DashboardDocumentationEntry;
   render: () => string;
@@ -339,33 +354,55 @@ export default class DailyDashboardPlugin extends Plugin {
   }
 
   private getFallbackKanbanThemeDefinitions(): Record<string, DashboardKanbanThemeDefinition> {
-    const createFallback = (
-      themeId: string,
-      name: string,
-      description: string,
-      board: string,
-      primary: string,
-      secondary: string,
-      surface: string
-    ): DashboardKanbanThemeDefinition => ({
-      themeId,
-      name,
-      description,
-      preview: { board, primary, secondary, surface },
-      cssContent: "",
-      builtIn: true,
-      updatedAt: "",
-      fileName: `${themeId}.css`
+    const themes: Record<string, DashboardKanbanThemeDefinition> = {};
+
+    Object.entries(BUNDLED_KANBAN_THEME_FILES).forEach(([fileName, cssContent]) => {
+      const fallbackThemeId = fileName.replace(/\.css$/i, "");
+      const result = inspectKanbanThemeFile(cssContent, fallbackThemeId, fileName);
+      if (result.theme) {
+        themes[result.theme.themeId] = result.theme;
+      }
     });
 
-    return {
-      dark: createFallback("dark", "Midnight Grid", "Neutral charcoal and brass for broad daily use.", "linear-gradient(160deg, #181513, #0b0a09)", "#d8a062", "#8f5a31", "rgba(255, 248, 230, 0.12)"),
-      light: createFallback("light", "Day Shift", "Clear light-mode surfaces with stronger ink contrast and cleaner lane separation.", "linear-gradient(160deg, #f5f8fd, #dce4ef)", "#466fd8", "#223f91", "rgba(255, 255, 255, 0.78)"),
-      ocean: createFallback("ocean", "Night Harbor", "Deep harbor blues with cooler instrumentation and darker naval surfaces.", "linear-gradient(160deg, #10293d, #081520)", "#78d8ff", "#2f7fbb", "rgba(206, 233, 250, 0.16)"),
-      forest: createFallback("forest", "Pine Console", "Pine-and-moss depth with a steadier field-console atmosphere.", "linear-gradient(160deg, #173021, #0d1711)", "#8ec86c", "#497c55", "rgba(212, 236, 206, 0.14)"),
-      rose: createFallback("rose", "Ember Atelier", "Wine, ember, and studio neutrals instead of a simple pink wash.", "linear-gradient(160deg, #311820, #160d12)", "#d28d76", "#964d55", "rgba(244, 215, 206, 0.14)"),
-      aurora: createFallback("aurora", "Violet Signal", "Grounded indigo-violet panels with tighter neon signal accents.", "linear-gradient(160deg, #241736, #120d1a)", "#ff7cc7", "#7d72ff", "rgba(232, 219, 255, 0.14)")
-    };
+    return themes;
+  }
+
+  private getBundledKanbanTemplateFiles(): Array<{ fileName: string; content: string }> {
+    const templates = Object.values(this.getBuiltInKanbanBoardTemplates(""));
+    return templates.map((template) => {
+      const { updatedAt, ...serializableTemplate } = template;
+      return {
+        fileName: `${template.templateId}.json`,
+        content: `${JSON.stringify(serializableTemplate, null, 2)}\n`
+      };
+    });
+  }
+
+  private getBundledKanbanThemeFiles(): Array<{ fileName: string; content: string }> {
+    return Object.entries(BUNDLED_KANBAN_THEME_FILES).map(([fileName, content]) => ({
+      fileName,
+      content: content.endsWith("\n") ? content : `${content}\n`
+    }));
+  }
+
+  private async ensureBundledKanbanAssetFilesExist(): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    await this.ensureFolder(this.getKanbanTemplatesDirectoryPath());
+    await this.ensureFolder(this.getKanbanThemesDirectoryPath());
+
+    for (const asset of this.getBundledKanbanTemplateFiles()) {
+      const path = normalizePath(`${this.getKanbanTemplatesDirectoryPath()}/${asset.fileName}`);
+      if (!await adapter.exists(path, false)) {
+        await this.writeManagedTextFile(path, asset.content);
+      }
+    }
+
+    for (const asset of this.getBundledKanbanThemeFiles()) {
+      const path = normalizePath(`${this.getKanbanThemesDirectoryPath()}/${asset.fileName}`);
+      if (!await adapter.exists(path, false)) {
+        await this.writeManagedTextFile(path, asset.content);
+      }
+    }
   }
 
   getKanbanThemeDefinitions(): DashboardKanbanThemeDefinition[] {
@@ -872,6 +909,7 @@ export default class DailyDashboardPlugin extends Plugin {
     const steps: Array<{ label: string; run: () => Promise<void> }> = [
       { label: "calendar import", run: () => this.importCalendarEventsFromMarkdown() },
       { label: "today entry", run: () => this.ensureTodayEntry() },
+      { label: "bundled Kanban assets", run: () => this.ensureBundledKanbanAssetFilesExist() },
       { label: "core support notes", run: () => this.ensureCoreSupportNotesExist() },
       { label: "documentation notes", run: () => this.ensureDocumentationNotesExist() },
       { label: "calendar artifacts", run: () => this.syncCalendarArtifacts() },
@@ -11030,6 +11068,30 @@ export default class DailyDashboardPlugin extends Plugin {
       "2. Use BRAT to add the Obsidian DASH GitHub repository as a beta plugin.",
       "3. Let BRAT install the latest beta release.",
       "4. Reload Obsidian if needed.",
+      "",
+      "Modern BRAT does not install the whole repository contents.",
+      "",
+      "For current BRAT releases, the repository URL is mainly how BRAT finds the GitHub project. After that, BRAT looks at the repo's GitHub releases, picks the latest release or prerelease by version, and downloads the release assets it needs.",
+      "",
+      "For Obsidian DASH, the important release assets are:",
+      "- `manifest.json`",
+      "- `main.js`",
+      "- `styles.css`",
+      "",
+      "BRAT writes those files into `.obsidian/plugins/daily-dashboard/` because the plugin id in `manifest.json` is `daily-dashboard`.",
+      "",
+      "That means the root repo URL is enough for BRAT users as long as these things stay true:",
+      "- the repo has a valid GitHub release or prerelease",
+      "- the release includes `manifest.json`, `main.js`, and `styles.css`",
+      "- the release tag version matches the released `manifest.json` version",
+      "",
+      "The rest of the repository structure is not what BRAT installs into the vault. Documentation, screenshots, and other repo folders are useful for humans, but they are not part of the installed plugin files.",
+      "",
+      "For Obsidian DASH specifically:",
+      "- `/src` is build-time source code and is already compiled into `main.js`.",
+      "- The user guide is generated by the plugin into `Obsidian DASH/Documentation` inside the vault.",
+      "- Built-in Kanban themes and templates are seeded into the plugin folder automatically on first run if they are missing.",
+      "- `Wallpapers/` is optional and mainly for your own custom header images, not a required install asset.",
       "",
       "## Direct Release Install Path",
       "Advanced users can also install manually from GitHub releases by placing `main.js`, `manifest.json`, and `styles.css` into a `daily-dashboard` plugin folder.",

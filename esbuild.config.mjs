@@ -8,6 +8,9 @@ const context = await esbuild.context({
   external: ["obsidian"],
   format: "cjs",
   target: "es2018",
+  loader: {
+    ".css": "text"
+  },
   logLevel: "info",
   sourcemap: production ? false : "inline",
   treeShaking: true,
