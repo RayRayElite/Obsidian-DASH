@@ -89,6 +89,20 @@ That start-day and end-day flow is what keeps sleep timing, daily logs, and repo
 
 ## Feature Highlights And Use Cases
 
+### Core Modules At A Glance
+
+- `Daily Dashboard`: use it as the operational home screen for planning, capture, reminders, state tracking, and review
+- `Master Task Hub`: use it as the readable markdown source of truth for project structure and active work
+- `DASH Kanban`: use it when visual sorting, drag-and-drop movement, filters, and board-level review are faster than editing the hub directly
+- `Project Notes`: use them for durable project context, decisions, risks, definitions, and supporting links that would clutter the hub
+- `Daily Logs`: use them as the factual history of what happened that day, including tracked work and completed tasks
+- `Reports And Reviews`: use them for weekly or monthly reflection, drift detection, and pattern spotting across longer time spans
+- `Timeline Search`: use it when you need to find past work, sessions, events, or text logs without manually digging through old notes
+- `Session Deck`: use it to track work sessions and day-flow context when timing data actually helps planning or review
+- `AI Workspace`: use it for optional planning, synthesis, and analysis support without making AI mandatory for the core workflow
+- `Compiled Research Wiki`: use it when you want note-grounded research outputs, concept notes, and reusable knowledge artifacts inside the vault
+- `Themes And Templates`: use them to change Kanban appearance and board structure without editing plugin code
+
 ### If You Want A Daily Command Center
 
 - use the dashboard as one home screen for planning, reminders, review, and quick capture
