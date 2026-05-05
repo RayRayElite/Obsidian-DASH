@@ -7456,7 +7456,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         });
         if (projects.length === 0) {
           const emptyState = quickAddPopover.createDiv({ cls: "daily-dashboard-empty-state daily-dashboard-empty-state--actionable" });
-          emptyState.createEl("span", { text: "No projects are available yet." });
+          emptyState.createEl("span", { text: "No projects are available yet. Create your first project or point DASH at a populated Master Task Hub first." });
           const emptyActions = emptyState.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
           createButton(emptyActions, "New project", async () => this.plugin.openCreateProjectFlow(), true, "folder-plus");
         } else {
@@ -9460,7 +9460,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           });
         }
       } else {
-        latestPanel.createDiv({ cls: "daily-dashboard-ai-empty-state", text: "No AI notes yet. Run a workflow or ask a question to create the first output." });
+        latestPanel.createDiv({ cls: "daily-dashboard-ai-empty-state", text: "No AI notes yet. AI is optional. Configure it only when you want it, then run a workflow or ask a question to create the first output." });
       }
       const projectsCard = createGridCard("Project Health", "Score projects by backlog, staleness, output, and momentum.", {
         icon: "shield-check",
@@ -9471,7 +9471,7 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       const projectsExpanded = this.isSectionExpanded("project-health-details");
       const projectList = projectsCard.createDiv({ cls: "daily-dashboard-project-list" });
       if (!todoSnapshot || todoSnapshot.projects.length === 0) {
-        projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured master task hub." });
+        projectList.createDiv({ cls: "daily-dashboard-empty-state", text: "No project data found in the configured Master Task Hub. Finish first-run setup or add a few project headings and active sections there first." });
       } else {
         [...todoSnapshot.projects].sort((left, right) => {
           const recencyDelta = getProjectLastWorkedSortKey(right).localeCompare(getProjectLastWorkedSortKey(left));

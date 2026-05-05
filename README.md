@@ -122,6 +122,21 @@ Support expectations and bug-report guidance live in [SUPPORT.md](SUPPORT.md).
 
 - user-facing change history lives in [CHANGELOG.md](CHANGELOG.md)
 - release operators should use [RELEASING.md](RELEASING.md) before tagging a beta or public release
+- beta acceptance coverage should be tracked with [TESTING.md](TESTING.md)
+
+## Beta Cohort Recommendation
+
+For the first public beta, prefer a small desktop-first cohort.
+
+- recommended starting cohort: 10 to 20 users
+- expand only after one stabilization pass on real outside feedback
+
+## Future Ideas Policy
+
+Some ideas may be explored later, but they should not be treated as public promises until they are actively being built and documented.
+
+- this currently applies especially to mobile sync and voice-triggered workflows
+- public docs should describe those as possible later directions, not promised roadmap items
 
 ## Privacy And AI Note
 

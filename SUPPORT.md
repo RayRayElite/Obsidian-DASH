@@ -55,6 +55,13 @@ For the public beta, GitHub Issues are the primary support and feedback channel.
 - requests for deeper nutrition tracking
 - polish suggestions that do not break the core dashboard, hub, or Kanban workflow
 
+## Future Ideas Policy
+
+Possible later ideas should not be treated as promises until they are actively being built and documented.
+
+- this especially applies to mobile sync and voice-triggered workflows
+- beta support responses should frame those as possible later directions, not committed roadmap items
+
 ## Good First Recovery Steps
 
 If something looks wrong, try the smallest relevant recovery action first:

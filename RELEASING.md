@@ -14,6 +14,7 @@ Use this checklist when cutting a public beta or community-plugin release.
    - DASH Kanban opens
    - docs center opens
    - a representative repair or refresh command still works
+7. run the relevant scenarios in [TESTING.md](TESTING.md) for the release slice you are shipping
 
 ## GitHub Release Flow
 
@@ -42,6 +43,14 @@ Current recommendation:
 
 - BRAT is the primary install path for outside beta users
 - direct GitHub release install is also supported for advanced users who want manual control
+- start with a 10 to 20 user desktop-first cohort before expanding beta access further
+
+## Future Ideas Messaging
+
+Keep future-facing ideas visible only as non-promissory possibilities.
+
+- this especially applies to mobile sync and voice-triggered workflows
+- do not write public release notes or beta docs in a way that makes those sound committed
 
 ## Beta Blockers
 
