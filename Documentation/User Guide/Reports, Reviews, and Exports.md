@@ -33,6 +33,6 @@ Exports are for analysis, backup, and downstream tooling. They are not meant to 
 
 ## Related Guides
 
-- [Daily Dashboard Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Daily Dashboard Guide.md)
-- [AI and Research Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\AI and Research Guide.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md)
+- [AI and Research Guide](AI%20and%20Research%20Guide.md)
+- [FAQ](FAQ.md)

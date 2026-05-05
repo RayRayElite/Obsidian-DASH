@@ -44,5 +44,5 @@ Normal flow:
 
 ## Related Guides
 
-- [Reports, Reviews, and Exports](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Reports, Reviews, and Exports.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Reports, Reviews, and Exports](Reports,%20Reviews,%20and%20Exports.md)
+- [FAQ](FAQ.md)

@@ -12,6 +12,14 @@
   }
 }
 */
+
+/*
+Built-in theme notes:
+- Violet Signal is another token-first example that leans harder into accent contrast.
+- Use it as a reference if you want brighter accents without switching to a full-override style like Day Shift.
+*/
+
+/* Board token overrides */
 .dash-kanban-project-board[data-theme="aurora"] {
   --dash-kanban-board-accent: #ff7cc7;
   --dash-kanban-board-accent-strong: #7d72ff;

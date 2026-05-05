@@ -12,6 +12,14 @@
   }
 }
 */
+
+/*
+Built-in theme notes:
+- Ember Atelier shows how to push theme identity with warmer board and card surfaces without rewriting every component.
+- Custom authors can compare this against Midnight Grid or Night Harbor to see which tokens create the strongest visual separation.
+*/
+
+/* Board token overrides */
 .dash-kanban-project-board[data-theme="rose"] {
   --dash-kanban-board-accent: #d28d76;
   --dash-kanban-board-accent-strong: #964d55;

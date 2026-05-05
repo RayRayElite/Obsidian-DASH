@@ -38,6 +38,7 @@ Yes. Use the in-DASH documentation center search, or search the `Documentation/U
 
 ## What should I read next?
 
-- [README](d:\Game Dev\Projects\Obsidian Dashboard Plugin\README.md)
-- [Quick Start](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Quick Start.md)
-- [Projects and Kanban Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Projects and Kanban Guide.md)
+- [README](../../README.md)
+- [Quick Start](Quick%20Start.md)
+- [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md)
+- [Beta Install and Support](Beta%20Install%20and%20Support.md)

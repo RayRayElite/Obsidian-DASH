@@ -12,6 +12,14 @@
   }
 }
 */
+
+/*
+Built-in theme notes:
+- This file demonstrates a token-first board theme with a quieter green identity.
+- Most custom themes should start from one of the token-first built-ins like this before moving to heavier component overrides.
+*/
+
+/* Board token overrides */
 .dash-kanban-project-board[data-theme="forest"] {
   --dash-kanban-board-accent: #8ec86c;
   --dash-kanban-board-accent-strong: #497c55;

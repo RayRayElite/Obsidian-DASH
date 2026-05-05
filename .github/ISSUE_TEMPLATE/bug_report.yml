@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in Obsidian DASH
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please give exact steps and enough context to reproduce the issue.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Describe the problem clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List exact steps in order.
+      placeholder: |
+        1. Open...
+        2. Click...
+        3. See error...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard
+        - Master Task Hub
+        - Kanban
+        - AI and research
+        - Reports and exports
+        - Budgeting
+        - Gamification
+        - Documentation
+        - Install or update
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - label: I can reproduce this in the current release
+        - label: I tested whether the issue still happens after reloading the plugin
+        - label: I included screenshots or logs if they help explain the issue

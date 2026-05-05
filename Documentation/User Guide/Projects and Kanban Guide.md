@@ -46,6 +46,7 @@ Use the board when visual grouping or drag-and-drop is faster than editing markd
 
 ## Related Guides
 
-- [Quick Start](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Quick Start.md)
-- [Daily Dashboard Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Daily Dashboard Guide.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Quick Start](Quick%20Start.md)
+- [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md)
+- [Kanban Themes and Templates Guide](Kanban%20Themes%20and%20Templates%20Guide.md)
+- [FAQ](FAQ.md)

@@ -12,6 +12,14 @@
   }
 }
 */
+
+/*
+Built-in theme notes:
+- This is a token-first example for cooler dark themes.
+- Copy this file when you want a custom theme that keeps the shared board structure but changes the board identity.
+*/
+
+/* Board token overrides */
 .dash-kanban-project-board[data-theme="ocean"] {
   --dash-kanban-board-accent: #78d8ff;
   --dash-kanban-board-accent-strong: #2f7fbb;

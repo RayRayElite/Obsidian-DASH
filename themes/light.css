@@ -13,6 +13,15 @@
 }
 */
 
+/*
+Built-in theme notes:
+- Day Shift is intentionally a fuller override example instead of a token-only example.
+- Use it when you want to learn how to restyle shell, controls, lanes, cards, and empty states directly.
+- Custom theme authors should still keep the metadata header above valid JSON because DASH reads it for previews.
+*/
+
+/* Global light-theme shell reset */
+
 .dash-kanban-shell[data-theme="light"] {
   color: #17263a !important;
 }
@@ -126,6 +135,7 @@
 }
 
 .dash-kanban-project-board[data-theme="light"] {
+  /* Board-level text, accent, and focus tokens */
   --dash-kanban-board-accent: #29405f !important;
   --dash-kanban-board-accent-strong: #122033 !important;
   --dash-kanban-text-strong: #162437 !important;

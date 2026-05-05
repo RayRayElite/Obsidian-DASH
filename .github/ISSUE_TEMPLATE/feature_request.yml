@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an improvement or new capability for Obsidian DASH
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or need
+      description: What real user problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the feature or change you want.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or simpler options.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard
+        - Master Task Hub
+        - Kanban
+        - AI and research
+        - Reports and exports
+        - Budgeting
+        - Gamification
+        - Documentation
+        - Mobile or sync future ideas
+        - Other
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Planned ideas are not promises. DASH is still optimized first for practical desktop use.

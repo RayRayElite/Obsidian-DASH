@@ -10,6 +10,24 @@ It combines:
 - generated daily logs, reports, exports, and review notes
 - optional AI and compiled research workflows for note-grounded synthesis
 
+## Public Beta Status
+
+Obsidian DASH is being prepared for a public community beta.
+
+The current public-beta promise is centered on:
+
+- the daily dashboard
+- the Master Task Hub workflow
+- the native DASH Kanban board
+- logs, reports, exports, and support-note structure
+
+The following modules should currently be treated as experimental:
+
+- budgeting
+- gamification
+
+Some future ideas may be explored later if there is enough real demand, but they are not current release promises. That includes richer Kanban collaboration-style features, nutrition-depth food tracking, voice activation, and a future mobile companion or sync product.
+
 ## Who It Is For
 
 Use DASH if you want:
@@ -27,8 +45,10 @@ If you are new to the plugin, use the user guide set instead of reading the enti
 
 - [Documentation/User Guide/README.md](Documentation/User%20Guide/README.md)
 - [Documentation/User Guide/Quick Start.md](Documentation/User%20Guide/Quick%20Start.md)
+- [Documentation/User Guide/Beta Install and Support.md](Documentation/User%20Guide/Beta%20Install%20and%20Support.md)
 - [Documentation/User Guide/Daily Dashboard Guide.md](Documentation/User%20Guide/Daily%20Dashboard%20Guide.md)
 - [Documentation/User Guide/Projects and Kanban Guide.md](Documentation/User%20Guide/Projects%20and%20Kanban%20Guide.md)
+- [Documentation/User Guide/Kanban Themes and Templates Guide.md](Documentation/User%20Guide/Kanban%20Themes%20and%20Templates%20Guide.md)
 - [Documentation/User Guide/AI and Research Guide.md](Documentation/User%20Guide/AI%20and%20Research%20Guide.md)
 - [Documentation/User Guide/Reports, Reviews, and Exports.md](Documentation/User%20Guide/Reports,%20Reviews,%20and%20Exports.md)
 - [Documentation/User Guide/FAQ.md](Documentation/User%20Guide/FAQ.md)
@@ -60,6 +80,42 @@ The DASH Kanban board gives you a faster visual project surface with search, fil
 ### Generated Artifacts
 
 DASH writes normal vault files for daily logs, AI outputs, reports, finance snapshots, wins archives, dependency reviews, review notes, exports, and documentation.
+
+## Install
+
+For public beta, the recommended install path is BRAT.
+
+- BRAT beta path: see [Documentation/User Guide/Beta Install and Support.md](Documentation/User%20Guide/Beta%20Install%20and%20Support.md)
+- direct GitHub release install is also possible for advanced users
+
+## Experimental And Known-Later Areas
+
+Experimental now:
+
+- budgeting
+- gamification
+
+Not part of the current release promise, even if they may be explored later:
+
+- non-image card attachments in Kanban
+- card comments or longer threaded card descriptions from a dedicated comments flow
+- people tags or assignee images on Kanban cards
+- percentage progress bars on cards
+- richer nutrition-facts storage and nutrition search for food tracking
+- voice-triggered commands
+- a future paid mobile companion with sync
+
+## Support And Bug Reporting
+
+Support expectations and bug-report guidance live in [SUPPORT.md](SUPPORT.md).
+
+## Privacy And AI Note
+
+AI features are optional. They require their own setup and can involve external model calls depending on how you configure them. Core dashboard, project, and Kanban workflows should remain useful without AI enabled.
+
+## Custom Themes And Templates
+
+If you want to make your own Kanban assets, start with [Documentation/User Guide/Kanban Themes and Templates Guide.md](Documentation/User%20Guide/Kanban%20Themes%20and%20Templates%20Guide.md).
 
 ## Documentation Strategy
 

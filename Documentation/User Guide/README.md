@@ -6,27 +6,31 @@ Use this guide set when you want practical answers about how the plugin works, h
 
 ## Start Here
 
-- [Quick Start](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Quick Start.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Quick Start](Quick%20Start.md)
+- [Beta Install and Support](Beta%20Install%20and%20Support.md)
+- [FAQ](FAQ.md)
 
 ## Core Workflows
 
-- [Daily Dashboard Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Daily Dashboard Guide.md)
-- [Projects and Kanban Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Projects and Kanban Guide.md)
+- [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md)
+- [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md)
 
 ## Deep Dives
 
-- [AI and Research Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\AI and Research Guide.md)
-- [Reports, Reviews, and Exports](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Reports, Reviews, and Exports.md)
+- [AI and Research Guide](AI%20and%20Research%20Guide.md)
+- [Reports, Reviews, and Exports](Reports,%20Reviews,%20and%20Exports.md)
+- [Kanban Themes and Templates Guide](Kanban%20Themes%20and%20Templates%20Guide.md)
 
 ## What To Read Based On Your Situation
 
-- If you are brand new: start with [Quick Start](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Quick Start.md).
-- If the dashboard feels too dense: read [Daily Dashboard Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Daily Dashboard Guide.md).
-- If you are confused about the hub versus Kanban: read [Projects and Kanban Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Projects and Kanban Guide.md).
-- If you want to understand AI or the research wiki: read [AI and Research Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\AI and Research Guide.md).
-- If you want to understand reports, review notes, or exports: read [Reports, Reviews, and Exports](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Reports, Reviews, and Exports.md).
-- If you just want answers first: read [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md).
+- If you are brand new: start with [Quick Start](Quick%20Start.md).
+- If you need install and support guidance: read [Beta Install and Support](Beta%20Install%20and%20Support.md).
+- If the dashboard feels too dense: read [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md).
+- If you are confused about the hub versus Kanban: read [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md).
+- If you want to understand AI or the research wiki: read [AI and Research Guide](AI%20and%20Research%20Guide.md).
+- If you want to understand reports, review notes, or exports: read [Reports, Reviews, and Exports](Reports,%20Reviews,%20and%20Exports.md).
+- If you want to customize board assets: read [Kanban Themes and Templates Guide](Kanban%20Themes%20and%20Templates%20Guide.md).
+- If you just want answers first: read [FAQ](FAQ.md).
 
 ## Search
 

@@ -12,6 +12,15 @@
   }
 }
 */
+
+/*
+Built-in theme notes:
+- Keep the metadata block above valid JSON because DASH reads it directly for theme labels and previews.
+- This file mainly overrides board-level CSS variables so custom theme authors can learn the minimal token surface first.
+- If you want a smaller custom theme, start by copying this file and changing the variables below before adding deeper component overrides.
+*/
+
+/* Board token overrides */
 .dash-kanban-project-board[data-theme="dark"] {
   --dash-kanban-board-accent: #d8a062;
   --dash-kanban-board-accent-strong: #8f5a31;

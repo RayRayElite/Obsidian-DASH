@@ -50,6 +50,7 @@ Recommended baseline per project:
 
 ## Next
 
-- [Daily Dashboard Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Daily Dashboard Guide.md)
-- [Projects and Kanban Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Projects and Kanban Guide.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Beta Install and Support](Beta%20Install%20and%20Support.md)
+- [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md)
+- [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md)
+- [FAQ](FAQ.md)

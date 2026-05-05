@@ -57,6 +57,6 @@ If late-night work matters to your schedule, use `Begin logical day` and `End lo
 
 ## Related Guides
 
-- [Projects and Kanban Guide](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Projects and Kanban Guide.md)
-- [Reports, Reviews, and Exports](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\Reports, Reviews, and Exports.md)
-- [FAQ](d:\Game Dev\Projects\Obsidian Dashboard Plugin\Documentation\User Guide\FAQ.md)
+- [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md)
+- [Reports, Reviews, and Exports](Reports,%20Reviews,%20and%20Exports.md)
+- [FAQ](FAQ.md)
