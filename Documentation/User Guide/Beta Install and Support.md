@@ -32,9 +32,31 @@ Recommended beta install path:
 
 1. install the BRAT plugin in Obsidian
 2. open BRAT and choose the add beta plugin flow
-3. paste the Obsidian DASH GitHub repository URL
+3. paste the Obsidian DASH GitHub repository URL - https://github.com/RayRayElite/Obsidian-DASH
 4. let BRAT install the current beta release
 5. reload Obsidian if needed
+
+Modern BRAT does not install the whole repository contents.
+
+For current BRAT releases, the repository URL is mainly how BRAT finds the GitHub project. After that, BRAT looks at the repo's GitHub releases, picks the latest release or prerelease by version, and downloads the release assets it needs.
+
+For Obsidian DASH, the important release assets are:
+
+- `manifest.json`
+- `main.js`
+- `styles.css`
+
+BRAT writes those files into `.obsidian/plugins/daily-dashboard/` because the plugin id in `manifest.json` is `daily-dashboard`.
+
+That means the root repo URL is enough for BRAT users as long as these things stay true:
+
+- the repo has a valid GitHub release or prerelease
+- the release includes `manifest.json`, `main.js`, and `styles.css`
+- the release tag version matches the released `manifest.json` version
+
+The rest of the repository structure is not what BRAT installs into the vault. Documentation, screenshots, and other repo folders are useful for humans, but they are not part of the installed plugin files.
+
+To reduce avoidable user issues, assume users should be on a reasonably current BRAT version. Older BRAT setups used older beta-manifest behavior, but current BRAT uses GitHub release assets as the source of truth.
 
 ## Direct Release Install Path
 
