@@ -14,6 +14,8 @@ It combines:
 
 Obsidian DASH is being prepared for a public community beta.
 
+The current beta should be treated as desktop-only.
+
 The current public-beta promise is centered on:
 
 - the daily dashboard

@@ -2177,7 +2177,9 @@ export class DailyDashboardView extends ItemView {
         icon: "trophy",
         eyebrow: "Scores",
         tone: "done",
-        tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored"
+        tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored",
+        secondaryTag: "Experimental",
+        secondaryTagTone: "alert"
       });
       const gamificationSummaryRow = gamificationCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(gamificationSummaryRow, `Streak ${gamificationSummary.currentStreak}`, gamificationSummary.currentStreak >= 3 ? "focus" : "neutral");
@@ -2277,7 +2279,9 @@ export class DailyDashboardView extends ItemView {
           icon: "wallet-cards",
           eyebrow: "Money",
           tone: "focus",
-          tag: activeSubscriptions.length > 0 ? "Live" : "Optional"
+          tag: activeSubscriptions.length > 0 ? "Live" : "Optional",
+          secondaryTag: "Experimental",
+          secondaryTagTone: "alert"
         });
         const budgetingSummary = budgetingCard.createDiv({ cls: "daily-dashboard-chip-row" });
         createSemanticChip(budgetingSummary, `${activeSubscriptions.length} active`, activeSubscriptions.length > 0 ? "focus" : "neutral");
@@ -7964,10 +7968,14 @@ export class DailyDashboardSettingTab extends PluginSettingTab {
       });
 
     containerEl.createEl("h3", { text: "Budgeting" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Budgeting is still experimental in the public beta. Keep it off unless you want to test the current finance workflow."
+    });
 
     new Setting(containerEl)
-      .setName("Enable budgeting section")
-      .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.")
+      .setName("Enable budgeting section (Experimental)")
+      .setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs. This area is still beta-state and may keep changing.")
       .addToggle((toggle) => {
         toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
           await this.plugin.updateSettings({
@@ -8878,6 +8886,9 @@ function createCard(parent: HTMLElement, title: string, description: string, opt
     const controls = top.createDiv({ cls: "daily-dashboard-card-header-controls" });
     if (options.tag) {
       createSemanticChip(controls, options.tag, options.tone);
+    }
+    if (options.secondaryTag) {
+      createSemanticChip(controls, options.secondaryTag, options.secondaryTagTone ?? "alert");
     }
     const toggle = controls.createSpan({ cls: "daily-dashboard-card-toggle" });
     toggle.ariaHidden = "true";

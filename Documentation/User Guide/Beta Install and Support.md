@@ -2,6 +2,13 @@
 
 Use this guide when you want to install the public beta, understand what the beta includes, and know where to report issues.
 
+## Platform Scope
+
+The current public beta should be treated as desktop-only.
+
+- DASH is optimized first for desktop use.
+- Mobile support is not part of the current beta promise.
+
 ## What The Public Beta Covers
 
 The public beta should be treated as stable enough for normal use in these areas:

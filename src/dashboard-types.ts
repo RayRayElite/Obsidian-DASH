@@ -1088,6 +1088,8 @@ export interface CardVisualOptions {
   eyebrow: string;
   tone: DashboardTone;
   tag?: string;
+  secondaryTag?: string;
+  secondaryTagTone?: DashboardTone;
 }
 
 export interface RepeatingTaskDefinition {

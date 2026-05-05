@@ -8381,7 +8381,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
         icon: "trophy",
         eyebrow: "Scores",
         tone: "done",
-        tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored"
+        tag: gamificationSummary.model === "deterministic" ? "Deterministic" : "Scored",
+        secondaryTag: "Experimental",
+        secondaryTagTone: "alert"
       });
       const gamificationSummaryRow = gamificationCard.createDiv({ cls: "daily-dashboard-chip-row" });
       createSemanticChip(gamificationSummaryRow, `Streak ${gamificationSummary.currentStreak}`, gamificationSummary.currentStreak >= 3 ? "focus" : "neutral");
@@ -8476,7 +8478,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
           icon: "wallet-cards",
           eyebrow: "Money",
           tone: "focus",
-          tag: activeSubscriptions.length > 0 ? "Live" : "Optional"
+          tag: activeSubscriptions.length > 0 ? "Live" : "Optional",
+          secondaryTag: "Experimental",
+          secondaryTagTone: "alert"
         });
         const budgetingSummary = budgetingCard.createDiv({ cls: "daily-dashboard-chip-row" });
         createSemanticChip(budgetingSummary, `${activeSubscriptions.length} active`, activeSubscriptions.length > 0 ? "focus" : "neutral");
@@ -13053,7 +13057,11 @@ var DailyDashboardSettingTab = class extends import_obsidian3.PluginSettingTab {
       });
     });
     containerEl.createEl("h3", { text: "Budgeting" });
-    new import_obsidian3.Setting(containerEl).setName("Enable budgeting section").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs.").addToggle((toggle) => {
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Budgeting is still experimental in the public beta. Keep it off unless you want to test the current finance workflow."
+    });
+    new import_obsidian3.Setting(containerEl).setName("Enable budgeting section (Experimental)").setDesc("Show the budgeting card in the dashboard with overview, subscriptions, and budget tabs. This area is still beta-state and may keep changing.").addToggle((toggle) => {
       toggle.setValue(settings.budgetingEnabled).onChange(async (value) => {
         await this.plugin.updateSettings({
           ...this.plugin.getSettings(),
@@ -13586,6 +13594,7 @@ var FIRST_RUN_SETUP_STEPS = [
   }
 ];
 function createCard(parent, title, description, options) {
+  var _a;
   const cardKey = toClassSlug(title);
   const card = parent.createDiv({ cls: "daily-dashboard-card" });
   card.addClass(`daily-dashboard-card--${cardKey}`);
@@ -13608,6 +13617,9 @@ function createCard(parent, title, description, options) {
     const controls = top.createDiv({ cls: "daily-dashboard-card-header-controls" });
     if (options.tag) {
       createSemanticChip(controls, options.tag, options.tone);
+    }
+    if (options.secondaryTag) {
+      createSemanticChip(controls, options.secondaryTag, (_a = options.secondaryTagTone) != null ? _a : "alert");
     }
     const toggle = controls.createSpan({ cls: "daily-dashboard-card-toggle" });
     toggle.ariaHidden = "true";
@@ -25727,6 +25739,11 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "# DASH Docs - Beta Install and Support",
       "",
       "Use this guide when you want to install the public beta, understand the current maturity promise, and know how to report issues well.",
+      "",
+      "## Platform Scope",
+      "- The current public beta should be treated as desktop-only.",
+      "- DASH is optimized first for desktop use.",
+      "- Mobile support is not part of the current beta promise.",
       "",
       "## What The Public Beta Covers",
       "- daily dashboard",
