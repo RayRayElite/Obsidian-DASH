@@ -63,6 +63,11 @@ Use this checklist before a public beta tag and after any change that touches on
 
 ## Beta Exit Notes
 
+Current beta-prep status:
+
+- latest full manual pass completed on 2026-05-04
+- all required scenarios in this matrix passed in the current local validation pass
+
 Record these before tagging:
 
 - which vaults were used for validation

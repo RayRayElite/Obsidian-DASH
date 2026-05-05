@@ -87,6 +87,40 @@ That start-day and end-day flow is what keeps sleep timing, daily logs, and repo
 - generate planning, synthesis, and review outputs as normal vault files
 - use the compiled research wiki flow when you want note-grounded research support
 
+## Feature Highlights And Use Cases
+
+### If You Want A Daily Command Center
+
+- use the dashboard as one home screen for planning, reminders, review, and quick capture
+- track a logical day so late nights and sleep timing attach to the day you actually mean
+- customize the layout with drag-and-drop card ordering, pinning, hiding, and width changes
+- use notifications, agenda views, and session tracking to keep the day operational instead of just reflective
+
+### If You Want Project Management Without Giving Up Markdown
+
+- keep a readable `Master Task Hub` as the source of truth for project work
+- open DASH Kanban when drag-and-drop sorting, filters, and visual flow are faster than raw note editing
+- keep project notes for durable context, risks, definitions, and decisions
+- rely on the board and the hub as two views of the same workflow rather than two separate systems
+
+### If You Want Better Review And History
+
+- generate daily logs, weekly reports, monthly reports, exports, and support notes as normal vault files
+- use timeline search, project health, and cleanup flows to review drift and pressure earlier
+- keep completed work archived instead of losing the record of what actually got done
+
+### If You Want Optional AI And Research Support
+
+- keep the core workflow manual and markdown-first if you do not want AI involved
+- use AI for planning, synthesis, and analysis only when it adds value
+- build a compiled research wiki when you want note-grounded research outputs instead of one-off chat answers
+
+### If You Care About Inspectable Data And Recovery
+
+- keep generated artifacts as normal vault files that can be inspected outside the plugin
+- use built-in repair and refresh flows when state drifts instead of guessing at manual fixes
+- customize Kanban themes and templates from file-backed assets instead of needing code changes for every board tweak
+
 ## Install
 
 For public beta, the recommended install path is BRAT.

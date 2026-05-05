@@ -13,6 +13,8 @@ This project is still in public beta preparation, so the changelog is intentiona
 - aligned the beta messaging around a desktop-only release scope
 - expanded the dashboard and Kanban guides to explain UI customization, control rails, and drag-and-drop workflow more clearly
 - added GitHub beta-release and Reddit announcement draft copy with screenshot prompts for launch prep
+- expanded the README with stronger feature and use-case coverage for beta visitors arriving from public launch posts
+- completed the current local beta testing matrix pass and recorded the result in the release-prep docs
 
 ## Release Notes Habit
 
