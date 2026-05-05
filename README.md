@@ -89,51 +89,55 @@ That start-day and end-day flow is what keeps sleep timing, daily logs, and repo
 
 ## Feature Highlights And Use Cases
 
-### Core Modules At A Glance
+Every major DASH feature is optional. You do not need to use every module for the plugin to be useful.
 
-- `Daily Dashboard`: use it as the operational home screen for planning, capture, reminders, state tracking, and review
-- `Master Task Hub`: use it as the readable markdown source of truth for project structure and active work
-- `DASH Kanban`: use it when visual sorting, drag-and-drop movement, filters, and board-level review are faster than editing the hub directly
-- `Project Notes`: use them for durable project context, decisions, risks, definitions, and supporting links that would clutter the hub
-- `Daily Logs`: use them as the factual history of what happened that day, including tracked work and completed tasks
-- `Reports And Reviews`: use them for weekly or monthly reflection, drift detection, and pattern spotting across longer time spans
-- `Timeline Search`: use it when you need to find past work, sessions, events, or text logs without manually digging through old notes
-- `Session Deck`: use it to track work sessions and day-flow context when timing data actually helps planning or review
-- `AI Workspace`: use it for optional planning, synthesis, and analysis support without making AI mandatory for the core workflow
-- `Compiled Research Wiki`: use it when you want note-grounded research outputs, concept notes, and reusable knowledge artifacts inside the vault
+The intended model is that you can keep the parts that help and ignore the parts that do not. That is especially true for the `Master Task Hub` and `DASH Kanban`: they are meant to be used together and they sync both ways, so you can choose the markdown view or the board view depending on what is more useful in the moment.
+
+### Daily Dashboard Modules
+
+- `Session Deck`: use it for start-day, end-day, and session tracking when timing and day-flow context help you plan or review more honestly
+- `Week At A Glance`: use it when you want a visual weekly timeline of tracked time instead of relying on memory
+- `Weekly Agenda`: use it to see upcoming commitments, near-term pressure, and planning context in one place
+- `Action Queue`: use it for the small set of tasks that matter most right now instead of scanning every project at once
+- `Vitals`: use it for mood, energy, friction, and similar state signals when those affect real planning decisions
+- `Habits`: use it when you want daily habit tracking inside the same operational surface as the rest of the day
+- `Consumables`: use it for things like food, water, caffeine, supplements, or medication when intake tracking is useful to you
+- `Exercise & Weight`: use it when body or fitness tracking matters enough that you want it connected to the rest of your day logs
+- `Sleep And Notes`: use it for sleep timing, recovery context, and lightweight daily notes in one place
+- `Heatmaps`: use them when you want a quick pattern view across recent work, sleep, or habit consistency
+
+### Project And Planning Modules
+
+- `Master Task Hub`: use it as the readable markdown source of truth for project structure, active work, and section-based planning
+- `DASH Kanban`: use it when drag-and-drop movement, filters, lane views, and faster triage are more useful than editing the hub directly
+- `Project Health`: use it to spot which projects are drifting, stalled, blocked, or missing a real next action
+- `Stale Work And Cleanup`: use it to find neglected, broken, duplicated, or suspicious project state before it spreads
+
+The `Master Task Hub` and `DASH Kanban` are designed to work together rather than compete. Use the hub when markdown is the clearer tool, and use the board when visual flow is faster. They are two-way synced so you can switch between them based on what the moment calls for.
+
+### Review, History, And Retrieval Modules
+
+- `Daily Logs`: use them as the factual record of what happened that day, including tracked sessions, completions, and context
+- `Reports And Reviews`: use them for weekly and monthly reflection, trend spotting, and higher-level review
+- `Timeline Search`: use it when you need to retrieve past work, tracked sessions, notes, or event context without digging manually through older files
+
+### Optional Intelligence And Analysis Modules
+
+- `AI Workspace`: use it for optional planning, synthesis, and question-answering support when AI adds value to your workflow
+- `Compiled Research Wiki`: use it when you want note-grounded research outputs, concept notes, and reusable knowledge artifacts instead of one-off answers
+
+### Optional Experimental Modules
+
+- `Gamification Center`: use it if score, streak, and momentum framing makes the system more engaging for you; ignore it if that framing is not helpful
+- `Budgeting`: use it if you want subscription and budget visibility inside DASH; leave it off if finance tracking is outside your current scope
+
+### Customization And Recovery Modules
+
+- `Project Notes`: use them for durable context, definitions, risks, and decisions that should not clutter the hub
 - `Themes And Templates`: use them to change Kanban appearance and board structure without editing plugin code
+- `Repair And Refresh Flows`: use them when state drifts or generated artifacts need to be rebuilt, instead of guessing at manual fixes
 
-### If You Want A Daily Command Center
-
-- use the dashboard as one home screen for planning, reminders, review, and quick capture
-- track a logical day so late nights and sleep timing attach to the day you actually mean
-- customize the layout with drag-and-drop card ordering, pinning, hiding, and width changes
-- use notifications, agenda views, and session tracking to keep the day operational instead of just reflective
-
-### If You Want Project Management Without Giving Up Markdown
-
-- keep a readable `Master Task Hub` as the source of truth for project work
-- open DASH Kanban when drag-and-drop sorting, filters, and visual flow are faster than raw note editing
-- keep project notes for durable context, risks, definitions, and decisions
-- rely on the board and the hub as two views of the same workflow rather than two separate systems
-
-### If You Want Better Review And History
-
-- generate daily logs, weekly reports, monthly reports, exports, and support notes as normal vault files
-- use timeline search, project health, and cleanup flows to review drift and pressure earlier
-- keep completed work archived instead of losing the record of what actually got done
-
-### If You Want Optional AI And Research Support
-
-- keep the core workflow manual and markdown-first if you do not want AI involved
-- use AI for planning, synthesis, and analysis only when it adds value
-- build a compiled research wiki when you want note-grounded research outputs instead of one-off chat answers
-
-### If You Care About Inspectable Data And Recovery
-
-- keep generated artifacts as normal vault files that can be inspected outside the plugin
-- use built-in repair and refresh flows when state drifts instead of guessing at manual fixes
-- customize Kanban themes and templates from file-backed assets instead of needing code changes for every board tweak
+This is meant to be a modular system, not an all-or-nothing one. If only a few modules fit your workflow, that is a normal way to use DASH.
 
 ## Install
 
