@@ -1,6 +1,6 @@
 {
   "name": "obsidian-dash-daily-action-system-hub",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Obsidian plugin for a daily action and system hub with execution tracking, AI context, wallpaper styling, and automatic reports.",
   "scripts": {
