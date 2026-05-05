@@ -7597,6 +7597,9 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "book-open", "Open DASH documentation", async () => {
         this.openDocumentationCenterFlow();
       });
+      createIconButton(utilityActions, "heart", "Support DASH on Ko-fi", async () => {
+        window.open("https://ko-fi.com/rayrayelite");
+      });
       createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
         this.openShortcutHelpFlow();
       });
@@ -25968,6 +25971,7 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "### Hero Footer Utility Icons",
       "- view mode icon: switch between mobile, compact, and widescreen layouts",
       "- book icon: open the DASH documentation center",
+      "- heart icon: open the Ko-fi support link for DASH",
       "- keyboard icon: show dashboard shortcut help",
       "- sliders icon: customize dashboard layout",
       "- notebook icon: generate the weekly review note",

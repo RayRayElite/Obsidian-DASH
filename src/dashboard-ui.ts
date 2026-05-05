@@ -1315,6 +1315,9 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "book-open", "Open DASH documentation", async () => {
         this.openDocumentationCenterFlow();
       });
+      createIconButton(utilityActions, "heart", "Support DASH on Ko-fi", async () => {
+        window.open("https://ko-fi.com/rayrayelite");
+      });
       createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
         this.openShortcutHelpFlow();
       });
