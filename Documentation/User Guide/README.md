@@ -36,3 +36,7 @@ Use this guide set when you want practical answers about how the plugin works, h
 
 - Inside DASH, use the documentation center search for feature names, workflows, and common questions.
 - Inside Obsidian, search this `Documentation/User Guide` folder directly.
+
+## Support Development
+
+If DASH is useful to you and you want to support its development, you can do that at [Ko-fi](https://ko-fi.com/rayrayelite).

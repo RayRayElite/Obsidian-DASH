@@ -161,6 +161,8 @@ The default wallpaper folder is `Wallpapers`, but the setting can point somewher
 
 Support expectations, bug-report guidance, and beta triage rules live in [SUPPORT.md](SUPPORT.md).
 
+If DASH is useful to you and you want to support its development, you can do that at [Ko-fi](https://ko-fi.com/rayrayelite).
+
 ## Release Notes And Testing
 
 - user-facing change history: [CHANGELOG.md](CHANGELOG.md)

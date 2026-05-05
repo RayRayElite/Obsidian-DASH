@@ -25733,6 +25733,9 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "## Search",
       "- From the dashboard, use the documentation button to open the searchable docs center.",
       "- Inside Obsidian, the docs live in the folder `Obsidian DASH/Documentation` so vault search can also find them.",
+      "",
+      "## Support Development",
+      "If DASH is useful to you and you want to support its development, you can do that at https://ko-fi.com/rayrayelite.",
       ""
     ].join("\n");
   }
