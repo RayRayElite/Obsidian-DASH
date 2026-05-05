@@ -21,19 +21,14 @@ Use this checklist when cutting a public beta or community-plugin release.
 1. commit the release-prep changes
 2. tag the commit with the exact plugin version, for example `0.5.0`
 3. push the tag
-4. let the GitHub Actions release workflow build the draft release
-5. confirm the workflow passed the `verify:release` step before publishing
+4. let the GitHub Actions release workflow build the prerelease
+5. confirm the workflow passed the `verify:release` step
 6. verify the release assets include:
    - `main.js`
    - `manifest.json`
    - `styles.css`
 7. copy the matching summary from [CHANGELOG.md](CHANGELOG.md) into the GitHub release notes
-8. publish the draft release when the assets and notes look correct
-
-Use these launch-copy docs when needed:
-
-- [Documentation/GitHub Beta Launch Draft.md](Documentation/GitHub%20Beta%20Launch%20Draft.md) for release-page copy, screenshot prompts, and BRAT-facing framing
-- [Documentation/Reddit Beta Post Draft.md](Documentation/Reddit%20Beta%20Post%20Draft.md) for a personal public announcement draft
+8. confirm the prerelease page shows the assets and notes correctly
 
 ## Package Metadata Decision
 

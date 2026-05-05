@@ -105,10 +105,7 @@ Interpretation guidelines for future refactors:
 
 1. `README.md` is the user-facing project guide and should reflect the current product direction.
 2. `.github/copilot-instructions.md` stores the workspace-wide Copilot rules that should load across actions in this repo.
-3. `Memory/WORKLOG.md` stores recent factual project history.
-4. Read the last 10 worklog entries before substantial implementation work.
-5. After meaningful changes, add one compact worklog entry near the top.
-6. Use a real local timestamp from PowerShell for worklog entries with `Get-Date -Format "yyyy-MM-dd HH:mm:ss"`.
+3. If a local worklog exists outside version control, use it as private project history rather than relying on the public repo for that context.
 
 ## Git Workflow
 

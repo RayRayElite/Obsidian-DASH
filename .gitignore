@@ -3,3 +3,7 @@ node_modules/
 data.json
 To do.md
 Master Task Hub.md
+Documentation/*
+!Documentation/User Guide/
+!Documentation/User Guide/**
+Memory/
