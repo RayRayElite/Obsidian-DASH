@@ -87,7 +87,6 @@ The hero area is not decorative only. It is the dashboard control rail.
 
 - view mode icon: switch between mobile, compact, and widescreen layouts
 - book icon: open the DASH documentation center
-- heart icon: open the Ko-fi support link for DASH
 - keyboard icon: show dashboard shortcut help
 - sliders icon: customize dashboard layout
 - notebook icon: generate the weekly review note
@@ -96,6 +95,11 @@ The hero area is not decorative only. It is the dashboard control rail.
 - line chart icon: generate the monthly report
 - trophy icon: generate the gamification report
 - refresh icon: sync repeating project tasks
+
+### Support Ribbon
+
+- below the hero, DASH shows a separate support ribbon instead of hiding support inside the utility icon strip
+- use the `Support on Ko-fi` button if you want to support development; it does not affect dashboard behavior or unlock features
 
 ### Status Pills In The Hero Footer
 

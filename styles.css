@@ -3982,6 +3982,11 @@
   margin-left: 0;
 }
 
+.daily-dashboard-view.is-view-mobile .daily-dashboard-support-ribbon {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .daily-dashboard-view.is-view-mobile .daily-dashboard-hero-header-controls {
   flex-direction: column;
   align-items: stretch;
@@ -4974,6 +4979,33 @@
   justify-content: flex-end;
   justify-self: end;
   align-self: center;
+}
+
+.daily-dashboard-support-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 24%, var(--background-modifier-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--daily-dashboard-accent) 10%, var(--background-primary)), color-mix(in srgb, var(--daily-dashboard-accent-strong) 8%, var(--background-primary-alt)));
+  box-shadow: var(--daily-dashboard-shadow);
+}
+
+.daily-dashboard-support-ribbon .daily-dashboard-row-meta {
+  max-width: 640px;
+}
+
+.daily-dashboard-support-ribbon .daily-dashboard-secondary-button {
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--daily-dashboard-accent-strong) 34%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+}
+
+.daily-dashboard-support-ribbon .daily-dashboard-secondary-button:hover {
+  background: color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-primary));
 }
 
 .daily-dashboard-undo-banner {

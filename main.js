@@ -7597,9 +7597,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "book-open", "Open DASH documentation", async () => {
         this.openDocumentationCenterFlow();
       });
-      createIconButton(utilityActions, "heart", "Support DASH on Ko-fi", async () => {
-        window.open("https://ko-fi.com/rayrayelite");
-      });
       createIconButton(utilityActions, "keyboard", "Show dashboard keyboard shortcuts", async () => {
         this.openShortcutHelpFlow();
       });
@@ -7612,6 +7609,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
+      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-ribbon" });
+      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
+      supportCopy.createEl("strong", { text: "Support DASH development" });
+      supportCopy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: "If the plugin earns a place in your daily workflow, you can help support future work on Ko-fi."
+      });
+      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
+      createButton(supportActions, "Support on Ko-fi", async () => {
+        window.open("https://ko-fi.com/rayrayelite");
+      }, false, "heart");
       const latestUndoAction = (_j = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _j : null;
       if (latestUndoAction && settings.showUndoNotifications) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
@@ -25971,7 +25979,6 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "### Hero Footer Utility Icons",
       "- view mode icon: switch between mobile, compact, and widescreen layouts",
       "- book icon: open the DASH documentation center",
-      "- heart icon: open the Ko-fi support link for DASH",
       "- keyboard icon: show dashboard shortcut help",
       "- sliders icon: customize dashboard layout",
       "- notebook icon: generate the weekly review note",
@@ -25980,6 +25987,10 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- line chart icon: generate the monthly report",
       "- trophy icon: generate the gamification report",
       "- refresh icon: sync repeating project tasks",
+      "",
+      "### Support Ribbon",
+      "- below the hero, DASH shows a separate support ribbon instead of hiding support inside the utility icon strip",
+      "- use the Support on Ko-fi button if you want to support development; it does not affect dashboard behavior or unlock features",
       "",
       "### Status Pills In The Hero Footer",
       "- date: the active dashboard date",
