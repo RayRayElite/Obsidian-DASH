@@ -8,7 +8,8 @@
     "deploy": "node scripts/deploy-plugin.mjs",
     "build:deploy": "node scripts/build-deploy.mjs",
     "dev": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs"
+    "watch": "node esbuild.config.mjs",
+    "verify:release": "node scripts/verify-release.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.17.30",

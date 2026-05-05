@@ -25,6 +25,11 @@ jobs:
       - name: Build plugin
         run: npm run build
 
+      - name: Verify release assets and metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: npm run verify:release
+
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

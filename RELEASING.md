@@ -7,8 +7,9 @@ Use this checklist when cutting a public beta or community-plugin release.
 1. confirm `manifest.json`, `package.json`, and `versions.json` all reflect the intended version
 2. update [CHANGELOG.md](CHANGELOG.md) with the user-visible release notes
 3. run `npm run build`
-4. run `npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"`
-5. reload the plugin in Obsidian and sanity-check the release-critical surfaces:
+4. run `npm run verify:release`
+5. run `npm run build:deploy -- "D:/Game Dev/Projects/.obsidian/plugins/daily-dashboard"`
+6. reload the plugin in Obsidian and sanity-check the release-critical surfaces:
    - dashboard opens
    - DASH Kanban opens
    - docs center opens
@@ -20,12 +21,20 @@ Use this checklist when cutting a public beta or community-plugin release.
 2. tag the commit with the exact plugin version, for example `0.5.0`
 3. push the tag
 4. let the GitHub Actions release workflow build the draft release
-5. verify the release assets include:
+5. confirm the workflow passed the `verify:release` step before publishing
+6. verify the release assets include:
    - `main.js`
    - `manifest.json`
    - `styles.css`
-6. copy the matching summary from [CHANGELOG.md](CHANGELOG.md) into the GitHub release notes
-7. publish the draft release when the assets and notes look correct
+7. copy the matching summary from [CHANGELOG.md](CHANGELOG.md) into the GitHub release notes
+8. publish the draft release when the assets and notes look correct
+
+## Package Metadata Decision
+
+`package.json` should stay `private: true`.
+
+- DASH releases are distributed through GitHub releases, BRAT, and the Obsidian community-plugin flow, not npm
+- keeping the package private reduces the chance of accidental npm publishing
 
 ## Beta Distribution Decision
 
