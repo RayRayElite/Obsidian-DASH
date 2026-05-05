@@ -55,8 +55,8 @@ One concept that matters early is the logical day.
 
 DASH does not assume that your day starts and ends exactly at midnight. Instead, day tracking and sleep tracking depend on when you explicitly start the day after waking up and end the day when you go to bed.
 
-- use `Begin day` when you wake up and are actually starting the day
-- use `End day` when you are done for the day and going to bed
+- use `Begin logical day` when you wake up and are actually starting the day
+- use `End logical day` when you are done for the day and going to bed
 - if you work late past midnight, DASH will still treat that time as part of the same day until you end it
 
 That start-day and end-day flow is what keeps sleep timing, daily logs, and reports lined up correctly.
@@ -83,7 +83,7 @@ That start-day and end-day flow is what keeps sleep timing, daily logs, and repo
 
 ### AI And Research
 
-- keep AI optional
+- AI usage is optional
 - generate planning, synthesis, and review outputs as normal vault files
 - use the compiled research wiki flow when you want note-grounded research support
 

@@ -11,6 +11,8 @@ This project is still in public beta preparation, so the changelog is intentiona
 - aligned package and manifest version metadata at `0.5.0`
 - marked budgeting and gamification as experimental in the live dashboard UI and supporting docs
 - aligned the beta messaging around a desktop-only release scope
+- expanded the dashboard and Kanban guides to explain UI customization, control rails, and drag-and-drop workflow more clearly
+- added GitHub beta-release and Reddit announcement draft copy with screenshot prompts for launch prep
 
 ## Release Notes Habit
 

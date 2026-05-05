@@ -30,6 +30,11 @@ Use this checklist when cutting a public beta or community-plugin release.
 7. copy the matching summary from [CHANGELOG.md](CHANGELOG.md) into the GitHub release notes
 8. publish the draft release when the assets and notes look correct
 
+Use these launch-copy docs when needed:
+
+- [Documentation/GitHub Beta Launch Draft.md](Documentation/GitHub%20Beta%20Launch%20Draft.md) for release-page copy, screenshot prompts, and BRAT-facing framing
+- [Documentation/Reddit Beta Post Draft.md](Documentation/Reddit%20Beta%20Post%20Draft.md) for a personal public announcement draft
+
 ## Package Metadata Decision
 
 `package.json` should stay `private: true`.

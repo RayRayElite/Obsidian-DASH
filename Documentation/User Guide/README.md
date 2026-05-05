@@ -1,6 +1,6 @@
 # DASH User Guide
 
-This is the main user-facing documentation set for Obsidian DASH.
+This is the main documentation set for Obsidian DASH.
 
 Use this guide set when you want practical answers about how the plugin works, how to set it up, and how to use it without reading planning docs, roadmap notes, or historical design files.
 
@@ -26,7 +26,7 @@ Use this guide set when you want practical answers about how the plugin works, h
 - If you are brand new: start with [Quick Start](Quick%20Start.md).
 - If you need install and support guidance: read [Beta Install and Support](Beta%20Install%20and%20Support.md).
 - If the dashboard feels too dense: read [Daily Dashboard Guide](Daily%20Dashboard%20Guide.md).
-- If you are confused about the hub versus Kanban: read [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md).
+- If you are confused about the hub versus Kanban or how the board controls work: read [Projects and Kanban Guide](Projects%20and%20Kanban%20Guide.md).
 - If you want to understand AI or the research wiki: read [AI and Research Guide](AI%20and%20Research%20Guide.md).
 - If you want to understand reports, review notes, or exports: read [Reports, Reviews, and Exports](Reports,%20Reviews,%20and%20Exports.md).
 - If you want to customize board assets: read [Kanban Themes and Templates Guide](Kanban%20Themes%20and%20Templates%20Guide.md).
