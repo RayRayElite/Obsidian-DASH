@@ -1328,18 +1328,6 @@ export class DailyDashboardView extends ItemView {
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
 
-      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-ribbon" });
-      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
-      supportCopy.createEl("strong", { text: "Support DASH development" });
-      supportCopy.createEl("span", {
-        cls: "daily-dashboard-row-meta",
-        text: "If the plugin earns a place in your daily workflow, you can help support future work on Ko-fi."
-      });
-      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(supportActions, "Support on Ko-fi", async () => {
-        window.open("https://ko-fi.com/rayrayelite");
-      }, false, "heart");
-
       const latestUndoAction = this.pendingUndoActions[this.pendingUndoActions.length - 1] ?? null;
       if (latestUndoAction && settings.showUndoNotifications) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
@@ -3484,6 +3472,18 @@ export class DailyDashboardView extends ItemView {
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
 
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
+
+      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-footer" });
+      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
+      supportCopy.createEl("strong", { text: "Support DASH development" });
+      supportCopy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
+      });
+      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(supportActions, "Support on Ko-fi", async () => {
+        window.open("https://ko-fi.com/rayrayelite");
+      }, false, "heart");
 
       this.lastRenderAt = Date.now();
     } catch (error) {

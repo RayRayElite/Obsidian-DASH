@@ -96,9 +96,9 @@ The hero area is not decorative only. It is the dashboard control rail.
 - trophy icon: generate the gamification report
 - refresh icon: sync repeating project tasks
 
-### Support Ribbon
+### Support Footer Ribbon
 
-- below the hero, DASH shows a separate support ribbon instead of hiding support inside the utility icon strip
+- at the bottom of the dashboard page, DASH shows a separate support ribbon instead of taking space from the hero area
 - use the `Support on Ko-fi` button if you want to support development; it does not affect dashboard behavior or unlock features
 
 ### Status Pills In The Hero Footer

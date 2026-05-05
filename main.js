@@ -7609,17 +7609,6 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createIconButton(utilityActions, "line-chart", "Monthly report", async () => this.plugin.generateMonthlyReport());
       createIconButton(utilityActions, "trophy", "Gamification report", async () => this.plugin.generateGamificationReport());
       createIconButton(utilityActions, "refresh-cw", "Sync repeating", async () => this.plugin.syncRepeatingProjectTasks(true));
-      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-ribbon" });
-      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
-      supportCopy.createEl("strong", { text: "Support DASH development" });
-      supportCopy.createEl("span", {
-        cls: "daily-dashboard-row-meta",
-        text: "If the plugin earns a place in your daily workflow, you can help support future work on Ko-fi."
-      });
-      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline daily-dashboard-actions-inline--compact" });
-      createButton(supportActions, "Support on Ko-fi", async () => {
-        window.open("https://ko-fi.com/rayrayelite");
-      }, false, "heart");
       const latestUndoAction = (_j = this.pendingUndoActions[this.pendingUndoActions.length - 1]) != null ? _j : null;
       if (latestUndoAction && settings.showUndoNotifications) {
         const undoBanner = page.createDiv({ cls: "daily-dashboard-undo-banner" });
@@ -9664,6 +9653,17 @@ var _DailyDashboardView = class _DailyDashboardView extends import_obsidian3.Ite
       createButton(alertActions, "Cleanup note", async () => this.plugin.showCleanupSuggestions(), false, "sparkles");
       createButton(alertActions, "Offload references", async () => this.plugin.offloadProjectReferences(true), false, "move-right");
       this.applyGridLayout(grid, gridCardBindings, layoutByKey);
+      const supportRibbon = page.createDiv({ cls: "daily-dashboard-support-footer" });
+      const supportCopy = supportRibbon.createDiv({ cls: "daily-dashboard-stack" });
+      supportCopy.createEl("strong", { text: "Support DASH development" });
+      supportCopy.createEl("span", {
+        cls: "daily-dashboard-row-meta",
+        text: "If DASH earns a place in your daily workflow, you can support future development on Ko-fi."
+      });
+      const supportActions = supportRibbon.createDiv({ cls: "daily-dashboard-actions-inline" });
+      createButton(supportActions, "Support on Ko-fi", async () => {
+        window.open("https://ko-fi.com/rayrayelite");
+      }, false, "heart");
       this.lastRenderAt = Date.now();
     } catch (error) {
       console.error("Daily dashboard render failed", error);
@@ -25988,8 +25988,8 @@ ${truncateText(await this.app.vault.read(activeFile), 8e3)}` : "";
       "- trophy icon: generate the gamification report",
       "- refresh icon: sync repeating project tasks",
       "",
-      "### Support Ribbon",
-      "- below the hero, DASH shows a separate support ribbon instead of hiding support inside the utility icon strip",
+      "### Support Footer Ribbon",
+      "- at the bottom of the dashboard page, DASH shows a separate support ribbon instead of taking space from the hero area",
       "- use the Support on Ko-fi button if you want to support development; it does not affect dashboard behavior or unlock features",
       "",
       "### Status Pills In The Hero Footer",

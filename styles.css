@@ -3982,7 +3982,7 @@
   margin-left: 0;
 }
 
-.daily-dashboard-view.is-view-mobile .daily-dashboard-support-ribbon {
+.daily-dashboard-view.is-view-mobile .daily-dashboard-support-footer {
   flex-direction: column;
   align-items: stretch;
 }
@@ -4981,31 +4981,43 @@
   align-self: center;
 }
 
-.daily-dashboard-support-ribbon {
+.daily-dashboard-support-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--daily-dashboard-accent) 24%, var(--background-modifier-border));
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, #d85b5b 44%, var(--background-modifier-border));
   border-radius: 18px;
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--daily-dashboard-accent) 10%, var(--background-primary)), color-mix(in srgb, var(--daily-dashboard-accent-strong) 8%, var(--background-primary-alt)));
+    linear-gradient(135deg, color-mix(in srgb, #5b1717 84%, var(--background-primary)), color-mix(in srgb, #8d2424 68%, var(--background-primary-alt)));
   box-shadow: var(--daily-dashboard-shadow);
 }
 
-.daily-dashboard-support-ribbon .daily-dashboard-row-meta {
+.daily-dashboard-support-footer .daily-dashboard-row-meta {
   max-width: 640px;
+  color: color-mix(in srgb, var(--text-muted) 76%, #ffd7d7);
 }
 
-.daily-dashboard-support-ribbon .daily-dashboard-secondary-button {
+.daily-dashboard-support-footer .daily-dashboard-actions-inline {
   flex: 0 0 auto;
-  border-color: color-mix(in srgb, var(--daily-dashboard-accent-strong) 34%, var(--background-modifier-border));
-  background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 }
 
-.daily-dashboard-support-ribbon .daily-dashboard-secondary-button:hover {
-  background: color-mix(in srgb, var(--daily-dashboard-accent) 14%, var(--background-primary));
+.daily-dashboard-support-footer .daily-dashboard-secondary-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+  white-space: nowrap;
+  border-color: color-mix(in srgb, #ff9d9d 42%, var(--background-modifier-border));
+  background: color-mix(in srgb, #2d1111 82%, var(--background-primary));
+}
+
+.daily-dashboard-support-footer .daily-dashboard-secondary-button:hover {
+  background: color-mix(in srgb, #8d2424 26%, var(--background-primary));
+}
+
+.daily-dashboard-support-footer strong {
+  color: #ffd7d7;
 }
 
 .daily-dashboard-undo-banner {
