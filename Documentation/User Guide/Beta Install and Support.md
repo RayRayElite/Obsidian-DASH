@@ -52,6 +52,22 @@ Advanced users can also install directly from GitHub releases:
 - The plugin is optimized first for practical desktop use, not for every possible workflow.
 - Planned ideas are not promises until they are explicitly shipped.
 
+## Known Limitations
+
+- The current beta should be treated as desktop-only.
+- Budgeting and gamification are still experimental.
+- Advanced Trello-style Kanban extras such as comments, assignee images, non-image attachments, and percentage progress bars are not part of the current release promise.
+- AI workflows are optional and depend on separate model setup.
+
+## Where Feedback Goes
+
+For the public beta, GitHub Issues are the primary channel.
+
+- bug reports: GitHub Issues
+- feature requests: GitHub Issues
+- first-impression or workflow-friction reports: GitHub Issues using the beta feedback template
+- forum posts or Discord can be used for visibility later, but they are not the primary support queue during beta triage
+
 ## What To Include In A Bug Report
 
 - what you expected
@@ -60,6 +76,20 @@ Advanced users can also install directly from GitHub releases:
 - screenshots if the issue is visual
 - whether the issue depends on Kanban, AI, budgeting, or a specific setting
 - whether the problem happens in a fresh vault or only your existing vault
+
+## What Counts As A Beta Blocker
+
+- the plugin fails to load or the dashboard does not open
+- DASH Kanban breaks normal project workflow
+- install instructions or release assets are wrong enough to strand a new user
+- repair guidance is missing for a common broken state
+
+## What Feedback Is Useful But Usually Not Blocking
+
+- requests for future mobile support
+- requests for richer Trello-like Kanban extras
+- requests for deeper nutrition tracking
+- polish suggestions that do not break core dashboard, hub, or Kanban use
 
 ## First Recovery Actions
 

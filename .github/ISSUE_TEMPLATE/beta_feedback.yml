@@ -1,0 +1,66 @@
+name: Beta feedback
+description: Share a structured beta report, friction note, or first-impression review for Obsidian DASH
+labels:
+  - beta-feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for broader beta feedback that is not a single reproducible bug. Good reports include what you tried, where the workflow felt unclear, and what slowed you down.
+  - type: dropdown
+    id: feedback_kind
+    attributes:
+      label: Feedback type
+      options:
+        - First impression
+        - Onboarding friction
+        - Workflow confusion
+        - Feature gap
+        - Recovery or repair confusion
+        - Documentation feedback
+        - General beta notes
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What were you trying to do?
+      description: Describe the workflow or task you were using DASH for.
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: What felt confusing, fragile, or slower than expected?
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What did you expect instead?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Main area
+      options:
+        - Install and setup
+        - Dashboard
+        - Master Task Hub
+        - Kanban
+        - AI and research
+        - Reports and exports
+        - Budgeting
+        - Gamification
+        - Documentation
+        - Recovery and repair
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: environment
+    attributes:
+      label: Context
+      options:
+        - label: I am using the desktop beta build
+        - label: I checked the docs before opening this feedback report
+        - label: I included screenshots or examples where useful

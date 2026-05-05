@@ -111,6 +111,18 @@ Not part of the current release promise, even if they may be explored later:
 
 Support expectations and bug-report guidance live in [SUPPORT.md](SUPPORT.md).
 
+## Known Limitations
+
+- The current beta should be treated as desktop-only.
+- Budgeting and gamification are still experimental.
+- Advanced Trello-style Kanban extras such as comments, assignee images, non-image attachments, and percentage progress bars are not part of the current release promise.
+- AI workflows are optional and depend on separate model setup.
+
+## Release Notes
+
+- user-facing change history lives in [CHANGELOG.md](CHANGELOG.md)
+- release operators should use [RELEASING.md](RELEASING.md) before tagging a beta or public release
+
 ## Privacy And AI Note
 
 AI features are optional. They require their own setup and can involve external model calls depending on how you configure them. Core dashboard, project, and Kanban workflows should remain useful without AI enabled.
